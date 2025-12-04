@@ -1,17 +1,23 @@
 # Assup Project Context
 
 ## Project Overview
-**Assup** is a Node.js application designed to manage asset allocation for personal investment portfolios, specifically integrating with Interactive Brokers Ireland. It handles various asset classes, including cash-secured PUT options and covered CALL options.
+**Assup** is an asset allocation management system that integrates with Interactive Brokers TWS to provide portfolio tracking, rebalancing guidance, and options opportunity discovery. The system enables users to define custom asset classes, assign securities to those classes, monitor allocation status, and identify investment opportunities through options analysis.
 
 ### Core Features
-*   **IBKR Integration:** Connects to Interactive Brokers TWS (Trader Workstation) locally to download trades and current positions.
-*   **Portfolio Grouping:** Groups positions by user-defined asset classes.
-*   **Rebalancing Logic:** Calculates the current value of asset classes and compares them against target allocations to determine necessary adjustments.
+*   **Asset Class Management:** Create and manage custom asset classes (e.g., "Stocks: Tech", "Bonds: US", "Metals") to organize portfolios according to investment strategy.
+*   **Asset Allocation:** Define target portfolio distribution across asset classes with validation that percentages sum to 100%. Support for multiple allocation profiles.
+*   **Security Assignment:** Assign any security to an asset class. Assignments can be made from watchlist or positions view.
+*   **IBKR Integration:** Connects to Interactive Brokers TWS locally to download positions, orders, and market data.
+*   **Allocation Dashboard:** Visualize current vs. target allocation with pie/bar charts. Identify underinvested and overinvested asset classes. Toggle to include options positions using notional or delta-weighted calculations.
+*   **Watchlist Management:** Maintain lists of securities for monitoring with inline asset class assignment.
+*   **Orders Impact Analysis:** View open orders and see how execution would affect portfolio allocation.
+*   **Options Scanner:** Analyze options market data to find opportunities for underinvested asset classes based on configurable criteria (expiration, delta, annualized return, premium percentage).
 *   **Deployment:** Designed to be deployed as a Docker container (Backend + Frontend).
 
 ## Architecture & Tech Stack
 *   **Backend:** Node.js with TypeScript, Express
 *   **Frontend:** Vite + React (TypeScript), shadcn/ui, Tailwind CSS
+*   **Database:** PostgreSQL with Prisma ORM
 *   **API:** Interactive Brokers API (via `ib-tws-api`)
 *   **Containerization:** Docker & Docker Compose
 
