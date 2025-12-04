@@ -1,0 +1,126 @@
+// Prisma schema for Assup - Asset Allocation Manager
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Asset Classes - user-defined categories for investments
+model AssetClass {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  color       String   @default("#6366f1") @db.VarChar(7)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  allocationTargets   AllocationTarget[]
+  securityAssignments SecurityAssignment[]
+
+  @@map("asset_classes")
+}
+
+// Allocation Profiles - named sets of target allocations
+model AllocationProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(100)
+  isActive  Boolean  @default(false) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  targets AllocationTarget[]
+
+  @@map("allocation_profiles")
+}
+
+// Allocation Targets - percentage targets for each asset class in a profile
+model AllocationTarget {
+  id                  String @id @default(uuid()) @db.Uuid
+  allocationProfileId String @map("allocation_profile_id") @db.Uuid
+  assetClassId        String @map("asset_class_id") @db.Uuid
+  targetPercentage    Float  @map("target_percentage") @db.DoublePrecision
+
+  // Relations
+  allocationProfile AllocationProfile @relation(fields: [allocationProfileId], references: [id], onDelete: Cascade)
+  assetClass        AssetClass        @relation(fields: [assetClassId], references: [id], onDelete: Cascade)
+
+  @@unique([allocationProfileId, assetClassId])
+  @@map("allocation_targets")
+}
+
+// Security Assignments - maps symbols to asset classes
+model SecurityAssignment {
+  id           String   @id @default(uuid()) @db.Uuid
+  symbol       String   @db.VarChar(20)
+  conId        Int?     @map("con_id")
+  secType      String   @default("STK") @map("sec_type") @db.VarChar(10)
+  assetClassId String   @map("asset_class_id") @db.Uuid
+  source       String   @default("position") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  assetClass AssetClass @relation(fields: [assetClassId], references: [id], onDelete: Cascade)
+
+  @@unique([symbol, secType])
+  @@index([symbol])
+  @@index([assetClassId])
+  @@map("security_assignments")
+}
+
+// Watchlists - user-curated lists of securities
+model Watchlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  items WatchlistItem[]
+
+  @@map("watchlists")
+}
+
+// Watchlist Items - individual securities in a watchlist
+model WatchlistItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  watchlistId String   @map("watchlist_id") @db.Uuid
+  symbol      String   @db.VarChar(20)
+  conId       Int?     @map("con_id")
+  secType     String   @default("STK") @map("sec_type") @db.VarChar(10)
+  addedAt     DateTime @default(now()) @map("added_at") @db.Timestamptz
+
+  // Relations
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, symbol])
+  @@index([watchlistId])
+  @@map("watchlist_items")
+}
+
+// Scanner Presets - saved scanner criteria configurations
+model ScannerPreset {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(100)
+  criteria  Json     @db.JsonB
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("scanner_presets")
+}
+
+// Settings - key-value store for application settings
+model Setting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique @db.VarChar(50)
+  value     Json     @db.JsonB
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("settings")
+}

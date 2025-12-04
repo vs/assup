@@ -1,6 +1,8 @@
+import "dotenv/config";
 import express, { Request, Response } from "express";
 import cors from "cors";
 import { ibkrService } from "./services/ibkr.js";
+import { prisma } from "./db/index.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,8 +10,22 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+app.get("/api/health", async (req, res) => {
+  try {
+    // Test database connection
+    const assetClassCount = await prisma.assetClass.count();
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      database: { connected: true, assetClasses: assetClassCount },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      timestamp: new Date().toISOString(),
+      database: { connected: false, error: String(error) },
+    });
+  }
 });
 
 // SSE endpoint for TWS connection status

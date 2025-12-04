@@ -7,11 +7,13 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
 - **IBKR Integration** - Connects to Interactive Brokers TWS to download trades and positions
 - **Portfolio Grouping** - Groups positions by user-defined asset classes
 - **Rebalancing** - Calculates current vs target allocations to determine adjustments
+- **Options Scanner** - Find options opportunities for underinvested asset classes
 
 ## Tech Stack
 
 - **Backend:** Node.js, TypeScript, Express
 - **Frontend:** React, Vite, TypeScript, shadcn/ui, Tailwind CSS
+- **Database:** PostgreSQL with Prisma ORM
 - **API:** Interactive Brokers API (via `ib-tws-api`)
 
 ## Prerequisites
@@ -32,18 +34,30 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
    docker-compose up --build
    ```
 
-3. Access the application:
+3. Run database migrations and seed:
+   ```bash
+   docker-compose exec backend npx prisma migrate deploy
+   docker-compose exec backend npm run db:seed
+   ```
+
+4. Access the application:
    - Frontend: http://localhost:8080
    - Backend API: http://localhost:3000
 
 ## Local Development
 
+**Start PostgreSQL:**
+```bash
+docker-compose up -d postgres
+```
+
 **Backend:**
 ```bash
 cd backend
 npm install
-export IB_HOST=127.0.0.1
-export IB_PORT=7497
+cp .env.example .env
+npm run db:migrate
+npm run db:seed
 npm run dev
 ```
 
@@ -53,3 +67,9 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Documentation
+
+- [DESIGN.md](./DESIGN.md) - System design and architecture
+- [ROADMAP.md](./ROADMAP.md) - Implementation roadmap
+- [CLAUDE.md](./CLAUDE.md) - Project context for AI assistants
