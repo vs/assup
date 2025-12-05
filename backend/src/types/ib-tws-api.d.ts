@@ -25,6 +25,13 @@ declare module "ib-tws-api" {
     auxPrice?: number;
   }
 
+  export interface Position {
+    account: string;
+    contract: Contract & { primaryExchange?: string };
+    pos: number;
+    avgCost: number;
+  }
+
   export class Client {
     constructor(options?: ClientOptions);
 
@@ -33,6 +40,8 @@ declare module "ib-tws-api" {
     connect(options?: ClientOptions): Promise<void>;
     disconnect(): void;
     getCurrentTime(): Promise<number>;
+
+    getPositions(): Promise<Position[]>;
 
     reqAccountUpdates(params: {
       subscribe: boolean;

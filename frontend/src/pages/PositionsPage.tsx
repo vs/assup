@@ -1,0 +1,301 @@
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import type { Position, AssetClass } from "@/lib/api";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+export function PositionsPage() {
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    try {
+      setLoading(true);
+      const [posData, acData] = await Promise.all([
+        api.positions.list(),
+        api.assetClasses.list(),
+      ]);
+      setPositions(posData);
+      setAssetClasses(acData);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load positions");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAssign(position: Position, assetClassId: string | null) {
+    const key = `${position.symbol}:${position.secType}`;
+    setAssigning(key);
+
+    try {
+      if (assetClassId) {
+        await api.securityAssignments.create({
+          symbol: position.symbol,
+          conId: position.conId,
+          secType: position.secType,
+          assetClassId,
+          source: "position",
+        });
+      }
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to assign security");
+    } finally {
+      setAssigning(null);
+    }
+  }
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+    }).format(value);
+
+  const formatNumber = (value: number) =>
+    new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(value);
+
+  // Group positions by asset class
+  const unassigned = positions.filter((p) => !p.assetClassId);
+  const assigned = positions.filter((p) => p.assetClassId);
+
+  // Calculate totals
+  const totalValue = positions.reduce(
+    (sum, p) => sum + Math.abs(p.position * p.avgCost),
+    0
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading positions...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Positions</h1>
+          <p className="text-muted-foreground">
+            View and assign your positions to asset classes.
+          </p>
+        </div>
+        <Button variant="outline" onClick={loadData} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+      </div>
+
+      {error && (
+        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Positions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{positions.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Assigned
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{assigned.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Unassigned
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{unassigned.length}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Unassigned Positions */}
+      {unassigned.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Unassigned Positions
+              <Badge variant="secondary">{unassigned.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Symbol</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Avg Cost</TableHead>
+                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead>Assign To</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unassigned.map((pos) => {
+                  const key = `${pos.symbol}:${pos.secType}`;
+                  const value = Math.abs(pos.position * pos.avgCost);
+                  return (
+                    <TableRow key={key}>
+                      <TableCell className="font-medium">{pos.symbol}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{pos.secType}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatNumber(pos.position)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(pos.avgCost)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(value)}
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          disabled={assigning === key}
+                          onValueChange={(v) => handleAssign(pos, v)}
+                        >
+                          <SelectTrigger className="w-40">
+                            <SelectValue placeholder="Select class..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {assetClasses.map((ac) => (
+                              <SelectItem key={ac.id} value={ac.id}>
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="h-2 w-2 rounded-full"
+                                    style={{ backgroundColor: ac.color }}
+                                  />
+                                  {ac.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* All Positions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>All Positions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {positions.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">
+              No positions found. Make sure TWS is connected.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Symbol</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Asset Class</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Avg Cost</TableHead>
+                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right">% of Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {positions.map((pos) => {
+                  const key = `${pos.symbol}:${pos.secType}`;
+                  const value = Math.abs(pos.position * pos.avgCost);
+                  const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
+                  return (
+                    <TableRow key={key}>
+                      <TableCell className="font-medium">{pos.symbol}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{pos.secType}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {pos.assetClassName ? (
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: pos.assetClassColor || "#6366f1" }}
+                            />
+                            {pos.assetClassName}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatNumber(pos.position)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(pos.avgCost)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(value)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {pct.toFixed(1)}%
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -3,12 +3,22 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import { ibkrService } from "./services/ibkr.js";
 import { prisma } from "./db/index.js";
+import assetClassesRouter from "./routes/assetClasses.js";
+import allocationProfilesRouter from "./routes/allocationProfiles.js";
+import positionsRouter from "./routes/positions.js";
+import securityAssignmentsRouter from "./routes/securityAssignments.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// API Routes
+app.use("/api/asset-classes", assetClassesRouter);
+app.use("/api/allocation-profiles", allocationProfilesRouter);
+app.use("/api/positions", positionsRouter);
+app.use("/api/security-assignments", securityAssignmentsRouter);
 
 app.get("/api/health", async (req, res) => {
   try {
