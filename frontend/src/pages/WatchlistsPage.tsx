@@ -13,13 +13,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -28,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { AssetClassSelect } from "@/components/common/AssetClassSelect";
 import { Plus, Trash2, Pencil, X } from "lucide-react";
 
 export function WatchlistsPage() {
@@ -281,26 +275,11 @@ export function WatchlistsPage() {
                                 {item.assetClassName}
                               </div>
                             ) : (
-                              <Select
+                              <AssetClassSelect
                                 onValueChange={(v) => handleAssignAssetClass(item, v)}
-                              >
-                                <SelectTrigger className="w-40">
-                                  <SelectValue placeholder="Assign..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {assetClasses.map((ac) => (
-                                    <SelectItem key={ac.id} value={ac.id}>
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          className="h-2 w-2 rounded-full"
-                                          style={{ backgroundColor: ac.color }}
-                                        />
-                                        {ac.name}
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                placeholder="Assign..."
+                                assetClasses={assetClasses}
+                              />
                             )}
                           </TableCell>
                           <TableCell>

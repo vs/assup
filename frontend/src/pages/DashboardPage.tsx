@@ -1,8 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import type { AllocationProfile, PositionSummary } from "@/lib/api";
+import type { AllocationProfile, PositionSummary, DashboardSettings } from "@/lib/api";
+import { useAllocationUpdates } from "@/hooks/useSSE";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   PieChart,
   Pie,
@@ -15,6 +26,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { RefreshCw, Settings2 } from "lucide-react";
 
 interface AllocationData {
   name: string;
@@ -23,24 +35,48 @@ interface AllocationData {
   diff: number;
   color: string;
   value: number;
+  stockValue: number;
+  optionsExposure: number;
 }
+
+const DEFAULT_SETTINGS: DashboardSettings = {
+  includeOptions: false,
+  optionsWeightMode: "notional",
+};
 
 export function DashboardPage() {
   const [profile, setProfile] = useState<AllocationProfile | null>(null);
   const [summary, setSummary] = useState<PositionSummary | null>(null);
+  const [settings, setSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showOptionsPanel, setShowOptionsPanel] = useState(false);
 
-  useEffect(() => {
+  // Subscribe to real-time allocation updates
+  const handleAllocationUpdate = useCallback(() => {
+    // Silently refresh data when allocation changes
     loadData();
   }, []);
+  useAllocationUpdates(handleAllocationUpdate);
 
-  async function loadData() {
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  async function loadInitialData() {
     try {
       setLoading(true);
+      // Load settings first
+      const savedSettings = await api.settings.getDashboard().catch(() => DEFAULT_SETTINGS);
+      setSettings(savedSettings);
+
+      // Then load data with those settings
       const [profileData, summaryData] = await Promise.all([
         api.allocationProfiles.getActive().catch(() => null),
-        api.positions.summary().catch(() => null),
+        api.positions.summary({
+          includeOptions: savedSettings.includeOptions,
+          optionsWeightMode: savedSettings.optionsWeightMode,
+        }).catch(() => null),
       ]);
       setProfile(profileData);
       setSummary(summaryData);
@@ -50,6 +86,41 @@ export function DashboardPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadData() {
+    try {
+      setLoading(true);
+      const [profileData, summaryData] = await Promise.all([
+        api.allocationProfiles.getActive().catch(() => null),
+        api.positions.summary({
+          includeOptions: settings.includeOptions,
+          optionsWeightMode: settings.optionsWeightMode,
+        }).catch(() => null),
+      ]);
+      setProfile(profileData);
+      setSummary(summaryData);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateSettings(newSettings: Partial<DashboardSettings>) {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+
+    // Save to backend
+    try {
+      await api.settings.setDashboard(updated);
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+    }
+
+    // Reload data with new settings
+    loadData();
   }
 
   // Combine target and actual allocation data
@@ -72,6 +143,10 @@ export function DashboardPage() {
         diff: (actual?.percentage || 0) - target.targetPercentage,
         color: target.assetClass.color,
         value: actual?.value || 0,
+        stockValue: actual?.stockValue || 0,
+        optionsExposure: settings.optionsWeightMode === "delta"
+          ? (actual?.optionsDelta || 0)
+          : (actual?.optionsNotional || 0),
       });
     }
 
@@ -84,6 +159,8 @@ export function DashboardPage() {
         diff: summary.summary.unassignedPercentage,
         color: "#9ca3af",
         value: summary.summary.unassignedValue,
+        stockValue: summary.summary.unassignedValue,
+        optionsExposure: 0,
       });
     }
 
@@ -97,6 +174,10 @@ export function DashboardPage() {
           diff: actual.percentage,
           color: actual.color,
           value: actual.value,
+          stockValue: actual.stockValue,
+          optionsExposure: settings.optionsWeightMode === "delta"
+            ? actual.optionsDelta
+            : actual.optionsNotional,
         });
       }
     }
@@ -111,7 +192,7 @@ export function DashboardPage() {
       color: d.color,
     }));
 
-  if (loading) {
+  if (loading && !summary) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Loading dashboard...</p>
@@ -127,13 +208,32 @@ export function DashboardPage() {
       maximumFractionDigits: 0,
     }).format(value);
 
+  const hasOptionsPositions = summary?.summary.optionsExposure &&
+    summary.summary.optionsExposure.length > 0;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Allocation Dashboard</h1>
-        <p className="text-muted-foreground">
-          Monitor your portfolio allocation vs. target.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Allocation Dashboard</h1>
+          <p className="text-muted-foreground">
+            Monitor your portfolio allocation vs. target.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowOptionsPanel(!showOptionsPanel)}
+          >
+            <Settings2 className="h-4 w-4 mr-2" />
+            Options Settings
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -142,9 +242,60 @@ export function DashboardPage() {
         </div>
       )}
 
+      {/* Options Settings Panel */}
+      {showOptionsPanel && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Options Allocation Settings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="include-options"
+                  checked={settings.includeOptions}
+                  onCheckedChange={(checked) => updateSettings({ includeOptions: checked })}
+                />
+                <Label htmlFor="include-options" className="cursor-pointer">
+                  Include options in allocation
+                </Label>
+              </div>
+
+              {settings.includeOptions && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground">Weight mode:</Label>
+                  <Select
+                    value={settings.optionsWeightMode}
+                    onValueChange={(v: "notional" | "delta") =>
+                      updateSettings({ optionsWeightMode: v })
+                    }
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="notional">Notional</SelectItem>
+                      <SelectItem value="delta">Delta-weighted</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {settings.includeOptions && (
+                <p className="text-xs text-muted-foreground">
+                  {settings.optionsWeightMode === "notional"
+                    ? "Short puts add full notional exposure (strike × 100). Short calls reduce exposure."
+                    : "Options weighted by delta (e.g., 0.3 delta = 30% of notional)."}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Account Summary */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -155,6 +306,11 @@ export function DashboardPage() {
               <div className="text-2xl font-bold">
                 {formatCurrency(summary.account.netLiquidation)}
               </div>
+              {settings.includeOptions && summary.summary.totalStockValue !== summary.summary.totalValue && (
+                <p className="text-xs text-muted-foreground">
+                  Stocks: {formatCurrency(summary.summary.totalStockValue)}
+                </p>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -179,6 +335,27 @@ export function DashboardPage() {
               <div className="text-2xl font-bold">{summary.summary.totalPositions}</div>
             </CardContent>
           </Card>
+          {hasOptionsPositions && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Options Exposure
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {formatCurrency(
+                    settings.optionsWeightMode === "delta"
+                      ? summary.summary.totalOptionsDelta
+                      : summary.summary.totalOptionsNotional
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {settings.optionsWeightMode === "delta" ? "Delta-weighted" : "Notional"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -187,7 +364,14 @@ export function DashboardPage() {
         {/* Pie Chart */}
         <Card>
           <CardHeader>
-            <CardTitle>Current Allocation</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Current Allocation
+              {settings.includeOptions && (
+                <Badge variant="outline" className="font-normal text-xs">
+                  {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                </Badge>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {pieData.length === 0 ? (
@@ -247,6 +431,58 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Options Exposure Breakdown */}
+      {settings.includeOptions && hasOptionsPositions && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Options Exposure by Asset Class</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-2">Asset Class</th>
+                    <th className="text-right py-3 px-2">Stock Value</th>
+                    <th className="text-right py-3 px-2">Options {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}</th>
+                    <th className="text-right py-3 px-2">Total Exposure</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocationData
+                    .filter((row) => row.optionsExposure !== 0)
+                    .map((row) => (
+                      <tr key={row.name} className="border-b">
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: row.color }}
+                            />
+                            {row.name}
+                          </div>
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono">
+                          {formatCurrency(row.stockValue)}
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono">
+                          <span className={row.optionsExposure > 0 ? "text-green-600" : "text-red-600"}>
+                            {row.optionsExposure > 0 ? "+" : ""}
+                            {formatCurrency(row.optionsExposure)}
+                          </span>
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono font-semibold">
+                          {formatCurrency(row.value)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Allocation Table */}
       <Card>

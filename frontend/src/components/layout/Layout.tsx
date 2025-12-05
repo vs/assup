@@ -1,0 +1,33 @@
+import { Outlet } from "react-router-dom";
+import { Navigation } from "./Navigation";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
+
+export function Layout() {
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40">
+        <div className="container mx-auto px-4 py-0 flex items-center justify-between">
+          <div className="flex items-center gap-4 md:gap-8">
+            <a href="/" className="shrink-0">
+              <img
+                src="/assup_logo.svg"
+                alt="Assup"
+                className="h-16 md:h-28"
+              />
+            </a>
+            <Navigation />
+          </div>
+          <div className="flex items-center gap-2">
+            <ConnectionStatus />
+          </div>
+        </div>
+      </header>
+      <main className="container mx-auto px-4 py-4 md:py-8 flex-1">
+        <Outlet />
+      </main>
+      <footer className="border-t py-4 text-center text-xs text-muted-foreground">
+        Assup - Asset Allocation Manager
+      </footer>
+    </div>
+  );
+}

@@ -70,9 +70,40 @@ export interface Position {
   position: number;
   avgCost: number;
   marketValue?: number;
+  // Option-specific fields
+  strike?: number;
+  expiry?: string;
+  right?: "C" | "P";
+  underlying?: string;
+  notionalValue?: number;
+  deltaExposure?: number;
+  // Enriched data
   assetClassId: string | null;
   assetClassName: string | null;
   assetClassColor: string | null;
+}
+
+export interface AssetClassAllocation {
+  id: string;
+  name: string;
+  color: string;
+  value: number;
+  stockValue: number;
+  optionsNotional: number;
+  optionsDelta: number;
+  percentage: number;
+}
+
+export interface OptionsExposure {
+  assetClassId: string;
+  assetClassName: string;
+  assetClassColor: string;
+  putNotional: number;
+  callNotional: number;
+  putDelta: number;
+  callDelta: number;
+  netNotional: number;
+  netDelta: number;
 }
 
 export interface PositionSummary {
@@ -80,20 +111,25 @@ export interface PositionSummary {
   summary: {
     totalPositions: number;
     totalValue: number;
+    totalStockValue: number;
+    totalOptionsNotional: number;
+    totalOptionsDelta: number;
     unassignedValue: number;
     unassignedPercentage: number;
-    byAssetClass: {
-      id: string;
-      name: string;
-      color: string;
-      value: number;
-      percentage: number;
-    }[];
+    includeOptions: boolean;
+    optionsWeightMode: "notional" | "delta";
+    byAssetClass: AssetClassAllocation[];
+    optionsExposure: OptionsExposure[];
   };
   account: {
     netLiquidation: number;
     cashValue: number;
   };
+}
+
+export interface DashboardSettings {
+  includeOptions: boolean;
+  optionsWeightMode: "notional" | "delta";
 }
 
 // Asset Classes API
@@ -151,7 +187,31 @@ export const allocationProfiles = {
 // Positions API
 export const positions = {
   list: () => request<Position[]>("/api/positions"),
-  summary: () => request<PositionSummary>("/api/positions/summary"),
+  summary: (options?: { includeOptions?: boolean; optionsWeightMode?: "notional" | "delta" }) => {
+    const params = new URLSearchParams();
+    if (options?.includeOptions !== undefined) {
+      params.set("includeOptions", String(options.includeOptions));
+    }
+    if (options?.optionsWeightMode) {
+      params.set("optionsWeightMode", options.optionsWeightMode);
+    }
+    const query = params.toString();
+    return request<PositionSummary>(`/api/positions/summary${query ? `?${query}` : ""}`);
+  },
+};
+
+// Settings API
+export const settings = {
+  get: <T>(key: string) => request<{ key: string; value: T }>(`/api/settings/${key}`),
+  set: <T>(key: string, value: T) =>
+    request<{ key: string; value: T }>(`/api/settings/${key}`, {
+      method: "PUT",
+      body: JSON.stringify({ value }),
+    }),
+  getDashboard: () =>
+    settings.get<DashboardSettings>("dashboard").then((r) => r.value),
+  setDashboard: (value: DashboardSettings) =>
+    settings.set<DashboardSettings>("dashboard", value).then((r) => r.value),
 };
 
 // Security Assignments API
@@ -350,4 +410,5 @@ export const api = {
   watchlists,
   orders,
   scanner,
+  settings,
 };

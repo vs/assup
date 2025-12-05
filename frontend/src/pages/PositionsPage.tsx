@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import type { Position, AssetClass } from "@/lib/api";
+import { useAllocationUpdates } from "@/hooks/useSSE";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,8 +19,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RefreshCw } from "lucide-react";
+import { AssetClassSelect } from "@/components/common/AssetClassSelect";
+import { RefreshCw, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+
+const STORAGE_KEY = "assup-positions-filters";
+
+interface FilterState {
+  assetClassId: string | null;
+  showOptions: boolean;
+}
+
+function loadFilters(): FilterState {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return { assetClassId: null, showOptions: true };
+}
+
+function saveFilters(filters: FilterState) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+}
 
 export function PositionsPage() {
   const [positions, setPositions] = useState<Position[]>([]);
@@ -27,10 +53,21 @@ export function PositionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterState>(loadFilters);
+
+  // Subscribe to real-time allocation updates
+  const handleAllocationUpdate = useCallback(() => {
+    loadData();
+  }, []);
+  useAllocationUpdates(handleAllocationUpdate);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    saveFilters(filters);
+  }, [filters]);
 
   async function loadData() {
     try {
@@ -84,15 +121,34 @@ export function PositionsPage() {
       maximumFractionDigits: 2,
     }).format(value);
 
-  // Group positions by asset class
-  const unassigned = positions.filter((p) => !p.assetClassId);
-  const assigned = positions.filter((p) => p.assetClassId);
+  // Apply filters
+  const filteredPositions = positions.filter((p) => {
+    // Filter by options
+    if (!filters.showOptions && p.secType === "OPT") {
+      return false;
+    }
+    // Filter by asset class
+    if (filters.assetClassId && filters.assetClassId !== "all") {
+      if (filters.assetClassId === "unassigned") {
+        return !p.assetClassId;
+      }
+      return p.assetClassId === filters.assetClassId;
+    }
+    return true;
+  });
 
-  // Calculate totals
-  const totalValue = positions.reduce(
+  // Group positions by asset class
+  const unassigned = filteredPositions.filter((p) => !p.assetClassId);
+  const assigned = filteredPositions.filter((p) => p.assetClassId);
+
+  // Calculate totals (from filtered positions)
+  const totalValue = filteredPositions.reduce(
     (sum, p) => sum + Math.abs(p.position * p.avgCost),
     0
   );
+
+  // Count options positions
+  const optionsCount = positions.filter((p) => p.secType === "OPT").length;
 
   if (loading) {
     return (
@@ -123,8 +179,68 @@ export function PositionsPage() {
         </div>
       )}
 
+      {/* Filters */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="asset-class-filter" className="text-xs">Asset Class</Label>
+              <Select
+                value={filters.assetClassId || "all"}
+                onValueChange={(v) => setFilters({ ...filters, assetClassId: v === "all" ? null : v })}
+              >
+                <SelectTrigger id="asset-class-filter" className="w-48">
+                  <SelectValue placeholder="All classes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All classes</SelectItem>
+                  <SelectItem value="unassigned">Unassigned only</SelectItem>
+                  {assetClasses.map((ac) => (
+                    <SelectItem key={ac.id} value={ac.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: ac.color }}
+                        />
+                        {ac.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant={filters.showOptions ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilters({ ...filters, showOptions: !filters.showOptions })}
+              >
+                {filters.showOptions ? "Hide" : "Show"} Options ({optionsCount})
+              </Button>
+            </div>
+
+            {(filters.assetClassId || !filters.showOptions) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setFilters({ assetClassId: null, showOptions: true })}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -132,7 +248,10 @@ export function PositionsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{positions.length}</div>
+            <div className="text-2xl font-bold">{filteredPositions.length}</div>
+            {filteredPositions.length !== positions.length && (
+              <p className="text-xs text-muted-foreground">of {positions.length} total</p>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -153,6 +272,16 @@ export function PositionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-amber-600">{unassigned.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Value
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(totalValue)}</div>
           </CardContent>
         </Card>
       </div>
@@ -198,27 +327,11 @@ export function PositionsPage() {
                         {formatCurrency(value)}
                       </TableCell>
                       <TableCell>
-                        <Select
+                        <AssetClassSelect
                           disabled={assigning === key}
                           onValueChange={(v) => handleAssign(pos, v)}
-                        >
-                          <SelectTrigger className="w-40">
-                            <SelectValue placeholder="Select class..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {assetClasses.map((ac) => (
-                              <SelectItem key={ac.id} value={ac.id}>
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="h-2 w-2 rounded-full"
-                                    style={{ backgroundColor: ac.color }}
-                                  />
-                                  {ac.name}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          assetClasses={assetClasses}
+                        />
                       </TableCell>
                     </TableRow>
                   );
@@ -232,12 +345,20 @@ export function PositionsPage() {
       {/* All Positions */}
       <Card>
         <CardHeader>
-          <CardTitle>All Positions</CardTitle>
+          <CardTitle>
+            {filters.assetClassId && filters.assetClassId !== "all"
+              ? filters.assetClassId === "unassigned"
+                ? "Unassigned Positions"
+                : `${assetClasses.find((ac) => ac.id === filters.assetClassId)?.name || "Filtered"} Positions`
+              : "All Positions"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {positions.length === 0 ? (
+          {filteredPositions.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
-              No positions found. Make sure TWS is connected.
+              {positions.length === 0
+                ? "No positions found. Make sure TWS is connected."
+                : "No positions match the current filters."}
             </p>
           ) : (
             <Table>
@@ -253,7 +374,7 @@ export function PositionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {positions.map((pos) => {
+                {filteredPositions.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
                   const value = Math.abs(pos.position * pos.avgCost);
                   const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;

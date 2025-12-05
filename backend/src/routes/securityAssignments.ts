@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../db/index.js";
+import { sseService } from "../services/sse.js";
 
 const router = Router();
 
@@ -86,6 +87,9 @@ router.post("/", async (req: Request, res: Response) => {
       include: { assetClass: true },
     });
 
+    // Broadcast allocation change
+    sseService.broadcast("allocation", { changed: true, symbol: symbol.toUpperCase() });
+
     res.status(201).json(assignment);
   } catch (error) {
     console.error("Failed to create security assignment:", error);
@@ -118,6 +122,9 @@ router.put("/:id", async (req: Request, res: Response) => {
       include: { assetClass: true },
     });
 
+    // Broadcast allocation change
+    sseService.broadcast("allocation", { changed: true, symbol: assignment.symbol });
+
     res.json(assignment);
   } catch (error: any) {
     if (error.code === "P2025") {
@@ -132,9 +139,13 @@ router.put("/:id", async (req: Request, res: Response) => {
 // DELETE /api/security-assignments/:id - Delete assignment
 router.delete("/:id", async (req: Request, res: Response) => {
   try {
-    await prisma.securityAssignment.delete({
+    const deleted = await prisma.securityAssignment.delete({
       where: { id: req.params.id },
     });
+
+    // Broadcast allocation change
+    sseService.broadcast("allocation", { changed: true, symbol: deleted.symbol });
+
     res.status(204).send();
   } catch (error: any) {
     if (error.code === "P2025") {
