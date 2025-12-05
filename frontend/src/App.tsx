@@ -3,7 +3,10 @@ import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { AssetClassesPage } from "@/pages/AssetClassesPage";
 import { PositionsPage } from "@/pages/PositionsPage";
-import { LayoutDashboard, Layers, Briefcase } from "lucide-react";
+import { WatchlistsPage } from "@/pages/WatchlistsPage";
+import { OrdersPage } from "@/pages/OrdersPage";
+import { ScannerPage } from "@/pages/ScannerPage";
+import { LayoutDashboard, Layers, Briefcase, List, ShoppingCart, Search } from "lucide-react";
 
 function NavItem({
   to,
@@ -48,6 +51,15 @@ function App() {
                 <NavItem to="/positions" icon={Briefcase}>
                   Positions
                 </NavItem>
+                <NavItem to="/watchlists" icon={List}>
+                  Watchlists
+                </NavItem>
+                <NavItem to="/orders" icon={ShoppingCart}>
+                  Orders
+                </NavItem>
+                <NavItem to="/scanner" icon={Search}>
+                  Scanner
+                </NavItem>
                 <NavItem to="/asset-classes" icon={Layers}>
                   Asset Classes
                 </NavItem>
@@ -60,6 +72,9 @@ function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/positions" element={<PositionsPage />} />
+            <Route path="/watchlists" element={<WatchlistsPage />} />
+            <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/asset-classes" element={<AssetClassesPage />} />
           </Routes>
         </main>

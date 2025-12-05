@@ -7,6 +7,9 @@ import assetClassesRouter from "./routes/assetClasses.js";
 import allocationProfilesRouter from "./routes/allocationProfiles.js";
 import positionsRouter from "./routes/positions.js";
 import securityAssignmentsRouter from "./routes/securityAssignments.js";
+import watchlistsRouter from "./routes/watchlists.js";
+import ordersRouter from "./routes/orders.js";
+import scannerRouter from "./routes/scanner.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,6 +22,9 @@ app.use("/api/asset-classes", assetClassesRouter);
 app.use("/api/allocation-profiles", allocationProfilesRouter);
 app.use("/api/positions", positionsRouter);
 app.use("/api/security-assignments", securityAssignmentsRouter);
+app.use("/api/watchlists", watchlistsRouter);
+app.use("/api/orders", ordersRouter);
+app.use("/api/scanner", scannerRouter);
 
 app.get("/api/health", async (req, res) => {
   try {

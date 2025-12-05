@@ -179,9 +179,175 @@ export const securityAssignments = {
     request<void>(`/api/security-assignments/${id}`, { method: "DELETE" }),
 };
 
+// Watchlist types
+export interface Watchlist {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { items: number };
+}
+
+export interface WatchlistItem {
+  id: string;
+  watchlistId: string;
+  symbol: string;
+  conId: number | null;
+  secType: string;
+  addedAt: string;
+  assetClassId?: string | null;
+  assetClassName?: string | null;
+  assetClassColor?: string | null;
+}
+
+export interface WatchlistWithItems extends Watchlist {
+  items: WatchlistItem[];
+}
+
+// Watchlists API
+export const watchlists = {
+  list: () => request<Watchlist[]>("/api/watchlists"),
+  get: (id: string) => request<WatchlistWithItems>(`/api/watchlists/${id}`),
+  create: (data: { name: string }) =>
+    request<Watchlist>("/api/watchlists", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: { name: string }) =>
+    request<Watchlist>(`/api/watchlists/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    request<void>(`/api/watchlists/${id}`, { method: "DELETE" }),
+  addItem: (id: string, data: { symbol: string; conId?: number; secType?: string }) =>
+    request<WatchlistItem>(`/api/watchlists/${id}/items`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  removeItem: (id: string, itemId: string) =>
+    request<void>(`/api/watchlists/${id}/items/${itemId}`, { method: "DELETE" }),
+};
+
+// Order types
+export interface Order {
+  orderId: number;
+  symbol: string;
+  conId: number;
+  secType: string;
+  action: "BUY" | "SELL";
+  quantity: number;
+  orderType: string;
+  limitPrice?: number;
+  status: string;
+  filledQuantity: number;
+  avgFillPrice: number;
+  assetClassId?: string | null;
+  assetClassName?: string | null;
+  assetClassColor?: string | null;
+  estimatedValue?: number;
+}
+
+export interface AllocationBreakdown {
+  id: string;
+  name: string;
+  color: string;
+  value: number;
+  percentage: number;
+}
+
+export interface OrderImpact {
+  orders: Order[];
+  currentAllocation: AllocationBreakdown[];
+  projectedAllocation: AllocationBreakdown[];
+  totalCurrentValue: number;
+  totalProjectedValue: number;
+}
+
+// Orders API
+export const orders = {
+  list: () => request<Order[]>("/api/orders"),
+  impact: () => request<OrderImpact>("/api/orders/impact"),
+  simulate: (orders: { symbol: string; secType?: string; action: "BUY" | "SELL"; quantity: number; price: number }[]) =>
+    request<OrderImpact>("/api/orders/simulate", {
+      method: "POST",
+      body: JSON.stringify({ orders }),
+    }),
+};
+
+// Scanner types
+export interface ScannerCriteria {
+  minDaysToExpiry: number;
+  maxDaysToExpiry: number;
+  minDelta: number;
+  maxDelta: number;
+  minAnnualizedReturn: number;
+  minPremiumPercent: number;
+  targetAssetClasses?: string[];
+}
+
+export interface ScannerPreset {
+  id: string;
+  name: string;
+  criteria: ScannerCriteria;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UnderinvestedClass {
+  id: string;
+  name: string;
+  color: string;
+  targetPercentage: number;
+  currentPercentage: number;
+  difference: number;
+  currentValue: number;
+  targetValue: number;
+  shortfall: number;
+}
+
+export interface ScanResult {
+  criteria: ScannerCriteria;
+  targetAssetClasses: string[];
+  symbolsScanned: string[];
+  opportunities: any[];
+  message?: string;
+}
+
+// Scanner API
+export const scanner = {
+  presets: {
+    list: () => request<ScannerPreset[]>("/api/scanner/presets"),
+    get: (id: string) => request<ScannerPreset>(`/api/scanner/presets/${id}`),
+    create: (data: { name: string; criteria: ScannerCriteria; isDefault?: boolean }) =>
+      request<ScannerPreset>("/api/scanner/presets", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: { name?: string; criteria?: ScannerCriteria; isDefault?: boolean }) =>
+      request<ScannerPreset>(`/api/scanner/presets/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      request<void>(`/api/scanner/presets/${id}`, { method: "DELETE" }),
+  },
+  scan: (criteria: ScannerCriteria) =>
+    request<ScanResult>("/api/scanner/scan", {
+      method: "POST",
+      body: JSON.stringify(criteria),
+    }),
+  underinvested: () =>
+    request<{ underinvested: UnderinvestedClass[]; totalPortfolioValue: number }>("/api/scanner/underinvested"),
+};
+
 export const api = {
   assetClasses,
   allocationProfiles,
   positions,
   securityAssignments,
+  watchlists,
+  orders,
+  scanner,
 };

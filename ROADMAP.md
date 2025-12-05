@@ -56,101 +56,101 @@ This roadmap breaks down the implementation into small, manageable steps. Each s
 
 ---
 
-## Phase 2: Asset Class Management
+## Phase 2: Asset Class Management ✅
 
 ### 2.1 Asset Class Service
-- [ ] Create `src/services/assetClass.ts`
-- [ ] Implement `getAllAssetClasses()` function
-- [ ] Implement `getAssetClassById(id)` function
-- [ ] Implement `createAssetClass(data)` function
-- [ ] Implement `updateAssetClass(id, data)` function
-- [ ] Implement `deleteAssetClass(id)` function (with cascade check)
+- [x] Create `src/services/assetClass.ts`
+- [x] Implement `getAllAssetClasses()` function
+- [x] Implement `getAssetClassById(id)` function
+- [x] Implement `createAssetClass(data)` function
+- [x] Implement `updateAssetClass(id, data)` function
+- [x] Implement `deleteAssetClass(id)` function (with cascade check)
 
 ### 2.2 Asset Class API Routes
-- [ ] Create `src/routes/assetClasses.ts`
-- [ ] Implement `GET /api/asset-classes` endpoint
-- [ ] Implement `POST /api/asset-classes` endpoint
-- [ ] Implement `GET /api/asset-classes/:id` endpoint
-- [ ] Implement `PUT /api/asset-classes/:id` endpoint
-- [ ] Implement `DELETE /api/asset-classes/:id` endpoint
-- [ ] Add input validation (name required, color format)
-- [ ] Register routes in main `index.ts`
+- [x] Create `src/routes/assetClasses.ts`
+- [x] Implement `GET /api/asset-classes` endpoint
+- [x] Implement `POST /api/asset-classes` endpoint
+- [x] Implement `GET /api/asset-classes/:id` endpoint
+- [x] Implement `PUT /api/asset-classes/:id` endpoint
+- [x] Implement `DELETE /api/asset-classes/:id` endpoint
+- [x] Add input validation (name required, color format)
+- [x] Register routes in main `index.ts`
 
 ### 2.3 Asset Class Types
-- [ ] Create `src/types/assetClass.ts` with TypeScript interfaces
-- [ ] Define `CreateAssetClassInput` type
-- [ ] Define `UpdateAssetClassInput` type
-- [ ] Define `AssetClassResponse` type
+- [x] Create `src/types/assetClass.ts` with TypeScript interfaces
+- [x] Define `CreateAssetClassInput` type
+- [x] Define `UpdateAssetClassInput` type
+- [x] Define `AssetClassResponse` type
 
 ### 2.4 Frontend: Asset Class List Page
-- [ ] Create `src/pages/Settings.tsx` page component
-- [ ] Add Settings route to React Router
-- [ ] Create `src/components/settings/AssetClassList.tsx`
-- [ ] Fetch and display asset classes in a table
-- [ ] Add color indicator column
+- [x] Create `src/pages/Settings.tsx` page component
+- [x] Add Settings route to React Router
+- [x] Create `src/components/settings/AssetClassList.tsx`
+- [x] Fetch and display asset classes in a table
+- [x] Add color indicator column
 
 ### 2.5 Frontend: Asset Class Form
-- [ ] Create `src/components/settings/AssetClassForm.tsx`
-- [ ] Add name input field
-- [ ] Add description textarea (optional)
-- [ ] Add color picker component
-- [ ] Handle form submission (create/update)
+- [x] Create `src/components/settings/AssetClassForm.tsx`
+- [x] Add name input field
+- [x] Add description textarea (optional)
+- [x] Add color picker component
+- [x] Handle form submission (create/update)
 
 ### 2.6 Frontend: Asset Class CRUD UI
-- [ ] Add "New Asset Class" button to list
-- [ ] Implement edit action (opens form with existing data)
-- [ ] Implement delete action with confirmation dialog
-- [ ] Show loading states during API calls
-- [ ] Display error messages on failure
+- [x] Add "New Asset Class" button to list
+- [x] Implement edit action (opens form with existing data)
+- [x] Implement delete action with confirmation dialog
+- [x] Show loading states during API calls
+- [x] Display error messages on failure
 
 ---
 
-## Phase 3: Allocation Profile Management
+## Phase 3: Allocation Profile Management ✅
 
 ### 3.1 Allocation Service
-- [ ] Create `src/services/allocation.ts`
-- [ ] Implement `getAllocationProfiles()` function
-- [ ] Implement `getActiveAllocation()` function
-- [ ] Implement `createAllocationProfile(data)` function
-- [ ] Implement `updateAllocationProfile(id, data)` function
-- [ ] Implement `deleteAllocationProfile(id)` function
-- [ ] Implement `activateAllocationProfile(id)` function (deactivate others)
+- [x] Create `src/services/allocation.ts`
+- [x] Implement `getAllocationProfiles()` function
+- [x] Implement `getActiveAllocation()` function
+- [x] Implement `createAllocationProfile(data)` function
+- [x] Implement `updateAllocationProfile(id, data)` function
+- [x] Implement `deleteAllocationProfile(id)` function
+- [x] Implement `activateAllocationProfile(id)` function (deactivate others)
 
 ### 3.2 Allocation API Routes
-- [ ] Create `src/routes/allocations.ts`
-- [ ] Implement `GET /api/allocations` endpoint
-- [ ] Implement `POST /api/allocations` endpoint
-- [ ] Implement `GET /api/allocations/:id` endpoint
-- [ ] Implement `PUT /api/allocations/:id` endpoint
-- [ ] Implement `DELETE /api/allocations/:id` endpoint
-- [ ] Implement `PUT /api/allocations/:id/activate` endpoint
-- [ ] Add validation (percentages sum to 100)
-- [ ] Register routes in main `index.ts`
+- [x] Create `src/routes/allocations.ts`
+- [x] Implement `GET /api/allocations` endpoint
+- [x] Implement `POST /api/allocations` endpoint
+- [x] Implement `GET /api/allocations/:id` endpoint
+- [x] Implement `PUT /api/allocations/:id` endpoint
+- [x] Implement `DELETE /api/allocations/:id` endpoint
+- [x] Implement `PUT /api/allocations/:id/activate` endpoint
+- [x] Add validation (percentages sum to 100)
+- [x] Register routes in main `index.ts`
 
 ### 3.3 Allocation Types
-- [ ] Create `src/types/allocation.ts` with TypeScript interfaces
-- [ ] Define `AllocationTarget` type
-- [ ] Define `CreateAllocationInput` type
-- [ ] Define `AllocationProfileResponse` type
+- [x] Create `src/types/allocation.ts` with TypeScript interfaces
+- [x] Define `AllocationTarget` type
+- [x] Define `CreateAllocationInput` type
+- [x] Define `AllocationProfileResponse` type
 
 ### 3.4 Frontend: Allocation Profile List
-- [ ] Create `src/components/settings/AllocationProfileList.tsx`
-- [ ] Display profiles with active indicator
-- [ ] Show target percentages summary
-- [ ] Add quick-activate button per profile
+- [x] Create `src/components/settings/AllocationProfileList.tsx`
+- [x] Display profiles with active indicator
+- [x] Show target percentages summary
+- [x] Add quick-activate button per profile
 
 ### 3.5 Frontend: Allocation Profile Editor
-- [ ] Create `src/components/settings/AllocationEditor.tsx`
-- [ ] Display all asset classes with percentage inputs
-- [ ] Show real-time sum validation (must equal 100%)
-- [ ] Visual indicator when sum is invalid
-- [ ] Save button enabled only when valid
+- [x] Create `src/components/settings/AllocationEditor.tsx`
+- [x] Display all asset classes with percentage inputs
+- [x] Show real-time sum validation (must equal 100%)
+- [x] Visual indicator when sum is invalid
+- [x] Save button enabled only when valid
 
 ### 3.6 Frontend: Allocation Profile CRUD
-- [ ] Add "New Profile" button
-- [ ] Implement profile switching (activate)
-- [ ] Implement profile deletion with confirmation
-- [ ] Handle edge case: cannot delete active profile
+- [x] Add "New Profile" button
+- [x] Implement profile switching (activate)
+- [x] Implement profile deletion with confirmation
+- [x] Handle edge case: cannot delete active profile
 
 ---
 

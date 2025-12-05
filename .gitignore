@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Screenshots
+screenshots/
+
 # Build outputs
 dist/
 build/

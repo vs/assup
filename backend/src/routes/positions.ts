@@ -32,12 +32,14 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     // Fetch positions from TWS
-    let rawPositions: any[];
+    let rawPositions: any[] = [];
     try {
-      rawPositions = await client.getPositions();
+      const result = await client.getPositions();
+      rawPositions = Array.isArray(result) ? result : [];
     } catch (err: any) {
-      // If positions request is not supported, return empty array
-      if (err.message?.includes("does not support positions")) {
+      // If positions request is not supported or times out, return empty array
+      if (err.message?.includes("does not support positions") || err.code === "timeout") {
+        console.warn("TWS positions unavailable:", err.message || err.code);
         rawPositions = [];
       } else {
         throw err;
@@ -87,12 +89,14 @@ router.get("/summary", async (req: Request, res: Response) => {
     }
 
     // Fetch positions from TWS
-    let rawPositions: any[];
+    let rawPositions: any[] = [];
     try {
-      rawPositions = await client.getPositions();
+      const result = await client.getPositions();
+      rawPositions = Array.isArray(result) ? result : [];
     } catch (err: any) {
-      // If positions request is not supported, return empty array
-      if (err.message?.includes("does not support positions")) {
+      // If positions request is not supported or times out, return empty array
+      if (err.message?.includes("does not support positions") || err.code === "timeout") {
+        console.warn("TWS positions unavailable:", err.message || err.code);
         rawPositions = [];
       } else {
         throw err;
