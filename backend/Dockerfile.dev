@@ -1,0 +1,17 @@
+# Development Dockerfile - includes devDependencies and uses tsx watch
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY prisma ./prisma
+
+# Install all dependencies (including devDependencies for tsx)
+RUN npm install
+
+COPY . .
+
+EXPOSE 3000
+
+# Use tsx watch for hot-reload
+CMD ["npm", "run", "dev"]

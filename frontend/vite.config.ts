@@ -12,9 +12,14 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
+    port: 5173,
+    watch: {
+      usePolling: true, // Required for Docker volume mounts
+    },
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: process.env.DOCKER ? 'http://backend:3000' : 'http://localhost:3000',
         changeOrigin: true,
       },
     },
