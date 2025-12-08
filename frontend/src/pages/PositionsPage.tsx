@@ -19,10 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { AssetClassSelect } from "@/components/common/AssetClassSelect";
-import { RefreshCw, Filter } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { ChartModal } from "@/components/ChartModal";
 
 const STORAGE_KEY = "assup-positions-filters";
 
@@ -54,6 +56,7 @@ export function PositionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(loadFilters);
+  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
   // Subscribe to real-time allocation updates
   const handleAllocationUpdate = useCallback(() => {
@@ -167,10 +170,59 @@ export function PositionsPage() {
             View and assign your positions to asset classes.
           </p>
         </div>
-        <Button variant="outline" onClick={loadData} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-4">
+          <Select
+            value={filters.assetClassId || "all"}
+            onValueChange={(v) => setFilters({ ...filters, assetClassId: v === "all" ? null : v })}
+          >
+            <SelectTrigger className="w-48 h-8">
+              <SelectValue placeholder="All classes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All classes</SelectItem>
+              <SelectItem value="unassigned">Unassigned only</SelectItem>
+              {assetClasses.map((ac) => (
+                <SelectItem key={ac.id} value={ac.id}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: ac.color }}
+                    />
+                    {ac.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-2">
+            <Switch
+              id="show-options"
+              checked={filters.showOptions}
+              onCheckedChange={(checked) => setFilters({ ...filters, showOptions: checked })}
+            />
+            <Label htmlFor="show-options" className="text-sm cursor-pointer">
+              Show Options {optionsCount > 0 && `(${optionsCount})`}
+            </Label>
+          </div>
+
+          {(filters.assetClassId || !filters.showOptions) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={() => setFilters({ assetClassId: null, showOptions: true })}
+            >
+              <X className="h-3 w-3 mr-1" />
+              Clear
+            </Button>
+          )}
+
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -178,66 +230,6 @@ export function PositionsPage() {
           {error}
         </div>
       )}
-
-      {/* Filters */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Filter className="h-4 w-4" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="asset-class-filter" className="text-xs">Asset Class</Label>
-              <Select
-                value={filters.assetClassId || "all"}
-                onValueChange={(v) => setFilters({ ...filters, assetClassId: v === "all" ? null : v })}
-              >
-                <SelectTrigger id="asset-class-filter" className="w-48">
-                  <SelectValue placeholder="All classes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All classes</SelectItem>
-                  <SelectItem value="unassigned">Unassigned only</SelectItem>
-                  {assetClasses.map((ac) => (
-                    <SelectItem key={ac.id} value={ac.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: ac.color }}
-                        />
-                        {ac.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant={filters.showOptions ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilters({ ...filters, showOptions: !filters.showOptions })}
-              >
-                {filters.showOptions ? "Hide" : "Show"} Options ({optionsCount})
-              </Button>
-            </div>
-
-            {(filters.assetClassId || !filters.showOptions) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setFilters({ assetClassId: null, showOptions: true })}
-              >
-                Clear filters
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -313,7 +305,14 @@ export function PositionsPage() {
                   const value = Math.abs(pos.position * pos.avgCost);
                   return (
                     <TableRow key={key}>
-                      <TableCell className="font-medium">{pos.symbol}</TableCell>
+                      <TableCell>
+                        <button
+                          className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                          onClick={() => setChartSymbol(pos.symbol)}
+                        >
+                          {pos.symbol}
+                        </button>
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">{pos.secType}</Badge>
                       </TableCell>
@@ -380,7 +379,14 @@ export function PositionsPage() {
                   const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
                   return (
                     <TableRow key={key}>
-                      <TableCell className="font-medium">{pos.symbol}</TableCell>
+                      <TableCell>
+                        <button
+                          className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                          onClick={() => setChartSymbol(pos.symbol)}
+                        >
+                          {pos.symbol}
+                        </button>
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">{pos.secType}</Badge>
                       </TableCell>
@@ -417,6 +423,12 @@ export function PositionsPage() {
           )}
         </CardContent>
       </Card>
+
+      <ChartModal
+        symbol={chartSymbol}
+        open={!!chartSymbol}
+        onClose={() => setChartSymbol(null)}
+      />
     </div>
   );
 }

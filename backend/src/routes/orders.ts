@@ -32,7 +32,7 @@ export interface OrderImpact {
   totalProjectedValue: number;
 }
 
-// GET /api/orders - Fetch open orders from TWS
+// GET /api/orders - Fetch open LIMIT orders from TWS
 router.get("/", async (req: Request, res: Response) => {
   try {
     const client = ibkrService.getClient();
@@ -41,9 +41,55 @@ router.get("/", async (req: Request, res: Response) => {
       return;
     }
 
-    // Note: ib-tws-api may not have getOpenOrders implemented
-    // For now, return empty array - this would need TWS API integration
-    const orders: Order[] = [];
+    // Fetch all open orders from TWS
+    let rawOrders: any[] = [];
+    try {
+      // getAllOpenOrders exists in ib-tws-api but isn't typed
+      const result = await (client as any).getAllOpenOrders();
+      rawOrders = Array.isArray(result) ? result : [];
+    } catch (err: any) {
+      console.error("Error fetching orders:", err);
+      // Return empty array if order fetching fails
+      rawOrders = [];
+    }
+
+    // Get security assignments for enrichment
+    const assignments = await prisma.securityAssignment.findMany({
+      include: { assetClass: true },
+    });
+    const assignmentMap = new Map(
+      assignments.map((a) => [`${a.symbol}:${a.secType}`, a])
+    );
+
+    // Filter to LIMIT orders only and map to our Order structure
+    const orders: Order[] = rawOrders
+      .filter((o) => o.order?.orderType === "LMT")
+      .map((o) => {
+        const symbol = o.contract?.symbol || "";
+        const secType = o.contract?.secType || "STK";
+        const key = `${symbol}:${secType}`;
+        const assignment = assignmentMap.get(key);
+        const quantity = o.order?.totalQuantity || 0;
+        const limitPrice = o.order?.lmtPrice || 0;
+
+        return {
+          orderId: o.order?.orderId || 0,
+          symbol,
+          conId: o.contract?.conId || 0,
+          secType,
+          action: o.order?.action as "BUY" | "SELL",
+          quantity,
+          orderType: o.order?.orderType || "",
+          limitPrice,
+          status: o.orderState?.status || "",
+          filledQuantity: o.order?.filledQuantity || 0,
+          avgFillPrice: o.order?.avgFillPrice || 0,
+          assetClassId: assignment?.assetClassId || null,
+          assetClassName: assignment?.assetClass.name || null,
+          assetClassColor: assignment?.assetClass.color || null,
+          estimatedValue: quantity * limitPrice,
+        };
+      });
 
     res.json(orders);
   } catch (error) {
@@ -52,7 +98,7 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/orders/impact - Calculate allocation impact of open orders
+// GET /api/orders/impact - Calculate allocation impact of open LIMIT orders
 router.get("/impact", async (req: Request, res: Response) => {
   try {
     const client = ibkrService.getClient();
@@ -72,6 +118,20 @@ router.get("/impact", async (req: Request, res: Response) => {
       }
     }
 
+    // Fetch all open orders from TWS
+    let rawOrders: any[] = [];
+    try {
+      // getAllOpenOrders exists in ib-tws-api but isn't typed
+      const result = await (client as any).getAllOpenOrders();
+      rawOrders = Array.isArray(result) ? result : [];
+    } catch (err: any) {
+      console.error("Error fetching orders for impact:", err);
+      rawOrders = [];
+    }
+
+    // Filter to LIMIT orders only
+    const limitOrders = rawOrders.filter((o) => o.order?.orderType === "LMT");
+
     // Get security assignments
     const assignments = await prisma.securityAssignment.findMany({
       include: { assetClass: true },
@@ -80,8 +140,8 @@ router.get("/impact", async (req: Request, res: Response) => {
       assignments.map((a) => [`${a.symbol}:${a.secType}`, a])
     );
 
-    // Calculate current allocation from positions
-    const currentByAssetClass: Record<string, { name: string; color: string; value: number }> = {};
+    // Calculate current values by asset class
+    const valuesByAssetClass: Record<string, { name: string; color: string; current: number; projected: number }> = {};
     let totalCurrentValue = 0;
 
     for (const p of rawPositions) {
@@ -92,31 +152,95 @@ router.get("/impact", async (req: Request, res: Response) => {
       const assignment = assignmentMap.get(key);
 
       if (assignment) {
-        if (!currentByAssetClass[assignment.assetClassId]) {
-          currentByAssetClass[assignment.assetClassId] = {
+        if (!valuesByAssetClass[assignment.assetClassId]) {
+          valuesByAssetClass[assignment.assetClassId] = {
             name: assignment.assetClass.name,
             color: assignment.assetClass.color,
-            value: 0,
+            current: 0,
+            projected: 0,
           };
         }
-        currentByAssetClass[assignment.assetClassId].value += value;
+        valuesByAssetClass[assignment.assetClassId].current += value;
+        valuesByAssetClass[assignment.assetClassId].projected += value;
       }
     }
 
-    // For now, orders impact is same as current (no open orders fetched)
-    // This will be enhanced when TWS order fetching is implemented
-    const currentAllocation = Object.entries(currentByAssetClass).map(([id, data]) => ({
+    // Build order list and apply impact
+    let totalProjectedValue = totalCurrentValue;
+    const orders: Order[] = [];
+
+    for (const o of limitOrders) {
+      const symbol = o.contract?.symbol || "";
+      const secType = o.contract?.secType || "STK";
+      const key = `${symbol}:${secType}`;
+      const assignment = assignmentMap.get(key);
+      const quantity = o.order?.totalQuantity || 0;
+      const limitPrice = o.order?.lmtPrice || 0;
+      const action = o.order?.action as "BUY" | "SELL";
+      const orderValue = quantity * limitPrice;
+
+      orders.push({
+        orderId: o.order?.orderId || 0,
+        symbol,
+        conId: o.contract?.conId || 0,
+        secType,
+        action,
+        quantity,
+        orderType: o.order?.orderType || "",
+        limitPrice,
+        status: o.orderState?.status || "",
+        filledQuantity: o.order?.filledQuantity || 0,
+        avgFillPrice: o.order?.avgFillPrice || 0,
+        assetClassId: assignment?.assetClassId || null,
+        assetClassName: assignment?.assetClass.name || null,
+        assetClassColor: assignment?.assetClass.color || null,
+        estimatedValue: orderValue,
+      });
+
+      // Apply order impact to projected values
+      if (assignment) {
+        if (!valuesByAssetClass[assignment.assetClassId]) {
+          valuesByAssetClass[assignment.assetClassId] = {
+            name: assignment.assetClass.name,
+            color: assignment.assetClass.color,
+            current: 0,
+            projected: 0,
+          };
+        }
+
+        if (action === "BUY") {
+          valuesByAssetClass[assignment.assetClassId].projected += orderValue;
+          totalProjectedValue += orderValue;
+        } else if (action === "SELL") {
+          valuesByAssetClass[assignment.assetClassId].projected -= orderValue;
+          totalProjectedValue -= orderValue;
+        }
+      }
+    }
+
+    // Build response
+    const currentAllocation = Object.entries(valuesByAssetClass).map(([id, data]) => ({
       id,
-      ...data,
-      percentage: totalCurrentValue > 0 ? (data.value / totalCurrentValue) * 100 : 0,
+      name: data.name,
+      color: data.color,
+      value: data.current,
+      percentage: totalCurrentValue > 0 ? (data.current / totalCurrentValue) * 100 : 0,
+    }));
+
+    const projectedAllocation = Object.entries(valuesByAssetClass).map(([id, data]) => ({
+      id,
+      name: data.name,
+      color: data.color,
+      value: data.projected,
+      percentage: totalProjectedValue > 0 ? (data.projected / totalProjectedValue) * 100 : 0,
     }));
 
     res.json({
-      orders: [],
+      orders,
       currentAllocation,
-      projectedAllocation: currentAllocation, // Same as current when no orders
+      projectedAllocation,
       totalCurrentValue,
-      totalProjectedValue: totalCurrentValue,
+      totalProjectedValue,
     });
   } catch (error) {
     console.error("Failed to calculate order impact:", error);

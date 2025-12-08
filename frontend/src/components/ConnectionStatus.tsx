@@ -48,9 +48,9 @@ export function ConnectionStatus() {
           title={isConnected ? "Connected to TWS" : "Disconnected from TWS"}
         />
 
-        {/* Status popup - positioned below the indicator */}
+        {/* Status popup - positioned to the left of the indicator */}
         {showPopup && (
-          <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-lg border bg-card p-4 shadow-lg">
+          <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 z-50 w-72 rounded-lg border bg-card p-4 shadow-lg">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1">
                 {isConnected ? (

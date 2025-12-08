@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { AssetClassSelect } from "@/components/common/AssetClassSelect";
+import { ChartModal } from "@/components/ChartModal";
 import { Plus, Trash2, Pencil, X } from "lucide-react";
 
 export function WatchlistsPage() {
@@ -36,6 +37,7 @@ export function WatchlistsPage() {
   const [dialogMode, setDialogMode] = useState<"create" | "edit" | "addSymbol">("create");
   const [formData, setFormData] = useState({ name: "", symbol: "" });
   const [saving, setSaving] = useState(false);
+  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -261,7 +263,14 @@ export function WatchlistsPage() {
                     <TableBody>
                       {selectedWatchlist.items.map((item) => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.symbol}</TableCell>
+                          <TableCell>
+                            <button
+                              className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                              onClick={() => setChartSymbol(item.symbol)}
+                            >
+                              {item.symbol}
+                            </button>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="outline">{item.secType}</Badge>
                           </TableCell>
@@ -355,6 +364,12 @@ export function WatchlistsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ChartModal
+        symbol={chartSymbol}
+        open={!!chartSymbol}
+        onClose={() => setChartSymbol(null)}
+      />
     </div>
   );
 }

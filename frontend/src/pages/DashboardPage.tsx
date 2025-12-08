@@ -26,7 +26,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { RefreshCw, Settings2 } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 interface AllocationData {
   name: string;
@@ -50,7 +50,6 @@ export function DashboardPage() {
   const [settings, setSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showOptionsPanel, setShowOptionsPanel] = useState(false);
 
   // Subscribe to real-time allocation updates
   const handleAllocationUpdate = useCallback(() => {
@@ -220,15 +219,35 @@ export function DashboardPage() {
             Monitor your portfolio allocation vs. target.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowOptionsPanel(!showOptionsPanel)}
-          >
-            <Settings2 className="h-4 w-4 mr-2" />
-            Options Settings
-          </Button>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="include-options"
+              checked={settings.includeOptions}
+              onCheckedChange={(checked) => updateSettings({ includeOptions: checked })}
+            />
+            <Label htmlFor="include-options" className="text-sm cursor-pointer">
+              Include Options
+            </Label>
+          </div>
+
+          {settings.includeOptions && (
+            <Select
+              value={settings.optionsWeightMode}
+              onValueChange={(v: "notional" | "delta") =>
+                updateSettings({ optionsWeightMode: v })
+              }
+            >
+              <SelectTrigger className="w-36 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="notional">Notional</SelectItem>
+                <SelectItem value="delta">Delta-weighted</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
           <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -240,57 +259,6 @@ export function DashboardPage() {
         <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
           {error}
         </div>
-      )}
-
-      {/* Options Settings Panel */}
-      {showOptionsPanel && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Options Allocation Settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-6">
-              <div className="flex items-center gap-3">
-                <Switch
-                  id="include-options"
-                  checked={settings.includeOptions}
-                  onCheckedChange={(checked) => updateSettings({ includeOptions: checked })}
-                />
-                <Label htmlFor="include-options" className="cursor-pointer">
-                  Include options in allocation
-                </Label>
-              </div>
-
-              {settings.includeOptions && (
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm text-muted-foreground">Weight mode:</Label>
-                  <Select
-                    value={settings.optionsWeightMode}
-                    onValueChange={(v: "notional" | "delta") =>
-                      updateSettings({ optionsWeightMode: v })
-                    }
-                  >
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="notional">Notional</SelectItem>
-                      <SelectItem value="delta">Delta-weighted</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {settings.includeOptions && (
-                <p className="text-xs text-muted-foreground">
-                  {settings.optionsWeightMode === "notional"
-                    ? "Short puts add full notional exposure (strike × 100). Short calls reduce exposure."
-                    : "Options weighted by delta (e.g., 0.3 delta = 30% of notional)."}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
       )}
 
       {/* Account Summary */}
@@ -413,7 +381,7 @@ export function DashboardPage() {
                 {profile ? "No allocation data" : "No active allocation profile"}
               </p>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={Math.max(300, allocationData.length * 40)}>
                 <BarChart
                   data={allocationData}
                   layout="vertical"
