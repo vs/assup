@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import type { Position, AssetClass } from "@/lib/api";
 import { useAllocationUpdates } from "@/hooks/useSSE";
+import { useSparklines } from "@/hooks/useSparklines";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { AssetClassSelect } from "@/components/common/AssetClassSelect";
+import { Sparkline } from "@/components/Sparkline";
 import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -152,6 +154,22 @@ export function PositionsPage() {
 
   // Count options positions
   const optionsCount = positions.filter((p) => p.secType === "OPT").length;
+
+  // Sparklines - use underlying for options
+  const sparklineSymbols = useMemo(() => {
+    const uniqueSymbols = new Set<string>();
+    for (const pos of filteredPositions) {
+      const symbol = pos.underlying || pos.symbol;
+      uniqueSymbols.add(symbol);
+    }
+    return Array.from(uniqueSymbols);
+  }, [filteredPositions]);
+  const { getSparklineState } = useSparklines(sparklineSymbols);
+
+  const getPositionSparkline = (pos: Position) => {
+    const symbol = pos.underlying || pos.symbol;
+    return getSparklineState(symbol);
+  };
 
   if (loading) {
     return (
@@ -292,6 +310,7 @@ export function PositionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>
+                  <TableHead className="w-24">30D</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Avg Cost</TableHead>
@@ -303,6 +322,7 @@ export function PositionsPage() {
                 {unassigned.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
                   const value = Math.abs(pos.position * pos.avgCost);
+                  const sparkline = getPositionSparkline(pos);
                   return (
                     <TableRow key={key}>
                       <TableCell>
@@ -312,6 +332,13 @@ export function PositionsPage() {
                         >
                           {pos.symbol}
                         </button>
+                      </TableCell>
+                      <TableCell className="w-24">
+                        <Sparkline
+                          data={sparkline.data}
+                          loading={sparkline.loading}
+                          error={sparkline.error}
+                        />
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{pos.secType}</Badge>
@@ -364,6 +391,7 @@ export function PositionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>
+                  <TableHead className="w-24">30D</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Asset Class</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -377,6 +405,7 @@ export function PositionsPage() {
                   const key = `${pos.symbol}:${pos.secType}`;
                   const value = Math.abs(pos.position * pos.avgCost);
                   const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
+                  const sparkline = getPositionSparkline(pos);
                   return (
                     <TableRow key={key}>
                       <TableCell>
@@ -386,6 +415,13 @@ export function PositionsPage() {
                         >
                           {pos.symbol}
                         </button>
+                      </TableCell>
+                      <TableCell className="w-24">
+                        <Sparkline
+                          data={sparkline.data}
+                          loading={sparkline.loading}
+                          error={sparkline.error}
+                        />
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{pos.secType}</Badge>

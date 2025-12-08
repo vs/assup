@@ -132,6 +132,16 @@ export interface DashboardSettings {
   optionsWeightMode: "notional" | "delta";
 }
 
+export interface SparklinePoint {
+  date: string;
+  close: number;
+}
+
+export interface SparklineData {
+  symbol: string;
+  data: SparklinePoint[];
+}
+
 // Asset Classes API
 export const assetClasses = {
   list: () => request<AssetClass[]>("/api/asset-classes"),
@@ -402,6 +412,19 @@ export const scanner = {
     request<{ underinvested: UnderinvestedClass[]; totalPortfolioValue: number }>("/api/scanner/underinvested"),
 };
 
+// Historical Data API
+export const historical = {
+  getSparkline: (symbol: string) =>
+    request<SparklineData>(
+      `/api/historical/sparkline/${encodeURIComponent(symbol)}`
+    ),
+  getBatchSparklines: (symbols: string[]) =>
+    request<Record<string, SparklinePoint[]>>("/api/historical/sparklines", {
+      method: "POST",
+      body: JSON.stringify({ symbols }),
+    }),
+};
+
 export const api = {
   assetClasses,
   allocationProfiles,
@@ -411,4 +434,5 @@ export const api = {
   orders,
   scanner,
   settings,
+  historical,
 };

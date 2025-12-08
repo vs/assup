@@ -83,10 +83,19 @@ router.get("/", async (req: Request, res: Response) => {
     // Fetch positions from TWS
     let rawPositions: any[] = [];
     try {
+      console.log("Fetching positions from TWS...");
       const result = await client.getPositions();
-      rawPositions = Array.isArray(result) ? result : [];
+      // Result can be an array or an object keyed by conId
+      if (Array.isArray(result)) {
+        rawPositions = result;
+      } else if (result && typeof result === "object") {
+        // Convert object to array
+        rawPositions = Object.values(result);
+      }
+      console.log(`Got ${rawPositions.length} positions from TWS`);
     } catch (err: any) {
       // If positions request is not supported or times out, return empty array
+      console.error("Error fetching positions:", err);
       if (err.message?.includes("does not support positions") || err.code === "timeout") {
         console.warn("TWS positions unavailable:", err.message || err.code);
         rawPositions = [];
@@ -104,17 +113,21 @@ router.get("/", async (req: Request, res: Response) => {
     );
 
     // Enrich positions with asset class info
+    // Handle both array format (with account) and object format (keyed by conId)
     const positions: Position[] = rawPositions.map((p: any) => {
-      const assignment = assignmentMap.get(`${p.contract.symbol}:${p.contract.secType}`);
+      const contract = p.contract || p;
+      const symbol = contract.symbol;
+      const secType = contract.secType;
+      const assignment = assignmentMap.get(`${symbol}:${secType}`);
       return {
-        account: p.account,
-        symbol: p.contract.symbol,
-        conId: p.contract.conId,
-        secType: p.contract.secType,
-        exchange: p.contract.exchange || p.contract.primaryExchange || "",
-        currency: p.contract.currency,
-        position: p.pos,
-        avgCost: p.avgCost,
+        account: p.account || "",
+        symbol,
+        conId: contract.conId,
+        secType,
+        exchange: contract.exchange || contract.primaryExchange || "",
+        currency: contract.currency,
+        position: p.position ?? p.pos ?? 0,
+        avgCost: p.avgCost ?? 0,
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
@@ -147,7 +160,12 @@ router.get("/summary", async (req: Request, res: Response) => {
     let rawPositions: any[] = [];
     try {
       const result = await client.getPositions();
-      rawPositions = Array.isArray(result) ? result : [];
+      // Result can be an array or an object keyed by conId
+      if (Array.isArray(result)) {
+        rawPositions = result;
+      } else if (result && typeof result === "object") {
+        rawPositions = Object.values(result);
+      }
     } catch (err: any) {
       // If positions request is not supported or times out, return empty array
       if (err.message?.includes("does not support positions") || err.code === "timeout") {
@@ -180,31 +198,38 @@ router.get("/summary", async (req: Request, res: Response) => {
     }
 
     // Calculate market values for stock positions
+    // Handle both array format and object format from TWS
     const positions: Position[] = rawPositions.map((p: any) => {
-      const isOption = p.contract.secType === "OPT";
-      const lookupSymbol = isOption ? p.contract.symbol : p.contract.symbol; // Options use underlying symbol
-      const lookupSecType = isOption ? "STK" : p.contract.secType; // Look up assignment by underlying
-      const assignment = assignmentMap.get(`${lookupSymbol}:${lookupSecType}`) ||
-                        assignmentMap.get(`${p.contract.symbol}:${p.contract.secType}`);
+      const contract = p.contract || p;
+      const symbol = contract.symbol;
+      const secType = contract.secType;
+      const pos = p.position ?? p.pos ?? 0;
+      const avgCost = p.avgCost ?? 0;
 
-      const marketValue = Math.abs(p.pos * p.avgCost);
-      const notionalValue = isOption ? calculateOptionNotional(p) : undefined;
-      const deltaExposure = isOption ? estimateDelta(p) * notionalValue! : undefined;
+      const isOption = secType === "OPT";
+      const lookupSymbol = symbol;
+      const lookupSecType = isOption ? "STK" : secType;
+      const assignment = assignmentMap.get(`${lookupSymbol}:${lookupSecType}`) ||
+                        assignmentMap.get(`${symbol}:${secType}`);
+
+      const marketValue = Math.abs(pos * avgCost);
+      const notionalValue = isOption ? calculateOptionNotional({ contract, pos }) : undefined;
+      const deltaExposure = isOption ? estimateDelta({ contract, pos }) * notionalValue! : undefined;
 
       return {
-        account: p.account,
-        symbol: p.contract.symbol,
-        conId: p.contract.conId,
-        secType: p.contract.secType,
-        exchange: p.contract.exchange || p.contract.primaryExchange || "",
-        currency: p.contract.currency,
-        position: p.pos,
-        avgCost: p.avgCost,
+        account: p.account || "",
+        symbol,
+        conId: contract.conId,
+        secType,
+        exchange: contract.exchange || contract.primaryExchange || "",
+        currency: contract.currency,
+        position: pos,
+        avgCost,
         marketValue,
-        strike: isOption ? p.contract.strike : undefined,
-        expiry: isOption ? p.contract.lastTradeDateOrContractMonth : undefined,
-        right: isOption ? (p.contract.right === "P" ? "P" : "C") : undefined,
-        underlying: isOption ? p.contract.symbol : undefined,
+        strike: isOption ? contract.strike : undefined,
+        expiry: isOption ? contract.lastTradeDateOrContractMonth : undefined,
+        right: isOption ? (contract.right === "P" ? "P" : "C") : undefined,
+        underlying: isOption ? symbol : undefined,
         notionalValue,
         deltaExposure,
         assetClassId: assignment?.assetClassId || null,

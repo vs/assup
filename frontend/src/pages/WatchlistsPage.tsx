@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
 import type { Watchlist, WatchlistWithItems, WatchlistItem, AssetClass } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { AssetClassSelect } from "@/components/common/AssetClassSelect";
 import { ChartModal } from "@/components/ChartModal";
+import { Sparkline } from "@/components/Sparkline";
+import { useSparklines } from "@/hooks/useSparklines";
 import { Plus, Trash2, Pencil, X } from "lucide-react";
 
 export function WatchlistsPage() {
@@ -38,6 +40,13 @@ export function WatchlistsPage() {
   const [formData, setFormData] = useState({ name: "", symbol: "" });
   const [saving, setSaving] = useState(false);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+
+  // Sparklines
+  const symbols = useMemo(
+    () => selectedWatchlist?.items.map((item) => item.symbol) || [],
+    [selectedWatchlist]
+  );
+  const { getSparklineState } = useSparklines(symbols);
 
   useEffect(() => {
     loadData();
@@ -255,6 +264,7 @@ export function WatchlistsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Symbol</TableHead>
+                        <TableHead className="w-24">30D</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Asset Class</TableHead>
                         <TableHead className="w-12">Actions</TableHead>
@@ -270,6 +280,18 @@ export function WatchlistsPage() {
                             >
                               {item.symbol}
                             </button>
+                          </TableCell>
+                          <TableCell className="w-24">
+                            {(() => {
+                              const sparkline = getSparklineState(item.symbol);
+                              return (
+                                <Sparkline
+                                  data={sparkline.data}
+                                  loading={sparkline.loading}
+                                  error={sparkline.error}
+                                />
+                              );
+                            })()}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{item.secType}</Badge>

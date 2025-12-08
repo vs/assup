@@ -31,6 +31,16 @@ export function ChartModal({ symbol, open, onClose }: ChartModalProps) {
             hide_side_toolbar={false}
             allow_symbol_change={false}
             style="1"
+            studies={[
+              "Volume@tv-basicstudies",
+              "RSI@tv-basicstudies",
+              "MAExp@tv-basicstudies",
+            ] as never}
+            {...{
+              studies_overrides: {
+                "moving average exponential.length": 200,
+              },
+            }}
           />
         </div>
       </DialogContent>

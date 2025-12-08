@@ -14,6 +14,28 @@ declare module "ib-tws-api" {
     currency: string;
     exchange?: string;
     conId?: number;
+    primaryExchange?: string;
+  }
+
+  export interface HistoricalBar {
+    date: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+    average: number;
+    barCount: number;
+  }
+
+  export interface HistoricalDataParams {
+    contract: Contract;
+    endDateTime?: string;
+    duration: string;
+    barSizeSetting: string;
+    whatToShow: string;
+    useRth: number;
+    formatDate: number;
   }
 
   export interface Order {
@@ -47,6 +69,8 @@ declare module "ib-tws-api" {
       subscribe: boolean;
       accountCode: string;
     }): Promise<void>;
+
+    getHistoricalData(params: HistoricalDataParams): Promise<HistoricalBar[]>;
   }
 
   export { Contract, Order };
