@@ -218,22 +218,29 @@ router.post("/scan", async (req: Request, res: Response) => {
       }
     }
 
-    // Get symbols for target asset classes
+    // Get symbols for target asset classes (deduplicated, only STK type)
     const targetSymbols = await prisma.securityAssignment.findMany({
-      where: targetAssetClasses?.length
-        ? { assetClassId: { in: targetAssetClasses } }
-        : undefined,
+      where: {
+        ...(targetAssetClasses?.length
+          ? { assetClassId: { in: targetAssetClasses } }
+          : {}),
+        secType: "STK", // Only scan stocks, not options
+      },
       include: { assetClass: true },
+      distinct: ["symbol"], // Ensure unique symbols
     });
 
     // Note: Actual options scanning would require TWS market data subscriptions
     // For now, return empty results with a message
     // This would be enhanced with actual options chain data from TWS
 
+    // Get unique symbols
+    const uniqueSymbols = [...new Set(targetSymbols.map((s) => s.symbol))];
+
     res.json({
       criteria,
       targetAssetClasses: targetAssetClasses || [],
-      symbolsScanned: targetSymbols.map((s) => s.symbol),
+      symbolsScanned: uniqueSymbols,
       opportunities: [],
       message: "Options scanning requires market data subscriptions. Configure TWS market data for target symbols.",
     });
