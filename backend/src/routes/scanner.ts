@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { ibkrService } from "../services/ibkr.js";
+import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { prisma } from "../db/index.js";
 
 const router = Router();
@@ -159,8 +159,7 @@ router.post("/scan", async (req: Request, res: Response) => {
       return;
     }
 
-    const client = ibkrService.getClient();
-    if (!client) {
+    if (!ibkrService.isConnected()) {
       res.status(503).json({ error: "Not connected to TWS" });
       return;
     }
@@ -178,10 +177,9 @@ router.post("/scan", async (req: Request, res: Response) => {
 
       if (activeProfile) {
         // Get current positions
-        let positions: any[] = [];
+        let positions: IBPosition[] = [];
         try {
-          const result = await client.getPositions();
-          positions = Array.isArray(result) ? result : [];
+          positions = await ibkrService.getPositions();
         } catch (err: any) {
           if (!err.message?.includes("does not support positions") && err.code !== "timeout") {
             throw err;
@@ -200,7 +198,9 @@ router.post("/scan", async (req: Request, res: Response) => {
         for (const p of positions) {
           const value = Math.abs(p.pos * p.avgCost);
           totalValue += value;
-          const assetClassId = assignmentMap.get(`${p.contract.symbol}:${p.contract.secType}`);
+          const symbol = p.contract.symbol || "";
+          const secType = p.contract.secType || "";
+          const assetClassId = assignmentMap.get(`${symbol}:${secType}`);
           if (assetClassId) {
             currentByClass[assetClassId] = (currentByClass[assetClassId] || 0) + value;
           }
@@ -253,8 +253,6 @@ router.post("/scan", async (req: Request, res: Response) => {
 // GET /api/scanner/underinvested - Get underinvested asset classes
 router.get("/underinvested", async (req: Request, res: Response) => {
   try {
-    const client = ibkrService.getClient();
-
     // Get active allocation profile
     const activeProfile = await prisma.allocationProfile.findFirst({
       where: { isActive: true },
@@ -269,11 +267,10 @@ router.get("/underinvested", async (req: Request, res: Response) => {
     }
 
     // Get current positions
-    let positions: any[] = [];
-    if (client) {
+    let positions: IBPosition[] = [];
+    if (ibkrService.isConnected()) {
       try {
-        const result = await client.getPositions();
-        positions = Array.isArray(result) ? result : [];
+        positions = await ibkrService.getPositions();
       } catch (err: any) {
         if (!err.message?.includes("does not support positions") && err.code !== "timeout") {
           throw err;
@@ -293,7 +290,9 @@ router.get("/underinvested", async (req: Request, res: Response) => {
     for (const p of positions) {
       const value = Math.abs(p.pos * p.avgCost);
       totalValue += value;
-      const assetClassId = assignmentMap.get(`${p.contract.symbol}:${p.contract.secType}`);
+      const symbol = p.contract.symbol || "";
+      const secType = p.contract.secType || "";
+      const assetClassId = assignmentMap.get(`${symbol}:${secType}`);
       if (assetClassId) {
         currentByClass[assetClassId] = (currentByClass[assetClassId] || 0) + value;
       }

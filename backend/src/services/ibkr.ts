@@ -1,4 +1,15 @@
-import { Client } from "ib-tws-api";
+import {
+  IBApiNext,
+  ConnectionState,
+  AccountSummaryTagValues,
+  Position as IBPosition,
+  OpenOrder,
+  Bar,
+  Contract,
+  BarSizeSetting,
+  WhatToShow,
+} from "@stoqey/ib";
+import { Subscription } from "rxjs";
 
 export interface ConnectionStatus {
   connected: boolean;
@@ -8,8 +19,33 @@ export interface ConnectionStatus {
   error: string | null;
 }
 
+export interface AccountData {
+  netLiquidation: number;
+  totalCashValue: number;
+  availableFunds: number;
+}
+
+export interface Position {
+  account: string;
+  contract: Contract;
+  pos: number;
+  avgCost: number;
+  marketPrice?: number;
+  marketValue?: number;
+}
+
+export interface HistoricalDataParams {
+  contract: Contract;
+  endDateTime?: string;
+  duration: string;
+  barSizeSetting: BarSizeSetting;
+  whatToShow: WhatToShow;
+  useRth: number | boolean;
+  formatDate: number;
+}
+
 class IBKRService {
-  private client: Client | null = null;
+  private api: IBApiNext | null = null;
   private connectionStatus: ConnectionStatus = {
     connected: false,
     account: null,
@@ -20,13 +56,17 @@ class IBKRService {
   private statusListeners: Set<(status: ConnectionStatus) => void> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private isConnecting = false;
-  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Account data
+  private accountSummary: Map<string, AccountSummaryTagValues> = new Map();
+  private accountSubscription: Subscription | null = null;
+  private connectionSubscription: Subscription | null = null;
 
   constructor() {
     this.connect();
   }
 
-  private async connect() {
+  private connect() {
     if (this.isConnecting) return;
     this.isConnecting = true;
 
@@ -35,29 +75,46 @@ class IBKRService {
 
     console.log(`Connecting to TWS at ${host}:${port}...`);
 
-    // Clean up previous client if any
-    if (this.client) {
-      try {
-        this.client.disconnect();
-      } catch {
-        // Ignore disconnect errors
-      }
-      this.client = null;
-    }
+    // Clean up previous instance if any
+    this.cleanup();
 
     try {
-      this.client = new Client({
+      this.api = new IBApiNext({
         host,
         port,
-        clientId: 1,
+        reconnectInterval: 5000, // Auto-reconnect every 5 seconds
+        connectionWatchdogInterval: 10, // 10 second watchdog
       });
 
-      await this.client.connect();
-      this.handleConnected();
-      this.startHealthCheck();
+      // Subscribe to connection state changes
+      this.connectionSubscription = this.api.connectionState.subscribe({
+        next: (state) => {
+          console.log(`TWS connection state: ${ConnectionState[state]}`);
+          if (state === ConnectionState.Connected) {
+            this.handleConnected();
+          } else if (state === ConnectionState.Disconnected) {
+            this.handleDisconnected();
+          }
+        },
+        error: (err) => {
+          console.error("Connection state error:", err);
+          this.handleError(err);
+        },
+      });
+
+      // Subscribe to errors
+      this.api.error.subscribe({
+        next: (err) => {
+          // Only log non-fatal errors, don't disconnect
+          if (err.code && err.code < 2000) {
+            console.error(`TWS Error ${err.code}: ${err.error?.message}`);
+          }
+        },
+      });
+
+      this.api.connect(1);
     } catch (err) {
       console.error("Failed to connect to TWS:", err);
-      this.client = null;
       this.handleError(err);
     } finally {
       this.isConnecting = false;
@@ -65,51 +122,50 @@ class IBKRService {
   }
 
   private handleConnected() {
-    if (!this.client) return;
-
     this.updateStatus({
       connected: true,
       account: null,
-      serverVersion: this.client.serverVersion,
+      serverVersion: null,
       serverConnectionTime: new Date().toISOString(),
       error: null,
     });
 
-    console.log(
-      `Connected to TWS. Server version: ${this.client.serverVersion}`
-    );
+    console.log("Connected to TWS");
+
+    // Subscribe to account summary for cash balance
+    this.subscribeToAccountSummary();
   }
 
-  private startHealthCheck() {
-    // Stop any existing health check
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
+  private subscribeToAccountSummary() {
+    if (!this.api) return;
+
+    // Cancel existing subscription if any
+    if (this.accountSubscription) {
+      this.accountSubscription.unsubscribe();
     }
 
-    // Check connection health periodically
-    this.healthCheckInterval = setInterval(async () => {
-      if (!this.client) {
-        this.handleDisconnected();
-        return;
-      }
-
-      try {
-        // Try to get current time from TWS to verify connection
-        await this.client.getCurrentTime();
-      } catch (err) {
-        console.error("Health check failed:", err);
-        this.handleDisconnected();
-      }
-    }, 10000); // Check every 10 seconds
+    this.accountSubscription = this.api
+      .getAccountSummary("All", "NetLiquidation,TotalCashValue,AvailableFunds")
+      .subscribe({
+        next: (update) => {
+          // update.all is a Map<account, AccountSummaryTagValues>
+          if (update.all) {
+            update.all.forEach((values, account) => {
+              this.accountSummary.set(account, values);
+              // Update connection status with account
+              if (!this.connectionStatus.account) {
+                this.updateStatus({ account });
+              }
+            });
+          }
+        },
+        error: (err) => {
+          console.error("Account summary error:", err);
+        },
+      });
   }
 
   private handleDisconnected() {
-    // Stop health check
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
-
     this.updateStatus({
       connected: false,
       account: null,
@@ -118,8 +174,8 @@ class IBKRService {
       error: "Disconnected from TWS",
     });
 
-    // Schedule reconnection
-    this.scheduleReconnect();
+    // Clear account data
+    this.accountSummary.clear();
   }
 
   private handleError(err: unknown) {
@@ -128,7 +184,6 @@ class IBKRService {
 
     if (err instanceof Error) {
       message = err.message;
-      // Handle Node.js system errors which have a 'code' property
       if ("code" in err && typeof err.code === "string") {
         code = err.code;
       }
@@ -136,7 +191,6 @@ class IBKRService {
       message = String(err);
     }
 
-    // Use code if message is empty (common with AggregateError)
     const errorText = message || code || "Unknown error";
 
     this.updateStatus({
@@ -146,18 +200,6 @@ class IBKRService {
       serverConnectionTime: null,
       error: this.getErrorHelp(code, errorText),
     });
-
-    this.scheduleReconnect();
-  }
-
-  private scheduleReconnect() {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-    }
-    this.reconnectTimer = setTimeout(() => {
-      console.log("Attempting to reconnect to TWS...");
-      this.connect();
-    }, 5000);
   }
 
   private getErrorHelp(code: string | null, message: string): string {
@@ -203,7 +245,6 @@ class IBKRService {
       return "Network unreachable. Check your network connection and TWS host configuration.";
     }
 
-    // For any unrecognized error, provide a generic helpful message
     if (message && message.length > 0) {
       return `Connection error: ${message}`;
     }
@@ -222,13 +263,33 @@ class IBKRService {
     }
   }
 
+  private cleanup() {
+    if (this.accountSubscription) {
+      this.accountSubscription.unsubscribe();
+      this.accountSubscription = null;
+    }
+    if (this.connectionSubscription) {
+      this.connectionSubscription.unsubscribe();
+      this.connectionSubscription = null;
+    }
+    if (this.api) {
+      try {
+        this.api.disconnect();
+      } catch {
+        // Ignore disconnect errors
+      }
+      this.api = null;
+    }
+  }
+
+  // Public API
+
   getStatus(): ConnectionStatus {
     return { ...this.connectionStatus };
   }
 
   subscribe(listener: (status: ConnectionStatus) => void): () => void {
     this.statusListeners.add(listener);
-    // Immediately send current status
     listener(this.connectionStatus);
 
     return () => {
@@ -236,21 +297,141 @@ class IBKRService {
     };
   }
 
-  getClient(): Client | null {
-    return this.client;
+  isConnected(): boolean {
+    return this.api?.isConnected ?? false;
+  }
+
+  // Account data methods
+  getAccountData(): AccountData {
+    let netLiquidation = 0;
+    let totalCashValue = 0;
+    let availableFunds = 0;
+
+    // Sum across all accounts
+    // AccountSummaryTagValues is Map<tagName, Map<currency, {value, ingressTm}>>
+    this.accountSummary.forEach((tagValues) => {
+      // Get NetLiquidation (try USD first, then any currency)
+      const netLiqValues = tagValues.get("NetLiquidation");
+      if (netLiqValues) {
+        const usdValue = netLiqValues.get("USD") || netLiqValues.values().next().value;
+        if (usdValue) {
+          netLiquidation += parseFloat(usdValue.value) || 0;
+        }
+      }
+
+      // Get TotalCashValue
+      const cashValues = tagValues.get("TotalCashValue");
+      if (cashValues) {
+        const usdValue = cashValues.get("USD") || cashValues.values().next().value;
+        if (usdValue) {
+          totalCashValue += parseFloat(usdValue.value) || 0;
+        }
+      }
+
+      // Get AvailableFunds
+      const fundsValues = tagValues.get("AvailableFunds");
+      if (fundsValues) {
+        const usdValue = fundsValues.get("USD") || fundsValues.values().next().value;
+        if (usdValue) {
+          availableFunds += parseFloat(usdValue.value) || 0;
+        }
+      }
+    });
+
+    return { netLiquidation, totalCashValue, availableFunds };
+  }
+
+  getCashBalance(): number {
+    return this.getAccountData().totalCashValue;
+  }
+
+  getNetLiquidation(): number {
+    return this.getAccountData().netLiquidation;
+  }
+
+  // Positions
+  async getPositions(): Promise<Position[]> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    return new Promise((resolve, reject) => {
+      const positions: Position[] = [];
+      const subscription = this.api!.getPositions().subscribe({
+        next: (update) => {
+          // update.all is a Map<account, Position[]>
+          if (update.all) {
+            update.all.forEach((accountPositions, account) => {
+              accountPositions.forEach((pos) => {
+                positions.push({
+                  account,
+                  contract: pos.contract,
+                  pos: pos.pos,
+                  avgCost: pos.avgCost ?? 0,
+                  marketPrice: pos.marketPrice,
+                  marketValue: pos.marketValue,
+                });
+              });
+            });
+          }
+        },
+        error: (err) => {
+          subscription.unsubscribe();
+          reject(err);
+        },
+        complete: () => {
+          subscription.unsubscribe();
+          resolve(positions);
+        },
+      });
+
+      // Set a timeout in case complete is never called
+      setTimeout(() => {
+        subscription.unsubscribe();
+        resolve(positions);
+      }, 10000);
+    });
+  }
+
+  // Orders
+  async getAllOpenOrders(): Promise<OpenOrder[]> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    return this.api.getAllOpenOrders();
+  }
+
+  // Historical data
+  async getHistoricalData(params: HistoricalDataParams): Promise<Bar[]> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    return this.api.getHistoricalData(
+      params.contract,
+      params.endDateTime || "",
+      params.duration,
+      params.barSizeSetting,
+      params.whatToShow,
+      params.useRth,
+      params.formatDate
+    );
+  }
+
+  // For health checks
+  async getCurrentTime(): Promise<number> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+    return this.api.getCurrentTime();
   }
 
   async disconnect() {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-    }
-    if (this.client) {
-      this.client.disconnect();
-      this.client = null;
-    }
+    this.cleanup();
   }
 }
 

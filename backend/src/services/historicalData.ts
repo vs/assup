@@ -1,5 +1,5 @@
 import { ibkrService } from "./ibkr.js";
-import type { HistoricalBar } from "ib-tws-api";
+import { Bar, BarSizeSetting, WhatToShow, Stock } from "@stoqey/ib";
 
 export interface PricePoint {
   date: string;
@@ -105,30 +105,24 @@ class HistoricalDataService {
   }
 
   private async fetchFromTWS(symbol: string): Promise<PricePoint[]> {
-    const client = ibkrService.getClient();
-    if (!client) {
+    if (!ibkrService.isConnected()) {
       throw new Error("Not connected to TWS");
     }
 
-    const contract = {
-      symbol: symbol.toUpperCase(),
-      secType: "STK",
-      currency: "USD",
-      exchange: "SMART",
-    };
+    const contract = new Stock(symbol.toUpperCase(), "SMART", "USD");
 
     // Try TRADES first, fallback to MIDPOINT if we get a warning
-    const whatToShowOptions = ["TRADES", "MIDPOINT"];
+    const whatToShowOptions = [WhatToShow.TRADES, WhatToShow.MIDPOINT];
 
     for (const whatToShow of whatToShowOptions) {
       try {
-        const bars = await client.getHistoricalData({
+        const bars = await ibkrService.getHistoricalData({
           contract,
           endDateTime: "",
           duration: "30 D",
-          barSizeSetting: "1 day",
+          barSizeSetting: BarSizeSetting.DAYS_ONE,
           whatToShow,
-          useRth: 1,
+          useRth: true,
           formatDate: 1,
         });
 
@@ -140,16 +134,18 @@ class HistoricalDataService {
           continue;
         }
 
-        return bars.map((bar: HistoricalBar) => ({
-          date: bar.date,
-          close: bar.close,
-        }));
+        return bars
+          .filter((bar: Bar) => bar.time && bar.close !== undefined)
+          .map((bar: Bar) => ({
+            date: bar.time!,
+            close: bar.close!,
+          }));
       } catch (error: unknown) {
-        const err = error as { details?: { code?: string; message?: string } };
+        const err = error as { code?: number; error?: { message?: string } };
 
         // Code 2176 is fractional shares warning - the library treats it as error
         // but data might still be partially available. Try next whatToShow option.
-        if (err.details?.code === "2176") {
+        if (err.code === 2176) {
           console.debug(
             `TWS warning for ${symbol} with ${whatToShow}, trying next option`
           );

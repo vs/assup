@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
-import { ibkrService } from "../services/ibkr.js";
+import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { prisma } from "../db/index.js";
+import { Contract } from "@stoqey/ib";
 
 const router = Router();
 
@@ -44,9 +45,9 @@ interface OptionsExposure {
 // Calculate notional value for an option position
 // PUT: notional = strike * quantity * 100 (exposure if assigned)
 // CALL: notional = strike * quantity * 100 (exposure if exercised, but reduces stock allocation)
-function calculateOptionNotional(pos: any): number {
-  const strike = pos.contract.strike || 0;
-  const quantity = Math.abs(pos.pos);
+function calculateOptionNotional(contract: Contract, pos: number): number {
+  const strike = contract.strike || 0;
+  const quantity = Math.abs(pos);
   const multiplier = 100; // Standard option contract multiplier
   return strike * quantity * multiplier;
 }
@@ -54,14 +55,14 @@ function calculateOptionNotional(pos: any): number {
 // Estimate delta for positions without market data
 // Rough estimate: ATM ~0.5, ITM ~0.7-0.9, OTM ~0.1-0.3
 // For simplicity, use 0.5 as default (can be replaced with real delta from market data)
-function estimateDelta(pos: any): number {
+function estimateDelta(contract: Contract, pos: number): number {
   // Without market data, we use a simplified delta estimate
   // Short puts: positive delta (want stock to go up)
   // Short calls: negative delta (want stock to go down)
   // Long puts: negative delta
   // Long calls: positive delta
-  const isLong = pos.pos > 0;
-  const isPut = pos.contract.right === "P";
+  const isLong = pos > 0;
+  const isPut = contract.right === "P";
   const baseDelta = 0.5; // Simplified ATM assumption
 
   if (isPut) {
@@ -74,24 +75,16 @@ function estimateDelta(pos: any): number {
 // GET /api/positions - Fetch all positions from TWS
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const client = ibkrService.getClient();
-    if (!client) {
+    if (!ibkrService.isConnected()) {
       res.status(503).json({ error: "Not connected to TWS" });
       return;
     }
 
     // Fetch positions from TWS
-    let rawPositions: any[] = [];
+    let rawPositions: IBPosition[] = [];
     try {
       console.log("Fetching positions from TWS...");
-      const result = await client.getPositions();
-      // Result can be an array or an object keyed by conId
-      if (Array.isArray(result)) {
-        rawPositions = result;
-      } else if (result && typeof result === "object") {
-        // Convert object to array
-        rawPositions = Object.values(result);
-      }
+      rawPositions = await ibkrService.getPositions();
       console.log(`Got ${rawPositions.length} positions from TWS`);
     } catch (err: any) {
       // If positions request is not supported or times out, return empty array
@@ -113,21 +106,20 @@ router.get("/", async (req: Request, res: Response) => {
     );
 
     // Enrich positions with asset class info
-    // Handle both array format (with account) and object format (keyed by conId)
-    const positions: Position[] = rawPositions.map((p: any) => {
-      const contract = p.contract || p;
+    const positions: Position[] = rawPositions.map((p) => {
+      const contract = p.contract;
       const symbol = contract.symbol;
       const secType = contract.secType;
       const assignment = assignmentMap.get(`${symbol}:${secType}`);
       return {
-        account: p.account || "",
-        symbol,
-        conId: contract.conId,
-        secType,
-        exchange: contract.exchange || contract.primaryExchange || "",
-        currency: contract.currency,
-        position: p.position ?? p.pos ?? 0,
-        avgCost: p.avgCost ?? 0,
+        account: p.account,
+        symbol: symbol || "",
+        conId: contract.conId || 0,
+        secType: secType || "",
+        exchange: contract.exchange || contract.primaryExch || "",
+        currency: contract.currency || "",
+        position: p.pos,
+        avgCost: p.avgCost,
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
@@ -147,8 +139,7 @@ router.get("/", async (req: Request, res: Response) => {
 //   optionsWeightMode: "notional" | "delta" - how to weight options
 router.get("/summary", async (req: Request, res: Response) => {
   try {
-    const client = ibkrService.getClient();
-    if (!client) {
+    if (!ibkrService.isConnected()) {
       res.status(503).json({ error: "Not connected to TWS" });
       return;
     }
@@ -157,15 +148,9 @@ router.get("/summary", async (req: Request, res: Response) => {
     const optionsWeightMode = (req.query.optionsWeightMode as string) || "notional";
 
     // Fetch positions from TWS
-    let rawPositions: any[] = [];
+    let rawPositions: IBPosition[] = [];
     try {
-      const result = await client.getPositions();
-      // Result can be an array or an object keyed by conId
-      if (Array.isArray(result)) {
-        rawPositions = result;
-      } else if (result && typeof result === "object") {
-        rawPositions = Object.values(result);
-      }
+      rawPositions = await ibkrService.getPositions();
     } catch (err: any) {
       // If positions request is not supported or times out, return empty array
       if (err.message?.includes("does not support positions") || err.code === "timeout") {
@@ -185,26 +170,13 @@ router.get("/summary", async (req: Request, res: Response) => {
       assignments.map((a) => [`${a.symbol}:${a.secType}`, a])
     );
 
-    // Separate stock and option positions
-    const stockPositions: any[] = [];
-    const optionPositions: any[] = [];
-
-    for (const p of rawPositions) {
-      if (p.contract.secType === "OPT") {
-        optionPositions.push(p);
-      } else {
-        stockPositions.push(p);
-      }
-    }
-
-    // Calculate market values for stock positions
-    // Handle both array format and object format from TWS
-    const positions: Position[] = rawPositions.map((p: any) => {
-      const contract = p.contract || p;
-      const symbol = contract.symbol;
-      const secType = contract.secType;
-      const pos = p.position ?? p.pos ?? 0;
-      const avgCost = p.avgCost ?? 0;
+    // Calculate market values for positions
+    const positions: Position[] = rawPositions.map((p) => {
+      const contract = p.contract;
+      const symbol = contract.symbol || "";
+      const secType = contract.secType || "";
+      const pos = p.pos;
+      const avgCost = p.avgCost;
 
       const isOption = secType === "OPT";
       const lookupSymbol = symbol;
@@ -213,16 +185,16 @@ router.get("/summary", async (req: Request, res: Response) => {
                         assignmentMap.get(`${symbol}:${secType}`);
 
       const marketValue = Math.abs(pos * avgCost);
-      const notionalValue = isOption ? calculateOptionNotional({ contract, pos }) : undefined;
-      const deltaExposure = isOption ? estimateDelta({ contract, pos }) * notionalValue! : undefined;
+      const notionalValue = isOption ? calculateOptionNotional(contract, pos) : undefined;
+      const deltaExposure = isOption ? estimateDelta(contract, pos) * notionalValue! : undefined;
 
       return {
-        account: p.account || "",
+        account: p.account,
         symbol,
-        conId: contract.conId,
+        conId: contract.conId || 0,
         secType,
-        exchange: contract.exchange || contract.primaryExchange || "",
-        currency: contract.currency,
+        exchange: contract.exchange || contract.primaryExch || "",
+        currency: contract.currency || "",
         position: pos,
         avgCost,
         marketValue,
@@ -373,6 +345,9 @@ router.get("/summary", async (req: Request, res: Response) => {
       }
     }
 
+    // Get account data (cash balance) from the service
+    const accountData = ibkrService.getAccountData();
+
     res.json({
       positions,
       summary: {
@@ -398,9 +373,9 @@ router.get("/summary", async (req: Request, res: Response) => {
         optionsExposure,
       },
       account: {
-        // Account summary not available via ib-tws-api, calculate from positions
-        netLiquidation: totalValue,
-        cashValue: 0,
+        netLiquidation: accountData.netLiquidation || totalValue,
+        cashValue: accountData.totalCashValue,
+        availableFunds: accountData.availableFunds,
       },
     });
   } catch (error) {

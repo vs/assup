@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
-import { ibkrService } from "../services/ibkr.js";
+import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { prisma } from "../db/index.js";
+import { OpenOrder as IBOpenOrder } from "@stoqey/ib";
 
 const router = Router();
 
@@ -35,18 +36,15 @@ export interface OrderImpact {
 // GET /api/orders - Fetch open LIMIT orders from TWS
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const client = ibkrService.getClient();
-    if (!client) {
+    if (!ibkrService.isConnected()) {
       res.status(503).json({ error: "Not connected to TWS" });
       return;
     }
 
     // Fetch all open orders from TWS
-    let rawOrders: any[] = [];
+    let rawOrders: IBOpenOrder[] = [];
     try {
-      // getAllOpenOrders exists in ib-tws-api but isn't typed
-      const result = await (client as any).getAllOpenOrders();
-      rawOrders = Array.isArray(result) ? result : [];
+      rawOrders = await ibkrService.getAllOpenOrders();
     } catch (err: any) {
       console.error("Error fetching orders:", err);
       // Return empty array if order fetching fails
@@ -73,7 +71,7 @@ router.get("/", async (req: Request, res: Response) => {
         const limitPrice = o.order?.lmtPrice || 0;
 
         return {
-          orderId: o.order?.orderId || 0,
+          orderId: o.orderId || 0,
           symbol,
           conId: o.contract?.conId || 0,
           secType,
@@ -83,7 +81,7 @@ router.get("/", async (req: Request, res: Response) => {
           limitPrice,
           status: o.orderState?.status || "",
           filledQuantity: o.order?.filledQuantity || 0,
-          avgFillPrice: o.order?.avgFillPrice || 0,
+          avgFillPrice: o.orderStatus?.avgFillPrice || 0,
           assetClassId: assignment?.assetClassId || null,
           assetClassName: assignment?.assetClass.name || null,
           assetClassColor: assignment?.assetClass.color || null,
@@ -101,17 +99,15 @@ router.get("/", async (req: Request, res: Response) => {
 // GET /api/orders/impact - Calculate allocation impact of open LIMIT orders
 router.get("/impact", async (req: Request, res: Response) => {
   try {
-    const client = ibkrService.getClient();
-    if (!client) {
+    if (!ibkrService.isConnected()) {
       res.status(503).json({ error: "Not connected to TWS" });
       return;
     }
 
     // Get current positions
-    let rawPositions: any[] = [];
+    let rawPositions: IBPosition[] = [];
     try {
-      const result = await client.getPositions();
-      rawPositions = Array.isArray(result) ? result : [];
+      rawPositions = await ibkrService.getPositions();
     } catch (err: any) {
       if (!err.message?.includes("does not support positions") && err.code !== "timeout") {
         throw err;
@@ -119,11 +115,9 @@ router.get("/impact", async (req: Request, res: Response) => {
     }
 
     // Fetch all open orders from TWS
-    let rawOrders: any[] = [];
+    let rawOrders: IBOpenOrder[] = [];
     try {
-      // getAllOpenOrders exists in ib-tws-api but isn't typed
-      const result = await (client as any).getAllOpenOrders();
-      rawOrders = Array.isArray(result) ? result : [];
+      rawOrders = await ibkrService.getAllOpenOrders();
     } catch (err: any) {
       console.error("Error fetching orders for impact:", err);
       rawOrders = [];
@@ -148,7 +142,9 @@ router.get("/impact", async (req: Request, res: Response) => {
       const value = Math.abs(p.pos * p.avgCost);
       totalCurrentValue += value;
 
-      const key = `${p.contract.symbol}:${p.contract.secType}`;
+      const symbol = p.contract.symbol || "";
+      const secType = p.contract.secType || "";
+      const key = `${symbol}:${secType}`;
       const assignment = assignmentMap.get(key);
 
       if (assignment) {
@@ -180,7 +176,7 @@ router.get("/impact", async (req: Request, res: Response) => {
       const orderValue = quantity * limitPrice;
 
       orders.push({
-        orderId: o.order?.orderId || 0,
+        orderId: o.orderId || 0,
         symbol,
         conId: o.contract?.conId || 0,
         secType,
@@ -190,7 +186,7 @@ router.get("/impact", async (req: Request, res: Response) => {
         limitPrice,
         status: o.orderState?.status || "",
         filledQuantity: o.order?.filledQuantity || 0,
-        avgFillPrice: o.order?.avgFillPrice || 0,
+        avgFillPrice: o.orderStatus?.avgFillPrice || 0,
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
@@ -258,14 +254,11 @@ router.post("/simulate", async (req: Request, res: Response) => {
       return;
     }
 
-    const client = ibkrService.getClient();
-
     // Get current positions
-    let rawPositions: any[] = [];
-    if (client) {
+    let rawPositions: IBPosition[] = [];
+    if (ibkrService.isConnected()) {
       try {
-        const result = await client.getPositions();
-        rawPositions = Array.isArray(result) ? result : [];
+        rawPositions = await ibkrService.getPositions();
       } catch (err: any) {
         if (!err.message?.includes("does not support positions") && err.code !== "timeout") {
           throw err;
@@ -289,7 +282,9 @@ router.post("/simulate", async (req: Request, res: Response) => {
       const value = Math.abs(p.pos * p.avgCost);
       totalCurrentValue += value;
 
-      const key = `${p.contract.symbol}:${p.contract.secType}`;
+      const symbol = p.contract.symbol || "";
+      const secType = p.contract.secType || "";
+      const key = `${symbol}:${secType}`;
       const assignment = assignmentMap.get(key);
 
       if (assignment) {
