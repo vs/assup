@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { AllocationProfile, PositionSummary, DashboardSettings } from "@/lib/api";
 import { useAllocationUpdates } from "@/hooks/useSSE";
@@ -29,6 +30,7 @@ import {
 import { RefreshCw } from "lucide-react";
 
 interface AllocationData {
+  id: string | null; // Asset class ID for linking, null for "Unassigned"
   name: string;
   current: number;
   target: number;
@@ -136,6 +138,7 @@ export function DashboardPage() {
     for (const target of profile.targets) {
       const actual = actualMap.get(target.assetClassId);
       allocationData.push({
+        id: target.assetClassId,
         name: target.assetClass.name,
         target: target.targetPercentage,
         current: actual?.percentage || 0,
@@ -152,6 +155,7 @@ export function DashboardPage() {
     // Add unassigned if any
     if (summary.summary.unassignedPercentage > 0) {
       allocationData.push({
+        id: "unassigned",
         name: "Unassigned",
         target: 0,
         current: summary.summary.unassignedPercentage,
@@ -167,6 +171,7 @@ export function DashboardPage() {
     for (const actual of summary.summary.byAssetClass) {
       if (!targetMap.has(actual.id)) {
         allocationData.push({
+          id: actual.id,
           name: actual.name,
           target: 0,
           current: actual.percentage,
@@ -186,6 +191,7 @@ export function DashboardPage() {
   const pieData = allocationData
     .filter((d) => d.current > 0)
     .map((d) => ({
+      id: d.id,
       name: d.name,
       value: d.current,
       color: d.color,
@@ -428,7 +434,16 @@ export function DashboardPage() {
                               className="h-3 w-3 rounded-full"
                               style={{ backgroundColor: row.color }}
                             />
-                            {row.name}
+                            {row.id ? (
+                              <Link
+                                to={`/positions?assetClassId=${row.id}`}
+                                className="hover:text-primary hover:underline"
+                              >
+                                {row.name}
+                              </Link>
+                            ) : (
+                              row.name
+                            )}
                           </div>
                         </td>
                         <td className="text-right py-3 px-2 font-mono">
@@ -490,7 +505,16 @@ export function DashboardPage() {
                             className="h-3 w-3 rounded-full"
                             style={{ backgroundColor: row.color }}
                           />
-                          {row.name}
+                          {row.id ? (
+                            <Link
+                              to={`/positions?assetClassId=${row.id}`}
+                              className="hover:text-primary hover:underline"
+                            >
+                              {row.name}
+                            </Link>
+                          ) : (
+                            row.name
+                          )}
                         </div>
                       </td>
                       <td className="text-right py-3 px-2">

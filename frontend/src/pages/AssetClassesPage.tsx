@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { AssetClass, AllocationProfile } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -311,7 +312,14 @@ export function AssetClassesPage() {
                           style={{ backgroundColor: ac.color }}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{ac.name}</TableCell>
+                      <TableCell className="font-medium">
+                        <Link
+                          to={`/positions?assetClassId=${ac.id}`}
+                          className="hover:text-primary hover:underline"
+                        >
+                          {ac.name}
+                        </Link>
+                      </TableCell>
                       <TableCell className="text-muted-foreground hidden md:table-cell">
                         {ac.description || "-"}
                       </TableCell>

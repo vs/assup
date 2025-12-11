@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { Position, AssetClass } from "@/lib/api";
 import { useAllocationUpdates } from "@/hooks/useSSE";
@@ -52,13 +53,22 @@ function saveFilters(filters: FilterState) {
 }
 
 export function PositionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [positions, setPositions] = useState<Position[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterState>(loadFilters);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+
+  // Initialize filters from URL params, falling back to localStorage
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const urlAssetClassId = searchParams.get("assetClassId");
+    if (urlAssetClassId) {
+      return { assetClassId: urlAssetClassId, showOptions: true };
+    }
+    return loadFilters();
+  });
 
   // Subscribe to real-time allocation updates
   const handleAllocationUpdate = useCallback(() => {
@@ -70,9 +80,19 @@ export function PositionsPage() {
     loadData();
   }, []);
 
+  // Sync filters with localStorage and URL
   useEffect(() => {
     saveFilters(filters);
-  }, [filters]);
+    // Update URL params when filter changes
+    if (filters.assetClassId && filters.assetClassId !== "all") {
+      setSearchParams({ assetClassId: filters.assetClassId }, { replace: true });
+    } else {
+      // Remove the param when cleared
+      if (searchParams.has("assetClassId")) {
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [filters, searchParams, setSearchParams]);
 
   async function loadData() {
     try {
