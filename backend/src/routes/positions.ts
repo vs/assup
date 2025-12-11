@@ -170,6 +170,11 @@ router.get("/summary", async (req: Request, res: Response) => {
       assignments.map((a) => [`${a.symbol}:${a.secType}`, a])
     );
 
+    // Find Cash asset class for cash allocation
+    const cashAssetClass = await prisma.assetClass.findFirst({
+      where: { name: "Cash" },
+    });
+
     // Calculate market values for positions
     const positions: Position[] = rawPositions.map((p) => {
       const contract = p.contract;
@@ -299,11 +304,52 @@ router.get("/summary", async (req: Request, res: Response) => {
       }
     }
 
+    // Get account data (cash balance) from the service
+    const accountData = ibkrService.getAccountData();
+    const cashValue = accountData.totalCashValue || 0;
+
+    // Calculate the total cash impact from options if they were executed
+    // Short puts: we'd spend cash to buy stock (negative cash impact)
+    // Short calls: we'd receive cash from selling stock (positive cash impact)
+    // Long puts: we'd receive cash from selling stock (positive cash impact)
+    // Long calls: we'd spend cash to buy stock (negative cash impact)
+    let optionsCashImpact = 0;
+    for (const id of Object.keys(byAssetClass)) {
+      // optionsNotional is already signed correctly:
+      // - Positive for short puts and long calls (we acquire stock = spend cash)
+      // - Negative for short calls and long puts (we sell stock = receive cash)
+      optionsCashImpact -= byAssetClass[id].optionsNotional;
+    }
+
+    // Calculate adjusted cash value when options are included
+    const adjustedCashValue = includeOptions ? cashValue + optionsCashImpact : cashValue;
+
+    // Add cash to byAssetClass if we have a Cash asset class
+    if (cashAssetClass) {
+      const displayCashValue = includeOptions ? adjustedCashValue : cashValue;
+      if (displayCashValue > 0 || (includeOptions && cashValue > 0)) {
+        byAssetClass[cashAssetClass.id] = {
+          name: cashAssetClass.name,
+          color: cashAssetClass.color,
+          stockValue: cashValue, // Original cash value
+          optionsNotional: includeOptions ? -optionsCashImpact : 0, // Cash spent/received from options
+          optionsDelta: 0,
+          value: Math.max(0, displayCashValue), // Adjusted value (can't go negative in display)
+          percentage: 0, // Will be calculated below
+        };
+      }
+    }
+
     // Calculate final values based on mode
-    let totalValue = totalStockValue;
+    // Total value is net liquidation - it doesn't change when options are executed
+    // (we're just moving money between cash and securities)
+    let totalValue = totalStockValue + cashValue;
 
     for (const id of Object.keys(byAssetClass)) {
       const ac = byAssetClass[id];
+      // Skip cash - already set above
+      if (cashAssetClass && id === cashAssetClass.id) continue;
+
       if (includeOptions) {
         if (optionsWeightMode === "delta") {
           ac.value = ac.stockValue + ac.optionsDelta;
@@ -315,10 +361,8 @@ router.get("/summary", async (req: Request, res: Response) => {
       }
     }
 
-    // Recalculate total if including options
-    if (includeOptions) {
-      totalValue = Object.values(byAssetClass).reduce((sum, ac) => sum + Math.max(0, ac.value), 0) + unassignedValue;
-    }
+    // When including options, total stays same (net liquidation) but allocation shifts
+    // We don't recalculate totalValue - it should equal netLiquidation
 
     // Calculate percentages
     for (const id of Object.keys(byAssetClass)) {
@@ -344,9 +388,6 @@ router.get("/summary", async (req: Request, res: Response) => {
         });
       }
     }
-
-    // Get account data (cash balance) from the service
-    const accountData = ibkrService.getAccountData();
 
     res.json({
       positions,

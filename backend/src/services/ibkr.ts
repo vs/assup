@@ -357,10 +357,24 @@ class IBKRService {
 
     return new Promise((resolve, reject) => {
       const positions: Position[] = [];
+      let resolved = false;
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+      let maxTimeoutId: ReturnType<typeof setTimeout>;
+
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        clearTimeout(maxTimeoutId);
+        subscription.unsubscribe();
+        resolve(positions);
+      };
+
       const subscription = this.api!.getPositions().subscribe({
         next: (update) => {
           // update.all is a Map<account, Position[]>
           if (update.all) {
+            positions.length = 0; // Clear to avoid duplicates on updates
             update.all.forEach((accountPositions, account) => {
               accountPositions.forEach((pos) => {
                 positions.push({
@@ -373,23 +387,26 @@ class IBKRService {
                 });
               });
             });
+
+            // Debounce: resolve 200ms after last update (batch complete)
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(finish, 200);
           }
         },
         error: (err) => {
-          subscription.unsubscribe();
-          reject(err);
+          if (!resolved) {
+            resolved = true;
+            if (debounceTimer) clearTimeout(debounceTimer);
+            clearTimeout(maxTimeoutId);
+            subscription.unsubscribe();
+            reject(err);
+          }
         },
-        complete: () => {
-          subscription.unsubscribe();
-          resolve(positions);
-        },
+        complete: finish,
       });
 
-      // Set a timeout in case complete is never called
-      setTimeout(() => {
-        subscription.unsubscribe();
-        resolve(positions);
-      }, 10000);
+      // Max timeout - safety net if no updates come at all
+      maxTimeoutId = setTimeout(finish, 3000);
     });
   }
 

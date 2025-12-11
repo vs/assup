@@ -12,6 +12,7 @@ import watchlistsRouter from "./routes/watchlists.js";
 import ordersRouter from "./routes/orders.js";
 import scannerRouter from "./routes/scanner.js";
 import settingsRouter from "./routes/settings.js";
+import historicalDataRouter from "./routes/historicalData.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,6 +29,7 @@ app.use("/api/watchlists", watchlistsRouter);
 app.use("/api/orders", ordersRouter);
 app.use("/api/scanner", scannerRouter);
 app.use("/api/settings", settingsRouter);
+app.use("/api/historical", historicalDataRouter);
 
 app.get("/api/health", async (req, res) => {
   try {

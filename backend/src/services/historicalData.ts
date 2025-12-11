@@ -18,11 +18,13 @@ interface QueuedRequest {
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const REQUEST_DELAY_MS = 100; // Delay between TWS requests
+const REQUEST_DELAY_MS = 50; // Delay between TWS requests
+const MAX_CONCURRENT_REQUESTS = 3; // Max parallel historical data requests
 
 class HistoricalDataService {
   private cache: Map<string, CacheEntry> = new Map();
   private requestQueue: QueuedRequest[] = [];
+  private activeRequests = 0;
   private isProcessing = false;
 
   private getCacheKey(symbol: string): string {
@@ -70,37 +72,54 @@ class HistoricalDataService {
   }
 
   private async processQueue(): Promise<void> {
-    if (this.isProcessing || this.requestQueue.length === 0) {
+    if (this.isProcessing) {
       return;
     }
 
     this.isProcessing = true;
 
-    while (this.requestQueue.length > 0) {
-      const request = this.requestQueue.shift()!;
-      const cacheKey = this.getCacheKey(request.symbol);
+    const processNext = async () => {
+      while (this.requestQueue.length > 0 && this.activeRequests < MAX_CONCURRENT_REQUESTS) {
+        const request = this.requestQueue.shift()!;
+        const cacheKey = this.getCacheKey(request.symbol);
 
-      // Re-check cache (another request may have populated it)
-      const cached = this.cache.get(cacheKey);
-      if (cached && this.isCacheValid(cached)) {
-        request.resolve(cached.data);
-        continue;
+        // Re-check cache (another request may have populated it)
+        const cached = this.cache.get(cacheKey);
+        if (cached && this.isCacheValid(cached)) {
+          request.resolve(cached.data);
+          continue;
+        }
+
+        this.activeRequests++;
+
+        // Process this request without awaiting - allow parallelism
+        this.fetchFromTWS(request.symbol)
+          .then((data) => {
+            this.cache.set(cacheKey, { data, timestamp: Date.now() });
+            request.resolve(data);
+          })
+          .catch((error) => {
+            request.reject(error as Error);
+          })
+          .finally(() => {
+            this.activeRequests--;
+            // Small delay then process more
+            setTimeout(() => processNext(), REQUEST_DELAY_MS);
+          });
       }
+    };
 
-      try {
-        const data = await this.fetchFromTWS(request.symbol);
-        this.cache.set(cacheKey, { data, timestamp: Date.now() });
-        request.resolve(data);
-      } catch (error) {
-        request.reject(error as Error);
+    await processNext();
+
+    // Wait for all active requests to complete before marking as not processing
+    const waitForCompletion = (): Promise<void> => {
+      if (this.activeRequests > 0 || this.requestQueue.length > 0) {
+        return new Promise((resolve) => setTimeout(() => waitForCompletion().then(resolve), 50));
       }
+      return Promise.resolve();
+    };
 
-      // Rate limit delay
-      if (this.requestQueue.length > 0) {
-        await new Promise((r) => setTimeout(r, REQUEST_DELAY_MS));
-      }
-    }
-
+    await waitForCompletion();
     this.isProcessing = false;
   }
 

@@ -427,17 +427,14 @@ export function PositionsPage() {
                         <Badge variant="outline">{pos.secType}</Badge>
                       </TableCell>
                       <TableCell>
-                        {pos.assetClassName ? (
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-2 w-2 rounded-full"
-                              style={{ backgroundColor: pos.assetClassColor || "#6366f1" }}
-                            />
-                            {pos.assetClassName}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
+                        <AssetClassSelect
+                          value={pos.assetClassId}
+                          disabled={assigning === key}
+                          onValueChange={(v) => handleAssign(pos, v)}
+                          assetClasses={assetClasses}
+                          placeholder="Assign..."
+                          className="w-44"
+                        />
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {formatNumber(pos.position)}
