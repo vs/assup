@@ -14,9 +14,9 @@ export interface Position {
   currency: string;
   position: number;
   avgCost: number;
-  marketValue?: number;
-  unrealizedPnl?: number;
-  realizedPnl?: number;
+  costBasis: number;
+  marketValue: number | null;
+  unrealizedPnl: number | null;
   // Option-specific fields
   strike?: number;
   expiry?: string;
@@ -111,6 +111,10 @@ router.get("/", async (req: Request, res: Response) => {
       const symbol = contract.symbol;
       const secType = contract.secType;
       const assignment = assignmentMap.get(`${symbol}:${secType}`);
+      const costBasis = Math.abs(p.pos * p.avgCost);
+      const hasMarketValue = p.marketValue !== undefined && p.marketValue !== null;
+      const marketValue = hasMarketValue ? Math.abs(p.marketValue!) : null;
+      const unrealizedPnl = hasMarketValue ? marketValue! - costBasis : null;
       return {
         account: p.account,
         symbol: symbol || "",
@@ -120,6 +124,9 @@ router.get("/", async (req: Request, res: Response) => {
         currency: contract.currency || "",
         position: p.pos,
         avgCost: p.avgCost,
+        costBasis,
+        marketValue,
+        unrealizedPnl,
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
@@ -189,7 +196,10 @@ router.get("/summary", async (req: Request, res: Response) => {
       const assignment = assignmentMap.get(`${lookupSymbol}:${lookupSecType}`) ||
                         assignmentMap.get(`${symbol}:${secType}`);
 
-      const marketValue = Math.abs(pos * avgCost);
+      const costBasis = Math.abs(pos * avgCost);
+      const hasMarketValue = p.marketValue !== undefined && p.marketValue !== null;
+      const marketValue = hasMarketValue ? Math.abs(p.marketValue!) : null;
+      const unrealizedPnl = hasMarketValue ? marketValue! - costBasis : null;
       const notionalValue = isOption ? calculateOptionNotional(contract, pos) : undefined;
       const deltaExposure = isOption ? estimateDelta(contract, pos) * notionalValue! : undefined;
 
@@ -202,7 +212,9 @@ router.get("/summary", async (req: Request, res: Response) => {
         currency: contract.currency || "",
         position: pos,
         avgCost,
+        costBasis,
         marketValue,
+        unrealizedPnl,
         strike: isOption ? contract.strike : undefined,
         expiry: isOption ? contract.lastTradeDateOrContractMonth : undefined,
         right: isOption ? (contract.right === "P" ? "P" : "C") : undefined,

@@ -349,7 +349,7 @@ class IBKRService {
     return this.getAccountData().netLiquidation;
   }
 
-  // Positions
+  // Positions - uses getAccountUpdates to get portfolio with market values
   async getPositions(): Promise<Position[]> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
@@ -370,12 +370,13 @@ class IBKRService {
         resolve(positions);
       };
 
-      const subscription = this.api!.getPositions().subscribe({
+      // Use getAccountUpdates instead of getPositions to get market values
+      const subscription = this.api!.getAccountUpdates().subscribe({
         next: (update) => {
-          // update.all is a Map<account, Position[]>
-          if (update.all) {
+          // update.all is an AccountUpdate with portfolio (Map<account, Position[]>)
+          if (update.all?.portfolio) {
             positions.length = 0; // Clear to avoid duplicates on updates
-            update.all.forEach((accountPositions, account) => {
+            update.all.portfolio.forEach((accountPositions, account) => {
               accountPositions.forEach((pos) => {
                 positions.push({
                   account,

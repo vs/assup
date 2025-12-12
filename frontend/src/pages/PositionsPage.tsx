@@ -167,8 +167,13 @@ export function PositionsPage() {
   const assigned = filteredPositions.filter((p) => p.assetClassId);
 
   // Calculate totals (from filtered positions)
-  const totalValue = filteredPositions.reduce(
-    (sum, p) => sum + Math.abs(p.position * p.avgCost),
+  const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
+  const totalMarketValue = filteredPositions.reduce(
+    (sum, p) => sum + (p.marketValue ?? 0),
+    0
+  );
+  const totalPnl = filteredPositions.reduce(
+    (sum, p) => sum + (p.unrealizedPnl ?? 0),
     0
   );
 
@@ -270,7 +275,7 @@ export function PositionsPage() {
       )}
 
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -307,11 +312,31 @@ export function PositionsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Value
+              Market Value
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalValue)}</div>
+            {hasAnyMarketValue ? (
+              <div className="text-2xl font-bold">{formatCurrency(totalMarketValue)}</div>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">N/A</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Unrealized P&L
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {hasAnyMarketValue ? (
+              <div className={`text-2xl font-bold ${totalPnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {totalPnl >= 0 ? "+" : ""}{formatCurrency(totalPnl)}
+              </div>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">N/A</div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -333,15 +358,15 @@ export function PositionsPage() {
                   <TableHead className="w-24">30D</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Avg Cost</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right">Cost Basis</TableHead>
+                  <TableHead className="text-right">Mkt Value</TableHead>
+                  <TableHead className="text-right">P&L</TableHead>
                   <TableHead>Assign To</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {unassigned.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
-                  const value = Math.abs(pos.position * pos.avgCost);
                   const sparkline = getPositionSparkline(pos);
                   return (
                     <TableRow key={key}>
@@ -367,10 +392,17 @@ export function PositionsPage() {
                         {formatNumber(pos.position)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatCurrency(pos.avgCost)}
+                        {formatCurrency(pos.costBasis)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatCurrency(value)}
+                        {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
+                        {pos.unrealizedPnl !== null ? (
+                          <>{pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}</>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <AssetClassSelect
@@ -415,16 +447,16 @@ export function PositionsPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Asset Class</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Avg Cost</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right">Cost Basis</TableHead>
+                  <TableHead className="text-right">Mkt Value</TableHead>
+                  <TableHead className="text-right">P&L</TableHead>
                   <TableHead className="text-right">% of Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredPositions.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
-                  const value = Math.abs(pos.position * pos.avgCost);
-                  const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
+                  const pct = totalMarketValue > 0 && pos.marketValue !== null ? (pos.marketValue / totalMarketValue) * 100 : null;
                   const sparkline = getPositionSparkline(pos);
                   return (
                     <TableRow key={key}>
@@ -460,13 +492,20 @@ export function PositionsPage() {
                         {formatNumber(pos.position)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatCurrency(pos.avgCost)}
+                        {formatCurrency(pos.costBasis)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatCurrency(value)}
+                        {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
+                        {pos.unrealizedPnl !== null ? (
+                          <>{pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}</>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {pct.toFixed(1)}%
+                        {pct !== null ? `${pct.toFixed(1)}%` : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
                     </TableRow>
                   );

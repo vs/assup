@@ -69,7 +69,9 @@ export interface Position {
   currency: string;
   position: number;
   avgCost: number;
-  marketValue?: number;
+  costBasis: number;
+  marketValue: number | null;
+  unrealizedPnl: number | null;
   // Option-specific fields
   strike?: number;
   expiry?: string;
