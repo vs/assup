@@ -105,8 +105,8 @@ router.get("/", async (req: Request, res: Response) => {
       assignments.map((a) => [`${a.symbol}:${a.secType}`, a])
     );
 
-    // Enrich positions with asset class info
-    const positions: Position[] = rawPositions.map((p) => {
+    // Filter out zero-quantity positions and enrich with asset class info
+    const positions: Position[] = rawPositions.filter((p) => p.pos !== 0).map((p) => {
       const contract = p.contract;
       const symbol = contract.symbol;
       const secType = contract.secType;
@@ -182,8 +182,8 @@ router.get("/summary", async (req: Request, res: Response) => {
       where: { name: "Cash" },
     });
 
-    // Calculate market values for positions
-    const positions: Position[] = rawPositions.map((p) => {
+    // Filter out zero-quantity positions and calculate market values
+    const positions: Position[] = rawPositions.filter((p) => p.pos !== 0).map((p) => {
       const contract = p.contract;
       const symbol = contract.symbol || "";
       const secType = contract.secType || "";
