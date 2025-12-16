@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { Position, AssetClass, AllocationProfile, PositionSummary } from "@/lib/api";
 import { useAllocationUpdates } from "@/hooks/useSSE";
@@ -379,21 +379,25 @@ export function PositionsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Difference to Target
+              Action
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {diffToTarget !== null ? (
-              <div className={`text-2xl font-bold ${diffToTarget >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {diffToTarget >= 0 ? "+" : ""}{formatCurrency(diffToTarget)}
+            {diffToTarget !== null && diffToTarget < -1 && filters.assetClassId ? (
+              <Link
+                to={`/scanner?assetClassId=${filters.assetClassId}`}
+                className="text-2xl font-bold text-green-600 hover:underline"
+              >
+                BUY {formatCurrency(Math.abs(diffToTarget))}
+              </Link>
+            ) : diffToTarget !== null && diffToTarget > 1 ? (
+              <div className="text-2xl font-bold text-red-600">
+                SELL {formatCurrency(diffToTarget)}
               </div>
+            ) : diffToTarget !== null ? (
+              <div className="text-2xl font-bold text-muted-foreground">On target</div>
             ) : (
               <div className="text-2xl font-bold text-muted-foreground">—</div>
-            )}
-            {diffToTarget !== null && (
-              <p className="text-xs text-muted-foreground">
-                {diffToTarget >= 0 ? "Over target" : "Under target"}
-              </p>
             )}
           </CardContent>
         </Card>

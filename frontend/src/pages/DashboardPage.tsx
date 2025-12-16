@@ -495,7 +495,7 @@ export function DashboardPage() {
                     <th className="text-right py-3 px-2">Diff %</th>
                     <th className="text-right py-3 px-2">Target Value</th>
                     <th className="text-right py-3 px-2">Current Value</th>
-                    <th className="text-right py-3 px-2">Diff Value</th>
+                    <th className="text-right py-3 px-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -550,18 +550,20 @@ export function DashboardPage() {
                           {formatCurrency(row.value)}
                         </td>
                         <td className="text-right py-3 px-2 font-mono">
-                          <span
-                            className={
-                              diffValue > 0
-                                ? "text-green-600"
-                                : diffValue < 0
-                                ? "text-red-600"
-                                : ""
-                            }
-                          >
-                            {diffValue > 0 ? "+" : ""}
-                            {formatCurrency(diffValue)}
-                          </span>
+                          {diffValue < -1 && row.id ? (
+                            <Link
+                              to={`/scanner?assetClassId=${row.id}`}
+                              className="inline-flex items-center gap-1 text-green-600 font-semibold hover:underline"
+                            >
+                              BUY {formatCurrency(Math.abs(diffValue))}
+                            </Link>
+                          ) : diffValue > 1 ? (
+                            <span className="text-red-600 font-semibold">
+                              SELL {formatCurrency(diffValue)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                       </tr>
                     );

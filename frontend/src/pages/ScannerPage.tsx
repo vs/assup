@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { ScannerCriteria, ScannerPreset, UnderinvestedClass, ScanResult, AssetClass } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,15 @@ const DEFAULT_CRITERIA: ScannerCriteria = {
 };
 
 export function ScannerPage() {
-  const [criteria, setCriteria] = useState<ScannerCriteria>(DEFAULT_CRITERIA);
+  const [searchParams] = useSearchParams();
+  const [criteria, setCriteria] = useState<ScannerCriteria>(() => {
+    // Check URL for pre-selected asset class
+    const assetClassId = searchParams.get("assetClassId");
+    if (assetClassId) {
+      return { ...DEFAULT_CRITERIA, targetAssetClasses: [assetClassId] };
+    }
+    return DEFAULT_CRITERIA;
+  });
   const [presets, setPresets] = useState<ScannerPreset[]>([]);
   const [underinvested, setUnderinvested] = useState<UnderinvestedClass[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
