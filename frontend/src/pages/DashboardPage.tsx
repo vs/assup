@@ -23,11 +23,17 @@ import {
   Bar,
   XAxis,
   YAxis,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronRight, Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface AllocationData {
   id: string | null; // Asset class ID for linking, null for "Unassigned"
@@ -313,8 +319,28 @@ export function DashboardPage() {
           {hasOptionsPositions && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                   Options Exposure
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs">
+                        {settings.optionsWeightMode === "delta" ? (
+                          <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="font-medium">Notional = Strike × Qty × 100</p>
+                            <p>• Short PUT: +notional (may buy stock)</p>
+                            <p>• Long PUT: −notional (hedge)</p>
+                            <p>• Short CALL: −notional (may sell stock)</p>
+                            <p>• Long CALL: +notional (bullish exposure)</p>
+                          </div>
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -384,7 +410,7 @@ export function DashboardPage() {
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
+                      <RechartsTooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
@@ -410,7 +436,7 @@ export function DashboardPage() {
                     >
                       <XAxis type="number" domain={[0, "dataMax"]} unit="%" />
                       <YAxis type="category" dataKey="name" width={80} />
-                      <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
+                      <RechartsTooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
                       <Legend />
                       <Bar dataKey="target" name="Target" fill="#6366f1" />
                       <Bar dataKey="current" name="Current" fill="#22c55e" />
@@ -436,7 +462,31 @@ export function DashboardPage() {
                   <tr className="border-b">
                     <th className="text-left py-3 px-2">Asset Class</th>
                     <th className="text-right py-3 px-2">Stock Value</th>
-                    <th className="text-right py-3 px-2">Options {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}</th>
+                    <th className="text-right py-3 px-2">
+                      <span className="inline-flex items-center gap-1">
+                        Options {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs text-xs">
+                              {settings.optionsWeightMode === "delta" ? (
+                                <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
+                              ) : (
+                                <div className="space-y-1">
+                                  <p className="font-medium">Notional = Strike × Qty × 100</p>
+                                  <p>• Short PUT: +notional (may buy stock)</p>
+                                  <p>• Long PUT: −notional (hedge)</p>
+                                  <p>• Short CALL: −notional (may sell stock)</p>
+                                  <p>• Long CALL: +notional (bullish exposure)</p>
+                                </div>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </span>
+                    </th>
                     <th className="text-right py-3 px-2">Total Exposure</th>
                   </tr>
                 </thead>
