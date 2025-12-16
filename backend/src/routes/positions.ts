@@ -114,7 +114,10 @@ router.get("/", async (req: Request, res: Response) => {
       const costBasis = Math.abs(p.pos * p.avgCost);
       const hasMarketValue = p.marketValue !== undefined && p.marketValue !== null;
       const marketValue = hasMarketValue ? Math.abs(p.marketValue!) : null;
-      const unrealizedPnl = hasMarketValue ? marketValue! - costBasis : null;
+      // For short positions (pos < 0), profit when market value decreases
+      const unrealizedPnl = hasMarketValue
+        ? (p.pos >= 0 ? marketValue! - costBasis : costBasis - marketValue!)
+        : null;
       return {
         account: p.account,
         symbol: symbol || "",
@@ -199,7 +202,10 @@ router.get("/summary", async (req: Request, res: Response) => {
       const costBasis = Math.abs(pos * avgCost);
       const hasMarketValue = p.marketValue !== undefined && p.marketValue !== null;
       const marketValue = hasMarketValue ? Math.abs(p.marketValue!) : null;
-      const unrealizedPnl = hasMarketValue ? marketValue! - costBasis : null;
+      // For short positions (pos < 0), profit when market value decreases
+      const unrealizedPnl = hasMarketValue
+        ? (pos >= 0 ? marketValue! - costBasis : costBasis - marketValue!)
+        : null;
       const notionalValue = isOption ? calculateOptionNotional(contract, pos) : undefined;
       const deltaExposure = isOption ? estimateDelta(contract, pos) * notionalValue! : undefined;
 
