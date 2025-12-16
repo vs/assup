@@ -27,7 +27,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 
 interface AllocationData {
   id: string | null; // Asset class ID for linking, null for "Unassigned"
@@ -44,6 +44,7 @@ interface AllocationData {
 const DEFAULT_SETTINGS: DashboardSettings = {
   includeOptions: false,
   optionsWeightMode: "notional",
+  chartsExpanded: false,
 };
 
 export function DashboardPage() {
@@ -333,77 +334,93 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pie Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Current Allocation
-              {settings.includeOptions && (
-                <Badge variant="outline" className="font-normal text-xs">
-                  {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}
-                </Badge>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {pieData.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                No positions to display
-              </p>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
-                    labelLine={false}
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+      {/* Collapsible Charts Section */}
+      <div className="space-y-4">
+        <button
+          onClick={() => updateSettings({ chartsExpanded: !settings.chartsExpanded })}
+          className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {settings.chartsExpanded ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+          Charts
+        </button>
 
-        {/* Bar Chart - Target vs Actual */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Target vs Current</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {allocationData.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                {profile ? "No allocation data" : "No active allocation profile"}
-              </p>
-            ) : (
-              <ResponsiveContainer width="100%" height={Math.max(300, allocationData.length * 40)}>
-                <BarChart
-                  data={allocationData}
-                  layout="vertical"
-                  margin={{ left: 80, right: 20 }}
-                >
-                  <XAxis type="number" domain={[0, "dataMax"]} unit="%" />
-                  <YAxis type="category" dataKey="name" width={80} />
-                  <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
-                  <Legend />
-                  <Bar dataKey="target" name="Target" fill="#6366f1" />
-                  <Bar dataKey="current" name="Current" fill="#22c55e" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+        {settings.chartsExpanded && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Pie Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  Current Allocation
+                  {settings.includeOptions && (
+                    <Badge variant="outline" className="font-normal text-xs">
+                      {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {pieData.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">
+                    No positions to display
+                  </p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={100}
+                        label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
+                        labelLine={false}
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Bar Chart - Target vs Actual */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Target vs Current</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {allocationData.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">
+                    {profile ? "No allocation data" : "No active allocation profile"}
+                  </p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={Math.max(300, allocationData.length * 40)}>
+                    <BarChart
+                      data={allocationData}
+                      layout="vertical"
+                      margin={{ left: 80, right: 20 }}
+                    >
+                      <XAxis type="number" domain={[0, "dataMax"]} unit="%" />
+                      <YAxis type="category" dataKey="name" width={80} />
+                      <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
+                      <Legend />
+                      <Bar dataKey="target" name="Target" fill="#6366f1" />
+                      <Bar dataKey="current" name="Current" fill="#22c55e" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       {/* Options Exposure Breakdown */}

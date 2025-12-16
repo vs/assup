@@ -132,6 +132,7 @@ export interface PositionSummary {
 export interface DashboardSettings {
   includeOptions: boolean;
   optionsWeightMode: "notional" | "delta";
+  chartsExpanded: boolean;
 }
 
 export interface SparklinePoint {
