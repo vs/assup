@@ -494,24 +494,21 @@ export function PositionsPage() {
                   <TableHead className="text-right">Mkt Value</TableHead>
                   <TableHead className="text-right">
                     <span className="inline-flex items-center gap-1">
-                      {filters.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                      Exposure
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs text-xs">
-                            {filters.optionsWeightMode === "delta" ? (
-                              <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
-                            ) : (
-                              <div className="space-y-1">
-                                <p className="font-medium">Notional = Strike × Qty × 100</p>
-                                <p>• Short PUT: +notional (may buy stock)</p>
-                                <p>• Long PUT: −notional (hedge)</p>
-                                <p>• Short CALL: −notional (may sell stock)</p>
-                                <p>• Long CALL: +notional (bullish exposure)</p>
-                              </div>
-                            )}
+                            <div className="space-y-1">
+                              <p className="font-medium">Stocks: Market Value</p>
+                              <p className="font-medium">Options: Strike × Qty × 100</p>
+                              <p>• Short PUT: +exposure (may buy stock)</p>
+                              <p>• Long PUT: −exposure (hedge)</p>
+                              <p>• Short CALL: −exposure (may sell stock)</p>
+                              <p>• Long CALL: +exposure (bullish)</p>
+                            </div>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -563,7 +560,7 @@ export function PositionsPage() {
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {pos.secType === "OPT" ? formatCurrency(exposure) : "—"}
+                        {formatCurrency(exposure)}
                       </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (
@@ -619,24 +616,21 @@ export function PositionsPage() {
                   <TableHead className="text-right">Mkt Value</TableHead>
                   <TableHead className="text-right">
                     <span className="inline-flex items-center gap-1">
-                      {filters.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                      Exposure
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs text-xs">
-                            {filters.optionsWeightMode === "delta" ? (
-                              <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
-                            ) : (
-                              <div className="space-y-1">
-                                <p className="font-medium">Notional = Strike × Qty × 100</p>
-                                <p>• Short PUT: +notional (may buy stock)</p>
-                                <p>• Long PUT: −notional (hedge)</p>
-                                <p>• Short CALL: −notional (may sell stock)</p>
-                                <p>• Long CALL: +notional (bullish exposure)</p>
-                              </div>
-                            )}
+                            <div className="space-y-1">
+                              <p className="font-medium">Stocks: Market Value</p>
+                              <p className="font-medium">Options: Strike × Qty × 100</p>
+                              <p>• Short PUT: +exposure (may buy stock)</p>
+                              <p>• Long PUT: −exposure (hedge)</p>
+                              <p>• Short CALL: −exposure (may sell stock)</p>
+                              <p>• Long CALL: +exposure (bullish)</p>
+                            </div>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -724,7 +718,7 @@ export function PositionsPage() {
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {pos.secType === "OPT" ? formatCurrency(exposure) : "—"}
+                        {formatCurrency(exposure)}
                       </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (
