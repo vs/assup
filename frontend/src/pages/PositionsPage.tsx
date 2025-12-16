@@ -740,7 +740,7 @@ export function PositionsPage() {
                       <Badge variant="outline">CASH</Badge>
                     </TableCell>
                     <TableCell>
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">Cash</span>
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatNumber(Math.round(cashValue))}
