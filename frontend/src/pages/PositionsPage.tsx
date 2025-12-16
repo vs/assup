@@ -405,7 +405,7 @@ export function PositionsPage() {
             )}
             {totalExposure !== totalMarketValue && (
               <p className="text-xs text-muted-foreground">
-                Exposure: {formatCurrency(totalExposure)}
+                Stocks: {formatCurrency(positionsMarketValue)}
               </p>
             )}
           </CardContent>
