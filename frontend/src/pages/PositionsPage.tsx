@@ -24,7 +24,13 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { AssetClassSelect } from "@/components/common/AssetClassSelect";
 import { Sparkline } from "@/components/Sparkline";
-import { RefreshCw, X } from "lucide-react";
+import { RefreshCw, X, Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ChartModal } from "@/components/ChartModal";
@@ -33,19 +39,32 @@ const STORAGE_KEY = "assup-positions-filters";
 
 interface FilterState {
   assetClassId: string | null;
-  showOptions: boolean;
+  includeOptions: boolean;
+  optionsWeightMode: "notional" | "delta";
 }
+
+const DEFAULT_FILTERS: FilterState = {
+  assetClassId: null,
+  includeOptions: true,
+  optionsWeightMode: "notional",
+};
 
 function loadFilters(): FilterState {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Migration from old showOptions to includeOptions
+      if ("showOptions" in parsed && !("includeOptions" in parsed)) {
+        parsed.includeOptions = parsed.showOptions;
+        delete parsed.showOptions;
+      }
+      return { ...DEFAULT_FILTERS, ...parsed };
     }
   } catch {
     // Ignore parse errors
   }
-  return { assetClassId: null, showOptions: true };
+  return DEFAULT_FILTERS;
 }
 
 function saveFilters(filters: FilterState) {
@@ -67,7 +86,7 @@ export function PositionsPage() {
   const [filters, setFilters] = useState<FilterState>(() => {
     const urlAssetClassId = searchParams.get("assetClassId");
     if (urlAssetClassId) {
-      return { assetClassId: urlAssetClassId, showOptions: true };
+      return { ...DEFAULT_FILTERS, assetClassId: urlAssetClassId };
     }
     return loadFilters();
   });
@@ -102,7 +121,7 @@ export function PositionsPage() {
       const [posData, acData, summaryData] = await Promise.all([
         api.positions.list(),
         api.assetClasses.list(),
-        api.positions.summary({ includeOptions: true, optionsWeightMode: "notional" }),
+        api.positions.summary({ includeOptions: filters.includeOptions, optionsWeightMode: filters.optionsWeightMode }),
       ]);
       setPositions(posData);
       setAssetClasses(acData);
@@ -162,7 +181,7 @@ export function PositionsPage() {
   // Apply filters
   const filteredPositions = positions.filter((p) => {
     // Filter by options
-    if (!filters.showOptions && p.secType === "OPT") {
+    if (!filters.includeOptions && p.secType === "OPT") {
       return false;
     }
     // Filter by asset class
@@ -178,19 +197,26 @@ export function PositionsPage() {
   // Group positions by asset class
   const unassigned = filteredPositions.filter((p) => !p.assetClassId);
 
-  // Helper to get position exposure (notional for options, market value for stocks)
+  // Helper to get position exposure (notional/delta for options, market value for stocks)
   const getPositionExposure = (p: Position): number => {
     if (p.secType === "OPT" && p.notionalValue !== undefined) {
-      // For short puts, notional represents potential stock purchase
-      // For short calls, notional represents potential stock sale (negative exposure)
       const isShort = p.position < 0;
       const isPut = p.right === "P";
-      if (isShort && isPut) {
-        return p.notionalValue; // Short put: positive exposure (may need to buy)
-      } else if (isShort && !isPut) {
-        return -p.notionalValue; // Short call: negative exposure (may need to sell)
+
+      // Calculate notional exposure based on option type
+      let notionalExposure = 0;
+      if (isPut) {
+        notionalExposure = isShort ? p.notionalValue : -p.notionalValue;
+      } else {
+        // Calls
+        notionalExposure = isShort ? -p.notionalValue : p.notionalValue;
       }
-      return 0; // Long options: just the premium paid (market value)
+
+      if (filters.optionsWeightMode === "delta") {
+        // Delta-weighted: use 0.5 as ATM assumption
+        return notionalExposure * 0.5;
+      }
+      return notionalExposure;
     }
     return p.marketValue ?? 0;
   };
@@ -286,21 +312,38 @@ export function PositionsPage() {
 
           <div className="flex items-center gap-2">
             <Switch
-              id="show-options"
-              checked={filters.showOptions}
-              onCheckedChange={(checked) => setFilters({ ...filters, showOptions: checked })}
+              id="include-options"
+              checked={filters.includeOptions}
+              onCheckedChange={(checked) => setFilters({ ...filters, includeOptions: checked })}
             />
-            <Label htmlFor="show-options" className="text-sm cursor-pointer">
-              Show Options {optionsCount > 0 && `(${optionsCount})`}
+            <Label htmlFor="include-options" className="text-sm cursor-pointer">
+              Include Options {optionsCount > 0 && `(${optionsCount})`}
             </Label>
           </div>
 
-          {(filters.assetClassId || !filters.showOptions) && (
+          {filters.includeOptions && (
+            <Select
+              value={filters.optionsWeightMode}
+              onValueChange={(v: "notional" | "delta") =>
+                setFilters({ ...filters, optionsWeightMode: v })
+              }
+            >
+              <SelectTrigger className="w-36 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="notional">Notional</SelectItem>
+                <SelectItem value="delta">Delta-weighted</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
+          {(filters.assetClassId || !filters.includeOptions) && (
             <Button
               variant="ghost"
               size="sm"
               className="h-8 px-2"
-              onClick={() => setFilters({ assetClassId: null, showOptions: true })}
+              onClick={() => setFilters({ ...DEFAULT_FILTERS })}
             >
               <X className="h-3 w-3 mr-1" />
               Clear
@@ -423,7 +466,31 @@ export function PositionsPage() {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Cost Basis</TableHead>
                   <TableHead className="text-right">Mkt Value</TableHead>
-                  <TableHead className="text-right">Exposure</TableHead>
+                  <TableHead className="text-right">
+                    <span className="inline-flex items-center gap-1">
+                      {filters.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs text-xs">
+                            {filters.optionsWeightMode === "delta" ? (
+                              <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
+                            ) : (
+                              <div className="space-y-1">
+                                <p className="font-medium">Notional = Strike × Qty × 100</p>
+                                <p>• Short PUT: +notional (may buy stock)</p>
+                                <p>• Long PUT: −notional (hedge)</p>
+                                <p>• Short CALL: −notional (may sell stock)</p>
+                                <p>• Long CALL: +notional (bullish exposure)</p>
+                              </div>
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </span>
+                  </TableHead>
                   <TableHead className="text-right">P&L</TableHead>
                   <TableHead>Assign To</TableHead>
                 </TableRow>
@@ -517,7 +584,31 @@ export function PositionsPage() {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Cost Basis</TableHead>
                   <TableHead className="text-right">Mkt Value</TableHead>
-                  <TableHead className="text-right">Exposure</TableHead>
+                  <TableHead className="text-right">
+                    <span className="inline-flex items-center gap-1">
+                      {filters.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs text-xs">
+                            {filters.optionsWeightMode === "delta" ? (
+                              <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
+                            ) : (
+                              <div className="space-y-1">
+                                <p className="font-medium">Notional = Strike × Qty × 100</p>
+                                <p>• Short PUT: +notional (may buy stock)</p>
+                                <p>• Long PUT: −notional (hedge)</p>
+                                <p>• Short CALL: −notional (may sell stock)</p>
+                                <p>• Long CALL: +notional (bullish exposure)</p>
+                              </div>
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </span>
+                  </TableHead>
                   <TableHead className="text-right">P&L</TableHead>
                   <TableHead className="text-right">% of Total</TableHead>
                 </TableRow>
