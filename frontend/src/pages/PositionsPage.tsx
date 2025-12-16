@@ -184,14 +184,20 @@ export function PositionsPage() {
 
     const strike = pos.strike ? `$${pos.strike}` : "";
 
-    // Format expiry: "20250117" -> "Jan 17 '25"
+    // Format expiry: "20250117" or "20250117 16:00:00" -> "Jan 17 '25"
     let expiryStr = "";
-    if (pos.expiry && pos.expiry.length === 8) {
-      const year = pos.expiry.slice(2, 4);
-      const month = parseInt(pos.expiry.slice(4, 6), 10);
-      const day = parseInt(pos.expiry.slice(6, 8), 10);
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      expiryStr = `${months[month - 1]} ${day} '${year}`;
+    if (pos.expiry) {
+      // Extract just the date part (first 8 chars) in case there's time info
+      const datePart = pos.expiry.replace(/[^0-9]/g, "").slice(0, 8);
+      if (datePart.length === 8) {
+        const year = datePart.slice(2, 4);
+        const month = parseInt(datePart.slice(4, 6), 10);
+        const day = parseInt(datePart.slice(6, 8), 10);
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        if (month >= 1 && month <= 12) {
+          expiryStr = `${months[month - 1]} ${day} '${year}`;
+        }
+      }
     }
 
     const parts = [expiryStr, strike].filter(Boolean);
