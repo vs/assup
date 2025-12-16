@@ -178,6 +178,27 @@ export function PositionsPage() {
       maximumFractionDigits: 2,
     }).format(value);
 
+  // Format option contract name: "AAPL Jan 17 '25 $150 PUT"
+  const formatOptionName = (pos: Position): string => {
+    if (pos.secType !== "OPT") return pos.symbol;
+
+    const symbol = pos.underlying || pos.symbol;
+    const strike = pos.strike ? `$${pos.strike}` : "";
+    const right = pos.right === "P" ? "PUT" : pos.right === "C" ? "CALL" : "";
+
+    // Format expiry: "20250117" -> "Jan 17 '25"
+    let expiryStr = "";
+    if (pos.expiry && pos.expiry.length === 8) {
+      const year = pos.expiry.slice(2, 4);
+      const month = parseInt(pos.expiry.slice(4, 6), 10);
+      const day = parseInt(pos.expiry.slice(6, 8), 10);
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      expiryStr = `${months[month - 1]} ${day} '${year}`;
+    }
+
+    return [symbol, expiryStr, strike, right].filter(Boolean).join(" ");
+  };
+
   // Apply filters
   const filteredPositions = positions.filter((p) => {
     // Filter by options
@@ -510,9 +531,9 @@ export function PositionsPage() {
                       <TableCell>
                         <button
                           className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                          onClick={() => setChartSymbol(pos.symbol)}
+                          onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
                         >
-                          {pos.symbol}
+                          {pos.secType === "OPT" ? formatOptionName(pos) : pos.symbol}
                         </button>
                       </TableCell>
                       <TableCell className="w-24">
@@ -661,9 +682,9 @@ export function PositionsPage() {
                       <TableCell>
                         <button
                           className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                          onClick={() => setChartSymbol(pos.symbol)}
+                          onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
                         >
-                          {pos.symbol}
+                          {pos.secType === "OPT" ? formatOptionName(pos) : pos.symbol}
                         </button>
                       </TableCell>
                       <TableCell className="w-24">
