@@ -492,19 +492,40 @@ export function DashboardPage() {
                         <td className="text-right py-3 px-2">
                           {row.current.toFixed(1)}%
                         </td>
-                        <td className="text-right py-3 px-2">
-                          <span
-                            className={
-                              row.diff > 0.5
-                                ? "text-green-600"
-                                : row.diff < -0.5
-                                ? "text-red-600"
-                                : ""
-                            }
-                          >
-                            {row.diff > 0 ? "+" : ""}
-                            {row.diff.toFixed(1)}%
-                          </span>
+                        <td className="py-3 px-2">
+                          <div className="flex items-center justify-end gap-2">
+                            {/* Mini bar chart showing over/under allocation */}
+                            <div className="w-16 h-3 flex items-center">
+                              <div className="w-full h-1.5 bg-muted rounded-full relative">
+                                {/* Center line */}
+                                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border" />
+                                {/* Bar */}
+                                {row.diff !== 0 && (
+                                  <div
+                                    className={`absolute top-0 h-full rounded-full ${
+                                      row.diff > 0 ? "bg-green-500" : "bg-red-500"
+                                    }`}
+                                    style={{
+                                      left: row.diff > 0 ? "50%" : `${50 - Math.min(Math.abs(row.diff) * 2, 50)}%`,
+                                      width: `${Math.min(Math.abs(row.diff) * 2, 50)}%`,
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                            <span
+                              className={`min-w-[4rem] text-right ${
+                                row.diff > 0.5
+                                  ? "text-green-600"
+                                  : row.diff < -0.5
+                                  ? "text-red-600"
+                                  : ""
+                              }`}
+                            >
+                              {row.diff > 0 ? "+" : ""}
+                              {row.diff.toFixed(1)}%
+                            </span>
+                          </div>
                         </td>
                         <td className="text-right py-3 px-2 font-mono">
                           {formatCurrency(targetValue)}
