@@ -178,13 +178,11 @@ export function PositionsPage() {
       maximumFractionDigits: 2,
     }).format(value);
 
-  // Format option contract name: "AAPL Jan 17 '25 $150 PUT"
-  const formatOptionName = (pos: Position): string => {
-    if (pos.secType !== "OPT") return pos.symbol;
+  // Format option contract details: "Jan 17 '25 $150" (without symbol and right)
+  const formatOptionDetails = (pos: Position): string | null => {
+    if (pos.secType !== "OPT") return null;
 
-    const symbol = pos.underlying || pos.symbol;
     const strike = pos.strike ? `$${pos.strike}` : "";
-    const right = pos.right === "P" ? "PUT" : pos.right === "C" ? "CALL" : "";
 
     // Format expiry: "20250117" -> "Jan 17 '25"
     let expiryStr = "";
@@ -196,7 +194,13 @@ export function PositionsPage() {
       expiryStr = `${months[month - 1]} ${day} '${year}`;
     }
 
-    return [symbol, expiryStr, strike, right].filter(Boolean).join(" ");
+    const parts = [expiryStr, strike].filter(Boolean);
+    return parts.length > 0 ? parts.join(" ") : null;
+  };
+
+  // Get display symbol (underlying for options)
+  const getDisplaySymbol = (pos: Position): string => {
+    return pos.underlying || pos.symbol;
   };
 
   // Apply filters
@@ -487,6 +491,7 @@ export function PositionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead className="w-24">30D</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -523,15 +528,19 @@ export function PositionsPage() {
                   const key = `${pos.symbol}:${pos.secType}`;
                   const exposure = getPositionExposure(pos);
                   const sparkline = getPositionSparkline(pos);
+                  const optionDetails = formatOptionDetails(pos);
                   return (
                     <TableRow key={key}>
                       <TableCell>
                         <button
                           className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                          onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
+                          onClick={() => setChartSymbol(getDisplaySymbol(pos))}
                         >
-                          {pos.secType === "OPT" ? formatOptionName(pos) : pos.symbol}
+                          {getDisplaySymbol(pos)}
                         </button>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {optionDetails || "—"}
                       </TableCell>
                       <TableCell className="w-24">
                         <Sparkline
@@ -608,6 +617,7 @@ export function PositionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead className="w-24">30D</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Asset Class</TableHead>
@@ -648,15 +658,19 @@ export function PositionsPage() {
                   const pctValue = pos.secType === "OPT" ? exposure : (pos.marketValue ?? 0);
                   const pct = netLiquidation > 0 ? (pctValue / netLiquidation) * 100 : null;
                   const sparkline = getPositionSparkline(pos);
+                  const optionDetails = formatOptionDetails(pos);
                   return (
                     <TableRow key={key}>
                       <TableCell>
                         <button
                           className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                          onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
+                          onClick={() => setChartSymbol(getDisplaySymbol(pos))}
                         >
-                          {pos.secType === "OPT" ? formatOptionName(pos) : pos.symbol}
+                          {getDisplaySymbol(pos)}
                         </button>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {optionDetails || "—"}
                       </TableCell>
                       <TableCell className="w-24">
                         <Sparkline
@@ -714,6 +728,7 @@ export function PositionsPage() {
                 {showCash && cashValue !== 0 && (
                   <TableRow>
                     <TableCell className="font-medium">Cash</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">—</TableCell>
                     <TableCell className="w-24">
                       <Sparkline
                         data={[{ date: "1", close: 1 }, { date: "2", close: 1 }]}
