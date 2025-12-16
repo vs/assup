@@ -549,18 +549,19 @@ export function DashboardPage() {
                         <td className="text-right py-3 px-2 font-mono">
                           {formatCurrency(row.value)}
                         </td>
-                        <td className="text-right py-3 px-2 font-mono">
+                        <td className="text-right py-3 px-2">
                           {diffValue < -1 && row.id ? (
-                            <Link
-                              to={`/scanner?assetClassId=${row.id}`}
-                              className="inline-flex items-center gap-1 text-green-600 font-semibold hover:underline"
-                            >
-                              BUY {formatCurrency(Math.abs(diffValue))}
-                            </Link>
-                          ) : diffValue > 1 ? (
-                            <span className="text-red-600 font-semibold">
-                              SELL {formatCurrency(diffValue)}
-                            </span>
+                            <Badge variant="success" asChild>
+                              <Link to={`/scanner?assetClassId=${row.id}`}>
+                                BUY {formatCurrency(Math.abs(diffValue))}
+                              </Link>
+                            </Badge>
+                          ) : diffValue > 1 && row.id ? (
+                            <Badge variant="danger" asChild>
+                              <Link to={`/scanner?assetClassId=${row.id}`}>
+                                SELL {formatCurrency(diffValue)}
+                              </Link>
+                            </Badge>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}

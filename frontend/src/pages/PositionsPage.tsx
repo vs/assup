@@ -384,16 +384,17 @@ export function PositionsPage() {
           </CardHeader>
           <CardContent>
             {diffToTarget !== null && diffToTarget < -1 && filters.assetClassId ? (
-              <Link
-                to={`/scanner?assetClassId=${filters.assetClassId}`}
-                className="text-2xl font-bold text-green-600 hover:underline"
-              >
-                BUY {formatCurrency(Math.abs(diffToTarget))}
-              </Link>
-            ) : diffToTarget !== null && diffToTarget > 1 ? (
-              <div className="text-2xl font-bold text-red-600">
-                SELL {formatCurrency(diffToTarget)}
-              </div>
+              <Badge variant="success" asChild className="text-base px-3 py-1">
+                <Link to={`/scanner?assetClassId=${filters.assetClassId}`}>
+                  BUY {formatCurrency(Math.abs(diffToTarget))}
+                </Link>
+              </Badge>
+            ) : diffToTarget !== null && diffToTarget > 1 && filters.assetClassId ? (
+              <Badge variant="danger" asChild className="text-base px-3 py-1">
+                <Link to={`/scanner?assetClassId=${filters.assetClassId}`}>
+                  SELL {formatCurrency(diffToTarget)}
+                </Link>
+              </Badge>
             ) : diffToTarget !== null ? (
               <div className="text-2xl font-bold text-muted-foreground">On target</div>
             ) : (

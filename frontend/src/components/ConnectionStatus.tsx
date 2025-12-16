@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
-import { X } from "lucide-react";
+import { X, User } from "lucide-react";
 
 function formatUptime(isoTime: string | null): string {
   if (!isoTime) return "Unknown";
@@ -23,30 +23,29 @@ export function ConnectionStatus() {
   const showPopup = isPinned || isHovering;
 
   return (
-    <div className="flex items-center gap-3">
+    <div
+      className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/30 shadow-sm"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      {/* Clickable status indicator */}
+      <button
+        onClick={() => setIsPinned(!isPinned)}
+        className={`h-2.5 w-2.5 rounded-full transition-all hover:ring-2 hover:ring-offset-2 hover:ring-offset-background ${
+          isConnected
+            ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] hover:ring-green-500/50 animate-breathing"
+            : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] hover:ring-red-500/50"
+        }`}
+        title={isConnected ? "Connected to TWS" : "Disconnected from TWS"}
+      />
+
       {/* Account display */}
       {status.account && (
-        <span className="text-sm text-muted-foreground">
-          {status.account}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <User className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-sm font-medium">{status.account}</span>
+        </div>
       )}
-
-      {/* Status indicator container */}
-      <div
-        className="relative"
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
-      >
-        {/* Clickable status indicator */}
-        <button
-          onClick={() => setIsPinned(!isPinned)}
-          className={`h-2.5 w-2.5 rounded-full transition-all hover:ring-2 hover:ring-offset-2 hover:ring-offset-background ${
-            isConnected
-              ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] hover:ring-green-500/50"
-              : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] hover:ring-red-500/50"
-          }`}
-          title={isConnected ? "Connected to TWS" : "Disconnected from TWS"}
-        />
 
         {/* Status popup - positioned to the left of the indicator */}
         {showPopup && (
@@ -117,7 +116,6 @@ export function ConnectionStatus() {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }
