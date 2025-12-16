@@ -221,12 +221,20 @@ export function PositionsPage() {
     return p.marketValue ?? 0;
   };
 
+  // Get account values
+  const netLiquidation = summary?.account.netLiquidation ?? 0;
+  const cashValue = summary?.account.cashValue ?? 0;
+
   // Calculate totals (from filtered positions)
   const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
-  const totalMarketValue = filteredPositions.reduce(
+  const positionsMarketValue = filteredPositions.reduce(
     (sum, p) => sum + (p.marketValue ?? 0),
     0
   );
+  // Include cash in total market value when showing all positions
+  const showCash = !filters.assetClassId || filters.assetClassId === "all";
+  const totalMarketValue = positionsMarketValue + (showCash ? cashValue : 0);
+
   const totalExposure = filteredPositions.reduce(
     (sum, p) => sum + getPositionExposure(p),
     0
@@ -235,9 +243,6 @@ export function PositionsPage() {
     (sum, p) => sum + (p.unrealizedPnl ?? 0),
     0
   );
-
-  // Get target percentage and value for filtered asset class
-  const netLiquidation = summary?.account.netLiquidation ?? 0;
   const targetPercentage = useMemo(() => {
     if (!profile || !filters.assetClassId || filters.assetClassId === "all" || filters.assetClassId === "unassigned") {
       return null;
@@ -518,7 +523,14 @@ export function PositionsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{pos.secType}</Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline">{pos.secType}</Badge>
+                          {pos.secType === "OPT" && pos.right && (
+                            <Badge variant={pos.right === "P" ? "danger" : "success"} className="text-xs">
+                              {pos.right === "P" ? "PUT" : "CALL"}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {formatNumber(pos.position)}
@@ -614,10 +626,35 @@ export function PositionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {/* Cash row - show when viewing all positions */}
+                {showCash && cashValue !== 0 && (
+                  <TableRow>
+                    <TableCell className="font-medium">Cash</TableCell>
+                    <TableCell className="w-24">—</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">CASH</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-muted-foreground">—</span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">—</TableCell>
+                    <TableCell className="text-right font-mono">—</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(cashValue)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">—</TableCell>
+                    <TableCell className="text-right font-mono">—</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {netLiquidation > 0 ? `${((cashValue / netLiquidation) * 100).toFixed(1)}%` : "—"}
+                    </TableCell>
+                  </TableRow>
+                )}
                 {filteredPositions.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
                   const exposure = getPositionExposure(pos);
-                  const pct = totalExposure > 0 ? (exposure / totalExposure) * 100 : null;
+                  // % of Total: options use notional/netLiq, stocks use marketValue/netLiq
+                  const pctValue = pos.secType === "OPT" ? exposure : (pos.marketValue ?? 0);
+                  const pct = netLiquidation > 0 ? (pctValue / netLiquidation) * 100 : null;
                   const sparkline = getPositionSparkline(pos);
                   return (
                     <TableRow key={key}>
@@ -637,7 +674,14 @@ export function PositionsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{pos.secType}</Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline">{pos.secType}</Badge>
+                          {pos.secType === "OPT" && pos.right && (
+                            <Badge variant={pos.right === "P" ? "danger" : "success"} className="text-xs">
+                              {pos.right === "P" ? "PUT" : "CALL"}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <AssetClassSelect
