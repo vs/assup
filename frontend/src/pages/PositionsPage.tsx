@@ -645,20 +645,34 @@ export function PositionsPage() {
                 {showCash && cashValue !== 0 && (
                   <TableRow>
                     <TableCell className="font-medium">Cash</TableCell>
-                    <TableCell className="w-24">—</TableCell>
+                    <TableCell className="w-24">
+                      <Sparkline
+                        data={[{ date: "1", close: 1 }, { date: "2", close: 1 }]}
+                        loading={false}
+                        error={false}
+                      />
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline">CASH</Badge>
                     </TableCell>
                     <TableCell>
                       <span className="text-muted-foreground">—</span>
                     </TableCell>
-                    <TableCell className="text-right font-mono">—</TableCell>
-                    <TableCell className="text-right font-mono">—</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatNumber(Math.round(cashValue))}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(1)}
+                    </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(cashValue)}
                     </TableCell>
-                    <TableCell className="text-right font-mono">—</TableCell>
-                    <TableCell className="text-right font-mono">—</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(cashValue)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-green-600">
+                      {formatCurrency(0)}
+                    </TableCell>
                     <TableCell className="text-right font-mono">
                       {netLiquidation > 0 ? `${((cashValue / netLiquidation) * 100).toFixed(1)}%` : "—"}
                     </TableCell>
