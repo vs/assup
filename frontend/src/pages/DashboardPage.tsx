@@ -15,19 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
-import { RefreshCw, ChevronDown, ChevronRight, Info } from "lucide-react";
+import { RefreshCw, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -192,17 +180,14 @@ export function DashboardPage() {
         });
       }
     }
-  }
 
-  // Pie chart data (current allocation)
-  const pieData = allocationData
-    .filter((d) => d.current > 0)
-    .map((d) => ({
-      id: d.id,
-      name: d.name,
-      value: d.current,
-      color: d.color,
-    }));
+    // Sort to put Cash last
+    allocationData.sort((a, b) => {
+      if (a.name === "Cash") return 1;
+      if (b.name === "Cash") return -1;
+      return 0;
+    });
+  }
 
   if (loading && !summary) {
     return (
@@ -359,95 +344,6 @@ export function DashboardPage() {
           )}
         </div>
       )}
-
-      {/* Collapsible Charts Section */}
-      <div className="space-y-4">
-        <button
-          onClick={() => updateSettings({ chartsExpanded: !settings.chartsExpanded })}
-          className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {settings.chartsExpanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-          Charts
-        </button>
-
-        {settings.chartsExpanded && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Pie Chart */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  Current Allocation
-                  {settings.includeOptions && (
-                    <Badge variant="outline" className="font-normal text-xs">
-                      {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pieData.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">
-                    No positions to display
-                  </p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={100}
-                        label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
-                        labelLine={false}
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <RechartsTooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Bar Chart - Target vs Actual */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Target vs Current</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {allocationData.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">
-                    {profile ? "No allocation data" : "No active allocation profile"}
-                  </p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={Math.max(300, allocationData.length * 40)}>
-                    <BarChart
-                      data={allocationData}
-                      layout="vertical"
-                      margin={{ left: 80, right: 20 }}
-                    >
-                      <XAxis type="number" domain={[0, "dataMax"]} unit="%" />
-                      <YAxis type="category" dataKey="name" width={80} />
-                      <RechartsTooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
-                      <Legend />
-                      <Bar dataKey="target" name="Target" fill="#6366f1" />
-                      <Bar dataKey="current" name="Current" fill="#22c55e" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </div>
 
       {/* Options Exposure Breakdown */}
       {settings.includeOptions && hasOptionsPositions && (
