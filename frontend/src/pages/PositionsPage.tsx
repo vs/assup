@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import type { Position, AssetClass } from "@/lib/api";
+import type { Position, AssetClass, AllocationProfile, PositionSummary } from "@/lib/api";
 import { useAllocationUpdates } from "@/hooks/useSSE";
 import { useSparklines } from "@/hooks/useSparklines";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +56,8 @@ export function PositionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [positions, setPositions] = useState<Position[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
+  const [profile, setProfile] = useState<AllocationProfile | null>(null);
+  const [summary, setSummary] = useState<PositionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -97,12 +99,23 @@ export function PositionsPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const [posData, acData] = await Promise.all([
+      const [posData, acData, summaryData] = await Promise.all([
         api.positions.list(),
         api.assetClasses.list(),
+        api.positions.summary({ includeOptions: true, optionsWeightMode: "notional" }),
       ]);
       setPositions(posData);
       setAssetClasses(acData);
+      setSummary(summaryData);
+
+      // Load active allocation profile
+      try {
+        const profileData = await api.allocationProfiles.getActive();
+        setProfile(profileData);
+      } catch {
+        setProfile(null);
+      }
+
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load positions");
@@ -164,7 +177,23 @@ export function PositionsPage() {
 
   // Group positions by asset class
   const unassigned = filteredPositions.filter((p) => !p.assetClassId);
-  const assigned = filteredPositions.filter((p) => p.assetClassId);
+
+  // Helper to get position exposure (notional for options, market value for stocks)
+  const getPositionExposure = (p: Position): number => {
+    if (p.secType === "OPT" && p.notionalValue !== undefined) {
+      // For short puts, notional represents potential stock purchase
+      // For short calls, notional represents potential stock sale (negative exposure)
+      const isShort = p.position < 0;
+      const isPut = p.right === "P";
+      if (isShort && isPut) {
+        return p.notionalValue; // Short put: positive exposure (may need to buy)
+      } else if (isShort && !isPut) {
+        return -p.notionalValue; // Short call: negative exposure (may need to sell)
+      }
+      return 0; // Long options: just the premium paid (market value)
+    }
+    return p.marketValue ?? 0;
+  };
 
   // Calculate totals (from filtered positions)
   const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
@@ -172,10 +201,27 @@ export function PositionsPage() {
     (sum, p) => sum + (p.marketValue ?? 0),
     0
   );
+  const totalExposure = filteredPositions.reduce(
+    (sum, p) => sum + getPositionExposure(p),
+    0
+  );
   const totalPnl = filteredPositions.reduce(
     (sum, p) => sum + (p.unrealizedPnl ?? 0),
     0
   );
+
+  // Get target percentage and value for filtered asset class
+  const netLiquidation = summary?.account.netLiquidation ?? 0;
+  const targetPercentage = useMemo(() => {
+    if (!profile || !filters.assetClassId || filters.assetClassId === "all" || filters.assetClassId === "unassigned") {
+      return null;
+    }
+    const target = profile.targets.find((t) => t.assetClassId === filters.assetClassId);
+    return target?.targetPercentage ?? null;
+  }, [profile, filters.assetClassId]);
+
+  const targetValue = targetPercentage !== null ? (targetPercentage / 100) * netLiquidation : null;
+  const diffToTarget = targetValue !== null ? totalExposure - targetValue : null;
 
   // Count options positions
   const optionsCount = positions.filter((p) => p.secType === "OPT").length;
@@ -275,40 +321,7 @@ export function PositionsPage() {
       )}
 
       {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Positions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{filteredPositions.length}</div>
-            {filteredPositions.length !== positions.length && (
-              <p className="text-xs text-muted-foreground">of {positions.length} total</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Assigned
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{assigned.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Unassigned
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{unassigned.length}</div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -320,6 +333,11 @@ export function PositionsPage() {
               <div className="text-2xl font-bold">{formatCurrency(totalMarketValue)}</div>
             ) : (
               <div className="text-2xl font-bold text-muted-foreground">N/A</div>
+            )}
+            {totalExposure !== totalMarketValue && (
+              <p className="text-xs text-muted-foreground">
+                Exposure: {formatCurrency(totalExposure)}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -336,6 +354,46 @@ export function PositionsPage() {
               </div>
             ) : (
               <div className="text-2xl font-bold text-muted-foreground">N/A</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Target Value
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {targetValue !== null ? (
+              <>
+                <div className="text-2xl font-bold">{formatCurrency(targetValue)}</div>
+                <p className="text-xs text-muted-foreground">
+                  {targetPercentage?.toFixed(1)}% of {formatCurrency(netLiquidation)}
+                </p>
+              </>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">—</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Difference to Target
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {diffToTarget !== null ? (
+              <div className={`text-2xl font-bold ${diffToTarget >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {diffToTarget >= 0 ? "+" : ""}{formatCurrency(diffToTarget)}
+              </div>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">—</div>
+            )}
+            {diffToTarget !== null && (
+              <p className="text-xs text-muted-foreground">
+                {diffToTarget >= 0 ? "Over target" : "Under target"}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -360,6 +418,7 @@ export function PositionsPage() {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Cost Basis</TableHead>
                   <TableHead className="text-right">Mkt Value</TableHead>
+                  <TableHead className="text-right">Exposure</TableHead>
                   <TableHead className="text-right">P&L</TableHead>
                   <TableHead>Assign To</TableHead>
                 </TableRow>
@@ -367,6 +426,7 @@ export function PositionsPage() {
               <TableBody>
                 {unassigned.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
+                  const exposure = getPositionExposure(pos);
                   const sparkline = getPositionSparkline(pos);
                   return (
                     <TableRow key={key}>
@@ -396,6 +456,9 @@ export function PositionsPage() {
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {pos.secType === "OPT" ? formatCurrency(exposure) : "—"}
                       </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (
@@ -449,6 +512,7 @@ export function PositionsPage() {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Cost Basis</TableHead>
                   <TableHead className="text-right">Mkt Value</TableHead>
+                  <TableHead className="text-right">Exposure</TableHead>
                   <TableHead className="text-right">P&L</TableHead>
                   <TableHead className="text-right">% of Total</TableHead>
                 </TableRow>
@@ -456,7 +520,8 @@ export function PositionsPage() {
               <TableBody>
                 {filteredPositions.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
-                  const pct = totalMarketValue > 0 && pos.marketValue !== null ? (pos.marketValue / totalMarketValue) * 100 : null;
+                  const exposure = getPositionExposure(pos);
+                  const pct = totalExposure > 0 ? (exposure / totalExposure) * 100 : null;
                   const sparkline = getPositionSparkline(pos);
                   return (
                     <TableRow key={key}>
@@ -496,6 +561,9 @@ export function PositionsPage() {
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {pos.secType === "OPT" ? formatCurrency(exposure) : "—"}
                       </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (

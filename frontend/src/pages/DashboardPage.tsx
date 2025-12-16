@@ -490,58 +490,82 @@ export function DashboardPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left py-3 px-2">Asset Class</th>
-                    <th className="text-right py-3 px-2">Target</th>
-                    <th className="text-right py-3 px-2">Current</th>
-                    <th className="text-right py-3 px-2">Difference</th>
-                    <th className="text-right py-3 px-2">Value</th>
+                    <th className="text-right py-3 px-2">Target %</th>
+                    <th className="text-right py-3 px-2">Current %</th>
+                    <th className="text-right py-3 px-2">Diff %</th>
+                    <th className="text-right py-3 px-2">Target Value</th>
+                    <th className="text-right py-3 px-2">Current Value</th>
+                    <th className="text-right py-3 px-2">Diff Value</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allocationData.map((row) => (
-                    <tr key={row.name} className="border-b">
-                      <td className="py-3 px-2">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: row.color }}
-                          />
-                          {row.id ? (
-                            <Link
-                              to={`/positions?assetClassId=${row.id}`}
-                              className="hover:text-primary hover:underline"
-                            >
-                              {row.name}
-                            </Link>
-                          ) : (
-                            row.name
-                          )}
-                        </div>
-                      </td>
-                      <td className="text-right py-3 px-2">
-                        {row.target.toFixed(1)}%
-                      </td>
-                      <td className="text-right py-3 px-2">
-                        {row.current.toFixed(1)}%
-                      </td>
-                      <td className="text-right py-3 px-2">
-                        <span
-                          className={
-                            row.diff > 0.5
-                              ? "text-green-600"
-                              : row.diff < -0.5
-                              ? "text-red-600"
-                              : ""
-                          }
-                        >
-                          {row.diff > 0 ? "+" : ""}
-                          {row.diff.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td className="text-right py-3 px-2 font-mono">
-                        {formatCurrency(row.value)}
-                      </td>
-                    </tr>
-                  ))}
+                  {allocationData.map((row) => {
+                    const netLiq = summary?.account.netLiquidation ?? 0;
+                    const targetValue = (row.target / 100) * netLiq;
+                    const diffValue = row.value - targetValue;
+                    return (
+                      <tr key={row.name} className="border-b">
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: row.color }}
+                            />
+                            {row.id ? (
+                              <Link
+                                to={`/positions?assetClassId=${row.id}`}
+                                className="hover:text-primary hover:underline"
+                              >
+                                {row.name}
+                              </Link>
+                            ) : (
+                              row.name
+                            )}
+                          </div>
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          {row.target.toFixed(1)}%
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          {row.current.toFixed(1)}%
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          <span
+                            className={
+                              row.diff > 0.5
+                                ? "text-green-600"
+                                : row.diff < -0.5
+                                ? "text-red-600"
+                                : ""
+                            }
+                          >
+                            {row.diff > 0 ? "+" : ""}
+                            {row.diff.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono">
+                          {formatCurrency(targetValue)}
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono">
+                          {formatCurrency(row.value)}
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono">
+                          <span
+                            className={
+                              diffValue > 0
+                                ? "text-green-600"
+                                : diffValue < 0
+                                ? "text-red-600"
+                                : ""
+                            }
+                          >
+                            {diffValue > 0 ? "+" : ""}
+                            {formatCurrency(diffValue)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
