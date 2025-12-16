@@ -497,7 +497,7 @@ export function PositionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Contract</TableHead>
                   <TableHead className="w-24">30D</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -546,7 +546,7 @@ export function PositionsPage() {
                         </button>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {optionDetails || "—"}
+                        {optionDetails || (pos.secType === "STK" ? "Stock" : pos.secType)}
                       </TableCell>
                       <TableCell className="w-24">
                         <Sparkline
@@ -623,7 +623,7 @@ export function PositionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Contract</TableHead>
                   <TableHead className="w-24">30D</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Asset Class</TableHead>
@@ -676,7 +676,7 @@ export function PositionsPage() {
                         </button>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {optionDetails || "—"}
+                        {optionDetails || (pos.secType === "STK" ? "Stock" : pos.secType)}
                       </TableCell>
                       <TableCell className="w-24">
                         <Sparkline
@@ -734,7 +734,7 @@ export function PositionsPage() {
                 {showCash && cashValue !== 0 && (
                   <TableRow>
                     <TableCell className="font-medium">Cash</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">—</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">USD</TableCell>
                     <TableCell className="w-24">
                       <Sparkline
                         data={[{ date: "1", close: 1 }, { date: "2", close: 1 }]}
