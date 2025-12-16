@@ -345,91 +345,6 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Options Exposure Breakdown */}
-      {settings.includeOptions && hasOptionsPositions && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Options Exposure by Asset Class</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-2">Asset Class</th>
-                    <th className="text-right py-3 px-2">Stock Value</th>
-                    <th className="text-right py-3 px-2">
-                      <span className="inline-flex items-center gap-1">
-                        Options {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs text-xs">
-                              {settings.optionsWeightMode === "delta" ? (
-                                <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
-                              ) : (
-                                <div className="space-y-1">
-                                  <p className="font-medium">Notional = Strike × Qty × 100</p>
-                                  <p>• Short PUT: +notional (may buy stock)</p>
-                                  <p>• Long PUT: −notional (hedge)</p>
-                                  <p>• Short CALL: −notional (may sell stock)</p>
-                                  <p>• Long CALL: +notional (bullish exposure)</p>
-                                </div>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </span>
-                    </th>
-                    <th className="text-right py-3 px-2">Total Exposure</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allocationData
-                    .filter((row) => row.optionsExposure !== 0)
-                    .map((row) => (
-                      <tr key={row.name} className="border-b">
-                        <td className="py-3 px-2">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-3 w-3 rounded-full"
-                              style={{ backgroundColor: row.color }}
-                            />
-                            {row.id ? (
-                              <Link
-                                to={`/positions?assetClassId=${row.id}`}
-                                className="hover:text-primary hover:underline"
-                              >
-                                {row.name}
-                              </Link>
-                            ) : (
-                              row.name
-                            )}
-                          </div>
-                        </td>
-                        <td className="text-right py-3 px-2 font-mono">
-                          {formatCurrency(row.stockValue)}
-                        </td>
-                        <td className="text-right py-3 px-2 font-mono">
-                          <span className={row.optionsExposure > 0 ? "text-green-600" : "text-red-600"}>
-                            {row.optionsExposure > 0 ? "+" : ""}
-                            {formatCurrency(row.optionsExposure)}
-                          </span>
-                        </td>
-                        <td className="text-right py-3 px-2 font-mono font-semibold">
-                          {formatCurrency(row.value)}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Allocation Table */}
       <Card>
         <CardHeader>
@@ -559,6 +474,91 @@ export function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Options Exposure Breakdown */}
+      {settings.includeOptions && hasOptionsPositions && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Options Exposure by Asset Class</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-2">Asset Class</th>
+                    <th className="text-right py-3 px-2">Stock Value</th>
+                    <th className="text-right py-3 px-2">
+                      <span className="inline-flex items-center gap-1">
+                        Options {settings.optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs text-xs">
+                              {settings.optionsWeightMode === "delta" ? (
+                                <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
+                              ) : (
+                                <div className="space-y-1">
+                                  <p className="font-medium">Notional = Strike × Qty × 100</p>
+                                  <p>• Short PUT: +notional (may buy stock)</p>
+                                  <p>• Long PUT: −notional (hedge)</p>
+                                  <p>• Short CALL: −notional (may sell stock)</p>
+                                  <p>• Long CALL: +notional (bullish exposure)</p>
+                                </div>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </span>
+                    </th>
+                    <th className="text-right py-3 px-2">Total Exposure</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocationData
+                    .filter((row) => row.optionsExposure !== 0)
+                    .map((row) => (
+                      <tr key={row.name} className="border-b">
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: row.color }}
+                            />
+                            {row.id ? (
+                              <Link
+                                to={`/positions?assetClassId=${row.id}`}
+                                className="hover:text-primary hover:underline"
+                              >
+                                {row.name}
+                              </Link>
+                            ) : (
+                              row.name
+                            )}
+                          </div>
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono">
+                          {formatCurrency(row.stockValue)}
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono">
+                          <span className={row.optionsExposure > 0 ? "text-green-600" : "text-red-600"}>
+                            {row.optionsExposure > 0 ? "+" : ""}
+                            {formatCurrency(row.optionsExposure)}
+                          </span>
+                        </td>
+                        <td className="text-right py-3 px-2 font-mono font-semibold">
+                          {formatCurrency(row.value)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
