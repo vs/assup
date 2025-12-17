@@ -216,7 +216,29 @@ router.get("/summary", async (req: Request, res: Response) => {
         const right = contract.right === "P" ? "PUT" : "CALL";
         const expiry = contract.lastTradeDateOrContractMonth;
 
-        if (expiry && strike) {
+        // Try to use localSymbol first (IBKR's formatted option symbol)
+        // or build our own format from strike/expiry
+        if (contract.localSymbol && contract.localSymbol !== symbol) {
+          // Parse localSymbol format: "QZGE  251219P00053000" -> "QZGE Dec19'25 53 PUT"
+          const local = contract.localSymbol;
+          // Extract parts from localSymbol if it contains date info
+          const match = local.match(/(\w+)\s+(\d{6})([CP])(\d+)/);
+          if (match) {
+            const [, sym, dateStr, callPut, strikeStr] = match;
+            const yr = dateStr.slice(0, 2);
+            const mo = parseInt(dateStr.slice(2, 4), 10);
+            const dy = dateStr.slice(4, 6);
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const monthStr = months[mo - 1] || "";
+            const strikeParsed = parseInt(strikeStr, 10) / 1000;
+            const rightStr = callPut === "P" ? "PUT" : "CALL";
+            displayName = `${sym} ${monthStr}${dy}'${yr} ${strikeParsed} ${rightStr}`;
+          } else {
+            // Use localSymbol as-is if we can't parse it
+            displayName = local;
+          }
+        } else if (expiry && strike) {
+          // Fallback: build from contract fields
           // Format expiry: "20251219" -> "Dec19'25"
           const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
           const year = expiry.slice(2, 4);
