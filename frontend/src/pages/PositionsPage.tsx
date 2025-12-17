@@ -223,17 +223,18 @@ export function PositionsPage() {
 
   // Get account values
   const netLiquidation = summary?.account.netLiquidation ?? 0;
-  const cashValue = summary?.account.cashValue ?? 0;
 
   // Calculate totals (from filtered positions)
+  // Cash is now included as a position, so no special handling needed
   const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
-  const positionsMarketValue = filteredPositions.reduce(
+  const totalMarketValue = filteredPositions.reduce(
     (sum, p) => sum + (p.marketValue ?? 0),
     0
   );
-  // Include cash in total market value when showing all positions
-  const showCash = !filters.assetClassId || filters.assetClassId === "all";
-  const totalMarketValue = positionsMarketValue + (showCash ? cashValue : 0);
+  // Stocks-only market value (excludes cash)
+  const positionsMarketValue = filteredPositions
+    .filter((p) => p.secType !== "CASH")
+    .reduce((sum, p) => sum + (p.marketValue ?? 0), 0);
 
   const totalExposure = filteredPositions.reduce(
     (sum, p) => sum + getPositionExposure(p),
@@ -261,6 +262,8 @@ export function PositionsPage() {
   const sparklineSymbols = useMemo(() => {
     const uniqueSymbols = new Set<string>();
     for (const pos of filteredPositions) {
+      // Skip Cash - it doesn't have market data
+      if (pos.secType === "CASH") continue;
       const symbol = pos.underlying || pos.symbol;
       uniqueSymbols.add(symbol);
     }
@@ -269,9 +272,26 @@ export function PositionsPage() {
   const { getSparklineState } = useSparklines(sparklineSymbols);
 
   const getPositionSparkline = (pos: Position) => {
+    // Cash gets a flat green sparkline
+    if (pos.secType === "CASH") {
+      return {
+        data: [{ date: "1", close: 1 }, { date: "2", close: 1 }],
+        loading: false,
+        error: false,
+      };
+    }
     const symbol = pos.underlying || pos.symbol;
     return getSparklineState(symbol);
   };
+
+  // Sort positions to put Cash last
+  const sortedPositions = useMemo(() => {
+    return [...filteredPositions].sort((a, b) => {
+      if (a.secType === "CASH") return 1;
+      if (b.secType === "CASH") return -1;
+      return 0;
+    });
+  }, [filteredPositions]);
 
   if (loading) {
     return (
@@ -620,22 +640,27 @@ export function PositionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPositions.map((pos) => {
+                {sortedPositions.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
                   const exposure = getPositionExposure(pos);
                   // % of Total: options use notional/netLiq, stocks use marketValue/netLiq
                   const pctValue = pos.secType === "OPT" ? exposure : (pos.marketValue ?? 0);
                   const pct = netLiquidation > 0 ? (pctValue / netLiquidation) * 100 : null;
                   const sparkline = getPositionSparkline(pos);
+                  const isCash = pos.secType === "CASH";
                   return (
                     <TableRow key={key}>
                       <TableCell>
-                        <button
-                          className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                          onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
-                        >
-                          {pos.symbol}
-                        </button>
+                        {isCash ? (
+                          <span className="font-medium">{pos.symbol}</span>
+                        ) : (
+                          <button
+                            className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                            onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
+                          >
+                            {pos.symbol}
+                          </button>
+                        )}
                       </TableCell>
                       <TableCell className="w-24">
                         <Sparkline
@@ -657,7 +682,7 @@ export function PositionsPage() {
                       <TableCell>
                         <AssetClassSelect
                           value={pos.assetClassId}
-                          disabled={assigning === key}
+                          disabled={isCash || assigning === key}
                           onValueChange={(v) => handleAssign(pos, v)}
                           assetClasses={assetClasses}
                           placeholder="Assign..."
@@ -689,43 +714,6 @@ export function PositionsPage() {
                     </TableRow>
                   );
                 })}
-                {/* Cash row - always last */}
-                {showCash && cashValue !== 0 && (
-                  <TableRow>
-                    <TableCell className="font-medium">Cash</TableCell>
-                    <TableCell className="w-24">
-                      <Sparkline
-                        data={[{ date: "1", close: 1 }, { date: "2", close: 1 }]}
-                        loading={false}
-                        error={false}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">CASH</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-muted-foreground">Cash</span>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatNumber(Math.round(cashValue))}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(1)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(cashValue)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(cashValue)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-green-600">
-                      {formatCurrency(0)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {netLiquidation > 0 ? `${((cashValue / netLiquidation) * 100).toFixed(1)}%` : "—"}
-                    </TableCell>
-                  </TableRow>
-                )}
               </TableBody>
             </Table>
           )}

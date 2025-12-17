@@ -105,12 +105,28 @@ router.get("/", async (req: Request, res: Response) => {
       assignments.map((a) => [`${a.symbol}:${a.secType}`, a])
     );
 
+    // Find Cash asset class for cash position
+    const cashAssetClass = await prisma.assetClass.findFirst({
+      where: { name: "Cash" },
+    });
+
+    // Get account data (cash balance) from the service
+    const accountData = ibkrService.getAccountData();
+    const cashValue = accountData.totalCashValue || 0;
+
     // Filter out zero-quantity positions and enrich with asset class info
     const positions: Position[] = rawPositions.filter((p) => p.pos !== 0).map((p) => {
       const contract = p.contract;
-      const symbol = contract.symbol;
-      const secType = contract.secType;
-      const assignment = assignmentMap.get(`${symbol}:${secType}`);
+      const symbol = contract.symbol || "";
+      const secType = contract.secType || "";
+      const isOption = secType === "OPT";
+
+      // For options, look up assignment by underlying symbol as STK
+      const lookupSymbol = symbol;
+      const lookupSecType = isOption ? "STK" : secType;
+      const assignment = assignmentMap.get(`${lookupSymbol}:${lookupSecType}`) ||
+                        assignmentMap.get(`${symbol}:${secType}`);
+
       const costBasis = Math.abs(p.pos * p.avgCost);
       const hasMarketValue = p.marketValue !== undefined && p.marketValue !== null;
       const marketValue = hasMarketValue ? Math.abs(p.marketValue!) : null;
@@ -118,11 +134,30 @@ router.get("/", async (req: Request, res: Response) => {
       const unrealizedPnl = hasMarketValue
         ? (p.pos >= 0 ? marketValue! - costBasis : costBasis - marketValue!)
         : null;
+
+      // Format display name for options: "QZGE Dec19'25 53 PUT"
+      let displayName = symbol;
+      if (isOption) {
+        const strike = contract.strike;
+        const right = contract.right === "P" ? "PUT" : "CALL";
+        const expiry = contract.lastTradeDateOrContractMonth;
+
+        if (expiry && strike) {
+          // Format expiry: "20260102" -> "Jan02'26"
+          const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const year = expiry.slice(2, 4);
+          const monthNum = parseInt(expiry.slice(4, 6), 10);
+          const day = expiry.slice(6, 8);
+          const monthStr = months[monthNum - 1] || "";
+          displayName = `${symbol} ${monthStr}${day}'${year} ${strike} ${right}`;
+        }
+      }
+
       return {
         account: p.account,
-        symbol: symbol || "",
+        symbol: displayName,
         conId: contract.conId || 0,
-        secType: secType || "",
+        secType,
         exchange: contract.exchange || contract.primaryExch || "",
         currency: contract.currency || "",
         position: p.pos,
@@ -130,11 +165,35 @@ router.get("/", async (req: Request, res: Response) => {
         costBasis,
         marketValue,
         unrealizedPnl,
+        strike: isOption ? contract.strike : undefined,
+        expiry: isOption ? contract.lastTradeDateOrContractMonth : undefined,
+        right: isOption ? (contract.right === "P" ? "P" : "C") : undefined,
+        underlying: isOption ? symbol : undefined,
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
       };
     });
+
+    // Add Cash as a position if we have cash value
+    if (cashValue > 0) {
+      positions.push({
+        account: rawPositions[0]?.account || "",
+        symbol: "Cash",
+        conId: 0,
+        secType: "CASH",
+        exchange: "",
+        currency: "USD",
+        position: Math.round(cashValue),
+        avgCost: 1,
+        costBasis: cashValue,
+        marketValue: cashValue,
+        unrealizedPnl: 0,
+        assetClassId: cashAssetClass?.id || null,
+        assetClassName: cashAssetClass?.name || null,
+        assetClassColor: cashAssetClass?.color || null,
+      });
+    }
 
     res.json(positions);
   } catch (error) {
@@ -216,30 +275,8 @@ router.get("/summary", async (req: Request, res: Response) => {
         const right = contract.right === "P" ? "PUT" : "CALL";
         const expiry = contract.lastTradeDateOrContractMonth;
 
-        // Try to use localSymbol first (IBKR's formatted option symbol)
-        // or build our own format from strike/expiry
-        if (contract.localSymbol && contract.localSymbol !== symbol) {
-          // Parse localSymbol format: "QZGE  251219P00053000" -> "QZGE Dec19'25 53 PUT"
-          const local = contract.localSymbol;
-          // Extract parts from localSymbol if it contains date info
-          const match = local.match(/(\w+)\s+(\d{6})([CP])(\d+)/);
-          if (match) {
-            const [, sym, dateStr, callPut, strikeStr] = match;
-            const yr = dateStr.slice(0, 2);
-            const mo = parseInt(dateStr.slice(2, 4), 10);
-            const dy = dateStr.slice(4, 6);
-            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            const monthStr = months[mo - 1] || "";
-            const strikeParsed = parseInt(strikeStr, 10) / 1000;
-            const rightStr = callPut === "P" ? "PUT" : "CALL";
-            displayName = `${sym} ${monthStr}${dy}'${yr} ${strikeParsed} ${rightStr}`;
-          } else {
-            // Use localSymbol as-is if we can't parse it
-            displayName = local;
-          }
-        } else if (expiry && strike) {
-          // Fallback: build from contract fields
-          // Format expiry: "20251219" -> "Dec19'25"
+        if (expiry && strike) {
+          // Format expiry: "20260102" -> "Jan02'26"
           const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
           const year = expiry.slice(2, 4);
           const monthNum = parseInt(expiry.slice(4, 6), 10);
@@ -272,6 +309,30 @@ router.get("/summary", async (req: Request, res: Response) => {
         assetClassColor: assignment?.assetClass.color || null,
       };
     });
+
+    // Get account data (cash balance) from the service
+    const accountData = ibkrService.getAccountData();
+    const cashValue = accountData.totalCashValue || 0;
+
+    // Add Cash as a position if we have cash value
+    if (cashValue > 0) {
+      positions.push({
+        account: rawPositions[0]?.account || "",
+        symbol: "Cash",
+        conId: 0,
+        secType: "CASH",
+        exchange: "",
+        currency: "USD",
+        position: Math.round(cashValue),
+        avgCost: 1,
+        costBasis: cashValue,
+        marketValue: cashValue,
+        unrealizedPnl: 0,
+        assetClassId: cashAssetClass?.id || null,
+        assetClassName: cashAssetClass?.name || null,
+        assetClassColor: cashAssetClass?.color || null,
+      });
+    }
 
     // Calculate totals by asset class (stocks only first)
     const byAssetClass: Record<string, {
@@ -361,10 +422,6 @@ router.get("/summary", async (req: Request, res: Response) => {
         totalOptionsDelta += Math.abs(delta);
       }
     }
-
-    // Get account data (cash balance) from the service
-    const accountData = ibkrService.getAccountData();
-    const cashValue = accountData.totalCashValue || 0;
 
     // Calculate the total cash impact from options if they were executed
     // Short puts: we'd spend cash to buy stock (negative cash impact)
