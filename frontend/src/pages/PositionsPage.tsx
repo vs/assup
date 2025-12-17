@@ -540,14 +540,15 @@ export function PositionsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Badge variant="outline">{pos.secType}</Badge>
-                          {pos.secType === "OPT" && pos.right && (
-                            <Badge variant={pos.right === "P" ? "danger" : "success"} className="text-xs">
-                              {pos.right === "P" ? "PUT" : "CALL"}
-                            </Badge>
-                          )}
-                        </div>
+                        {pos.secType === "OPT" && pos.right ? (
+                          <Badge variant={pos.right === "P" ? "danger" : "success"}>
+                            {pos.right === "P" ? "PUT" : "CALL"}
+                          </Badge>
+                        ) : pos.secType === "CASH" ? (
+                          <Badge variant="outline">Cash</Badge>
+                        ) : (
+                          <Badge variant="outline">Stock</Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {formatNumber(pos.position)}
@@ -670,14 +671,15 @@ export function PositionsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Badge variant="outline">{pos.secType}</Badge>
-                          {pos.secType === "OPT" && pos.right && (
-                            <Badge variant={pos.right === "P" ? "danger" : "success"} className="text-xs">
-                              {pos.right === "P" ? "PUT" : "CALL"}
-                            </Badge>
-                          )}
-                        </div>
+                        {pos.secType === "OPT" && pos.right ? (
+                          <Badge variant={pos.right === "P" ? "danger" : "success"}>
+                            {pos.right === "P" ? "PUT" : "CALL"}
+                          </Badge>
+                        ) : pos.secType === "CASH" ? (
+                          <Badge variant="outline">Cash</Badge>
+                        ) : (
+                          <Badge variant="outline">Stock</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <AssetClassSelect
