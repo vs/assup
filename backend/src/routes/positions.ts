@@ -209,9 +209,27 @@ router.get("/summary", async (req: Request, res: Response) => {
       const notionalValue = isOption ? calculateOptionNotional(contract, pos) : undefined;
       const deltaExposure = isOption ? estimateDelta(contract, pos) * notionalValue! : undefined;
 
+      // Format display name for options: "QZGE Dec19'25 53 PUT"
+      let displayName = symbol;
+      if (isOption) {
+        const strike = contract.strike;
+        const right = contract.right === "P" ? "PUT" : "CALL";
+        const expiry = contract.lastTradeDateOrContractMonth;
+
+        if (expiry && strike) {
+          // Format expiry: "20251219" -> "Dec19'25"
+          const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const year = expiry.slice(2, 4);
+          const monthNum = parseInt(expiry.slice(4, 6), 10);
+          const day = expiry.slice(6, 8);
+          const monthStr = months[monthNum - 1] || "";
+          displayName = `${symbol} ${monthStr}${day}'${year} ${strike} ${right}`;
+        }
+      }
+
       return {
         account: p.account,
-        symbol,
+        symbol: displayName,
         conId: contract.conId || 0,
         secType,
         exchange: contract.exchange || contract.primaryExch || "",
