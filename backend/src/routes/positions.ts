@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { prisma } from "../db/index.js";
 import { Contract } from "@stoqey/ib";
+import { formatDisplayName, getOptionRight } from "../utils/contract.js";
 
 const router = Router();
 
@@ -139,24 +140,7 @@ router.get("/", async (req: Request, res: Response) => {
       // Calculate notional value and delta exposure for options
       const notionalValue = isOption ? calculateOptionNotional(contract, p.pos) : undefined;
       const deltaExposure = isOption ? estimateDelta(contract, p.pos) * notionalValue! : undefined;
-
-      // Format display name for options: "QZGE Dec19'25 53 PUT"
-      let displayName = symbol;
-      if (isOption) {
-        const strike = contract.strike;
-        const right = contract.right === "P" ? "PUT" : "CALL";
-        const expiry = contract.lastTradeDateOrContractMonth;
-
-        if (expiry && strike) {
-          // Format expiry: "20260102" -> "Jan02'26"
-          const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-          const year = expiry.slice(2, 4);
-          const monthNum = parseInt(expiry.slice(4, 6), 10);
-          const day = expiry.slice(6, 8);
-          const monthStr = months[monthNum - 1] || "";
-          displayName = `${symbol} ${monthStr}${day}'${year} ${strike} ${right}`;
-        }
-      }
+      const displayName = formatDisplayName(contract);
 
       return {
         account: p.account,
@@ -172,7 +156,7 @@ router.get("/", async (req: Request, res: Response) => {
         unrealizedPnl,
         strike: isOption ? contract.strike : undefined,
         expiry: isOption ? contract.lastTradeDateOrContractMonth : undefined,
-        right: isOption ? (contract.right === "P" ? "P" : "C") : undefined,
+        right: getOptionRight(contract),
         underlying: isOption ? symbol : undefined,
         notionalValue,
         deltaExposure,
@@ -275,24 +259,7 @@ router.get("/summary", async (req: Request, res: Response) => {
         : null;
       const notionalValue = isOption ? calculateOptionNotional(contract, pos) : undefined;
       const deltaExposure = isOption ? estimateDelta(contract, pos) * notionalValue! : undefined;
-
-      // Format display name for options: "QZGE Dec19'25 53 PUT"
-      let displayName = symbol;
-      if (isOption) {
-        const strike = contract.strike;
-        const right = contract.right === "P" ? "PUT" : "CALL";
-        const expiry = contract.lastTradeDateOrContractMonth;
-
-        if (expiry && strike) {
-          // Format expiry: "20260102" -> "Jan02'26"
-          const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-          const year = expiry.slice(2, 4);
-          const monthNum = parseInt(expiry.slice(4, 6), 10);
-          const day = expiry.slice(6, 8);
-          const monthStr = months[monthNum - 1] || "";
-          displayName = `${symbol} ${monthStr}${day}'${year} ${strike} ${right}`;
-        }
-      }
+      const displayName = formatDisplayName(contract);
 
       return {
         account: p.account,
@@ -308,7 +275,7 @@ router.get("/summary", async (req: Request, res: Response) => {
         unrealizedPnl,
         strike: isOption ? contract.strike : undefined,
         expiry: isOption ? contract.lastTradeDateOrContractMonth : undefined,
-        right: isOption ? (contract.right === "P" ? "P" : "C") : undefined,
+        right: getOptionRight(contract),
         underlying: isOption ? symbol : undefined,
         notionalValue,
         deltaExposure,

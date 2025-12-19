@@ -306,8 +306,10 @@ export const watchlists = {
 export interface Order {
   orderId: number;
   symbol: string;
+  displayName: string;
   conId: number;
   secType: string;
+  right?: "P" | "C";
   action: "BUY" | "SELL";
   quantity: number;
   orderType: string;

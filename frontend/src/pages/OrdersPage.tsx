@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { OrderImpact } from "@/lib/api";
 import { useOrderUpdates } from "@/hooks/useSSE";
@@ -118,22 +119,29 @@ export function OrdersPage() {
               <TableBody>
                 {impact.orders.map((order) => (
                   <TableRow key={order.orderId}>
-                    <TableCell className="font-medium">{order.symbol}</TableCell>
+                    <TableCell className="font-medium">{order.displayName}</TableCell>
                     <TableCell>
-                      {order.secType === "OPT" ? (
-                        <Badge variant="outline">Option</Badge>
+                      {order.secType === "OPT" && order.right ? (
+                        <Badge variant={order.right === "P" ? "danger" : "success"}>
+                          {order.right === "P" ? "PUT" : "CALL"}
+                        </Badge>
                       ) : (
                         <Badge variant="outline">Stock</Badge>
                       )}
                     </TableCell>
                     <TableCell>
-                      {order.assetClassName ? (
+                      {order.assetClassName && order.assetClassId ? (
                         <div className="flex items-center gap-2">
                           <div
                             className="h-2 w-2 rounded-full"
                             style={{ backgroundColor: order.assetClassColor || "#6366f1" }}
                           />
-                          {order.assetClassName}
+                          <Link
+                            to={`/positions?assetClassId=${order.assetClassId}`}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {order.assetClassName}
+                          </Link>
                         </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>

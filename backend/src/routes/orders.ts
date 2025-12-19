@@ -2,14 +2,17 @@ import { Router, Request, Response } from "express";
 import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { prisma } from "../db/index.js";
 import { OpenOrder as IBOpenOrder } from "@stoqey/ib";
+import { formatDisplayName, getOptionRight } from "../utils/contract.js";
 
 const router = Router();
 
 export interface Order {
   orderId: number;
   symbol: string;
+  displayName: string;
   conId: number;
   secType: string;
+  right?: "P" | "C";
   action: "BUY" | "SELL";
   quantity: number;
   orderType: string;
@@ -63,8 +66,9 @@ router.get("/", async (req: Request, res: Response) => {
     const orders: Order[] = rawOrders
       .filter((o) => o.order?.orderType === "LMT")
       .map((o) => {
-        const symbol = o.contract?.symbol || "";
-        const secType = o.contract?.secType || "STK";
+        const contract = o.contract;
+        const symbol = contract?.symbol || "";
+        const secType = contract?.secType || "STK";
         const key = `${symbol}:${secType}`;
         const assignment = assignmentMap.get(key);
         const quantity = o.order?.totalQuantity || 0;
@@ -73,8 +77,10 @@ router.get("/", async (req: Request, res: Response) => {
         return {
           orderId: o.orderId || 0,
           symbol,
-          conId: o.contract?.conId || 0,
+          displayName: formatDisplayName(contract || {}),
+          conId: contract?.conId || 0,
           secType,
+          right: getOptionRight(contract || {}),
           action: o.order?.action as "BUY" | "SELL",
           quantity,
           orderType: o.order?.orderType || "",
@@ -166,8 +172,9 @@ router.get("/impact", async (req: Request, res: Response) => {
     const orders: Order[] = [];
 
     for (const o of limitOrders) {
-      const symbol = o.contract?.symbol || "";
-      const secType = o.contract?.secType || "STK";
+      const contract = o.contract;
+      const symbol = contract?.symbol || "";
+      const secType = contract?.secType || "STK";
       const key = `${symbol}:${secType}`;
       const assignment = assignmentMap.get(key);
       const quantity = o.order?.totalQuantity || 0;
@@ -178,8 +185,10 @@ router.get("/impact", async (req: Request, res: Response) => {
       orders.push({
         orderId: o.orderId || 0,
         symbol,
-        conId: o.contract?.conId || 0,
+        displayName: formatDisplayName(contract || {}),
+        conId: contract?.conId || 0,
         secType,
+        right: getOptionRight(contract || {}),
         action,
         quantity,
         orderType: o.order?.orderType || "",
