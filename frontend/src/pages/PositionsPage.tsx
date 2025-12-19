@@ -343,23 +343,6 @@ export function PositionsPage() {
             </Label>
           </div>
 
-          {filters.includeOptions && (
-            <Select
-              value={filters.optionsWeightMode}
-              onValueChange={(v: "notional" | "delta") =>
-                setFilters({ ...filters, optionsWeightMode: v })
-              }
-            >
-              <SelectTrigger className="w-36 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="notional">Notional</SelectItem>
-                <SelectItem value="delta">Delta-weighted</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-
           {(filters.assetClassId || !filters.includeOptions) && (
             <Button
               variant="ghost"

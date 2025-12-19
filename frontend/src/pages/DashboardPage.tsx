@@ -8,13 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { RefreshCw, Info } from "lucide-react";
 import {
   Tooltip,
@@ -228,23 +221,6 @@ export function DashboardPage() {
               Include Options
             </Label>
           </div>
-
-          {settings.includeOptions && (
-            <Select
-              value={settings.optionsWeightMode}
-              onValueChange={(v: "notional" | "delta") =>
-                updateSettings({ optionsWeightMode: v })
-              }
-            >
-              <SelectTrigger className="w-36 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="notional">Notional</SelectItem>
-                <SelectItem value="delta">Delta-weighted</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
 
           <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
