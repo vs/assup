@@ -107,10 +107,10 @@ export function OrdersPage() {
                 <TableRow>
                   <TableHead>Symbol</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Asset Class</TableHead>
                   <TableHead>Action</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Limit Price</TableHead>
-                  <TableHead>Asset Class</TableHead>
                   <TableHead className="text-right">Est. Value</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -120,18 +120,11 @@ export function OrdersPage() {
                   <TableRow key={order.orderId}>
                     <TableCell className="font-medium">{order.symbol}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{order.secType}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={order.action === "BUY" ? "default" : "secondary"}>
-                        {order.action}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatNumber(order.quantity)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(order.limitPrice || 0)}
+                      {order.secType === "OPT" ? (
+                        <Badge variant="outline">Option</Badge>
+                      ) : (
+                        <Badge variant="outline">Stock</Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       {order.assetClassName ? (
@@ -143,8 +136,19 @@ export function OrdersPage() {
                           {order.assetClassName}
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={order.action === "BUY" ? "success" : "danger"}>
+                        {order.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatNumber(order.quantity)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(order.limitPrice || 0)}
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(order.estimatedValue || 0)}
