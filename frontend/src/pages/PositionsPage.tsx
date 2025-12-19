@@ -488,6 +488,7 @@ export function PositionsPage() {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Cost Basis</TableHead>
                   <TableHead className="text-right">Mkt Value</TableHead>
+                  <TableHead className="text-right">P&L</TableHead>
                   <TableHead className="text-right">
                     <span className="inline-flex items-center gap-1">
                       Exposure
@@ -510,7 +511,6 @@ export function PositionsPage() {
                       </TooltipProvider>
                     </span>
                   </TableHead>
-                  <TableHead className="text-right">P&L</TableHead>
                   <TableHead>Assign To</TableHead>
                 </TableRow>
               </TableHeader>
@@ -556,15 +556,15 @@ export function PositionsPage() {
                       <TableCell className="text-right font-mono">
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
-                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
-                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
-                      </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (
                           <>{pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}</>
                         ) : (
                           <span className="text-muted-foreground">N/A</span>
                         )}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
+                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
                       </TableCell>
                       <TableCell>
                         <AssetClassSelect
@@ -611,6 +611,7 @@ export function PositionsPage() {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Cost Basis</TableHead>
                   <TableHead className="text-right">Mkt Value</TableHead>
+                  <TableHead className="text-right">P&L</TableHead>
                   <TableHead className="text-right">
                     <span className="inline-flex items-center gap-1">
                       Exposure
@@ -633,7 +634,6 @@ export function PositionsPage() {
                       </TooltipProvider>
                     </span>
                   </TableHead>
-                  <TableHead className="text-right">P&L</TableHead>
                   <TableHead className="text-right">% of Total</TableHead>
                 </TableRow>
               </TableHeader>
@@ -696,15 +696,15 @@ export function PositionsPage() {
                       <TableCell className="text-right font-mono">
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
-                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
-                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
-                      </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (
                           <>{pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}</>
                         ) : (
                           <span className="text-muted-foreground">N/A</span>
                         )}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
+                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
                       </TableCell>
                       <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (pct !== null && pct >= 0 ? "text-green-600" : pct !== null ? "text-red-600" : "") : ""}`}>
                         {pct !== null ? `${pos.secType === "OPT" && pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` : <span className="text-muted-foreground">N/A</span>}
