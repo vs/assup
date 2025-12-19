@@ -224,13 +224,13 @@ export function PositionsPage() {
   // Calculate totals (from filtered positions)
   // Cash is now included as a position, so no special handling needed
   const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
-  const totalMarketValue = filteredPositions.reduce(
-    (sum, p) => sum + (p.marketValue ?? 0),
-    0
-  );
-  // Stocks-only market value (excludes cash)
-  const positionsMarketValue = filteredPositions
-    .filter((p) => p.secType !== "CASH")
+
+  // Check if we're viewing all classes (no filter or "all")
+  const isAllClasses = !filters.assetClassId || filters.assetClassId === "all";
+
+  // Stocks-only market value (excludes options and cash) - always from filtered positions
+  const stocksMarketValue = filteredPositions
+    .filter((p) => p.secType !== "CASH" && p.secType !== "OPT")
     .reduce((sum, p) => sum + (p.marketValue ?? 0), 0);
 
   const totalExposure = filteredPositions.reduce(
@@ -395,13 +395,15 @@ export function PositionsPage() {
           </CardHeader>
           <CardContent>
             {hasAnyMarketValue ? (
-              <div className="text-2xl font-bold">{formatCurrency(totalMarketValue)}</div>
+              <div className="text-2xl font-bold">
+                {formatCurrency(isAllClasses ? netLiquidation : totalExposure)}
+              </div>
             ) : (
               <div className="text-2xl font-bold text-muted-foreground">N/A</div>
             )}
-            {totalExposure !== totalMarketValue && (
+            {stocksMarketValue > 0 && (
               <p className="text-xs text-muted-foreground">
-                Stocks: {formatCurrency(positionsMarketValue)}
+                Stocks: {formatCurrency(stocksMarketValue)}
               </p>
             )}
           </CardContent>
