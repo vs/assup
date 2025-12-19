@@ -136,6 +136,10 @@ router.get("/", async (req: Request, res: Response) => {
         ? (p.pos >= 0 ? marketValue! - costBasis : costBasis - marketValue!)
         : null;
 
+      // Calculate notional value and delta exposure for options
+      const notionalValue = isOption ? calculateOptionNotional(contract, p.pos) : undefined;
+      const deltaExposure = isOption ? estimateDelta(contract, p.pos) * notionalValue! : undefined;
+
       // Format display name for options: "QZGE Dec19'25 53 PUT"
       let displayName = symbol;
       if (isOption) {
@@ -170,6 +174,8 @@ router.get("/", async (req: Request, res: Response) => {
         expiry: isOption ? contract.lastTradeDateOrContractMonth : undefined,
         right: isOption ? (contract.right === "P" ? "P" : "C") : undefined,
         underlying: isOption ? symbol : undefined,
+        notionalValue,
+        deltaExposure,
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
