@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import type { ScannerCriteria, ScannerPreset, UnderinvestedClass, ScanResult, AssetClass } from "@/lib/api";
+import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Save, TrendingDown } from "lucide-react";
+import { Search, Save } from "lucide-react";
 
 const DEFAULT_CRITERIA: ScannerCriteria = {
   minDaysToExpiry: 30,
@@ -44,7 +44,6 @@ export function ScannerPage() {
     return DEFAULT_CRITERIA;
   });
   const [presets, setPresets] = useState<ScannerPreset[]>([]);
-  const [underinvested, setUnderinvested] = useState<UnderinvestedClass[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,13 +57,11 @@ export function ScannerPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const [presetsData, underData, acData] = await Promise.all([
+      const [presetsData, acData] = await Promise.all([
         api.scanner.presets.list(),
-        api.scanner.underinvested(),
         api.assetClasses.list(),
       ]);
       setPresets(presetsData);
-      setUnderinvested(underData.underinvested);
       setAssetClasses(acData);
 
       // Load default preset if exists
@@ -147,58 +144,6 @@ export function ScannerPage() {
           {error}
         </div>
       )}
-
-      {/* Underinvested Asset Classes */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingDown className="h-5 w-5" />
-            Underinvested Asset Classes
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {underinvested.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">
-              All asset classes are at or above target allocation.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Asset Class</TableHead>
-                  <TableHead className="text-right">Target</TableHead>
-                  <TableHead className="text-right">Current</TableHead>
-                  <TableHead className="text-right">Difference</TableHead>
-                  <TableHead className="text-right">Shortfall</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {underinvested.map((uc) => (
-                  <TableRow key={uc.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: uc.color }}
-                        />
-                        {uc.name}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">{uc.targetPercentage.toFixed(1)}%</TableCell>
-                    <TableCell className="text-right">{uc.currentPercentage.toFixed(1)}%</TableCell>
-                    <TableCell className="text-right text-red-600">
-                      {uc.difference.toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(uc.shortfall)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Scanner Criteria */}
       <Card>
