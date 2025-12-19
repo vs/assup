@@ -197,26 +197,23 @@ export function PositionsPage() {
   // Group positions by asset class
   const unassigned = filteredPositions.filter((p) => !p.assetClassId);
 
-  // Helper to get position exposure (notional/delta for options, market value for stocks)
+  // Helper to get position exposure
+  // Stocks/Cash: exposure = market value
+  // Options: exposure = (+/-1) * strike * quantity * 100
+  //   +1 if we BUY underlying when exercised (short PUT, long CALL)
+  //   -1 if we SELL underlying when exercised (short CALL, long PUT)
   const getPositionExposure = (p: Position): number => {
     if (p.secType === "OPT" && p.notionalValue !== undefined) {
       const isShort = p.position < 0;
       const isPut = p.right === "P";
 
-      // Calculate notional exposure based on option type
-      let notionalExposure = 0;
-      if (isPut) {
-        notionalExposure = isShort ? p.notionalValue : -p.notionalValue;
-      } else {
-        // Calls
-        notionalExposure = isShort ? -p.notionalValue : p.notionalValue;
-      }
-
-      if (filters.optionsWeightMode === "delta") {
-        // Delta-weighted: use 0.5 as ATM assumption
-        return notionalExposure * 0.5;
-      }
-      return notionalExposure;
+      // Determine if we buy or sell underlying when option is exercised
+      // Short PUT: assigned → we buy underlying → positive exposure
+      // Long CALL: exercise → we buy underlying → positive exposure
+      // Short CALL: assigned → we sell underlying → negative exposure
+      // Long PUT: exercise → we sell underlying → negative exposure
+      const willBuyUnderlying = (isPut && isShort) || (!isPut && !isShort);
+      return willBuyUnderlying ? p.notionalValue : -p.notionalValue;
     }
     return p.marketValue ?? 0;
   };
@@ -559,8 +556,8 @@ export function PositionsPage() {
                       <TableCell className="text-right font-mono">
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(exposure)}
+                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
+                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
                       </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (
@@ -644,9 +641,8 @@ export function PositionsPage() {
                 {sortedPositions.map((pos) => {
                   const key = `${pos.symbol}:${pos.secType}`;
                   const exposure = getPositionExposure(pos);
-                  // % of Total: options use notional/netLiq, stocks use marketValue/netLiq
-                  const pctValue = pos.secType === "OPT" ? exposure : (pos.marketValue ?? 0);
-                  const pct = netLiquidation > 0 ? (pctValue / netLiquidation) * 100 : null;
+                  // % of Total: exposure / netLiquidation for all positions
+                  const pct = netLiquidation > 0 ? (exposure / netLiquidation) * 100 : null;
                   const sparkline = getPositionSparkline(pos);
                   const isCash = pos.secType === "CASH";
                   return (
@@ -700,8 +696,8 @@ export function PositionsPage() {
                       <TableCell className="text-right font-mono">
                         {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(exposure)}
+                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
+                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
                       </TableCell>
                       <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
                         {pos.unrealizedPnl !== null ? (
@@ -710,8 +706,8 @@ export function PositionsPage() {
                           <span className="text-muted-foreground">N/A</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {pct !== null ? `${pct.toFixed(1)}%` : <span className="text-muted-foreground">N/A</span>}
+                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (pct !== null && pct >= 0 ? "text-green-600" : pct !== null ? "text-red-600" : "") : ""}`}>
+                        {pct !== null ? `${pos.secType === "OPT" && pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` : <span className="text-muted-foreground">N/A</span>}
                       </TableCell>
                     </TableRow>
                   );

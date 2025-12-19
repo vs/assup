@@ -129,6 +129,7 @@ router.get("/", async (req: Request, res: Response) => {
 
       const costBasis = Math.abs(p.pos * p.avgCost);
       const hasMarketValue = p.marketValue !== undefined && p.marketValue !== null;
+      // Use absolute market value as reported by TWS
       const marketValue = hasMarketValue ? Math.abs(p.marketValue!) : null;
       // For short positions (pos < 0), profit when market value decreases
       const unrealizedPnl = hasMarketValue
@@ -260,6 +261,7 @@ router.get("/summary", async (req: Request, res: Response) => {
 
       const costBasis = Math.abs(pos * avgCost);
       const hasMarketValue = p.marketValue !== undefined && p.marketValue !== null;
+      // Use absolute market value as reported by TWS
       const marketValue = hasMarketValue ? Math.abs(p.marketValue!) : null;
       // For short positions (pos < 0), profit when market value decreases
       const unrealizedPnl = hasMarketValue
@@ -347,9 +349,9 @@ router.get("/summary", async (req: Request, res: Response) => {
     let unassignedValue = 0;
     let totalStockValue = 0;
 
-    // First pass: stocks
+    // First pass: stocks (skip options and cash - cash is handled separately via cashValue)
     for (const pos of positions) {
-      if (pos.secType === "OPT") continue;
+      if (pos.secType === "OPT" || pos.secType === "CASH") continue;
 
       const value = pos.marketValue || 0;
       totalStockValue += value;
