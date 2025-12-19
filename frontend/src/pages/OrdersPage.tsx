@@ -13,15 +13,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
 import { RefreshCw } from "lucide-react";
 
 export function OrdersPage() {
@@ -66,23 +57,7 @@ export function OrdersPage() {
       maximumFractionDigits: 2,
     }).format(value);
 
-  // Prepare chart data
-  const chartData = impact
-    ? impact.currentAllocation.map((curr) => {
-        const proj = impact.projectedAllocation.find((p) => p.id === curr.id);
-        return {
-          name: curr.name,
-          current: curr.percentage,
-          projected: proj?.percentage || 0,
-          color: curr.color,
-        };
-      })
-    : [];
-
   const hasOrders = impact && impact.orders.length > 0;
-  const valueChange = impact
-    ? impact.totalProjectedValue - impact.totalCurrentValue
-    : 0;
 
   if (loading && !impact) {
     return (
@@ -96,9 +71,9 @@ export function OrdersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Orders Impact Analysis</h1>
+          <h1 className="text-2xl font-bold">Orders</h1>
           <p className="text-muted-foreground">
-            See how your pending limit orders would affect allocation if executed.
+            View your pending limit orders.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
@@ -179,140 +154,6 @@ export function OrdersPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Impact Visualization */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Summary Cards */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Portfolio Value</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Current</div>
-                <div className="text-2xl font-bold">
-                  {formatCurrency(impact?.totalCurrentValue || 0)}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Projected</div>
-                <div className="text-2xl font-bold">
-                  {formatCurrency(impact?.totalProjectedValue || 0)}
-                </div>
-              </div>
-            </div>
-            {hasOrders && valueChange !== 0 && (
-              <div className="mt-4 pt-4 border-t">
-                <div className="text-sm text-muted-foreground">Change</div>
-                <div
-                  className={`text-xl font-bold ${
-                    valueChange > 0 ? "text-green-600" : "text-red-600"
-                  }`}
-                >
-                  {valueChange > 0 ? "+" : ""}
-                  {formatCurrency(valueChange)}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Allocation Comparison</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {chartData.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                No allocation data available
-              </p>
-            ) : (
-              <ResponsiveContainer width="100%" height={Math.max(250, chartData.length * 40)}>
-                <BarChart data={chartData} layout="vertical" margin={{ left: 80 }}>
-                  <XAxis type="number" domain={[0, "dataMax"]} unit="%" />
-                  <YAxis type="category" dataKey="name" width={80} />
-                  <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
-                  <Legend />
-                  <Bar dataKey="current" name="Current" fill="#6366f1" />
-                  <Bar dataKey="projected" name="Projected" fill="#22c55e" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Allocation Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Allocation Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!impact || impact.currentAllocation.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              No allocation data available
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Asset Class</TableHead>
-                  <TableHead className="text-right">Current %</TableHead>
-                  <TableHead className="text-right">Projected %</TableHead>
-                  <TableHead className="text-right">Change</TableHead>
-                  <TableHead className="text-right">Current Value</TableHead>
-                  <TableHead className="text-right">Projected Value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {impact.currentAllocation.map((curr) => {
-                  const proj = impact.projectedAllocation.find((p) => p.id === curr.id);
-                  const pctChange = (proj?.percentage || 0) - curr.percentage;
-                  return (
-                    <TableRow key={curr.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: curr.color }}
-                          />
-                          {curr.name}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">{curr.percentage.toFixed(1)}%</TableCell>
-                      <TableCell className="text-right">
-                        {(proj?.percentage || 0).toFixed(1)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span
-                          className={
-                            pctChange > 0.1
-                              ? "text-green-600"
-                              : pctChange < -0.1
-                              ? "text-red-600"
-                              : ""
-                          }
-                        >
-                          {pctChange > 0 ? "+" : ""}
-                          {pctChange.toFixed(1)}%
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(curr.value)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(proj?.value || 0)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
               </TableBody>
             </Table>
           )}
