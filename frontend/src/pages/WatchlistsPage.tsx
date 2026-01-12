@@ -294,24 +294,18 @@ export function WatchlistsPage() {
                             })()}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">{item.secType}</Badge>
+                            <Badge variant="outline">
+                              {item.secType === "STK" ? "Stock" : item.secType}
+                            </Badge>
                           </TableCell>
                           <TableCell>
-                            {item.assetClassName ? (
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="h-2 w-2 rounded-full"
-                                  style={{ backgroundColor: item.assetClassColor || "#6366f1" }}
-                                />
-                                {item.assetClassName}
-                              </div>
-                            ) : (
-                              <AssetClassSelect
-                                onValueChange={(v) => handleAssignAssetClass(item, v)}
-                                placeholder="Assign..."
-                                assetClasses={assetClasses}
-                              />
-                            )}
+                            <AssetClassSelect
+                              value={item.assetClassId || undefined}
+                              onValueChange={(v) => handleAssignAssetClass(item, v)}
+                              placeholder="Assign..."
+                              assetClasses={assetClasses}
+                              className="w-44"
+                            />
                           </TableCell>
                           <TableCell>
                             <Button
