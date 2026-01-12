@@ -484,12 +484,13 @@ export function PositionsPage() {
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs text-xs">
                             <div className="space-y-1">
-                              <p className="font-medium">Stocks: Market Value</p>
+                              <p className="font-medium">Total exposure = Stock Value + Options Notional</p>
+                              <p className="font-medium mt-1">Stocks: Market Value</p>
                               <p className="font-medium">Options: Strike × Qty × 100</p>
-                              <p>• Short PUT: +exposure (may buy stock)</p>
-                              <p>• Long PUT: −exposure (hedge)</p>
-                              <p>• Short CALL: −exposure (may sell stock)</p>
-                              <p>• Long CALL: +exposure (bullish)</p>
+                              <p className="mt-1">• Short PUT: +notional (obligation to buy)</p>
+                              <p>• Long PUT: −notional (right to sell/hedge)</p>
+                              <p>• Short CALL: −notional (obligation to sell)</p>
+                              <p>• Long CALL: +notional (right to buy)</p>
                             </div>
                           </TooltipContent>
                         </Tooltip>
@@ -607,12 +608,13 @@ export function PositionsPage() {
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs text-xs">
                             <div className="space-y-1">
-                              <p className="font-medium">Stocks: Market Value</p>
+                              <p className="font-medium">Total exposure = Stock Value + Options Notional</p>
+                              <p className="font-medium mt-1">Stocks: Market Value</p>
                               <p className="font-medium">Options: Strike × Qty × 100</p>
-                              <p>• Short PUT: +exposure (may buy stock)</p>
-                              <p>• Long PUT: −exposure (hedge)</p>
-                              <p>• Short CALL: −exposure (may sell stock)</p>
-                              <p>• Long CALL: +exposure (bullish)</p>
+                              <p className="mt-1">• Short PUT: +notional (obligation to buy)</p>
+                              <p>• Long PUT: −notional (right to sell/hedge)</p>
+                              <p>• Short CALL: −notional (obligation to sell)</p>
+                              <p>• Long CALL: +notional (right to buy)</p>
                             </div>
                           </TooltipContent>
                         </Tooltip>

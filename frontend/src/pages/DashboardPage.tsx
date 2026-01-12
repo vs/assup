@@ -288,17 +288,14 @@ export function DashboardPage() {
                         <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs text-xs">
-                        {settings.optionsWeightMode === "delta" ? (
-                          <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
-                        ) : (
-                          <div className="space-y-1">
-                            <p className="font-medium">Notional = Strike × Qty × 100</p>
-                            <p>• Short PUT: +notional (may buy stock)</p>
-                            <p>• Long PUT: −notional (hedge)</p>
-                            <p>• Short CALL: −notional (may sell stock)</p>
-                            <p>• Long CALL: +notional (bullish exposure)</p>
-                          </div>
-                        )}
+                        <div className="space-y-1">
+                          <p className="font-medium">Total exposure = Stock Value + Options Notional</p>
+                          <p className="font-medium mt-1">Options: Strike × Qty × 100</p>
+                          <p className="mt-1">• Short PUT: +notional (obligation to buy)</p>
+                          <p>• Long PUT: −notional (right to sell/hedge)</p>
+                          <p>• Short CALL: −notional (obligation to sell)</p>
+                          <p>• Long CALL: +notional (right to buy)</p>
+                        </div>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -466,17 +463,14 @@ export function DashboardPage() {
                               <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs text-xs">
-                              {settings.optionsWeightMode === "delta" ? (
-                                <p>Delta-weighted exposure estimates directional risk using a 0.5 delta assumption for ATM options.</p>
-                              ) : (
-                                <div className="space-y-1">
-                                  <p className="font-medium">Notional = Strike × Qty × 100</p>
-                                  <p>• Short PUT: +notional (may buy stock)</p>
-                                  <p>• Long PUT: −notional (hedge)</p>
-                                  <p>• Short CALL: −notional (may sell stock)</p>
-                                  <p>• Long CALL: +notional (bullish exposure)</p>
-                                </div>
-                              )}
+                              <div className="space-y-1">
+                                <p className="font-medium">Total exposure = Stock Value + Options Notional</p>
+                                <p className="font-medium mt-1">Options: Strike × Qty × 100</p>
+                                <p className="mt-1">• Short PUT: +notional (obligation to buy)</p>
+                                <p>• Long PUT: −notional (right to sell/hedge)</p>
+                                <p>• Short CALL: −notional (obligation to sell)</p>
+                                <p>• Long CALL: +notional (right to buy)</p>
+                              </div>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
