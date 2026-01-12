@@ -19,7 +19,9 @@ services:
       - assup-default
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     image: assup-backend
     container_name: assup-backend
     ports:
@@ -37,7 +39,9 @@ services:
       - assup-default
 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     image: assup-frontend
     container_name: assup-frontend
     ports:

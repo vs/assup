@@ -3,12 +3,26 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Copy root package files for workspace
 COPY package*.json ./
+COPY tsconfig.base.json ./
+
+# Copy shared package
+COPY packages/shared ./packages/shared
+
+# Copy frontend package
+COPY frontend/package*.json ./frontend/
 
 # Install all dependencies
 RUN npm install
 
-COPY . .
+# Copy frontend source
+COPY frontend ./frontend
+
+# Build shared package
+RUN npm run build -w @assup/shared
+
+WORKDIR /app/frontend
 
 EXPOSE 5173
 

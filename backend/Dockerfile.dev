@@ -3,13 +3,27 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Copy root package files for workspace
 COPY package*.json ./
-COPY prisma ./prisma
+COPY tsconfig.base.json ./
+
+# Copy shared package
+COPY packages/shared ./packages/shared
+
+# Copy backend package
+COPY backend/package*.json ./backend/
+COPY backend/prisma ./backend/prisma
 
 # Install all dependencies (including devDependencies for tsx)
 RUN npm install
 
-COPY . .
+# Copy backend source
+COPY backend ./backend
+
+# Build shared package
+RUN npm run build -w @assup/shared
+
+WORKDIR /app/backend
 
 EXPOSE 3000
 

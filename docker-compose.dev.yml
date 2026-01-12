@@ -4,22 +4,24 @@
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
     volumes:
-      - ./backend/src:/app/src
-      - ./backend/prisma:/app/prisma
+      - ./backend/src:/app/backend/src
+      - ./backend/prisma:/app/backend/prisma
+      - ./packages/shared/src:/app/packages/shared/src
     command: npm run dev
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: frontend/Dockerfile.dev
     environment:
       - DOCKER=true
     volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/index.html:/app/index.html
+      - ./frontend/src:/app/frontend/src
+      - ./frontend/index.html:/app/frontend/index.html
+      - ./packages/shared/src:/app/packages/shared/src
     ports:
       - "5173:5173"
     command: npm run dev -- --host
