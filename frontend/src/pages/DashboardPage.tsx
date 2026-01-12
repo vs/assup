@@ -324,14 +324,7 @@ export function DashboardPage() {
       {/* Allocation Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Allocation Details
-            {profile && (
-              <Badge variant="secondary" className="font-normal">
-                Profile: {profile.name}
-              </Badge>
-            )}
-          </CardTitle>
+          <CardTitle>Allocation Details</CardTitle>
         </CardHeader>
         <CardContent>
           {allocationData.length === 0 ? (
