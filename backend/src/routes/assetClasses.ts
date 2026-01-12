@@ -1,11 +1,27 @@
-import { Router, Request, Response } from "express";
+/**
+ * Asset Classes API routes
+ * CRUD operations for asset class management
+ */
+
+import { Router } from "express";
 import { prisma } from "../db/index.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
+import { validate } from "../middleware/validate.js";
+import {
+  assetClassCreateSchema,
+  assetClassUpdateSchema,
+  assetClassIdParamSchema,
+} from "@assup/shared";
 
 const router = Router();
 
-// GET /api/asset-classes - List all asset classes
-router.get("/", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/asset-classes
+ * List all asset classes with security assignment counts
+ */
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
     const assetClasses = await prisma.assetClass.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -15,16 +31,18 @@ router.get("/", async (req: Request, res: Response) => {
       },
     });
     res.json(assetClasses);
-  } catch (error) {
-    console.error("Failed to fetch asset classes:", error);
-    res.status(500).json({ error: "Failed to fetch asset classes" });
-  }
-});
+  })
+);
 
-// GET /api/asset-classes/:id - Get single asset class
-router.get("/:id", async (req: Request, res: Response) => {
-  try {
-    const assetClass = await prisma.assetClass.findUnique({
+/**
+ * GET /api/asset-classes/:id
+ * Get single asset class with related data
+ */
+router.get(
+  "/:id",
+  validate({ params: assetClassIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const assetClass = await prisma.assetClass.findUniqueOrThrow({
       where: { id: req.params.id },
       include: {
         securityAssignments: true,
@@ -33,25 +51,20 @@ router.get("/:id", async (req: Request, res: Response) => {
         },
       },
     });
-    if (!assetClass) {
-      res.status(404).json({ error: "Asset class not found" });
-      return;
-    }
     res.json(assetClass);
-  } catch (error) {
-    console.error("Failed to fetch asset class:", error);
-    res.status(500).json({ error: "Failed to fetch asset class" });
-  }
-});
+  })
+);
 
-// POST /api/asset-classes - Create asset class
-router.post("/", async (req: Request, res: Response) => {
-  try {
+/**
+ * POST /api/asset-classes
+ * Create a new asset class
+ */
+router.post(
+  "/",
+  validate({ body: assetClassCreateSchema }),
+  asyncHandler(async (req, res) => {
     const { name, description, color } = req.body;
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      res.status(400).json({ error: "Name is required" });
-      return;
-    }
+
     const assetClass = await prisma.assetClass.create({
       data: {
         name: name.trim(),
@@ -59,28 +72,23 @@ router.post("/", async (req: Request, res: Response) => {
         color: color || "#6366f1",
       },
     });
-    res.status(201).json(assetClass);
-  } catch (error: any) {
-    if (error.code === "P2002") {
-      res.status(409).json({ error: "Asset class with this name already exists" });
-      return;
-    }
-    console.error("Failed to create asset class:", error);
-    res.status(500).json({ error: "Failed to create asset class" });
-  }
-});
 
-// PUT /api/asset-classes/:id - Update asset class
-router.put("/:id", async (req: Request, res: Response) => {
-  try {
+    res.status(201).json(assetClass);
+  })
+);
+
+/**
+ * PUT /api/asset-classes/:id
+ * Update an existing asset class
+ */
+router.put(
+  "/:id",
+  validate({ params: assetClassIdParamSchema, body: assetClassUpdateSchema }),
+  asyncHandler(async (req, res) => {
     const { name, description, color } = req.body;
     const data: { name?: string; description?: string | null; color?: string } = {};
 
     if (name !== undefined) {
-      if (typeof name !== "string" || name.trim().length === 0) {
-        res.status(400).json({ error: "Name cannot be empty" });
-        return;
-      }
       data.name = name.trim();
     }
     if (description !== undefined) {
@@ -94,36 +102,24 @@ router.put("/:id", async (req: Request, res: Response) => {
       where: { id: req.params.id },
       data,
     });
-    res.json(assetClass);
-  } catch (error: any) {
-    if (error.code === "P2025") {
-      res.status(404).json({ error: "Asset class not found" });
-      return;
-    }
-    if (error.code === "P2002") {
-      res.status(409).json({ error: "Asset class with this name already exists" });
-      return;
-    }
-    console.error("Failed to update asset class:", error);
-    res.status(500).json({ error: "Failed to update asset class" });
-  }
-});
 
-// DELETE /api/asset-classes/:id - Delete asset class
-router.delete("/:id", async (req: Request, res: Response) => {
-  try {
+    res.json(assetClass);
+  })
+);
+
+/**
+ * DELETE /api/asset-classes/:id
+ * Delete an asset class
+ */
+router.delete(
+  "/:id",
+  validate({ params: assetClassIdParamSchema }),
+  asyncHandler(async (req, res) => {
     await prisma.assetClass.delete({
       where: { id: req.params.id },
     });
     res.status(204).send();
-  } catch (error: any) {
-    if (error.code === "P2025") {
-      res.status(404).json({ error: "Asset class not found" });
-      return;
-    }
-    console.error("Failed to delete asset class:", error);
-    res.status(500).json({ error: "Failed to delete asset class" });
-  }
-});
+  })
+);
 
 export default router;

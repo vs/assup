@@ -1,78 +1,17 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams, Link } from "react-router-dom";
-import { api } from "@/lib/api";
-import type { Position, AssetClass, AllocationProfile, PositionSummary } from "@/lib/api";
+import { api } from "@/api";
+import type { Position, AssetClass, AllocationProfile, PositionSummary } from "@assup/shared";
+import { calculatePositionExposure } from "@assup/shared";
 import { useAllocationUpdates } from "@/hooks/useSSE";
 import { useSparklines } from "@/hooks/useSparklines";
+import { usePositionFilters } from "@/hooks/usePositionFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { AssetClassSelect } from "@/components/common/AssetClassSelect";
-import { Sparkline } from "@/components/Sparkline";
-import { RefreshCw, X, Info } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { PositionFilters, PositionSummaryCards, PositionTable } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
 
-const STORAGE_KEY = "assup-positions-filters";
-
-interface FilterState {
-  assetClassId: string | null;
-  includeOptions: boolean;
-  optionsWeightMode: "notional" | "delta";
-}
-
-const DEFAULT_FILTERS: FilterState = {
-  assetClassId: null,
-  includeOptions: true,
-  optionsWeightMode: "notional",
-};
-
-function loadFilters(): FilterState {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Migration from old showOptions to includeOptions
-      if ("showOptions" in parsed && !("includeOptions" in parsed)) {
-        parsed.includeOptions = parsed.showOptions;
-        delete parsed.showOptions;
-      }
-      return { ...DEFAULT_FILTERS, ...parsed };
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return DEFAULT_FILTERS;
-}
-
-function saveFilters(filters: FilterState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
-}
-
 export function PositionsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
   const [positions, setPositions] = useState<Position[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
   const [profile, setProfile] = useState<AllocationProfile | null>(null);
@@ -82,14 +21,7 @@ export function PositionsPage() {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
-  // Initialize filters from URL params, falling back to localStorage
-  const [filters, setFilters] = useState<FilterState>(() => {
-    const urlAssetClassId = searchParams.get("assetClassId");
-    if (urlAssetClassId) {
-      return { ...DEFAULT_FILTERS, assetClassId: urlAssetClassId };
-    }
-    return loadFilters();
-  });
+  const { filters, setFilters } = usePositionFilters();
 
   // Subscribe to real-time allocation updates
   const handleAllocationUpdate = useCallback(() => {
@@ -100,20 +32,6 @@ export function PositionsPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  // Sync filters with localStorage and URL
-  useEffect(() => {
-    saveFilters(filters);
-    // Update URL params when filter changes
-    if (filters.assetClassId && filters.assetClassId !== "all") {
-      setSearchParams({ assetClassId: filters.assetClassId }, { replace: true });
-    } else {
-      // Remove the param when cleared
-      if (searchParams.has("assetClassId")) {
-        setSearchParams({}, { replace: true });
-      }
-    }
-  }, [filters, searchParams, setSearchParams]);
 
   async function loadData() {
     try {
@@ -143,20 +61,18 @@ export function PositionsPage() {
     }
   }
 
-  async function handleAssign(position: Position, assetClassId: string | null) {
+  async function handleAssign(position: Position, assetClassId: string) {
     const key = `${position.symbol}:${position.secType}`;
     setAssigning(key);
 
     try {
-      if (assetClassId) {
-        await api.securityAssignments.create({
-          symbol: position.symbol,
-          conId: position.conId,
-          secType: position.secType,
-          assetClassId,
-          source: "position",
-        });
-      }
+      await api.securityAssignments.create({
+        symbol: position.symbol,
+        conId: position.conId,
+        secType: position.secType,
+        assetClassId,
+        source: "position",
+      });
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to assign security");
@@ -165,121 +81,19 @@ export function PositionsPage() {
     }
   }
 
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-    }).format(value);
-
-  const formatNumber = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(value);
-
   // Apply filters
-  const filteredPositions = positions.filter((p) => {
-    // Filter by options
-    if (!filters.includeOptions && p.secType === "OPT") {
-      return false;
-    }
-    // Filter by asset class
-    if (filters.assetClassId && filters.assetClassId !== "all") {
-      if (filters.assetClassId === "unassigned") {
-        return !p.assetClassId;
+  const filteredPositions = useMemo(() => {
+    return positions.filter((p) => {
+      if (!filters.includeOptions && p.secType === "OPT") return false;
+      if (filters.assetClassId && filters.assetClassId !== "all") {
+        if (filters.assetClassId === "unassigned") return !p.assetClassId;
+        return p.assetClassId === filters.assetClassId;
       }
-      return p.assetClassId === filters.assetClassId;
-    }
-    return true;
-  });
+      return true;
+    });
+  }, [positions, filters]);
 
-  // Group positions by asset class
-  const unassigned = filteredPositions.filter((p) => !p.assetClassId);
-
-  // Helper to get position exposure
-  // Stocks/Cash: exposure = market value
-  // Options: exposure = (+/-1) * strike * quantity * 100
-  //   +1 if we BUY underlying when exercised (short PUT, long CALL)
-  //   -1 if we SELL underlying when exercised (short CALL, long PUT)
-  const getPositionExposure = (p: Position): number => {
-    if (p.secType === "OPT" && p.notionalValue !== undefined) {
-      const isShort = p.position < 0;
-      const isPut = p.right === "P";
-
-      // Determine if we buy or sell underlying when option is exercised
-      // Short PUT: assigned → we buy underlying → positive exposure
-      // Long CALL: exercise → we buy underlying → positive exposure
-      // Short CALL: assigned → we sell underlying → negative exposure
-      // Long PUT: exercise → we sell underlying → negative exposure
-      const willBuyUnderlying = (isPut && isShort) || (!isPut && !isShort);
-      return willBuyUnderlying ? p.notionalValue : -p.notionalValue;
-    }
-    return p.marketValue ?? 0;
-  };
-
-  // Get account values
-  const netLiquidation = summary?.account.netLiquidation ?? 0;
-
-  // Calculate totals (from filtered positions)
-  // Cash is now included as a position, so no special handling needed
-  const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
-
-  // Check if we're viewing all classes (no filter or "all")
-  const isAllClasses = !filters.assetClassId || filters.assetClassId === "all";
-
-  // Stocks-only market value (excludes options and cash) - always from filtered positions
-  const stocksMarketValue = filteredPositions
-    .filter((p) => p.secType !== "CASH" && p.secType !== "OPT")
-    .reduce((sum, p) => sum + (p.marketValue ?? 0), 0);
-
-  const totalExposure = filteredPositions.reduce(
-    (sum, p) => sum + getPositionExposure(p),
-    0
-  );
-  const totalPnl = filteredPositions.reduce(
-    (sum, p) => sum + (p.unrealizedPnl ?? 0),
-    0
-  );
-  const targetPercentage = useMemo(() => {
-    if (!profile || !filters.assetClassId || filters.assetClassId === "all" || filters.assetClassId === "unassigned") {
-      return null;
-    }
-    const target = profile.targets.find((t) => t.assetClassId === filters.assetClassId);
-    return target?.targetPercentage ?? null;
-  }, [profile, filters.assetClassId]);
-
-  const targetValue = targetPercentage !== null ? (targetPercentage / 100) * netLiquidation : null;
-  const diffToTarget = targetValue !== null ? totalExposure - targetValue : null;
-
-  // Count options positions
-  const optionsCount = positions.filter((p) => p.secType === "OPT").length;
-
-  // Sparklines - use underlying for options
-  const sparklineSymbols = useMemo(() => {
-    const uniqueSymbols = new Set<string>();
-    for (const pos of filteredPositions) {
-      // Skip Cash - it doesn't have market data
-      if (pos.secType === "CASH") continue;
-      const symbol = pos.underlying || pos.symbol;
-      uniqueSymbols.add(symbol);
-    }
-    return Array.from(uniqueSymbols);
-  }, [filteredPositions]);
-  const { getSparklineState } = useSparklines(sparklineSymbols);
-
-  const getPositionSparkline = (pos: Position) => {
-    // Cash gets a flat green sparkline
-    if (pos.secType === "CASH") {
-      return {
-        data: [{ date: "1", close: 1 }, { date: "2", close: 1 }],
-        loading: false,
-        error: false,
-      };
-    }
-    const symbol = pos.underlying || pos.symbol;
-    return getSparklineState(symbol);
-  };
+  const unassigned = useMemo(() => filteredPositions.filter((p) => !p.assetClassId), [filteredPositions]);
 
   // Sort positions to put Cash last
   const sortedPositions = useMemo(() => {
@@ -290,12 +104,71 @@ export function PositionsPage() {
     });
   }, [filteredPositions]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading positions...</p>
-      </div>
-    );
+  // Calculate summary values
+  const netLiquidation = summary?.account.netLiquidation ?? 0;
+  const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
+  const isAllClasses = !filters.assetClassId || filters.assetClassId === "all";
+
+  const stocksMarketValue = useMemo(() => {
+    return filteredPositions
+      .filter((p) => p.secType !== "CASH" && p.secType !== "OPT")
+      .reduce((sum, p) => sum + (p.marketValue ?? 0), 0);
+  }, [filteredPositions]);
+
+  const totalExposure = useMemo(() => {
+    return filteredPositions.reduce((sum, p) => sum + calculatePositionExposure(p), 0);
+  }, [filteredPositions]);
+
+  const totalPnl = useMemo(() => {
+    return filteredPositions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
+  }, [filteredPositions]);
+
+  const targetPercentage = useMemo(() => {
+    if (!profile || !filters.assetClassId || filters.assetClassId === "all" || filters.assetClassId === "unassigned") {
+      return null;
+    }
+    const target = profile.targets.find((t) => t.assetClassId === filters.assetClassId);
+    return target?.targetPercentage ?? null;
+  }, [profile, filters.assetClassId]);
+
+  const targetValue = targetPercentage !== null ? (targetPercentage / 100) * netLiquidation : null;
+  const diffToTarget = targetValue !== null ? totalExposure - targetValue : null;
+  const optionsCount = positions.filter((p) => p.secType === "OPT").length;
+
+  // Sparklines
+  const sparklineSymbols = useMemo(() => {
+    const uniqueSymbols = new Set<string>();
+    for (const pos of filteredPositions) {
+      if (pos.secType === "CASH") continue;
+      const symbol = pos.underlying || pos.symbol;
+      uniqueSymbols.add(symbol);
+    }
+    return Array.from(uniqueSymbols);
+  }, [filteredPositions]);
+
+  const { getSparklineState } = useSparklines(sparklineSymbols);
+
+  const getPositionSparkline = useCallback((pos: Position) => {
+    if (pos.secType === "CASH") {
+      return {
+        data: [{ date: "1", close: 1 }, { date: "2", close: 1 }],
+        loading: false,
+        error: false,
+      };
+    }
+    const symbol = pos.underlying || pos.symbol;
+    return getSparklineState(symbol);
+  }, [getSparklineState]);
+
+  // Table title
+  const tableTitle = useMemo(() => {
+    if (!filters.assetClassId || filters.assetClassId === "all") return "All Positions";
+    if (filters.assetClassId === "unassigned") return "Unassigned Positions";
+    return `${assetClasses.find((ac) => ac.id === filters.assetClassId)?.name || "Filtered"} Positions`;
+  }, [filters.assetClassId, assetClasses]);
+
+  if (loading && positions.length === 0) {
+    return <PageLoadingSkeleton />;
   }
 
   return (
@@ -307,152 +180,30 @@ export function PositionsPage() {
             View and assign your positions to asset classes.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <Select
-            value={filters.assetClassId || "all"}
-            onValueChange={(v) => setFilters({ ...filters, assetClassId: v === "all" ? null : v })}
-          >
-            <SelectTrigger className="w-48 h-8">
-              <SelectValue placeholder="All classes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All classes</SelectItem>
-              <SelectItem value="unassigned">Unassigned only</SelectItem>
-              {assetClasses.map((ac) => (
-                <SelectItem key={ac.id} value={ac.id}>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: ac.color }}
-                    />
-                    {ac.name}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-2">
-            <Switch
-              id="include-options"
-              checked={filters.includeOptions}
-              onCheckedChange={(checked) => setFilters({ ...filters, includeOptions: checked })}
-            />
-            <Label htmlFor="include-options" className="text-sm cursor-pointer">
-              Include Options {optionsCount > 0 && `(${optionsCount})`}
-            </Label>
-          </div>
-
-          {(filters.assetClassId || !filters.includeOptions) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={() => setFilters({ ...DEFAULT_FILTERS })}
-            >
-              <X className="h-3 w-3 mr-1" />
-              Clear
-            </Button>
-          )}
-
-          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        </div>
+        <PositionFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          assetClasses={assetClasses}
+          optionsCount={optionsCount}
+          loading={loading}
+          onRefresh={loadData}
+        />
       </div>
 
-      {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Market Value
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {hasAnyMarketValue ? (
-              <div className="text-2xl font-bold">
-                {formatCurrency(isAllClasses ? netLiquidation : totalExposure)}
-              </div>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">N/A</div>
-            )}
-            {stocksMarketValue > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Stocks: {formatCurrency(stocksMarketValue)}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Unrealized P&L
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {hasAnyMarketValue ? (
-              <div className={`text-2xl font-bold ${totalPnl >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {totalPnl >= 0 ? "+" : ""}{formatCurrency(totalPnl)}
-              </div>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">N/A</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Target Value
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {targetValue !== null ? (
-              <>
-                <div className="text-2xl font-bold">{formatCurrency(targetValue)}</div>
-                <p className="text-xs text-muted-foreground">
-                  {targetPercentage?.toFixed(1)}% of {formatCurrency(netLiquidation)}
-                </p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">—</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Action
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {diffToTarget !== null && diffToTarget < -1 && filters.assetClassId ? (
-              <Badge variant="success" asChild className="text-base px-3 py-1">
-                <Link to={`/scanner?assetClassId=${filters.assetClassId}`}>
-                  BUY {formatCurrency(Math.abs(diffToTarget))}
-                </Link>
-              </Badge>
-            ) : diffToTarget !== null && diffToTarget > 1 && filters.assetClassId ? (
-              <Badge variant="danger" asChild className="text-base px-3 py-1">
-                <Link to={`/scanner?assetClassId=${filters.assetClassId}`}>
-                  SELL {formatCurrency(diffToTarget)}
-                </Link>
-              </Badge>
-            ) : diffToTarget !== null ? (
-              <div className="text-2xl font-bold text-muted-foreground">On target</div>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">—</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <PositionSummaryCards
+        hasAnyMarketValue={hasAnyMarketValue}
+        isAllClasses={isAllClasses}
+        netLiquidation={netLiquidation}
+        totalExposure={totalExposure}
+        stocksMarketValue={stocksMarketValue}
+        totalPnl={totalPnl}
+        targetValue={targetValue}
+        targetPercentage={targetPercentage}
+        diffToTarget={diffToTarget}
+        assetClassId={filters.assetClassId}
+      />
 
       {/* Unassigned Positions */}
       {unassigned.length > 0 && (
@@ -464,106 +215,18 @@ export function PositionsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead className="w-24">30D</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Cost Basis</TableHead>
-                  <TableHead className="text-right">Mkt Value</TableHead>
-                  <TableHead className="text-right">P&L</TableHead>
-                  <TableHead className="text-right">
-                    <span className="inline-flex items-center gap-1">
-                      Exposure
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs text-xs">
-                            <div className="space-y-1">
-                              <p className="font-medium">Total exposure = Stock Value + Options Notional</p>
-                              <p className="font-medium mt-1">Stocks: Market Value</p>
-                              <p className="font-medium">Options: Strike × Qty × 100</p>
-                              <p className="mt-1">• Short PUT: +notional (obligation to buy)</p>
-                              <p>• Long PUT: −notional (right to sell/hedge)</p>
-                              <p>• Short CALL: −notional (obligation to sell)</p>
-                              <p>• Long CALL: +notional (right to buy)</p>
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </span>
-                  </TableHead>
-                  <TableHead>Assign To</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unassigned.map((pos) => {
-                  const key = `${pos.symbol}:${pos.secType}`;
-                  const exposure = getPositionExposure(pos);
-                  const sparkline = getPositionSparkline(pos);
-                  return (
-                    <TableRow key={key}>
-                      <TableCell>
-                        <button
-                          className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                          onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
-                        >
-                          {pos.symbol}
-                        </button>
-                      </TableCell>
-                      <TableCell className="w-24">
-                        <Sparkline
-                          data={sparkline.data}
-                          loading={sparkline.loading}
-                          error={sparkline.error}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {pos.secType === "OPT" && pos.right ? (
-                          <Badge variant={pos.right === "P" ? "danger" : "success"}>
-                            {pos.right === "P" ? "PUT" : "CALL"}
-                          </Badge>
-                        ) : pos.secType === "CASH" ? (
-                          <Badge variant="outline">Cash</Badge>
-                        ) : (
-                          <Badge variant="outline">Stock</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatNumber(pos.position)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(pos.costBasis)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
-                      </TableCell>
-                      <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
-                        {pos.unrealizedPnl !== null ? (
-                          <>{pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}</>
-                        ) : (
-                          <span className="text-muted-foreground">N/A</span>
-                        )}
-                      </TableCell>
-                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
-                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
-                      </TableCell>
-                      <TableCell>
-                        <AssetClassSelect
-                          disabled={assigning === key}
-                          onValueChange={(v) => handleAssign(pos, v)}
-                          assetClasses={assetClasses}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <PositionTable
+              positions={unassigned}
+              assetClasses={assetClasses}
+              netLiquidation={netLiquidation}
+              assigningKey={assigning}
+              onAssign={handleAssign}
+              onSymbolClick={setChartSymbol}
+              getSparkline={getPositionSparkline}
+              showAssetClassColumn={false}
+              showPercentColumn={false}
+              showAssignColumn={true}
+            />
           </CardContent>
         </Card>
       )}
@@ -571,13 +234,7 @@ export function PositionsPage() {
       {/* All Positions */}
       <Card>
         <CardHeader>
-          <CardTitle>
-            {filters.assetClassId && filters.assetClassId !== "all"
-              ? filters.assetClassId === "unassigned"
-                ? "Unassigned Positions"
-                : `${assetClasses.find((ac) => ac.id === filters.assetClassId)?.name || "Filtered"} Positions`
-              : "All Positions"}
-          </CardTitle>
+          <CardTitle>{tableTitle}</CardTitle>
         </CardHeader>
         <CardContent>
           {filteredPositions.length === 0 ? (
@@ -587,120 +244,15 @@ export function PositionsPage() {
                 : "No positions match the current filters."}
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead className="w-24">30D</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Asset Class</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Cost Basis</TableHead>
-                  <TableHead className="text-right">Mkt Value</TableHead>
-                  <TableHead className="text-right">P&L</TableHead>
-                  <TableHead className="text-right">
-                    <span className="inline-flex items-center gap-1">
-                      Exposure
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs text-xs">
-                            <div className="space-y-1">
-                              <p className="font-medium">Total exposure = Stock Value + Options Notional</p>
-                              <p className="font-medium mt-1">Stocks: Market Value</p>
-                              <p className="font-medium">Options: Strike × Qty × 100</p>
-                              <p className="mt-1">• Short PUT: +notional (obligation to buy)</p>
-                              <p>• Long PUT: −notional (right to sell/hedge)</p>
-                              <p>• Short CALL: −notional (obligation to sell)</p>
-                              <p>• Long CALL: +notional (right to buy)</p>
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </span>
-                  </TableHead>
-                  <TableHead className="text-right">% of Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedPositions.map((pos) => {
-                  const key = `${pos.symbol}:${pos.secType}`;
-                  const exposure = getPositionExposure(pos);
-                  // % of Total: exposure / netLiquidation for all positions
-                  const pct = netLiquidation > 0 ? (exposure / netLiquidation) * 100 : null;
-                  const sparkline = getPositionSparkline(pos);
-                  const isCash = pos.secType === "CASH";
-                  return (
-                    <TableRow key={key}>
-                      <TableCell>
-                        {isCash ? (
-                          <span className="font-medium">{pos.symbol}</span>
-                        ) : (
-                          <button
-                            className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                            onClick={() => setChartSymbol(pos.underlying || pos.symbol)}
-                          >
-                            {pos.symbol}
-                          </button>
-                        )}
-                      </TableCell>
-                      <TableCell className="w-24">
-                        <Sparkline
-                          data={sparkline.data}
-                          loading={sparkline.loading}
-                          error={sparkline.error}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {pos.secType === "OPT" && pos.right ? (
-                          <Badge variant={pos.right === "P" ? "danger" : "success"}>
-                            {pos.right === "P" ? "PUT" : "CALL"}
-                          </Badge>
-                        ) : pos.secType === "CASH" ? (
-                          <Badge variant="outline">Cash</Badge>
-                        ) : (
-                          <Badge variant="outline">Stock</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <AssetClassSelect
-                          value={pos.assetClassId}
-                          disabled={isCash || assigning === key}
-                          onValueChange={(v) => handleAssign(pos, v)}
-                          assetClasses={assetClasses}
-                          placeholder="Assign..."
-                          className="w-44"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatNumber(pos.position)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(pos.costBasis)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {pos.marketValue !== null ? formatCurrency(pos.marketValue) : <span className="text-muted-foreground">N/A</span>}
-                      </TableCell>
-                      <TableCell className={`text-right font-mono ${pos.unrealizedPnl !== null && pos.unrealizedPnl >= 0 ? "text-green-600" : pos.unrealizedPnl !== null ? "text-red-600" : ""}`}>
-                        {pos.unrealizedPnl !== null ? (
-                          <>{pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}</>
-                        ) : (
-                          <span className="text-muted-foreground">N/A</span>
-                        )}
-                      </TableCell>
-                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
-                        {pos.secType === "OPT" && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
-                      </TableCell>
-                      <TableCell className={`text-right font-mono ${pos.secType === "OPT" ? (pct !== null && pct >= 0 ? "text-green-600" : pct !== null ? "text-red-600" : "") : ""}`}>
-                        {pct !== null ? `${pos.secType === "OPT" && pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` : <span className="text-muted-foreground">N/A</span>}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <PositionTable
+              positions={sortedPositions}
+              assetClasses={assetClasses}
+              netLiquidation={netLiquidation}
+              assigningKey={assigning}
+              onAssign={handleAssign}
+              onSymbolClick={setChartSymbol}
+              getSparkline={getPositionSparkline}
+            />
           )}
         </CardContent>
       </Card>

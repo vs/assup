@@ -1,5 +1,5 @@
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import type { SparklinePoint } from "@/lib/api";
+import type { SparklinePoint } from "@assup/shared";
 
 interface SparklineProps {
   data: SparklinePoint[];

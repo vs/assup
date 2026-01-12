@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { api } from "@/lib/api";
-import type { AssetClass, AllocationProfile } from "@/lib/api";
+import { api } from "@/api";
+import type { AssetClass, AllocationProfile } from "@assup/shared";
+import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -227,12 +228,8 @@ export function AssetClassesPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
+  if (loading && assetClasses.length === 0) {
+    return <PageLoadingSkeleton />;
   }
 
   return (
@@ -250,11 +247,7 @@ export function AssetClassesPage() {
         </Button>
       </div>
 
-      {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       <Card>
         <CardHeader>

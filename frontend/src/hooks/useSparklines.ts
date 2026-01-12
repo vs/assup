@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api } from "@/lib/api";
-import type { SparklinePoint } from "@/lib/api";
+import { api } from "@/api";
+import type { SparklinePoint } from "@assup/shared";
 
 interface SparklineState {
   data: Record<string, SparklinePoint[]>;

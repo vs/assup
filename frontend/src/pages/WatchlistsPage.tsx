@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { api } from "@/lib/api";
-import type { Watchlist, WatchlistWithItems, WatchlistItem, AssetClass } from "@/lib/api";
+import { api } from "@/api";
+import type { Watchlist, WatchlistWithItems, WatchlistItem, AssetClass } from "@assup/shared";
+import { ErrorAlert, PageLoadingSkeleton, AssetClassSelect } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -21,7 +22,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { AssetClassSelect } from "@/components/common/AssetClassSelect";
 import { ChartModal } from "@/components/ChartModal";
 import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
@@ -174,12 +174,8 @@ export function WatchlistsPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading watchlists...</p>
-      </div>
-    );
+  if (loading && watchlists.length === 0) {
+    return <PageLoadingSkeleton />;
   }
 
   return (
@@ -197,11 +193,7 @@ export function WatchlistsPage() {
         </Button>
       </div>
 
-      {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Watchlist Tabs */}

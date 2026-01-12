@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { api } from "@/lib/api";
-import type { AssetClass } from "@/lib/api";
+import { api } from "@/api";
+import type { AssetClass } from "@assup/shared";
 import {
   Select,
   SelectContent,

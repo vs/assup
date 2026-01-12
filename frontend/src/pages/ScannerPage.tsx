@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "@/lib/api";
-import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass } from "@/lib/api";
+import { api } from "@/api";
+import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
+import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -114,21 +116,11 @@ export function ScannerPage() {
     }
   }
 
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading scanner...</p>
-      </div>
-    );
+    return <PageLoadingSkeleton />;
   }
+
+  const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
   return (
     <div className="space-y-6">
@@ -139,11 +131,7 @@ export function ScannerPage() {
         </p>
       </div>
 
-      {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       {/* Scanner Criteria */}
       <Card>
@@ -330,7 +318,7 @@ export function ScannerPage() {
                         <Badge variant="outline">{opp.optionType}</Badge>
                       </TableCell>
                       <TableCell className="text-right">{opp.delta?.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(opp.mid || 0)}</TableCell>
+                      <TableCell className="text-right">{fmtCurrency(opp.mid || 0)}</TableCell>
                       <TableCell className="text-right">{opp.annualizedReturn?.toFixed(1)}%</TableCell>
                     </TableRow>
                   ))}

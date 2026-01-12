@@ -4,6 +4,8 @@ import cors from "cors";
 import { ibkrService } from "./services/ibkr.js";
 import { sseService } from "./services/sse.js";
 import { prisma } from "./db/index.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import { asyncHandler } from "./middleware/asyncHandler.js";
 import assetClassesRouter from "./routes/assetClasses.js";
 import allocationProfilesRouter from "./routes/allocationProfiles.js";
 import positionsRouter from "./routes/positions.js";
@@ -31,23 +33,14 @@ app.use("/api/scanner", scannerRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/historical", historicalDataRouter);
 
-app.get("/api/health", async (req, res) => {
-  try {
-    // Test database connection
-    const assetClassCount = await prisma.assetClass.count();
-    res.json({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      database: { connected: true, assetClasses: assetClassCount },
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
-      database: { connected: false, error: String(error) },
-    });
-  }
-});
+app.get("/api/health", asyncHandler(async (req, res) => {
+  const assetClassCount = await prisma.assetClass.count();
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    database: { connected: true, assetClasses: assetClassCount },
+  });
+}));
 
 // SSE endpoint for TWS connection status
 app.get("/api/connection/status", (req: Request, res: Response) => {
@@ -132,6 +125,9 @@ app.post("/api/updates/refresh", async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to broadcast refresh" });
   }
 });
+
+// Global error handler - must be last middleware
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

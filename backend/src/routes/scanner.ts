@@ -1,81 +1,68 @@
-import { Router, Request, Response } from "express";
-import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
+/**
+ * Scanner API routes
+ * Options scanner for finding opportunities in underinvested asset classes
+ */
+
+import { Router } from "express";
 import { prisma } from "../db/index.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
+import { validate } from "../middleware/validate.js";
+import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
+import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
+import { allocationService } from "../services/allocation.service.js";
+import {
+  scannerPresetCreateSchema,
+  scannerPresetUpdateSchema,
+  scannerPresetIdParamSchema,
+  scannerCriteriaSchema,
+} from "@assup/shared";
+import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
 
 const router = Router();
 
-export interface ScannerCriteria {
-  minDaysToExpiry: number;
-  maxDaysToExpiry: number;
-  minDelta: number;
-  maxDelta: number;
-  minAnnualizedReturn: number;
-  minPremiumPercent: number;
-  targetAssetClasses?: string[];
-}
-
-export interface OptionOpportunity {
-  symbol: string;
-  underlyingPrice: number;
-  strike: number;
-  expiry: string;
-  optionType: "CALL" | "PUT";
-  bid: number;
-  ask: number;
-  mid: number;
-  delta: number;
-  impliedVolatility: number;
-  daysToExpiry: number;
-  annualizedReturn: number;
-  premiumPercent: number;
-  assetClassId?: string;
-  assetClassName?: string;
-  assetClassColor?: string;
-}
-
-// GET /api/scanner/presets - List saved scanner presets
-router.get("/presets", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/scanner/presets
+ * List all saved scanner presets
+ */
+router.get(
+  "/presets",
+  asyncHandler(async (req, res) => {
     const presets = await prisma.scannerPreset.findMany({
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     });
     res.json(presets);
-  } catch (error) {
-    console.error("Failed to fetch scanner presets:", error);
-    res.status(500).json({ error: "Failed to fetch scanner presets" });
-  }
-});
+  })
+);
 
-// GET /api/scanner/presets/:id - Get single preset
-router.get("/presets/:id", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/scanner/presets/:id
+ * Get a single preset
+ */
+router.get(
+  "/presets/:id",
+  validate({ params: scannerPresetIdParamSchema }),
+  asyncHandler(async (req, res) => {
     const preset = await prisma.scannerPreset.findUnique({
       where: { id: req.params.id },
     });
+
     if (!preset) {
-      res.status(404).json({ error: "Scanner preset not found" });
-      return;
+      throw new NotFoundError("Scanner preset not found");
     }
+
     res.json(preset);
-  } catch (error) {
-    console.error("Failed to fetch scanner preset:", error);
-    res.status(500).json({ error: "Failed to fetch scanner preset" });
-  }
-});
+  })
+);
 
-// POST /api/scanner/presets - Create scanner preset
-router.post("/presets", async (req: Request, res: Response) => {
-  try {
+/**
+ * POST /api/scanner/presets
+ * Create a new preset
+ */
+router.post(
+  "/presets",
+  validate({ body: scannerPresetCreateSchema }),
+  asyncHandler(async (req, res) => {
     const { name, criteria, isDefault } = req.body;
-
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      res.status(400).json({ error: "Name is required" });
-      return;
-    }
-    if (!criteria || typeof criteria !== "object") {
-      res.status(400).json({ error: "Criteria is required" });
-      return;
-    }
 
     // If setting as default, unset other defaults
     if (isDefault) {
@@ -87,21 +74,24 @@ router.post("/presets", async (req: Request, res: Response) => {
 
     const preset = await prisma.scannerPreset.create({
       data: {
-        name: name.trim(),
+        name,
         criteria,
         isDefault: isDefault || false,
       },
     });
-    res.status(201).json(preset);
-  } catch (error) {
-    console.error("Failed to create scanner preset:", error);
-    res.status(500).json({ error: "Failed to create scanner preset" });
-  }
-});
 
-// PUT /api/scanner/presets/:id - Update scanner preset
-router.put("/presets/:id", async (req: Request, res: Response) => {
-  try {
+    res.status(201).json(preset);
+  })
+);
+
+/**
+ * PUT /api/scanner/presets/:id
+ * Update a preset
+ */
+router.put(
+  "/presets/:id",
+  validate({ params: scannerPresetIdParamSchema, body: scannerPresetUpdateSchema }),
+  asyncHandler(async (req, res) => {
     const { name, criteria, isDefault } = req.body;
 
     // If setting as default, unset other defaults
@@ -114,127 +104,59 @@ router.put("/presets/:id", async (req: Request, res: Response) => {
 
     const preset = await prisma.scannerPreset.update({
       where: { id: req.params.id },
-      data: {
-        name: name?.trim(),
-        criteria,
-        isDefault,
-      },
+      data: { name, criteria, isDefault },
     });
-    res.json(preset);
-  } catch (error: any) {
-    if (error.code === "P2025") {
-      res.status(404).json({ error: "Scanner preset not found" });
-      return;
-    }
-    console.error("Failed to update scanner preset:", error);
-    res.status(500).json({ error: "Failed to update scanner preset" });
-  }
-});
 
-// DELETE /api/scanner/presets/:id - Delete scanner preset
-router.delete("/presets/:id", async (req: Request, res: Response) => {
-  try {
+    res.json(preset);
+  })
+);
+
+/**
+ * DELETE /api/scanner/presets/:id
+ * Delete a preset
+ */
+router.delete(
+  "/presets/:id",
+  validate({ params: scannerPresetIdParamSchema }),
+  asyncHandler(async (req, res) => {
     await prisma.scannerPreset.delete({
       where: { id: req.params.id },
     });
     res.status(204).send();
-  } catch (error: any) {
-    if (error.code === "P2025") {
-      res.status(404).json({ error: "Scanner preset not found" });
-      return;
-    }
-    console.error("Failed to delete scanner preset:", error);
-    res.status(500).json({ error: "Failed to delete scanner preset" });
-  }
-});
+  })
+);
 
-// POST /api/scanner/scan - Run options scan
-router.post("/scan", async (req: Request, res: Response) => {
-  try {
-    const criteria: ScannerCriteria = req.body;
-
-    // Validate criteria
-    if (!criteria.minDaysToExpiry || !criteria.maxDaysToExpiry) {
-      res.status(400).json({ error: "Days to expiry range is required" });
-      return;
-    }
+/**
+ * POST /api/scanner/scan
+ * Run options scan based on criteria
+ */
+router.post(
+  "/scan",
+  validate({ body: scannerCriteriaSchema }),
+  asyncHandler(async (req, res) => {
+    const criteria = req.body;
 
     if (!ibkrService.isConnected()) {
-      res.status(503).json({ error: "Not connected to TWS" });
-      return;
+      throw new IBKRConnectionError();
     }
 
     // Get underinvested asset classes if not specified
     let targetAssetClasses = criteria.targetAssetClasses;
     if (!targetAssetClasses || targetAssetClasses.length === 0) {
-      // Get active allocation profile
-      const activeProfile = await prisma.allocationProfile.findFirst({
-        where: { isActive: true },
-        include: {
-          targets: { include: { assetClass: true } },
-        },
-      });
-
-      if (activeProfile) {
-        // Get current positions
-        let positions: IBPosition[] = [];
-        try {
-          positions = await ibkrService.getPositions();
-        } catch (err: any) {
-          if (!err.message?.includes("does not support positions") && err.code !== "timeout") {
-            throw err;
-          }
-        }
-
-        // Get security assignments
-        const assignments = await prisma.securityAssignment.findMany();
-        const assignmentMap = new Map(
-          assignments.map((a) => [`${a.symbol}:${a.secType}`, a.assetClassId])
-        );
-
-        // Calculate current allocation
-        const currentByClass: Record<string, number> = {};
-        let totalValue = 0;
-        for (const p of positions) {
-          const value = Math.abs(p.pos * p.avgCost);
-          totalValue += value;
-          const symbol = p.contract.symbol || "";
-          const secType = p.contract.secType || "";
-          const assetClassId = assignmentMap.get(`${symbol}:${secType}`);
-          if (assetClassId) {
-            currentByClass[assetClassId] = (currentByClass[assetClassId] || 0) + value;
-          }
-        }
-
-        // Find underinvested classes
-        targetAssetClasses = activeProfile.targets
-          .filter((t) => {
-            const currentPct = totalValue > 0
-              ? ((currentByClass[t.assetClassId] || 0) / totalValue) * 100
-              : 0;
-            return currentPct < t.targetPercentage - 1; // At least 1% under target
-          })
-          .map((t) => t.assetClassId);
-      }
+      const underinvested = await getUnderinvestedClasses();
+      targetAssetClasses = underinvested.map((c) => c.id);
     }
 
-    // Get symbols for target asset classes (deduplicated, only STK type)
+    // Get symbols for target asset classes (only STK type)
     const targetSymbols = await prisma.securityAssignment.findMany({
       where: {
-        ...(targetAssetClasses?.length
-          ? { assetClassId: { in: targetAssetClasses } }
-          : {}),
-        secType: "STK", // Only scan stocks, not options
+        ...(targetAssetClasses.length ? { assetClassId: { in: targetAssetClasses } } : {}),
+        secType: "STK",
       },
       include: { assetClass: true },
-      distinct: ["symbol"], // Ensure unique symbols
+      distinct: ["symbol"],
     });
 
-    // Note: Actual options scanning would require TWS market data subscriptions
-    // For now, return empty results with a message
-    // This would be enhanced with actual options chain data from TWS
-
-    // Get unique symbols
     const uniqueSymbols = [...new Set(targetSymbols.map((s) => s.symbol))];
 
     res.json({
@@ -244,86 +166,86 @@ router.post("/scan", async (req: Request, res: Response) => {
       opportunities: [],
       message: "Options scanning requires market data subscriptions. Configure TWS market data for target symbols.",
     });
-  } catch (error) {
-    console.error("Failed to run options scan:", error);
-    res.status(500).json({ error: "Failed to run options scan" });
-  }
-});
+  })
+);
 
-// GET /api/scanner/underinvested - Get underinvested asset classes
-router.get("/underinvested", async (req: Request, res: Response) => {
-  try {
-    // Get active allocation profile
-    const activeProfile = await prisma.allocationProfile.findFirst({
-      where: { isActive: true },
-      include: {
-        targets: { include: { assetClass: true } },
-      },
-    });
-
-    if (!activeProfile) {
-      res.json({ underinvested: [], message: "No active allocation profile" });
-      return;
-    }
-
-    // Get current positions
-    let positions: IBPosition[] = [];
-    if (ibkrService.isConnected()) {
-      try {
-        positions = await ibkrService.getPositions();
-      } catch (err: any) {
-        if (!err.message?.includes("does not support positions") && err.code !== "timeout") {
-          throw err;
-        }
-      }
-    }
-
-    // Get security assignments
-    const assignments = await prisma.securityAssignment.findMany();
-    const assignmentMap = new Map(
-      assignments.map((a) => [`${a.symbol}:${a.secType}`, a.assetClassId])
-    );
-
-    // Calculate current allocation
-    const currentByClass: Record<string, number> = {};
-    let totalValue = 0;
-    for (const p of positions) {
-      const value = Math.abs(p.pos * p.avgCost);
-      totalValue += value;
-      const symbol = p.contract.symbol || "";
-      const secType = p.contract.secType || "";
-      const assetClassId = assignmentMap.get(`${symbol}:${secType}`);
-      if (assetClassId) {
-        currentByClass[assetClassId] = (currentByClass[assetClassId] || 0) + value;
-      }
-    }
-
-    // Find underinvested classes
-    const underinvested = activeProfile.targets
-      .map((t) => {
-        const currentValue = currentByClass[t.assetClassId] || 0;
-        const currentPct = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
-        const diff = currentPct - t.targetPercentage;
-        return {
-          id: t.assetClassId,
-          name: t.assetClass.name,
-          color: t.assetClass.color,
-          targetPercentage: t.targetPercentage,
-          currentPercentage: currentPct,
-          difference: diff,
-          currentValue,
-          targetValue: totalValue * (t.targetPercentage / 100),
-          shortfall: totalValue * (t.targetPercentage / 100) - currentValue,
-        };
-      })
-      .filter((c) => c.difference < -1) // At least 1% under target
-      .sort((a, b) => a.difference - b.difference); // Most underinvested first
+/**
+ * GET /api/scanner/underinvested
+ * Get list of underinvested asset classes
+ */
+router.get(
+  "/underinvested",
+  asyncHandler(async (req, res) => {
+    const underinvested = await getUnderinvestedClasses();
+    const totalValue = underinvested.reduce((sum, c) => sum + c.targetValue, 0) /
+      (underinvested[0]?.targetPercentage ? 100 / underinvested[0].targetPercentage : 1);
 
     res.json({ underinvested, totalPortfolioValue: totalValue });
-  } catch (error) {
-    console.error("Failed to get underinvested classes:", error);
-    res.status(500).json({ error: "Failed to get underinvested classes" });
+  })
+);
+
+/**
+ * Helper to calculate underinvested asset classes
+ */
+async function getUnderinvestedClasses() {
+  // Get active allocation profile
+  const activeProfile = await prisma.allocationProfile.findFirst({
+    where: { isActive: true },
+    include: {
+      targets: { include: { assetClass: true } },
+    },
+  });
+
+  if (!activeProfile) {
+    return [];
   }
-});
+
+  // Get current positions if connected
+  let rawPositions: IBPosition[] = [];
+  if (ibkrService.isConnected()) {
+    try {
+      rawPositions = await ibkrService.getPositions();
+    } catch (err: unknown) {
+      const error = err as { message?: string; code?: string };
+      if (!error.message?.includes("does not support positions") && error.code !== "timeout") {
+        throw err;
+      }
+    }
+  }
+
+  // Calculate allocation using the service
+  const assignmentMap = await assignmentService.getAssignmentMap();
+  const { values, totalValue } = allocationService.calculateValuesByAssetClass(
+    rawPositions.map((p) => ({
+      symbol: p.contract.symbol || "",
+      secType: p.contract.secType || "",
+      pos: p.pos,
+      avgCost: p.avgCost,
+    })),
+    assignmentMap
+  );
+
+  // Find underinvested classes
+  return activeProfile.targets
+    .map((t) => {
+      const currentValue = values[t.assetClassId]?.current || 0;
+      const currentPct = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+      const diff = currentPct - t.targetPercentage;
+
+      return {
+        id: t.assetClassId,
+        name: t.assetClass.name,
+        color: t.assetClass.color,
+        targetPercentage: t.targetPercentage,
+        currentPercentage: currentPct,
+        difference: diff,
+        currentValue,
+        targetValue: totalValue * (t.targetPercentage / 100),
+        shortfall: totalValue * (t.targetPercentage / 100) - currentValue,
+      };
+    })
+    .filter((c) => c.difference < -1)
+    .sort((a, b) => a.difference - b.difference);
+}
 
 export default router;

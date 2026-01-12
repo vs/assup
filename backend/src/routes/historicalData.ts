@@ -1,41 +1,43 @@
-import { Router, Request, Response } from "express";
+/**
+ * Historical Data API routes
+ * Sparkline data for position charts
+ */
+
+import { Router } from "express";
+import { asyncHandler } from "../middleware/asyncHandler.js";
+import { validate } from "../middleware/validate.js";
 import { historicalDataService } from "../services/historicalData.js";
+import { sparklineSymbolParamSchema, sparklineBatchRequestSchema } from "@assup/shared";
 
 const router = Router();
 
-// GET /api/historical/sparkline/:symbol - Get sparkline data for a single symbol
-router.get("/sparkline/:symbol", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/historical/sparkline/:symbol
+ * Get sparkline data for a single symbol
+ */
+router.get(
+  "/sparkline/:symbol",
+  validate({ params: sparklineSymbolParamSchema }),
+  asyncHandler(async (req, res) => {
     const { symbol } = req.params;
-
-    if (!symbol || symbol.length === 0) {
-      res.status(400).json({ error: "Symbol is required" });
-      return;
-    }
-
     const data = await historicalDataService.getSparklineData(symbol);
     res.json({ symbol: symbol.toUpperCase(), data });
-  } catch (error) {
-    console.error("Failed to fetch sparkline data:", error);
-    res.status(500).json({ error: "Failed to fetch sparkline data" });
-  }
-});
+  })
+);
 
-// POST /api/historical/sparklines - Get sparkline data for multiple symbols
-router.post("/sparklines", async (req: Request, res: Response) => {
-  try {
+/**
+ * POST /api/historical/sparklines
+ * Get sparkline data for multiple symbols
+ */
+router.post(
+  "/sparklines",
+  validate({ body: sparklineBatchRequestSchema }),
+  asyncHandler(async (req, res) => {
     const { symbols } = req.body;
-
-    if (!Array.isArray(symbols) || symbols.length === 0) {
-      res.status(400).json({ error: "Symbols array is required" });
-      return;
-    }
 
     // Limit to 50 symbols per request
     const limitedSymbols = symbols.slice(0, 50);
-    const results = await historicalDataService.getBatchSparklineData(
-      limitedSymbols
-    );
+    const results = await historicalDataService.getBatchSparklineData(limitedSymbols);
 
     // Convert Map to object for JSON response
     const response: Record<string, { date: string; close: number }[]> = {};
@@ -44,14 +46,14 @@ router.post("/sparklines", async (req: Request, res: Response) => {
     });
 
     res.json(response);
-  } catch (error) {
-    console.error("Failed to fetch batch sparkline data:", error);
-    res.status(500).json({ error: "Failed to fetch sparkline data" });
-  }
-});
+  })
+);
 
-// GET /api/historical/cache/stats - Get cache statistics
-router.get("/cache/stats", (req: Request, res: Response) => {
+/**
+ * GET /api/historical/cache/stats
+ * Get cache statistics
+ */
+router.get("/cache/stats", (req, res) => {
   res.json(historicalDataService.getCacheStats());
 });
 

@@ -1,26 +1,52 @@
-import { Router, Request, Response } from "express";
+/**
+ * Security Assignments API routes
+ * Manages assignments of securities to asset classes
+ */
+
+import { Router } from "express";
 import { prisma } from "../db/index.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
+import { validate } from "../middleware/validate.js";
 import { sseService } from "../services/sse.js";
+import {
+  securityAssignmentCreateSchema,
+  securityAssignmentUpdateSchema,
+  securityAssignmentIdParamSchema,
+  securityAssignmentSymbolParamSchema,
+  securityAssignmentSymbolQuerySchema,
+  securityAssignmentBulkSchema,
+} from "@assup/shared";
+import { NotFoundError, BadRequestError } from "../errors/index.js";
+import { z } from "zod";
 
 const router = Router();
 
-// GET /api/security-assignments - List all assignments
-router.get("/", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/security-assignments
+ * List all assignments with asset class info
+ */
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
     const assignments = await prisma.securityAssignment.findMany({
       orderBy: { symbol: "asc" },
       include: { assetClass: true },
     });
     res.json(assignments);
-  } catch (error) {
-    console.error("Failed to fetch security assignments:", error);
-    res.status(500).json({ error: "Failed to fetch security assignments" });
-  }
-});
+  })
+);
 
-// GET /api/security-assignments/:symbol - Get assignment for a symbol
-router.get("/:symbol", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/security-assignments/:symbol
+ * Get assignment for a specific symbol
+ */
+router.get(
+  "/:symbol",
+  validate({
+    params: securityAssignmentSymbolParamSchema,
+    query: securityAssignmentSymbolQuerySchema,
+  }),
+  asyncHandler(async (req, res) => {
     const { symbol } = req.params;
     const secType = (req.query.secType as string) || "STK";
 
@@ -32,45 +58,35 @@ router.get("/:symbol", async (req: Request, res: Response) => {
     });
 
     if (!assignment) {
-      res.status(404).json({ error: "Security assignment not found" });
-      return;
+      throw new NotFoundError("Security assignment not found");
     }
+
     res.json(assignment);
-  } catch (error) {
-    console.error("Failed to fetch security assignment:", error);
-    res.status(500).json({ error: "Failed to fetch security assignment" });
-  }
-});
+  })
+);
 
-// POST /api/security-assignments - Create or update assignment
-router.post("/", async (req: Request, res: Response) => {
-  try {
+/**
+ * POST /api/security-assignments
+ * Create or update a security assignment
+ */
+router.post(
+  "/",
+  validate({ body: securityAssignmentCreateSchema }),
+  asyncHandler(async (req, res) => {
     const { symbol, conId, secType, assetClassId, source } = req.body;
-
-    if (!symbol || typeof symbol !== "string") {
-      res.status(400).json({ error: "Symbol is required" });
-      return;
-    }
-    if (!assetClassId) {
-      res.status(400).json({ error: "Asset class ID is required" });
-      return;
-    }
 
     // Verify asset class exists
     const assetClass = await prisma.assetClass.findUnique({
       where: { id: assetClassId },
     });
+
     if (!assetClass) {
-      res.status(400).json({ error: "Asset class not found" });
-      return;
+      throw new BadRequestError("Asset class not found");
     }
 
     const assignment = await prisma.securityAssignment.upsert({
       where: {
-        symbol_secType: {
-          symbol: symbol.toUpperCase(),
-          secType: secType || "STK",
-        },
+        symbol_secType: { symbol, secType },
       },
       update: {
         assetClassId,
@@ -78,42 +94,40 @@ router.post("/", async (req: Request, res: Response) => {
         source: source || "manual",
       },
       create: {
-        symbol: symbol.toUpperCase(),
+        symbol,
         conId: conId || null,
-        secType: secType || "STK",
+        secType,
         assetClassId,
         source: source || "manual",
       },
       include: { assetClass: true },
     });
 
-    // Broadcast allocation change
-    sseService.broadcast("allocation", { changed: true, symbol: symbol.toUpperCase() });
-
+    sseService.broadcast("allocation", { changed: true, symbol });
     res.status(201).json(assignment);
-  } catch (error) {
-    console.error("Failed to create security assignment:", error);
-    res.status(500).json({ error: "Failed to create security assignment" });
-  }
-});
+  })
+);
 
-// PUT /api/security-assignments/:id - Update assignment
-router.put("/:id", async (req: Request, res: Response) => {
-  try {
+/**
+ * PUT /api/security-assignments/:id
+ * Update an existing assignment
+ */
+router.put(
+  "/:id",
+  validate({
+    params: securityAssignmentIdParamSchema,
+    body: securityAssignmentUpdateSchema,
+  }),
+  asyncHandler(async (req, res) => {
     const { assetClassId } = req.body;
-
-    if (!assetClassId) {
-      res.status(400).json({ error: "Asset class ID is required" });
-      return;
-    }
 
     // Verify asset class exists
     const assetClass = await prisma.assetClass.findUnique({
       where: { id: assetClassId },
     });
+
     if (!assetClass) {
-      res.status(400).json({ error: "Asset class not found" });
-      return;
+      throw new BadRequestError("Asset class not found");
     }
 
     const assignment = await prisma.securityAssignment.update({
@@ -122,59 +136,43 @@ router.put("/:id", async (req: Request, res: Response) => {
       include: { assetClass: true },
     });
 
-    // Broadcast allocation change
     sseService.broadcast("allocation", { changed: true, symbol: assignment.symbol });
-
     res.json(assignment);
-  } catch (error: any) {
-    if (error.code === "P2025") {
-      res.status(404).json({ error: "Security assignment not found" });
-      return;
-    }
-    console.error("Failed to update security assignment:", error);
-    res.status(500).json({ error: "Failed to update security assignment" });
-  }
-});
+  })
+);
 
-// DELETE /api/security-assignments/:id - Delete assignment
-router.delete("/:id", async (req: Request, res: Response) => {
-  try {
+/**
+ * DELETE /api/security-assignments/:id
+ * Delete an assignment
+ */
+router.delete(
+  "/:id",
+  validate({ params: securityAssignmentIdParamSchema }),
+  asyncHandler(async (req, res) => {
     const deleted = await prisma.securityAssignment.delete({
       where: { id: req.params.id },
     });
 
-    // Broadcast allocation change
     sseService.broadcast("allocation", { changed: true, symbol: deleted.symbol });
-
     res.status(204).send();
-  } catch (error: any) {
-    if (error.code === "P2025") {
-      res.status(404).json({ error: "Security assignment not found" });
-      return;
-    }
-    console.error("Failed to delete security assignment:", error);
-    res.status(500).json({ error: "Failed to delete security assignment" });
-  }
-});
+  })
+);
 
-// POST /api/security-assignments/bulk - Bulk assign securities
-router.post("/bulk", async (req: Request, res: Response) => {
-  try {
+/**
+ * POST /api/security-assignments/bulk
+ * Bulk assign securities to asset classes
+ */
+router.post(
+  "/bulk",
+  validate({ body: z.object({ assignments: securityAssignmentBulkSchema }) }),
+  asyncHandler(async (req, res) => {
     const { assignments } = req.body;
 
-    if (!Array.isArray(assignments) || assignments.length === 0) {
-      res.status(400).json({ error: "Assignments array is required" });
-      return;
-    }
-
     const results = await prisma.$transaction(
-      assignments.map((a: any) =>
+      assignments.map((a: { symbol: string; conId?: number; secType: string; assetClassId: string; source?: string }) =>
         prisma.securityAssignment.upsert({
           where: {
-            symbol_secType: {
-              symbol: a.symbol.toUpperCase(),
-              secType: a.secType || "STK",
-            },
+            symbol_secType: { symbol: a.symbol, secType: a.secType },
           },
           update: {
             assetClassId: a.assetClassId,
@@ -182,9 +180,9 @@ router.post("/bulk", async (req: Request, res: Response) => {
             source: a.source || "bulk",
           },
           create: {
-            symbol: a.symbol.toUpperCase(),
+            symbol: a.symbol,
             conId: a.conId || null,
-            secType: a.secType || "STK",
+            secType: a.secType,
             assetClassId: a.assetClassId,
             source: a.source || "bulk",
           },
@@ -193,10 +191,7 @@ router.post("/bulk", async (req: Request, res: Response) => {
     );
 
     res.status(201).json({ created: results.length });
-  } catch (error) {
-    console.error("Failed to bulk assign securities:", error);
-    res.status(500).json({ error: "Failed to bulk assign securities" });
-  }
-});
+  })
+);
 
 export default router;

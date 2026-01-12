@@ -11,6 +11,11 @@ export interface ContractInfo {
 }
 
 /**
+ * Month abbreviations for option expiry formatting
+ */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
  * Format a security display name.
  * For stocks: returns the symbol as-is
  * For options: returns formatted string like "AAPL Dec19'25 150 PUT"
@@ -29,11 +34,10 @@ export function formatDisplayName(contract: ContractInfo): string {
   const expiry = contract.lastTradeDateOrContractMonth;
 
   if (expiry && strike) {
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const year = expiry.slice(2, 4);
     const monthNum = parseInt(expiry.slice(4, 6), 10);
     const day = expiry.slice(6, 8);
-    const monthStr = months[monthNum - 1] || "";
+    const monthStr = MONTHS[monthNum - 1] || "";
     return `${symbol} ${monthStr}${day}'${year} ${strike} ${right}`;
   }
 
@@ -50,4 +54,54 @@ export function getOptionRight(contract: ContractInfo): "P" | "C" | undefined {
     return undefined;
   }
   return contract.right === "P" ? "P" : "C";
+}
+
+/**
+ * Parse option expiry string (YYYYMMDD) into components
+ */
+export function parseOptionExpiry(expiry: string): {
+  year: string;
+  month: string;
+  day: string;
+  monthName: string;
+} | null {
+  if (!expiry || expiry.length < 8) {
+    return null;
+  }
+
+  const year = expiry.slice(0, 4);
+  const month = expiry.slice(4, 6);
+  const day = expiry.slice(6, 8);
+  const monthNum = parseInt(month, 10);
+  const monthName = MONTHS[monthNum - 1] || "";
+
+  return { year, month, day, monthName };
+}
+
+/**
+ * Create a unique key for a security based on symbol and type
+ */
+export function getSecurityKey(symbol: string, secType: string): string {
+  return `${symbol}:${secType}`;
+}
+
+/**
+ * Check if a security type represents an option
+ */
+export function isOption(secType: string): boolean {
+  return secType === "OPT";
+}
+
+/**
+ * Check if a security type represents a stock
+ */
+export function isStock(secType: string): boolean {
+  return secType === "STK";
+}
+
+/**
+ * Check if a security type represents cash
+ */
+export function isCash(secType: string): boolean {
+  return secType === "CASH";
 }

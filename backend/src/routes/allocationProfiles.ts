@@ -1,11 +1,42 @@
-import { Router, Request, Response } from "express";
+/**
+ * Allocation Profiles API routes
+ * Manages allocation profiles and their target distributions
+ */
+
+import { Router } from "express";
 import { prisma } from "../db/index.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
+import { validate } from "../middleware/validate.js";
+import {
+  allocationProfileCreateSchema,
+  allocationProfileUpdateSchema,
+  allocationProfileIdParamSchema,
+} from "@assup/shared";
+import { NotFoundError, BadRequestError } from "../errors/index.js";
 
 const router = Router();
 
-// GET /api/allocation-profiles - List all profiles
-router.get("/", async (req: Request, res: Response) => {
-  try {
+/**
+ * Validate that target percentages sum to 100%
+ */
+function validateTargetsSum(targets: Array<{ targetPercentage: number }> | undefined): void {
+  if (!targets || targets.length === 0) return;
+
+  const total = targets.reduce((sum, t) => sum + t.targetPercentage, 0);
+  if (Math.abs(total - 100) > 0.01) {
+    throw new BadRequestError(
+      `Target percentages must sum to 100% (current: ${total.toFixed(2)}%)`
+    );
+  }
+}
+
+/**
+ * GET /api/allocation-profiles
+ * List all profiles with targets
+ */
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
     const profiles = await prisma.allocationProfile.findMany({
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
       include: {
@@ -16,15 +47,16 @@ router.get("/", async (req: Request, res: Response) => {
       },
     });
     res.json(profiles);
-  } catch (error) {
-    console.error("Failed to fetch allocation profiles:", error);
-    res.status(500).json({ error: "Failed to fetch allocation profiles" });
-  }
-});
+  })
+);
 
-// GET /api/allocation-profiles/active - Get active profile
-router.get("/active", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/allocation-profiles/active
+ * Get the currently active profile
+ */
+router.get(
+  "/active",
+  asyncHandler(async (req, res) => {
     const profile = await prisma.allocationProfile.findFirst({
       where: { isActive: true },
       include: {
@@ -34,20 +66,23 @@ router.get("/active", async (req: Request, res: Response) => {
         },
       },
     });
-    if (!profile) {
-      res.status(404).json({ error: "No active allocation profile" });
-      return;
-    }
-    res.json(profile);
-  } catch (error) {
-    console.error("Failed to fetch active profile:", error);
-    res.status(500).json({ error: "Failed to fetch active profile" });
-  }
-});
 
-// GET /api/allocation-profiles/:id - Get single profile
-router.get("/:id", async (req: Request, res: Response) => {
-  try {
+    if (!profile) {
+      throw new NotFoundError("No active allocation profile");
+    }
+
+    res.json(profile);
+  })
+);
+
+/**
+ * GET /api/allocation-profiles/:id
+ * Get a specific profile
+ */
+router.get(
+  "/:id",
+  validate({ params: allocationProfileIdParamSchema }),
+  asyncHandler(async (req, res) => {
     const profile = await prisma.allocationProfile.findUnique({
       where: { id: req.params.id },
       include: {
@@ -57,37 +92,28 @@ router.get("/:id", async (req: Request, res: Response) => {
         },
       },
     });
-    if (!profile) {
-      res.status(404).json({ error: "Allocation profile not found" });
-      return;
-    }
-    res.json(profile);
-  } catch (error) {
-    console.error("Failed to fetch allocation profile:", error);
-    res.status(500).json({ error: "Failed to fetch allocation profile" });
-  }
-});
 
-// POST /api/allocation-profiles - Create profile
-router.post("/", async (req: Request, res: Response) => {
-  try {
+    if (!profile) {
+      throw new NotFoundError("Allocation profile not found");
+    }
+
+    res.json(profile);
+  })
+);
+
+/**
+ * POST /api/allocation-profiles
+ * Create a new profile
+ */
+router.post(
+  "/",
+  validate({ body: allocationProfileCreateSchema }),
+  asyncHandler(async (req, res) => {
     const { name, isActive, targets } = req.body;
 
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      res.status(400).json({ error: "Name is required" });
-      return;
-    }
+    validateTargetsSum(targets);
 
-    // Validate targets if provided
-    if (targets && Array.isArray(targets)) {
-      const total = targets.reduce((sum: number, t: any) => sum + (t.targetPercentage || 0), 0);
-      if (Math.abs(total - 100) > 0.01) {
-        res.status(400).json({ error: `Target percentages must sum to 100% (current: ${total.toFixed(2)}%)` });
-        return;
-      }
-    }
-
-    // If setting as active, deactivate others first
+    // If setting as active, deactivate others
     if (isActive) {
       await prisma.allocationProfile.updateMany({
         where: { isActive: true },
@@ -97,11 +123,11 @@ router.post("/", async (req: Request, res: Response) => {
 
     const profile = await prisma.allocationProfile.create({
       data: {
-        name: name.trim(),
+        name,
         isActive: isActive || false,
         targets: targets
           ? {
-              create: targets.map((t: any) => ({
+              create: targets.map((t: { assetClassId: string; targetPercentage: number }) => ({
                 assetClassId: t.assetClassId,
                 targetPercentage: t.targetPercentage,
               })),
@@ -109,22 +135,22 @@ router.post("/", async (req: Request, res: Response) => {
           : undefined,
       },
       include: {
-        targets: {
-          include: { assetClass: true },
-        },
+        targets: { include: { assetClass: true } },
       },
     });
 
     res.status(201).json(profile);
-  } catch (error) {
-    console.error("Failed to create allocation profile:", error);
-    res.status(500).json({ error: "Failed to create allocation profile" });
-  }
-});
+  })
+);
 
-// PUT /api/allocation-profiles/:id - Update profile
-router.put("/:id", async (req: Request, res: Response) => {
-  try {
+/**
+ * PUT /api/allocation-profiles/:id
+ * Update a profile
+ */
+router.put(
+  "/:id",
+  validate({ params: allocationProfileIdParamSchema, body: allocationProfileUpdateSchema }),
+  asyncHandler(async (req, res) => {
     const { name, isActive, targets } = req.body;
     const profileId = req.params.id;
 
@@ -132,21 +158,14 @@ router.put("/:id", async (req: Request, res: Response) => {
     const existing = await prisma.allocationProfile.findUnique({
       where: { id: profileId },
     });
+
     if (!existing) {
-      res.status(404).json({ error: "Allocation profile not found" });
-      return;
+      throw new NotFoundError("Allocation profile not found");
     }
 
-    // Validate targets if provided
-    if (targets && Array.isArray(targets)) {
-      const total = targets.reduce((sum: number, t: any) => sum + (t.targetPercentage || 0), 0);
-      if (Math.abs(total - 100) > 0.01) {
-        res.status(400).json({ error: `Target percentages must sum to 100% (current: ${total.toFixed(2)}%)` });
-        return;
-      }
-    }
+    validateTargetsSum(targets);
 
-    // If setting as active, deactivate others first
+    // If setting as active, deactivate others
     if (isActive && !existing.isActive) {
       await prisma.allocationProfile.updateMany({
         where: { isActive: true },
@@ -166,11 +185,11 @@ router.put("/:id", async (req: Request, res: Response) => {
       return tx.allocationProfile.update({
         where: { id: profileId },
         data: {
-          name: name?.trim(),
-          isActive: isActive,
+          name,
+          isActive,
           targets: targets
             ? {
-                create: targets.map((t: any) => ({
+                create: targets.map((t: { assetClassId: string; targetPercentage: number }) => ({
                   assetClassId: t.assetClassId,
                   targetPercentage: t.targetPercentage,
                 })),
@@ -178,32 +197,32 @@ router.put("/:id", async (req: Request, res: Response) => {
             : undefined,
         },
         include: {
-          targets: {
-            include: { assetClass: true },
-          },
+          targets: { include: { assetClass: true } },
         },
       });
     });
 
     res.json(profile);
-  } catch (error) {
-    console.error("Failed to update allocation profile:", error);
-    res.status(500).json({ error: "Failed to update allocation profile" });
-  }
-});
+  })
+);
 
-// POST /api/allocation-profiles/:id/activate - Set profile as active
-router.post("/:id/activate", async (req: Request, res: Response) => {
-  try {
+/**
+ * POST /api/allocation-profiles/:id/activate
+ * Set a profile as active
+ */
+router.post(
+  "/:id/activate",
+  validate({ params: allocationProfileIdParamSchema }),
+  asyncHandler(async (req, res) => {
     const profileId = req.params.id;
 
     // Check profile exists
     const existing = await prisma.allocationProfile.findUnique({
       where: { id: profileId },
     });
+
     if (!existing) {
-      res.status(404).json({ error: "Allocation profile not found" });
-      return;
+      throw new NotFoundError("Allocation profile not found");
     }
 
     // Deactivate all and activate this one
@@ -221,34 +240,27 @@ router.post("/:id/activate", async (req: Request, res: Response) => {
     const profile = await prisma.allocationProfile.findUnique({
       where: { id: profileId },
       include: {
-        targets: {
-          include: { assetClass: true },
-        },
+        targets: { include: { assetClass: true } },
       },
     });
 
     res.json(profile);
-  } catch (error) {
-    console.error("Failed to activate allocation profile:", error);
-    res.status(500).json({ error: "Failed to activate allocation profile" });
-  }
-});
+  })
+);
 
-// DELETE /api/allocation-profiles/:id - Delete profile
-router.delete("/:id", async (req: Request, res: Response) => {
-  try {
+/**
+ * DELETE /api/allocation-profiles/:id
+ * Delete a profile
+ */
+router.delete(
+  "/:id",
+  validate({ params: allocationProfileIdParamSchema }),
+  asyncHandler(async (req, res) => {
     await prisma.allocationProfile.delete({
       where: { id: req.params.id },
     });
     res.status(204).send();
-  } catch (error: any) {
-    if (error.code === "P2025") {
-      res.status(404).json({ error: "Allocation profile not found" });
-      return;
-    }
-    console.error("Failed to delete allocation profile:", error);
-    res.status(500).json({ error: "Failed to delete allocation profile" });
-  }
-});
+  })
+);
 
 export default router;

@@ -1,0 +1,22 @@
+{
+  "name": "assup",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Asset allocation portfolio manager - Monorepo",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build --workspace=@assup/shared",
+    "dev:backend": "npm run dev --workspace=assup-backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "postinstall": "npm run build:shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.2"
+  }
+}

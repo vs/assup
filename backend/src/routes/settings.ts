@@ -1,21 +1,42 @@
-import { Router, Request, Response } from "express";
+/**
+ * Settings API routes
+ * Key-value settings storage
+ */
+
+import { Router } from "express";
 import { prisma } from "../db/index.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
+import { validate } from "../middleware/validate.js";
+import { settingKeyParamSchema, settingValueSchema } from "@assup/shared";
+import { NotFoundError } from "../errors/index.js";
 
 const router = Router();
 
-export interface DashboardSettings {
-  includeOptions: boolean;
-  optionsWeightMode: "notional" | "delta";
-}
-
-const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
+const DEFAULT_DASHBOARD_SETTINGS = {
   includeOptions: false,
-  optionsWeightMode: "notional",
+  optionsWeightMode: "notional" as const,
 };
 
-// GET /api/settings/:key - Get a setting by key
-router.get("/:key", async (req: Request, res: Response) => {
-  try {
+/**
+ * GET /api/settings
+ * List all settings
+ */
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
+    const settings = await prisma.setting.findMany();
+    res.json(settings);
+  })
+);
+
+/**
+ * GET /api/settings/:key
+ * Get a setting by key
+ */
+router.get(
+  "/:key",
+  validate({ params: settingKeyParamSchema }),
+  asyncHandler(async (req, res) => {
     const { key } = req.params;
 
     const setting = await prisma.setting.findUnique({
@@ -23,32 +44,28 @@ router.get("/:key", async (req: Request, res: Response) => {
     });
 
     if (!setting) {
-      // Return default for known keys
+      // Return defaults for known keys
       if (key === "dashboard") {
         res.json({ key, value: DEFAULT_DASHBOARD_SETTINGS });
         return;
       }
-      res.status(404).json({ error: "Setting not found" });
-      return;
+      throw new NotFoundError("Setting not found");
     }
 
     res.json(setting);
-  } catch (error) {
-    console.error("Failed to fetch setting:", error);
-    res.status(500).json({ error: "Failed to fetch setting" });
-  }
-});
+  })
+);
 
-// PUT /api/settings/:key - Update or create a setting
-router.put("/:key", async (req: Request, res: Response) => {
-  try {
+/**
+ * PUT /api/settings/:key
+ * Update or create a setting
+ */
+router.put(
+  "/:key",
+  validate({ params: settingKeyParamSchema, body: settingValueSchema }),
+  asyncHandler(async (req, res) => {
     const { key } = req.params;
     const { value } = req.body;
-
-    if (value === undefined) {
-      res.status(400).json({ error: "Value is required" });
-      return;
-    }
 
     const setting = await prisma.setting.upsert({
       where: { key },
@@ -57,21 +74,7 @@ router.put("/:key", async (req: Request, res: Response) => {
     });
 
     res.json(setting);
-  } catch (error) {
-    console.error("Failed to update setting:", error);
-    res.status(500).json({ error: "Failed to update setting" });
-  }
-});
-
-// GET /api/settings - List all settings
-router.get("/", async (req: Request, res: Response) => {
-  try {
-    const settings = await prisma.setting.findMany();
-    res.json(settings);
-  } catch (error) {
-    console.error("Failed to fetch settings:", error);
-    res.status(500).json({ error: "Failed to fetch settings" });
-  }
-});
+  })
+);
 
 export default router;

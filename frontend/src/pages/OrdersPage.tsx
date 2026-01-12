@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { api } from "@/lib/api";
-import type { OrderImpact } from "@/lib/api";
+import { api } from "@/api";
+import type { OrderImpact } from "@assup/shared";
+import { formatCurrency, formatNumber } from "@assup/shared";
 import { useOrderUpdates } from "@/hooks/useSSE";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartModal } from "@/components/ChartModal";
 import {
@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw } from "lucide-react";
+import { PageHeader, ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 
 export function OrdersPage() {
   const [impact, setImpact] = useState<OrderImpact | null>(null);
@@ -46,50 +46,22 @@ export function OrdersPage() {
     }
   }
 
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-
-  const formatNumber = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(value);
-
   const hasOrders = impact && impact.orders.length > 0;
 
   if (loading && !impact) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
+    return <PageLoadingSkeleton />;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Orders</h1>
-          <p className="text-muted-foreground">
-            View your pending limit orders.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="Orders"
+        subtitle="View your pending limit orders."
+        loading={loading}
+        onRefresh={loadData}
+      />
 
-      {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       {/* Open Limit Orders */}
       <Card>
