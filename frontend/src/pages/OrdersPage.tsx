@@ -5,6 +5,7 @@ import type { OrderImpact } from "@/lib/api";
 import { useOrderUpdates } from "@/hooks/useSSE";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartModal } from "@/components/ChartModal";
 import {
   Table,
   TableBody,
@@ -20,6 +21,7 @@ export function OrdersPage() {
   const [impact, setImpact] = useState<OrderImpact | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
   // Subscribe to real-time order updates
   const handleOrderUpdate = useCallback(() => {
@@ -119,7 +121,14 @@ export function OrdersPage() {
               <TableBody>
                 {impact.orders.map((order) => (
                   <TableRow key={order.orderId}>
-                    <TableCell className="font-medium">{order.displayName}</TableCell>
+                    <TableCell>
+                      <button
+                        className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                        onClick={() => setChartSymbol(order.symbol)}
+                      >
+                        {order.displayName}
+                      </button>
+                    </TableCell>
                     <TableCell>
                       {order.secType === "OPT" && order.right ? (
                         <Badge variant={order.right === "P" ? "danger" : "success"}>
@@ -171,6 +180,12 @@ export function OrdersPage() {
           )}
         </CardContent>
       </Card>
+
+      <ChartModal
+        symbol={chartSymbol}
+        open={!!chartSymbol}
+        onClose={() => setChartSymbol(null)}
+      />
     </div>
   );
 }
