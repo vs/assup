@@ -4,17 +4,19 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
 
 ## Features
 
-- **IBKR Integration** - Connects to Interactive Brokers TWS to download trades and positions
-- **Portfolio Grouping** - Groups positions by user-defined asset classes
-- **Rebalancing** - Calculates current vs target allocations to determine adjustments
+- **Dashboard** - View current vs. target allocation percentages
+- **Positions** - View IBKR positions with asset class assignments and filtering
+- **Watchlists** - Track securities with TradingView chart integration
+- **Order Simulator** - Analyze how trades would impact portfolio allocation
 - **Options Scanner** - Find options opportunities for underinvested asset classes
+- **Asset Classes** - Define custom categories and allocation targets
 
 ## Tech Stack
 
-- **Backend:** Node.js, TypeScript, Express
-- **Frontend:** React, Vite, TypeScript, shadcn/ui, Tailwind CSS
-- **Database:** PostgreSQL with Prisma ORM
-- **API:** Interactive Brokers API (via `ib-tws-api`)
+- **Backend:** Node.js, TypeScript, Express, Prisma
+- **Frontend:** React 19, Vite, Tailwind CSS v4, shadcn/ui
+- **Database:** PostgreSQL 16
+- **IBKR API:** `@stoqey/ib`
 
 ## Prerequisites
 
@@ -44,6 +46,15 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
    - Frontend: http://localhost:8080
    - Backend API: http://localhost:3000
 
+### Live Trading
+
+For live trading, use the dedicated compose file:
+```bash
+docker-compose -f docker-compose.live.yml up --build
+```
+- Frontend: http://localhost:8081
+- Backend API: http://localhost:3001
+
 ## Local Development
 
 **Start PostgreSQL:**
@@ -55,7 +66,9 @@ docker-compose up -d postgres
 ```bash
 cd backend
 npm install
-cp .env.example .env
+export DATABASE_URL="postgresql://assup:assup_dev@localhost:5432/assup"
+export IB_HOST=127.0.0.1
+export IB_PORT=7497
 npm run db:migrate
 npm run db:seed
 npm run dev
@@ -67,9 +80,3 @@ cd frontend
 npm install
 npm run dev
 ```
-
-## Documentation
-
-- [DESIGN.md](./DESIGN.md) - System design and architecture
-- [ROADMAP.md](./ROADMAP.md) - Implementation roadmap
-- [CLAUDE.md](./CLAUDE.md) - Project context for AI assistants
