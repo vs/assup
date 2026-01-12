@@ -1,0 +1,37 @@
+# Dependencies
+node_modules
+*/node_modules
+**/node_modules
+
+# Build outputs - always rebuild inside Docker
+packages/shared/dist
+backend/dist
+frontend/dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files (use Docker environment variables instead)
+.env
+.env.*
+!.env.example
+
+# Docker files (avoid recursive copy)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Development files
+*.md
+LICENSE
