@@ -20,8 +20,9 @@ RUN rm -f package-lock.json && npm install
 # Copy backend source
 COPY backend ./backend
 
-# Build shared package first, then backend
+# Build shared package first, generate Prisma client, then build backend
 RUN npm run build -w @assup/shared && \
+    cd backend && npx prisma generate && cd .. && \
     npm run build -w backend
 
 FROM node:20-alpine
@@ -39,15 +40,14 @@ COPY packages/shared ./packages/shared
 COPY backend/package*.json ./backend/
 COPY --from=builder /app/backend/prisma ./backend/prisma
 
-# Install production dependencies
-RUN rm -f package-lock.json && npm install --omit=dev
+# Install production dependencies and generate Prisma client for runtime
+RUN rm -f package-lock.json && npm install --omit=dev && \
+    cd backend && npx prisma generate
 
 # Copy built artifacts
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/backend/dist ./backend/dist
 COPY --from=builder /app/backend/prisma.config.ts ./backend/prisma.config.ts
-COPY --from=builder /app/backend/node_modules/@prisma/client ./backend/node_modules/@prisma/client
-COPY --from=builder /app/backend/node_modules/.prisma ./backend/node_modules/.prisma
 
 EXPOSE 3000
 
