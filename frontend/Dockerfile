@@ -15,7 +15,8 @@ COPY packages/shared ./packages/shared
 COPY frontend/package*.json ./frontend/
 
 # Install all dependencies from root (handles workspace linking)
-RUN npm ci
+# Delete lockfile to force fresh resolution of platform-specific optional dependencies
+RUN rm -f package-lock.json && npm install
 
 # Copy frontend source
 COPY frontend ./frontend

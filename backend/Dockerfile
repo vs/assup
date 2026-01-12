@@ -14,7 +14,8 @@ COPY backend/package*.json ./backend/
 COPY backend/prisma ./backend/prisma
 
 # Install all dependencies from root (handles workspace linking)
-RUN npm ci
+# Delete lockfile to force fresh resolution of platform-specific optional dependencies
+RUN rm -f package-lock.json && npm install
 
 # Copy backend source
 COPY backend ./backend
@@ -39,7 +40,7 @@ COPY backend/package*.json ./backend/
 COPY --from=builder /app/backend/prisma ./backend/prisma
 
 # Install production dependencies
-RUN npm ci --omit=dev
+RUN rm -f package-lock.json && npm install --omit=dev
 
 # Copy built artifacts
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
