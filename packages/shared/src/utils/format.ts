@@ -18,11 +18,13 @@ export function formatCurrency(
   if (!Number.isFinite(value)) {
     return "$—";
   }
+  const maxDigits = options?.maximumFractionDigits ?? 2;
+  const minDigits = options?.minimumFractionDigits ?? maxDigits;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: options?.minimumFractionDigits ?? 2,
-    maximumFractionDigits: options?.maximumFractionDigits ?? 2,
+    minimumFractionDigits: minDigits,
+    maximumFractionDigits: maxDigits,
   }).format(value);
 }
 
