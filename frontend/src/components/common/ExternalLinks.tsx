@@ -1,5 +1,3 @@
-import { ExternalLink } from "lucide-react";
-
 interface ExternalLinksProps {
   symbol: string;
 }
@@ -9,7 +7,7 @@ export function ExternalLinks({ symbol }: ExternalLinksProps) {
   const seekingAlphaUrl = `https://seekingalpha.com/symbol/${symbol}`;
 
   return (
-    <div className="flex items-center gap-1.5 ml-2">
+    <div className="flex items-center gap-1.5 mr-2">
       {/* TradingView */}
       <a
         href={tradingViewUrl}
@@ -32,19 +30,11 @@ export function ExternalLinks({ symbol }: ExternalLinksProps) {
         href={seekingAlphaUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center justify-center hover:opacity-70 transition-opacity"
+        className="inline-flex items-center justify-center hover:opacity-70 transition-opacity font-semibold"
         title="View on Seeking Alpha"
       >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-4 w-4"
-          fill="currentColor"
-        >
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-        </svg>
+        <span className="text-sm leading-none">α</span>
       </a>
-
-      <ExternalLink className="h-3 w-3 text-muted-foreground" />
     </div>
   );
 }

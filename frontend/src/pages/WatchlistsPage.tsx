@@ -267,13 +267,13 @@ export function WatchlistsPage() {
                         <TableRow key={item.id}>
                           <TableCell>
                             <div className="flex items-center">
+                              <ExternalLinks symbol={item.symbol} />
                               <button
                                 className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
                                 onClick={() => setChartSymbol(item.symbol)}
                               >
                                 {item.symbol}
                               </button>
-                              <ExternalLinks symbol={item.symbol} />
                             </div>
                           </TableCell>
                           <TableCell className="w-24">

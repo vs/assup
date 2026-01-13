@@ -46,13 +46,13 @@ export function PositionRow({
             <span className="font-medium">{position.symbol}</span>
           ) : (
             <>
+              <ExternalLinks symbol={position.underlying || position.symbol} />
               <button
                 className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
                 onClick={() => onSymbolClick(position.underlying || position.symbol)}
               >
                 {position.symbol}
               </button>
-              <ExternalLinks symbol={position.underlying || position.symbol} />
             </>
           )}
         </div>
