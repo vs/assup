@@ -140,42 +140,75 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    // Get underinvested asset classes if not specified
-    let targetAssetClasses = criteria.targetAssetClasses;
-    if (!targetAssetClasses || targetAssetClasses.length === 0) {
-      const underinvested = await getUnderinvestedClasses();
-      targetAssetClasses = underinvested.map((c) => c.id);
+    // Get symbols from positions and watchlists
+    const symbolsSet = new Set<string>();
+
+    // Get symbols from current positions
+    try {
+      const positions = await ibkrService.getPositions();
+      positions.forEach((pos) => {
+        if (pos.contract.secType === "STK" && pos.contract.symbol) {
+          symbolsSet.add(pos.contract.symbol);
+        }
+      });
+    } catch (err: unknown) {
+      const error = err as { message?: string; code?: string };
+      if (!error.message?.includes("does not support positions") && error.code !== "timeout") {
+        throw err;
+      }
     }
 
-    // Get symbols for target asset classes (only STK type)
-    const targetSymbols = await prisma.securityAssignment.findMany({
+    // Get symbols from all watchlists
+    const watchlistItems = await prisma.watchlistItem.findMany({
       where: {
-        ...(targetAssetClasses.length ? { assetClassId: { in: targetAssetClasses } } : {}),
         secType: "STK",
       },
-      include: { assetClass: true },
-      distinct: ["symbol"],
+      select: {
+        symbol: true,
+      },
     });
 
-    const uniqueSymbols = [...new Set(targetSymbols.map((s) => s.symbol))];
+    watchlistItems.forEach((item) => symbolsSet.add(item.symbol));
+
+    const uniqueSymbols = Array.from(symbolsSet);
 
     if (uniqueSymbols.length === 0) {
       res.json({
         criteria,
-        targetAssetClasses: targetAssetClasses || [],
+        targetAssetClasses: [],
         symbolsScanned: [],
         opportunities: [],
-        message: "No symbols found for target asset classes",
+        message: "No symbols found in positions or watchlists",
       });
       return;
     }
 
+    // Get asset class assignments for these symbols
+    const assignments = await prisma.securityAssignment.findMany({
+      where: {
+        symbol: { in: uniqueSymbols },
+        secType: "STK",
+      },
+      include: { assetClass: true },
+    });
+
+    // Create symbol to asset class mapping
+    const symbolAssignments = uniqueSymbols.map((symbol) => {
+      const assignment = assignments.find((a) => a.symbol === symbol);
+      return {
+        symbol,
+        assetClass: assignment
+          ? { name: assignment.assetClass.name, color: assignment.assetClass.color }
+          : { name: "Unassigned", color: "#6b7280" },
+      };
+    });
+
     // Scan for options opportunities
-    const opportunities = await scanOptionsForSymbols(uniqueSymbols, targetSymbols, criteria);
+    const opportunities = await scanOptionsForSymbols(uniqueSymbols, symbolAssignments, criteria);
 
     res.json({
       criteria,
-      targetAssetClasses: targetAssetClasses || [],
+      targetAssetClasses: [],
       symbolsScanned: uniqueSymbols,
       opportunities,
     });
