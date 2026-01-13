@@ -547,7 +547,18 @@ class IBKRService {
     }
 
     try {
-      const marketData = await this.api.getMarketDataSnapshot(contract, "", false);
+      // For options, first resolve the contract to get complete details including conId
+      let resolvedContract = contract;
+      if (contract.secType === SecType.OPT) {
+        const contractDetails = await this.api.getContractDetails(contract);
+        if (!contractDetails || contractDetails.length === 0) {
+          console.warn(`No contract details found for ${contract.symbol} ${contract.strike} ${contract.right}`);
+          return null;
+        }
+        resolvedContract = contractDetails[0].contract;
+      }
+
+      const marketData = await this.api.getMarketDataSnapshot(resolvedContract, "", false);
 
       if (!marketData) {
         return null;
@@ -561,7 +572,7 @@ class IBKRService {
       const closeTick = marketData.get(9); // CLOSE
 
       return {
-        contract,
+        contract: resolvedContract,
         bid: bidTick?.value,
         ask: askTick?.value,
         last: lastTick?.value,
@@ -581,19 +592,30 @@ class IBKRService {
 
     const results = new Map<string, TickerData>();
 
-    // Process in batches to avoid overwhelming TWS
-    const batchSize = 50;
+    // Process in smaller batches to avoid overwhelming TWS
+    // Reduced batch size since we now make 2 API calls per option (getContractDetails + getMarketDataSnapshot)
+    const batchSize = 10;
     for (let i = 0; i < contracts.length; i += batchSize) {
       const batch = contracts.slice(i, i + batchSize);
       const promises = batch.map(async (contract) => {
-        const data = await this.getMarketData(contract);
-        if (data) {
-          const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
-          results.set(key, data);
+        try {
+          const data = await this.getMarketData(contract);
+          if (data && data.bid !== undefined && data.ask !== undefined) {
+            const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
+            results.set(key, data);
+          }
+        } catch (err) {
+          // Silently skip contracts that fail - just log at debug level
+          console.debug(`Skipped contract ${contract.symbol} ${contract.strike} ${contract.right}:`, err);
         }
       });
 
       await Promise.allSettled(promises);
+
+      // Add small delay between batches to respect rate limits
+      if (i + batchSize < contracts.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
 
     return results;
