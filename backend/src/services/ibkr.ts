@@ -552,8 +552,13 @@ class IBKRService {
     }
 
     try {
+      // For options, try with empty exchange which often works better for market data
+      const mdContract = contract.secType === SecType.OPT
+        ? { ...contract, exchange: "" }
+        : contract;
+
       // Request only delayed data (generic tick list empty means delayed for users without real-time subscription)
-      const marketData = await this.api.getMarketDataSnapshot(contract, "", false);
+      const marketData = await this.api.getMarketDataSnapshot(mdContract, "", false);
 
       if (!marketData) {
         return null;
