@@ -352,6 +352,10 @@ async function scanOptionsForSymbols(
       const contracts = filteredChain.map((entry) => entry.put);
 
       // Get market data for options contracts (NOT the underlying!)
+      if (contracts.length > 0) {
+        const sample = contracts[0];
+        console.log(`  ↳ Sample contract: ${sample.symbol} $${sample.strike} ${sample.lastTradeDateOrContractMonth} ${sample.right} on ${sample.exchange}`);
+      }
       console.log(`  ↳ Fetching market data for ${contracts.length} PUT contracts...`);
       const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
       console.log(`  ↳ Received market data for ${marketDataMap.size} contracts`);
