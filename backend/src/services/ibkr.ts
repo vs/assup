@@ -597,6 +597,9 @@ class IBKRService {
     }
 
     const results = new Map<string, TickerData>();
+    let successCount = 0;
+    let failCount = 0;
+    let firstFailure: { contract: Contract; reason: string } | undefined;
 
     // Process in batches to avoid overwhelming TWS
     const batchSize = 20;
@@ -608,8 +611,24 @@ class IBKRService {
           if (data && data.bid !== undefined && data.ask !== undefined) {
             const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
             results.set(key, data);
+            successCount++;
+          } else {
+            failCount++;
+            if (!firstFailure) {
+              firstFailure = {
+                contract,
+                reason: data ? 'missing bid/ask' : 'no data returned (likely error 200/10091)'
+              };
+            }
           }
         } catch (err) {
+          failCount++;
+          if (!firstFailure) {
+            firstFailure = {
+              contract,
+              reason: err instanceof Error ? err.message : String(err)
+            };
+          }
           // Silently skip contracts that fail - just log at debug level
           console.debug(`Skipped contract ${contract.symbol} ${contract.strike} ${contract.right}:`, err);
         }
@@ -620,6 +639,14 @@ class IBKRService {
       // Add small delay between batches to respect rate limits
       if (i + batchSize < contracts.length) {
         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    // Log summary
+    if (contracts.length > 0) {
+      console.log(`Market data batch: ${successCount} succeeded, ${failCount} failed out of ${contracts.length} total`);
+      if (firstFailure && failCount > 0) {
+        console.log(`First failure example: ${firstFailure.contract.symbol} $${firstFailure.contract.strike} ${firstFailure.contract.lastTradeDateOrContractMonth} - ${firstFailure.reason}`);
       }
     }
 
