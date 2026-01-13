@@ -123,7 +123,10 @@ class IBKRService {
       this.api.error.subscribe({
         next: (err) => {
           // Only log non-fatal errors, don't disconnect
-          if (err.code && err.code < 2000) {
+          // Skip error 200 (no security definition) and 10091 (additional subscription required)
+          // as these are expected during options scanning and handled gracefully
+          const code = Number(err.code);
+          if (code && code < 2000 && code !== 200 && code !== 10091) {
             console.error(`TWS Error ${err.code}: ${err.error?.message}`);
           }
         },

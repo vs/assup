@@ -314,16 +314,28 @@ async function scanOptionsForSymbols(
       const allStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
       console.log(`  ↳ Found ${allExpirations.length} expirations, ${allStrikes.length} strikes`);
 
-      // Filter by expiration date
+      // Filter by expiration date and reasonable strike range
       const today = new Date();
+
+      // First, get unique strikes and find median (proxy for current price)
+      const uniqueStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
+      const medianStrike = uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
+
+      // For cash-secured puts, focus on strikes within 30% below and 20% above median
+      // This captures ATM and reasonable OTM puts without fetching thousands of deep OTM contracts
+      const minStrike = medianStrike * 0.70;
+      const maxStrike = medianStrike * 1.20;
+
       const filteredChain = chain.filter((entry) => {
         const expirationDate = parseExpirationDate(entry.expiration);
         const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        return daysToExpiry >= criteria.minDaysToExpiry && daysToExpiry <= criteria.maxDaysToExpiry;
+        const inExpirationRange = daysToExpiry >= criteria.minDaysToExpiry && daysToExpiry <= criteria.maxDaysToExpiry;
+        const inStrikeRange = entry.strike >= minStrike && entry.strike <= maxStrike;
+        return inExpirationRange && inStrikeRange;
       });
 
       if (filteredChain.length === 0) {
-        console.log(`  ↳ No expirations in range (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry} days)`);
+        console.log(`  ↳ No options in range (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry} days, strikes $${minStrike.toFixed(0)}-$${maxStrike.toFixed(0)})`);
         continue;
       }
 
@@ -334,7 +346,7 @@ async function scanOptionsForSymbols(
         ? `$${filteredStrikes[0]}-$${filteredStrikes[filteredStrikes.length - 1]}`
         : 'none';
       console.log(`  ↳ Evaluating ${filteredExpirations.length} expirations (${filteredExpirations[0]} to ${filteredExpirations[filteredExpirations.length - 1]})`);
-      console.log(`  ↳ Strike range: ${strikeRange} (${filteredStrikes.length} strikes)`);
+      console.log(`  ↳ Strike range: ${strikeRange} (${filteredStrikes.length} strikes, filtered from ${uniqueStrikes.length})`);
 
       // Collect contracts to get market data for (only put options for cash-secured puts)
       const contracts = filteredChain.map((entry) => entry.put);
