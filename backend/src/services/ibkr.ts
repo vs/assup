@@ -552,9 +552,10 @@ class IBKRService {
     }
 
     try {
-      // For options, try with empty exchange which often works better for market data
+      // For options, use SMART routing for market data (per TWS API documentation)
+      // This works better than specific exchanges which may be outdated (e.g., AMEX -> NYSE American)
       const mdContract = contract.secType === SecType.OPT
-        ? { ...contract, exchange: "" }
+        ? { ...contract, exchange: "SMART" }
         : contract;
 
       // Request only delayed data (generic tick list empty means delayed for users without real-time subscription)
