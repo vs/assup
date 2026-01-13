@@ -354,6 +354,13 @@ async function scanOptionsForSymbols(
       // Get market data for options contracts (NOT the underlying!)
       console.log(`  ↳ Fetching market data for ${contracts.length} PUT contracts...`);
       const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
+      console.log(`  ↳ Received market data for ${marketDataMap.size} contracts`);
+
+      // Debug counters
+      let withBidAsk = 0;
+      let passedCriteria = 0;
+      let failedReturn = 0;
+      let failedPremium = 0;
 
       // Process each option and calculate metrics
       for (const entry of filteredChain) {
@@ -364,13 +371,26 @@ async function scanOptionsForSymbols(
         const putKey = `${entry.put.symbol}_${entry.put.lastTradeDateOrContractMonth}_${entry.put.strike}_${entry.put.right}`;
         const putData = marketDataMap.get(putKey);
 
-        if (putData && putData.bid && putData.ask) {
+        if (putData && putData.bid !== undefined && putData.ask !== undefined && putData.bid > 0 && putData.ask > 0) {
+          withBidAsk++;
           const midPrice = (putData.bid + putData.ask) / 2;
           const premiumPercent = (midPrice / entry.strike) * 100;
           const annualizedReturn = (premiumPercent * 365) / daysToExpiry;
 
+          // Debug: Log first few samples
+          if (withBidAsk <= 3) {
+            console.log(`  ↳ Sample: ${symbol} $${entry.strike} ${entry.expiration}: bid=${putData.bid}, ask=${putData.ask}, premium=${premiumPercent.toFixed(2)}%, annual=${annualizedReturn.toFixed(2)}%`);
+          }
+
           // Filter by criteria
-          if (annualizedReturn >= criteria.minAnnualizedReturn && premiumPercent >= criteria.minPremiumPercent) {
+          const passesReturn = annualizedReturn >= criteria.minAnnualizedReturn;
+          const passesPremium = premiumPercent >= criteria.minPremiumPercent;
+
+          if (!passesReturn) failedReturn++;
+          if (!passesPremium) failedPremium++;
+
+          if (passesReturn && passesPremium) {
+            passedCriteria++;
             opportunities.push({
               symbol,
               assetClassName: assetClassInfo.name,
@@ -387,6 +407,11 @@ async function scanOptionsForSymbols(
             });
           }
         }
+      }
+
+      console.log(`  ↳ Market data stats: ${withBidAsk} with valid bid/ask, ${passedCriteria} passed criteria`);
+      if (failedReturn > 0 || failedPremium > 0) {
+        console.log(`  ↳ Filtered out: ${failedReturn} by annual return (min ${criteria.minAnnualizedReturn}%), ${failedPremium} by premium (min ${criteria.minPremiumPercent}%)`);
       }
 
       const newOpportunities = opportunities.filter(o => o.symbol === symbol).length;
