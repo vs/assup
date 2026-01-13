@@ -159,12 +159,25 @@ router.post(
 
     const uniqueSymbols = [...new Set(targetSymbols.map((s) => s.symbol))];
 
+    if (uniqueSymbols.length === 0) {
+      res.json({
+        criteria,
+        targetAssetClasses: targetAssetClasses || [],
+        symbolsScanned: [],
+        opportunities: [],
+        message: "No symbols found for target asset classes",
+      });
+      return;
+    }
+
+    // Scan for options opportunities
+    const opportunities = await scanOptionsForSymbols(uniqueSymbols, targetSymbols, criteria);
+
     res.json({
       criteria,
       targetAssetClasses: targetAssetClasses || [],
       symbolsScanned: uniqueSymbols,
-      opportunities: [],
-      message: "Options scanning requires market data subscriptions. Configure TWS market data for target symbols.",
+      opportunities,
     });
   })
 );
@@ -183,6 +196,147 @@ router.get(
     res.json({ underinvested, totalPortfolioValue: totalValue });
   })
 );
+
+/**
+ * Scan options for given symbols based on criteria
+ */
+async function scanOptionsForSymbols(
+  symbols: string[],
+  symbolAssignments: Array<{ symbol: string; assetClass: { name: string; color: string } }>,
+  criteria: {
+    minDaysToExpiry: number;
+    maxDaysToExpiry: number;
+    minDelta: number;
+    maxDelta: number;
+    minAnnualizedReturn: number;
+    minPremiumPercent: number;
+  }
+) {
+  const opportunities: Array<{
+    symbol: string;
+    assetClassName: string;
+    assetClassColor: string;
+    strike: number;
+    expiration: string;
+    daysToExpiry: number;
+    optionType: "CALL" | "PUT";
+    bid: number;
+    ask: number;
+    midPrice: number;
+    delta?: number;
+    annualizedReturn: number;
+    premiumPercent: number;
+  }> = [];
+
+  // Create a map for quick lookup of asset class info
+  const symbolToAssetClass = new Map(
+    symbolAssignments.map((s) => [s.symbol, { name: s.assetClass.name, color: s.assetClass.color }])
+  );
+
+  for (const symbol of symbols) {
+    const assetClassInfo = symbolToAssetClass.get(symbol);
+    if (!assetClassInfo) continue;
+
+    try {
+      console.log(`Scanning options for ${symbol}...`);
+
+      // Get options chain
+      const chain = await ibkrService.getOptionChain(symbol);
+      if (chain.length === 0) {
+        console.log(`No options chain found for ${symbol}`);
+        continue;
+      }
+
+      // Filter by expiration date
+      const today = new Date();
+      const filteredChain = chain.filter((entry) => {
+        const expirationDate = parseExpirationDate(entry.expiration);
+        const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return daysToExpiry >= criteria.minDaysToExpiry && daysToExpiry <= criteria.maxDaysToExpiry;
+      });
+
+      if (filteredChain.length === 0) {
+        console.log(`No options in expiration range for ${symbol}`);
+        continue;
+      }
+
+      // Collect contracts to get market data for (only put options for cash-secured puts)
+      const contracts = filteredChain.map((entry) => entry.put);
+
+      // Get market data for options contracts (NOT the underlying!)
+      console.log(`Getting market data for ${contracts.length} option contracts...`);
+      const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
+
+      // Process each option and calculate metrics
+      for (const entry of filteredChain) {
+        const expirationDate = parseExpirationDate(entry.expiration);
+        const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+        // Process PUT option (cash-secured put strategy)
+        const putKey = `${entry.put.symbol}_${entry.put.lastTradeDateOrContractMonth}_${entry.put.strike}_${entry.put.right}`;
+        const putData = marketDataMap.get(putKey);
+
+        if (putData && putData.bid && putData.ask) {
+          const midPrice = (putData.bid + putData.ask) / 2;
+          const premiumPercent = (midPrice / entry.strike) * 100;
+          const annualizedReturn = (premiumPercent * 365) / daysToExpiry;
+
+          // Filter by criteria
+          if (annualizedReturn >= criteria.minAnnualizedReturn && premiumPercent >= criteria.minPremiumPercent) {
+            opportunities.push({
+              symbol,
+              assetClassName: assetClassInfo.name,
+              assetClassColor: assetClassInfo.color,
+              strike: entry.strike,
+              expiration: entry.expiration,
+              daysToExpiry,
+              optionType: "PUT",
+              bid: putData.bid,
+              ask: putData.ask,
+              midPrice,
+              annualizedReturn,
+              premiumPercent,
+            });
+          }
+        }
+      }
+
+      console.log(`Found ${opportunities.length} opportunities for ${symbol}`);
+    } catch (err) {
+      console.error(`Error scanning options for ${symbol}:`, err);
+    }
+  }
+
+  // Sort by annualized return descending
+  opportunities.sort((a, b) => b.annualizedReturn - a.annualizedReturn);
+
+  return opportunities;
+}
+
+/**
+ * Parse expiration date string (format: YYYYMMDD or YYMMDD)
+ */
+function parseExpirationDate(expiration: string): Date {
+  let year: number;
+  let month: number;
+  let day: number;
+
+  if (expiration.length === 8) {
+    // YYYYMMDD
+    year = parseInt(expiration.substring(0, 4), 10);
+    month = parseInt(expiration.substring(4, 6), 10) - 1; // Month is 0-indexed
+    day = parseInt(expiration.substring(6, 8), 10);
+  } else if (expiration.length === 6) {
+    // YYMMDD
+    year = 2000 + parseInt(expiration.substring(0, 2), 10);
+    month = parseInt(expiration.substring(2, 4), 10) - 1;
+    day = parseInt(expiration.substring(4, 6), 10);
+  } else {
+    throw new Error(`Invalid expiration format: ${expiration}`);
+  }
+
+  return new Date(year, month, day);
+}
 
 /**
  * Helper to calculate underinvested asset classes
