@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { api } from "@/api";
 import type { Watchlist, WatchlistWithItems, WatchlistItem, AssetClass } from "@assup/shared";
-import { ErrorAlert, PageLoadingSkeleton, AssetClassSelect } from "@/components/common";
+import { ErrorAlert, PageLoadingSkeleton, AssetClassSelect, ExternalLinks } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -266,12 +266,15 @@ export function WatchlistsPage() {
                       {selectedWatchlist.items.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell>
-                            <button
-                              className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                              onClick={() => setChartSymbol(item.symbol)}
-                            >
-                              {item.symbol}
-                            </button>
+                            <div className="flex items-center">
+                              <button
+                                className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                                onClick={() => setChartSymbol(item.symbol)}
+                              >
+                                {item.symbol}
+                              </button>
+                              <ExternalLinks symbol={item.symbol} />
+                            </div>
                           </TableCell>
                           <TableCell className="w-24">
                             {(() => {

@@ -2,7 +2,7 @@ import type { Position, AssetClass, SparklinePoint } from "@assup/shared";
 import { formatCurrency, formatNumber, calculatePositionExposure } from "@assup/shared";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { AssetClassSelect } from "@/components/common";
+import { AssetClassSelect, ExternalLinks } from "@/components/common";
 import { Sparkline } from "@/components/Sparkline";
 
 interface PositionRowProps {
@@ -41,16 +41,21 @@ export function PositionRow({
     <TableRow>
       {/* Symbol */}
       <TableCell>
-        {isCash ? (
-          <span className="font-medium">{position.symbol}</span>
-        ) : (
-          <button
-            className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-            onClick={() => onSymbolClick(position.underlying || position.symbol)}
-          >
-            {position.symbol}
-          </button>
-        )}
+        <div className="flex items-center">
+          {isCash ? (
+            <span className="font-medium">{position.symbol}</span>
+          ) : (
+            <>
+              <button
+                className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                onClick={() => onSymbolClick(position.underlying || position.symbol)}
+              >
+                {position.symbol}
+              </button>
+              <ExternalLinks symbol={position.underlying || position.symbol} />
+            </>
+          )}
+        </div>
       </TableCell>
 
       {/* Sparkline */}
