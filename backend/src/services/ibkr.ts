@@ -511,6 +511,7 @@ class IBKRService {
               lastTradeDateOrContractMonth: expiration,
               strike,
               right: OptionType.Call,
+              multiplier: 100, // Standard multiplier for stock options
             };
 
             const putContract: Contract = {
@@ -521,6 +522,7 @@ class IBKRService {
               lastTradeDateOrContractMonth: expiration,
               strike,
               right: OptionType.Put,
+              multiplier: 100, // Standard multiplier for stock options
             };
 
             chain.push({
@@ -547,18 +549,8 @@ class IBKRService {
     }
 
     try {
-      // For options, first resolve the contract to get complete details including conId
-      let resolvedContract = contract;
-      if (contract.secType === SecType.OPT) {
-        const contractDetails = await this.api.getContractDetails(contract);
-        if (!contractDetails || contractDetails.length === 0) {
-          console.warn(`No contract details found for ${contract.symbol} ${contract.strike} ${contract.right}`);
-          return null;
-        }
-        resolvedContract = contractDetails[0].contract;
-      }
-
-      const marketData = await this.api.getMarketDataSnapshot(resolvedContract, "", false);
+      // Request only delayed data (generic tick list empty means delayed for users without real-time subscription)
+      const marketData = await this.api.getMarketDataSnapshot(contract, "", false);
 
       if (!marketData) {
         return null;
@@ -572,13 +564,19 @@ class IBKRService {
       const closeTick = marketData.get(9); // CLOSE
 
       return {
-        contract: resolvedContract,
+        contract,
         bid: bidTick?.value,
         ask: askTick?.value,
         last: lastTick?.value,
         close: closeTick?.value,
       };
     } catch (err) {
+      // Check if it's a subscription error
+      const error = err as { code?: number; message?: string };
+      if (error.code === 10091 || error.message?.includes("additional subscription")) {
+        console.debug(`Skipping ${contract.symbol} - requires additional market data subscription`);
+        return null;
+      }
       console.error(`Failed to get market data for ${contract.symbol}:`, err);
       return null;
     }
@@ -592,9 +590,8 @@ class IBKRService {
 
     const results = new Map<string, TickerData>();
 
-    // Process in smaller batches to avoid overwhelming TWS
-    // Reduced batch size since we now make 2 API calls per option (getContractDetails + getMarketDataSnapshot)
-    const batchSize = 10;
+    // Process in batches to avoid overwhelming TWS
+    const batchSize = 20;
     for (let i = 0; i < contracts.length; i += batchSize) {
       const batch = contracts.slice(i, i + batchSize);
       const promises = batch.map(async (contract) => {
