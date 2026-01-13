@@ -155,6 +155,13 @@ class IBKRService {
 
     console.log("Connected to TWS");
 
+    // Set market data type to delayed (3) to avoid subscription errors
+    // Market data types: 1=Live, 2=Frozen, 3=Delayed, 4=Delayed-Frozen
+    if (this.api) {
+      this.api.setMarketDataType(3);
+      console.log("Set market data type to: Delayed (3)");
+    }
+
     // Subscribe to account summary for cash balance
     this.subscribeToAccountSummary();
   }
@@ -589,12 +596,14 @@ class IBKRService {
       // TEMPORARY: Log first few errors to diagnose the issue
       if ((error.code === 200 || error.code === 10091) && this.marketDataErrorCount < 3) {
         this.marketDataErrorCount++;
+        const exchangeUsed = contract.secType === SecType.OPT ? "SMART" : contract.exchange;
         console.log(`DEBUG Error #${this.marketDataErrorCount}: ${JSON.stringify({
           code: error.code,
           symbol: contract.symbol,
           strike: contract.strike,
           expiry: contract.lastTradeDateOrContractMonth,
-          exchange: contract.exchange,
+          exchangeUsed: exchangeUsed,
+          originalExchange: contract.exchange,
           right: contract.right,
           secType: contract.secType,
           multiplier: contract.multiplier,
