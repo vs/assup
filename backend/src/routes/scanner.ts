@@ -321,10 +321,10 @@ async function scanOptionsForSymbols(
       const uniqueStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
       const medianStrike = uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
 
-      // For cash-secured puts, focus on strikes within 30% below and 20% above median
-      // This captures ATM and reasonable OTM puts without fetching thousands of deep OTM contracts
-      const minStrike = medianStrike * 0.70;
-      const maxStrike = medianStrike * 1.20;
+      // For cash-secured puts, focus on strikes within 20% below and 5% above median
+      // This range is optimal for selling puts: below current price with limited upside exposure
+      const minStrike = medianStrike * 0.80;
+      const maxStrike = medianStrike * 1.05;
 
       const filteredChain = chain.filter((entry) => {
         const expirationDate = parseExpirationDate(entry.expiration);

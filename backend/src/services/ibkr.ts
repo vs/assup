@@ -637,7 +637,8 @@ class IBKRService {
     let firstFailure: { contract: Contract; reason: string } | undefined;
 
     // Process in batches to avoid overwhelming TWS
-    const batchSize = 20;
+    // Larger batch size and shorter delay for faster scanning
+    const batchSize = 50;
     for (let i = 0; i < contracts.length; i += batchSize) {
       const batch = contracts.slice(i, i + batchSize);
       const promises = batch.map(async (contract) => {
@@ -673,7 +674,7 @@ class IBKRService {
 
       // Add small delay between batches to respect rate limits
       if (i + batchSize < contracts.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
     }
 
