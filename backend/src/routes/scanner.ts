@@ -291,19 +291,28 @@ async function scanOptionsForSymbols(
     symbolAssignments.map((s) => [s.symbol, { name: s.assetClass.name, color: s.assetClass.color }])
   );
 
-  for (const symbol of symbols) {
+  const totalSymbols = symbols.length;
+  console.log(`\n=== Starting Options Scan for ${totalSymbols} symbols ===\n`);
+
+  for (let i = 0; i < symbols.length; i++) {
+    const symbol = symbols[i];
     const assetClassInfo = symbolToAssetClass.get(symbol);
     if (!assetClassInfo) continue;
 
     try {
-      console.log(`Scanning options for ${symbol}...`);
+      console.log(`[${i + 1}/${totalSymbols}] Scanning ${symbol} (${assetClassInfo.name})...`);
 
       // Get options chain
       const chain = await ibkrService.getOptionChain(symbol);
       if (chain.length === 0) {
-        console.log(`No options chain found for ${symbol}`);
+        console.log(`  ↳ No options chain available`);
         continue;
       }
+
+      // Get unique expirations and strikes from chain
+      const allExpirations = [...new Set(chain.map(c => c.expiration))].sort();
+      const allStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
+      console.log(`  ↳ Found ${allExpirations.length} expirations, ${allStrikes.length} strikes`);
 
       // Filter by expiration date
       const today = new Date();
@@ -314,15 +323,24 @@ async function scanOptionsForSymbols(
       });
 
       if (filteredChain.length === 0) {
-        console.log(`No options in expiration range for ${symbol}`);
+        console.log(`  ↳ No expirations in range (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry} days)`);
         continue;
       }
+
+      // Show what's being evaluated
+      const filteredExpirations = [...new Set(filteredChain.map(c => c.expiration))].sort();
+      const filteredStrikes = [...new Set(filteredChain.map(c => c.strike))].sort((a, b) => a - b);
+      const strikeRange = filteredStrikes.length > 0
+        ? `$${filteredStrikes[0]}-$${filteredStrikes[filteredStrikes.length - 1]}`
+        : 'none';
+      console.log(`  ↳ Evaluating ${filteredExpirations.length} expirations (${filteredExpirations[0]} to ${filteredExpirations[filteredExpirations.length - 1]})`);
+      console.log(`  ↳ Strike range: ${strikeRange} (${filteredStrikes.length} strikes)`);
 
       // Collect contracts to get market data for (only put options for cash-secured puts)
       const contracts = filteredChain.map((entry) => entry.put);
 
       // Get market data for options contracts (NOT the underlying!)
-      console.log(`Getting market data for ${contracts.length} option contracts...`);
+      console.log(`  ↳ Fetching market data for ${contracts.length} PUT contracts...`);
       const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
 
       // Process each option and calculate metrics
@@ -359,14 +377,17 @@ async function scanOptionsForSymbols(
         }
       }
 
-      console.log(`Found ${opportunities.length} opportunities for ${symbol}`);
+      const newOpportunities = opportunities.filter(o => o.symbol === symbol).length;
+      console.log(`  ↳ Found ${newOpportunities} qualifying opportunities\n`);
     } catch (err) {
-      console.error(`Error scanning options for ${symbol}:`, err);
+      console.error(`  ↳ Error: ${err instanceof Error ? err.message : String(err)}\n`);
     }
   }
 
   // Sort by annualized return descending
   opportunities.sort((a, b) => b.annualizedReturn - a.annualizedReturn);
+
+  console.log(`=== Scan Complete: ${opportunities.length} total opportunities found ===\n`);
 
   return opportunities;
 }
