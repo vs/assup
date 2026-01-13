@@ -33,11 +33,27 @@ export interface UnderinvestedClass {
   shortfall: number;
 }
 
+export interface OptionOpportunity {
+  symbol: string;
+  assetClassName: string;
+  assetClassColor: string;
+  strike: number;
+  expiration: string;
+  daysToExpiry: number;
+  optionType: "CALL" | "PUT";
+  bid: number;
+  ask: number;
+  midPrice: number;
+  delta?: number;
+  annualizedReturn: number;
+  premiumPercent: number;
+}
+
 export interface ScanResult {
   criteria: ScannerCriteria;
   targetAssetClasses: string[];
   symbolsScanned: string[];
-  opportunities: unknown[];
+  opportunities: OptionOpportunity[];
   message?: string;
 }
 
