@@ -184,16 +184,41 @@ router.post(
     }
 
     // Get asset class assignments for these symbols
+    const assignmentWhere: any = {
+      symbol: { in: uniqueSymbols },
+      secType: "STK",
+    };
+
+    // Filter by target asset classes if specified
+    if (criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0) {
+      assignmentWhere.assetClassId = { in: criteria.targetAssetClasses };
+    }
+
     const assignments = await prisma.securityAssignment.findMany({
-      where: {
-        symbol: { in: uniqueSymbols },
-        secType: "STK",
-      },
+      where: assignmentWhere,
       include: { assetClass: true },
     });
 
+    // Filter symbols to only those with assignments (if targetAssetClasses specified)
+    const filteredSymbols = criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0
+      ? assignments.map(a => a.symbol)
+      : uniqueSymbols;
+
+    if (filteredSymbols.length === 0) {
+      res.json({
+        criteria,
+        targetAssetClasses: criteria.targetAssetClasses || [],
+        symbolsScanned: [],
+        opportunities: [],
+        message: criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0
+          ? "No symbols found with assignments to the selected asset classes"
+          : "No symbols found in positions or watchlists",
+      });
+      return;
+    }
+
     // Create symbol to asset class mapping
-    const symbolAssignments = uniqueSymbols.map((symbol) => {
+    const symbolAssignments = filteredSymbols.map((symbol) => {
       const assignment = assignments.find((a) => a.symbol === symbol);
       return {
         symbol,
@@ -204,12 +229,12 @@ router.post(
     });
 
     // Scan for options opportunities
-    const opportunities = await scanOptionsForSymbols(uniqueSymbols, symbolAssignments, criteria);
+    const opportunities = await scanOptionsForSymbols(filteredSymbols, symbolAssignments, criteria);
 
     res.json({
       criteria,
-      targetAssetClasses: [],
-      symbolsScanned: uniqueSymbols,
+      targetAssetClasses: criteria.targetAssetClasses || [],
+      symbolsScanned: filteredSymbols,
       opportunities,
     });
   })
