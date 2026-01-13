@@ -8,6 +8,8 @@ import {
   Contract,
   BarSizeSetting,
   WhatToShow,
+  OptionType,
+  SecType,
 } from "@stoqey/ib";
 import { Subscription } from "rxjs";
 
@@ -42,6 +44,21 @@ export interface HistoricalDataParams {
   whatToShow: WhatToShow;
   useRth: number | boolean;
   formatDate: number;
+}
+
+export interface OptionChainEntry {
+  strike: number;
+  expiration: string;
+  call: Contract;
+  put: Contract;
+}
+
+export interface TickerData {
+  contract: Contract;
+  bid?: number;
+  ask?: number;
+  last?: number;
+  close?: number;
 }
 
 class IBKRService {
@@ -443,6 +460,143 @@ class IBKRService {
       throw new Error("Not connected to TWS");
     }
     return this.api.getCurrentTime();
+  }
+
+  // Options chain
+  async getOptionChain(symbol: string, exchange = "SMART"): Promise<OptionChainEntry[]> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const underlyingContract: Contract = {
+      symbol,
+      secType: SecType.STK,
+      exchange,
+      currency: "USD",
+    };
+
+    try {
+      // Get contract details which includes option chain info
+      const details = await this.api.getContractDetails(underlyingContract);
+
+      if (!details || details.length === 0) {
+        return [];
+      }
+
+      // Get security definitions for options
+      const secDefs = await this.api.getSecDefOptParams(
+        symbol,
+        "",
+        SecType.STK,
+        details[0].contract.conId!
+      );
+
+      if (!secDefs || secDefs.length === 0) {
+        return [];
+      }
+
+      // Build options chain from security definitions
+      const chain: OptionChainEntry[] = [];
+
+      for (const secDef of secDefs) {
+        if (!secDef.expirations || !secDef.strikes) continue;
+
+        for (const expiration of secDef.expirations) {
+          for (const strike of secDef.strikes) {
+            const callContract: Contract = {
+              symbol,
+              secType: SecType.OPT,
+              exchange: secDef.exchange || "SMART",
+              currency: "USD",
+              lastTradeDateOrContractMonth: expiration,
+              strike,
+              right: OptionType.Call,
+            };
+
+            const putContract: Contract = {
+              symbol,
+              secType: SecType.OPT,
+              exchange: secDef.exchange || "SMART",
+              currency: "USD",
+              lastTradeDateOrContractMonth: expiration,
+              strike,
+              right: OptionType.Put,
+            };
+
+            chain.push({
+              strike,
+              expiration,
+              call: callContract,
+              put: putContract,
+            });
+          }
+        }
+      }
+
+      return chain;
+    } catch (err) {
+      console.error(`Failed to get option chain for ${symbol}:`, err);
+      return [];
+    }
+  }
+
+  // Get market data for a contract (bid, ask, last)
+  async getMarketData(contract: Contract): Promise<TickerData | null> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    try {
+      const marketData = await this.api.getMarketDataSnapshot(contract, "", false);
+
+      if (!marketData) {
+        return null;
+      }
+
+      // Extract bid, ask, last, close from the market data map
+      // TickType values: BID=1, ASK=2, LAST=4, CLOSE=9
+      const bidTick = marketData.get(1); // BID
+      const askTick = marketData.get(2); // ASK
+      const lastTick = marketData.get(4); // LAST
+      const closeTick = marketData.get(9); // CLOSE
+
+      return {
+        contract,
+        bid: bidTick?.value,
+        ask: askTick?.value,
+        last: lastTick?.value,
+        close: closeTick?.value,
+      };
+    } catch (err) {
+      console.error(`Failed to get market data for ${contract.symbol}:`, err);
+      return null;
+    }
+  }
+
+  // Get market data for multiple contracts in parallel
+  async getMarketDataBatch(contracts: Contract[]): Promise<Map<string, TickerData>> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const results = new Map<string, TickerData>();
+
+    // Process in batches to avoid overwhelming TWS
+    const batchSize = 50;
+    for (let i = 0; i < contracts.length; i += batchSize) {
+      const batch = contracts.slice(i, i + batchSize);
+      const promises = batch.map(async (contract) => {
+        const data = await this.getMarketData(contract);
+        if (data) {
+          const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
+          results.set(key, data);
+        }
+      });
+
+      await Promise.allSettled(promises);
+    }
+
+    return results;
   }
 
   async disconnect() {
