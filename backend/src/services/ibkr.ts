@@ -571,10 +571,15 @@ class IBKRService {
         close: closeTick?.value,
       };
     } catch (err) {
-      // Check if it's a subscription error
+      // Check if it's a subscription error or no security definition error
       const error = err as { code?: number; message?: string };
-      if (error.code === 10091 || error.message?.includes("additional subscription")) {
-        console.debug(`Skipping ${contract.symbol} - requires additional market data subscription`);
+      if (
+        error.code === 10091 || // Subscription required
+        error.code === 200 ||    // No security definition found
+        error.message?.includes("additional subscription") ||
+        error.message?.includes("No security definition")
+      ) {
+        // Silently skip - these are expected for options without proper subscriptions or invalid contracts
         return null;
       }
       console.error(`Failed to get market data for ${contract.symbol}:`, err);
