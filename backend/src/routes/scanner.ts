@@ -367,13 +367,17 @@ async function scanOptionsForSymbols(
       // Filter by expiration date and reasonable strike range
       const today = new Date();
 
-      // First, get unique strikes and find median (proxy for current price)
+      // Get unique strikes for logging
       const uniqueStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
-      const medianStrike = uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
 
-      // Filter strikes based on configured percentage range relative to median price
-      const minStrike = medianStrike * (criteria.minStrikePercent / 100);
-      const maxStrike = medianStrike * (criteria.maxStrikePercent / 100);
+      // Use actual underlying price for strike range calculation
+      // Fall back to median strike only if underlying price is unavailable
+      const referencePrice = underlyingPrice ?? uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
+
+      // Filter strikes based on configured percentage range relative to underlying price
+      const minStrike = referencePrice * (criteria.minStrikePercent / 100);
+      const maxStrike = referencePrice * (criteria.maxStrikePercent / 100);
+      console.log(`  ↳ Reference price: $${referencePrice.toFixed(2)}, strike range: $${minStrike.toFixed(0)}-$${maxStrike.toFixed(0)} (${criteria.minStrikePercent}%-${criteria.maxStrikePercent}%)`);
 
       const filteredChain = chain.filter((entry) => {
         const expirationDate = parseExpirationDate(entry.expiration);
