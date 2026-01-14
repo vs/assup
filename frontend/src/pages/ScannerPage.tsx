@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api";
 import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass } from "@assup/shared";
+import { cn } from "@/lib/utils";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { GroupedResultsTable } from "@/components/scanner";
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Search, Save } from "lucide-react";
+import { Search, Save, X, Check, ChevronsUpDown } from "lucide-react";
 
 const DEFAULT_CRITERIA: ScannerCriteria = {
   minDaysToExpiry: 30,
@@ -57,6 +71,8 @@ export function ScannerPage() {
     strikeRange?: string;
     contractCount?: number;
   } | null>(null);
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+  const [symbolComboboxOpen, setSymbolComboboxOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -65,12 +81,37 @@ export function ScannerPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const [presetsData, acData] = await Promise.all([
+      const [presetsData, acData, positionsData, watchlistsData] = await Promise.all([
         api.scanner.presets.list(),
         api.assetClasses.list(),
+        api.positions.list(),
+        api.watchlists.list(),
       ]);
       setPresets(presetsData);
       setAssetClasses(acData);
+
+      // Collect unique stock symbols from positions
+      const symbolsSet = new Set<string>();
+      for (const pos of positionsData) {
+        // Only include stocks (STK), not options
+        if (pos.secType === "STK") {
+          symbolsSet.add(pos.symbol);
+        }
+      }
+
+      // Fetch all watchlists with items to get symbols
+      const watchlistsWithItems = await Promise.all(
+        watchlistsData.map((wl) => api.watchlists.get(wl.id))
+      );
+      for (const wl of watchlistsWithItems) {
+        for (const item of wl.items) {
+          if (item.secType === "STK") {
+            symbolsSet.add(item.symbol);
+          }
+        }
+      }
+
+      setAvailableSymbols(Array.from(symbolsSet).sort());
 
       // Load default preset if exists, but preserve targetAssetClasses from URL/user selection
       const defaultPreset = presetsData.find((p) => p.isDefault);
@@ -274,8 +315,73 @@ export function ScannerPage() {
           </div>
 
           <div className="space-y-2">
+            <Label>Specific Symbol (optional)</Label>
+            <div className="flex gap-2">
+              <Popover open={symbolComboboxOpen} onOpenChange={setSymbolComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={symbolComboboxOpen}
+                    className="w-48 justify-between"
+                  >
+                    {criteria.specificSymbol || "Select symbol..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-0">
+                  <Command>
+                    <CommandInput placeholder="Search symbols..." />
+                    <CommandList>
+                      <CommandEmpty>Type any symbol</CommandEmpty>
+                      <CommandGroup>
+                        {availableSymbols.map((symbol) => (
+                          <CommandItem
+                            key={symbol}
+                            value={symbol}
+                            onSelect={(value: string) => {
+                              setCriteria({
+                                ...criteria,
+                                specificSymbol: value.toUpperCase(),
+                              });
+                              setSymbolComboboxOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                criteria.specificSymbol === symbol ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {symbol}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {criteria.specificSymbol && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setCriteria({ ...criteria, specificSymbol: undefined })}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Leave empty to scan all positions and watchlist symbols
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label>Target Asset Classes (optional)</Label>
-            <div className="flex flex-wrap gap-2">
+            <div className={cn(
+              "flex flex-wrap gap-2",
+              criteria.specificSymbol && "opacity-50 pointer-events-none"
+            )}>
               {assetClasses.map((ac) => {
                 const isSelected = criteria.targetAssetClasses?.includes(ac.id);
                 return (
@@ -304,7 +410,9 @@ export function ScannerPage() {
               })}
             </div>
             <p className="text-sm text-muted-foreground">
-              Leave empty to auto-select underinvested classes
+              {criteria.specificSymbol
+                ? "Asset class filter is ignored when a symbol is specified"
+                : "Leave empty to auto-select underinvested classes"}
             </p>
           </div>
 
