@@ -29,7 +29,7 @@ export const DTEGroup = memo(function DTEGroup({
             isExpanded && "border-b-0"
           )}
         >
-          <TableCell className="pl-8 py-2">
+          <TableCell className="pl-8 py-2" colSpan={2}>
             <div className="flex items-center gap-2">
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -37,17 +37,18 @@ export const DTEGroup = memo(function DTEGroup({
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
               <span className="font-medium text-sm">{dteGroup.dte} DTE</span>
+              <span className="text-sm text-muted-foreground">({formattedExpiry})</span>
+              <span className="text-sm text-muted-foreground ml-2">
+                {dteGroup.summary.count} contract{dteGroup.summary.count !== 1 ? "s" : ""}
+              </span>
             </div>
           </TableCell>
-          <TableCell className="text-sm text-muted-foreground">{formattedExpiry}</TableCell>
-          <TableCell className="text-sm text-muted-foreground" colSpan={2}>
-            {dteGroup.summary.count} contract{dteGroup.summary.count !== 1 ? "s" : ""}
+          <TableCell colSpan={3} />
+          <TableCell className="text-right text-sm">
+            Best: <span className="font-semibold">{dteGroup.summary.bestPremiumPercent.toFixed(2)}%</span>
           </TableCell>
-          <TableCell className="text-right text-sm" colSpan={2}>
-            Best: <span className="font-semibold">{dteGroup.summary.bestAnnualReturn.toFixed(1)}%</span>
-          </TableCell>
-          <TableCell className="text-right text-sm text-muted-foreground">
-            {dteGroup.summary.bestPremiumPercent.toFixed(2)}%
+          <TableCell className="text-right text-sm">
+            <span className="font-semibold">{dteGroup.summary.bestAnnualReturn.toFixed(1)}%</span>
           </TableCell>
         </TableRow>
       </CollapsibleTrigger>

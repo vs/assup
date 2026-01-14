@@ -164,8 +164,8 @@ export function GroupedResultsTable({ opportunities }: GroupedResultsTableProps)
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[250px]">Symbol / Strike</TableHead>
-            <TableHead>Price / Type</TableHead>
+            <TableHead className="w-[280px]">Contract</TableHead>
+            <TableHead className="text-right">Price</TableHead>
             <TableHead className="text-right">Bid</TableHead>
             <TableHead className="text-right">Ask</TableHead>
             <TableHead className="text-right">Premium</TableHead>

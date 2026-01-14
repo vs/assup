@@ -46,6 +46,9 @@ export const TickerGroup = memo(function TickerGroup({
               <span className="text-sm text-muted-foreground">
                 ({tickerGroup.assetClassName})
               </span>
+              <span className="text-sm text-muted-foreground ml-2">
+                {tickerGroup.summary.totalCount} contract{tickerGroup.summary.totalCount !== 1 ? "s" : ""}, {tickerGroup.summary.uniqueExpirations} expiration{tickerGroup.summary.uniqueExpirations !== 1 ? "s" : ""}
+              </span>
             </div>
           </TableCell>
           <TableCell className="font-mono">
@@ -54,14 +57,12 @@ export const TickerGroup = memo(function TickerGroup({
               : <span className="text-muted-foreground">N/A</span>
             }
           </TableCell>
-          <TableCell colSpan={2}>
-            {tickerGroup.summary.totalCount} contract{tickerGroup.summary.totalCount !== 1 ? "s" : ""}
+          <TableCell colSpan={3} />
+          <TableCell className="text-right">
+            Best: <span className="font-semibold">{tickerGroup.summary.bestPremiumPercent.toFixed(2)}%</span>
           </TableCell>
-          <TableCell className="text-right" colSpan={2}>
-            Best: <span className="font-semibold">{tickerGroup.summary.bestAnnualReturn.toFixed(1)}%</span>
-          </TableCell>
-          <TableCell className="text-right text-muted-foreground">
-            {tickerGroup.summary.uniqueExpirations} expiration{tickerGroup.summary.uniqueExpirations !== 1 ? "s" : ""}
+          <TableCell className="text-right">
+            <span className="font-semibold">{tickerGroup.summary.bestAnnualReturn.toFixed(1)}%</span>
           </TableCell>
         </TableRow>
       </CollapsibleTrigger>

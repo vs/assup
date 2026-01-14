@@ -1,7 +1,6 @@
 import { memo } from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { formatCurrency } from "@assup/shared";
+import { formatCurrency, formatDisplayName } from "@assup/shared";
 import type { ExtendedOptionOpportunity } from "./types";
 
 interface OpportunityRowProps {
@@ -11,13 +10,22 @@ interface OpportunityRowProps {
 export const OpportunityRow = memo(function OpportunityRow({
   opportunity: opp,
 }: OpportunityRowProps) {
+  const contractName = formatDisplayName({
+    symbol: opp.symbol,
+    secType: "OPT",
+    strike: opp.strike,
+    right: opp.optionType === "PUT" ? "P" : "C",
+    lastTradeDateOrContractMonth: opp.expiration,
+  });
+
   return (
     <TableRow className="hover:bg-muted/30">
-      <TableCell className="pl-14 text-right font-mono">${opp.strike}</TableCell>
-      <TableCell>
-        <Badge variant={opp.optionType === "PUT" ? "danger" : "success"}>
-          {opp.optionType}
-        </Badge>
+      <TableCell className="pl-14 font-medium">{contractName}</TableCell>
+      <TableCell className="text-right font-mono">
+        {opp.underlyingPrice
+          ? formatCurrency(opp.underlyingPrice, { maximumFractionDigits: 2 })
+          : <span className="text-muted-foreground">N/A</span>
+        }
       </TableCell>
       <TableCell className="text-right font-mono">
         {formatCurrency(opp.bid, { maximumFractionDigits: 2 })}
