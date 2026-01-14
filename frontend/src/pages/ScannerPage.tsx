@@ -70,10 +70,13 @@ export function ScannerPage() {
       setPresets(presetsData);
       setAssetClasses(acData);
 
-      // Load default preset if exists
+      // Load default preset if exists, but preserve targetAssetClasses from URL/user selection
       const defaultPreset = presetsData.find((p) => p.isDefault);
       if (defaultPreset) {
-        setCriteria(defaultPreset.criteria);
+        setCriteria((prev) => ({
+          ...defaultPreset.criteria,
+          targetAssetClasses: prev.targetAssetClasses,
+        }));
       }
 
       setError(null);
