@@ -66,10 +66,15 @@ export function PositionsPage() {
     setAssigning(key);
 
     try {
+      // For options, use the underlying symbol for assignment lookup consistency
+      const isOption = position.secType === "OPT";
+      const assignmentSymbol = isOption && position.underlying ? position.underlying : position.symbol;
+      const assignmentSecType = isOption ? "STK" : position.secType;
+
       await api.securityAssignments.create({
-        symbol: position.symbol,
+        symbol: assignmentSymbol,
         conId: position.conId,
-        secType: position.secType,
+        secType: assignmentSecType,
         assetClassId,
         source: "position",
       });
