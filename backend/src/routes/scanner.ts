@@ -4,6 +4,7 @@
  */
 
 import { Router } from "express";
+import { SecType } from "@stoqey/ib";
 import { prisma } from "../db/index.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
@@ -285,6 +286,7 @@ async function scanOptionsForSymbols(
     delta?: number;
     annualizedReturn: number;
     premiumPercent: number;
+    underlyingPrice?: number;
   }> = [];
 
   // Create a map for quick lookup of asset class info
@@ -320,6 +322,26 @@ async function scanOptionsForSymbols(
         assetClass: assetClassInfo.name,
         message: `Scanning ${symbol} (${i + 1}/${totalSymbols})`,
       });
+
+      // Get current price of underlying stock
+      let underlyingPrice: number | undefined;
+      try {
+        const stockContract = {
+          symbol,
+          secType: SecType.STK,
+          exchange: "SMART",
+          currency: "USD",
+        };
+        const stockData = await ibkrService.getMarketDataBatch([stockContract]);
+        const stockKey = `${symbol}_undefined_undefined_undefined`;
+        const stockSnapshot = stockData.get(stockKey);
+        if (stockSnapshot?.last) {
+          underlyingPrice = stockSnapshot.last;
+          console.log(`  ↳ Underlying price: $${underlyingPrice.toFixed(2)}`);
+        }
+      } catch (err) {
+        console.log(`  ↳ Could not fetch underlying price: ${err instanceof Error ? err.message : String(err)}`);
+      }
 
       // Get options chain
       const chain = await ibkrService.getOptionChain(symbol);
@@ -440,6 +462,7 @@ async function scanOptionsForSymbols(
               midPrice,
               annualizedReturn,
               premiumPercent,
+              underlyingPrice,
             });
           }
         }
