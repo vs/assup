@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api";
 import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass } from "@assup/shared";
-import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { GroupedResultsTable } from "@/components/scanner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,16 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { Search, Save } from "lucide-react";
 
 const DEFAULT_CRITERIA: ScannerCriteria = {
@@ -375,68 +367,7 @@ export function ScannerPage() {
                 </span>
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Contract</TableHead>
-                    <TableHead className="text-right">Stock Price</TableHead>
-                    <TableHead className="text-right">Strike</TableHead>
-                    <TableHead>Expiry</TableHead>
-                    <TableHead className="text-right">DTE</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Bid</TableHead>
-                    <TableHead className="text-right">Ask</TableHead>
-                    <TableHead className="text-right">Premium</TableHead>
-                    <TableHead className="text-right">Premium %</TableHead>
-                    <TableHead className="text-right">Annual Return</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {scanResult.opportunities.map((opp: any, i: number) => {
-                    // Format contract name using the same function as Positions table
-                    const contractName = formatDisplayName({
-                      symbol: opp.symbol,
-                      secType: "OPT",
-                      strike: opp.strike,
-                      right: opp.optionType === "PUT" ? "P" : "C",
-                      lastTradeDateOrContractMonth: opp.expiration,
-                    });
-                    // Format expiration as YYYY-MM-DD
-                    const formattedExpiry = `${opp.expiration.slice(0, 4)}-${opp.expiration.slice(4, 6)}-${opp.expiration.slice(6, 8)}`;
-
-                    return (
-                      <TableRow key={i}>
-                        <TableCell className="font-medium">{contractName}</TableCell>
-                        <TableCell className="text-right font-mono">
-                          {opp.underlyingPrice
-                            ? formatCurrency(opp.underlyingPrice, { maximumFractionDigits: 2 })
-                            : <span className="text-muted-foreground">N/A</span>
-                          }
-                        </TableCell>
-                        <TableCell className="text-right">${opp.strike}</TableCell>
-                        <TableCell>{formattedExpiry}</TableCell>
-                        <TableCell className="text-right">{opp.daysToExpiry}</TableCell>
-                        <TableCell>
-                          <Badge variant={opp.optionType === "PUT" ? "danger" : "success"}>
-                            {opp.optionType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(opp.bid, { maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(opp.ask, { maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(opp.midPrice, { maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right">{opp.premiumPercent?.toFixed(2)}%</TableCell>
-                        <TableCell className="text-right">{opp.annualizedReturn?.toFixed(1)}%</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <GroupedResultsTable opportunities={scanResult.opportunities} />
             )}
           </CardContent>
         </Card>
