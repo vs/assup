@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Search, Save } from "lucide-react";
 
 const DEFAULT_CRITERIA: ScannerCriteria = {
@@ -51,6 +52,17 @@ export function ScannerPage() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<{
+    status: string;
+    message: string;
+    currentSymbol?: number;
+    totalSymbols?: number;
+    symbol?: string;
+    assetClass?: string;
+    expirations?: string;
+    strikeRange?: string;
+    contractCount?: number;
+  } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -91,12 +103,33 @@ export function ScannerPage() {
     try {
       setScanning(true);
       setError(null);
+      setScanProgress({ status: "starting", message: "Initializing scan..." });
+
+      // Subscribe to SSE for progress updates
+      const eventSource = new EventSource("/api/updates/stream");
+
+      eventSource.addEventListener("message", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "scanner") {
+            setScanProgress(data.data);
+          }
+        } catch (err) {
+          console.error("Failed to parse SSE message:", err);
+        }
+      });
+
+      // Run the scan
       const result = await api.scanner.scan(criteria);
       setScanResult(result);
+
+      // Clean up SSE connection
+      eventSource.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
     } finally {
       setScanning(false);
+      setScanProgress(null);
     }
   }
 
@@ -266,6 +299,54 @@ export function ScannerPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Scan Progress */}
+      {scanning && scanProgress && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">{scanProgress.message}</span>
+                {scanProgress.currentSymbol && scanProgress.totalSymbols && (
+                  <span className="text-muted-foreground">
+                    {scanProgress.currentSymbol} / {scanProgress.totalSymbols}
+                  </span>
+                )}
+              </div>
+
+              <Progress
+                value={
+                  scanProgress.currentSymbol && scanProgress.totalSymbols
+                    ? (scanProgress.currentSymbol / scanProgress.totalSymbols) * 100
+                    : 0
+                }
+              />
+
+              {scanProgress.status === "fetching" && (
+                <div className="text-sm text-muted-foreground space-y-1">
+                  {scanProgress.symbol && (
+                    <div>
+                      Symbol: <span className="font-medium">{scanProgress.symbol}</span>
+                      {scanProgress.assetClass && (
+                        <span className="ml-2">({scanProgress.assetClass})</span>
+                      )}
+                    </div>
+                  )}
+                  {scanProgress.expirations && (
+                    <div>Expirations: {scanProgress.expirations}</div>
+                  )}
+                  {scanProgress.strikeRange && (
+                    <div>Strikes: {scanProgress.strikeRange}</div>
+                  )}
+                  {scanProgress.contractCount !== undefined && (
+                    <div>Contracts: {scanProgress.contractCount}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Scan Results */}
       {scanResult && (
