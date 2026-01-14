@@ -79,9 +79,6 @@ class IBKRService {
   private accountSubscription: Subscription | null = null;
   private connectionSubscription: Subscription | null = null;
 
-  // Debug counter for market data errors
-  private marketDataErrorCount = 0;
-
   constructor() {
     this.connect();
   }
@@ -592,24 +589,6 @@ class IBKRService {
     } catch (err) {
       // Check if it's a subscription error or no security definition error
       const error = err as { code?: number; message?: string };
-
-      // TEMPORARY: Log first few errors to diagnose the issue
-      if ((error.code === 200 || error.code === 10091) && this.marketDataErrorCount < 3) {
-        this.marketDataErrorCount++;
-        const exchangeUsed = contract.secType === SecType.OPT ? "SMART" : contract.exchange;
-        console.log(`DEBUG Error #${this.marketDataErrorCount}: ${JSON.stringify({
-          code: error.code,
-          symbol: contract.symbol,
-          strike: contract.strike,
-          expiry: contract.lastTradeDateOrContractMonth,
-          exchangeUsed: exchangeUsed,
-          originalExchange: contract.exchange,
-          right: contract.right,
-          secType: contract.secType,
-          multiplier: contract.multiplier,
-          fullError: error
-        }, null, 2)}`);
-      }
 
       if (
         error.code === 10091 || // Subscription required
