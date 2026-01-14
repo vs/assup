@@ -506,36 +506,42 @@ class IBKRService {
       }
 
       // Build options chain from security definitions
-      const chain: OptionChainEntry[] = [];
+      // Note: secDefs contains one entry per exchange, so we deduplicate by strike+expiration
+      const chainMap = new Map<string, OptionChainEntry>();
 
       for (const secDef of secDefs) {
         if (!secDef.expirations || !secDef.strikes) continue;
 
         for (const expiration of secDef.expirations) {
           for (const strike of secDef.strikes) {
+            const key = `${expiration}_${strike}`;
+
+            // Skip if we already have this strike+expiration (from another exchange)
+            if (chainMap.has(key)) continue;
+
             const callContract: Contract = {
               symbol,
               secType: SecType.OPT,
-              exchange: secDef.exchange || "SMART",
+              exchange: "SMART", // Use SMART for best routing
               currency: "USD",
               lastTradeDateOrContractMonth: expiration,
               strike,
               right: OptionType.Call,
-              multiplier: 100, // Standard multiplier for stock options
+              multiplier: 100,
             };
 
             const putContract: Contract = {
               symbol,
               secType: SecType.OPT,
-              exchange: secDef.exchange || "SMART",
+              exchange: "SMART", // Use SMART for best routing
               currency: "USD",
               lastTradeDateOrContractMonth: expiration,
               strike,
               right: OptionType.Put,
-              multiplier: 100, // Standard multiplier for stock options
+              multiplier: 100,
             };
 
-            chain.push({
+            chainMap.set(key, {
               strike,
               expiration,
               call: callContract,
@@ -545,7 +551,7 @@ class IBKRService {
         }
       }
 
-      return chain;
+      return Array.from(chainMap.values());
     } catch (err) {
       console.error(`Failed to get option chain for ${symbol}:`, err);
       return [];
