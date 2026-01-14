@@ -142,37 +142,44 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    // Get symbols from positions and watchlists
-    const symbolsSet = new Set<string>();
+    let uniqueSymbols: string[];
 
-    // Get symbols from current positions
-    try {
-      const positions = await ibkrService.getPositions();
-      positions.forEach((pos) => {
-        if (pos.contract.secType === "STK" && pos.contract.symbol) {
-          symbolsSet.add(pos.contract.symbol);
+    // If specificSymbol is provided, use only that symbol
+    if (criteria.specificSymbol) {
+      uniqueSymbols = [criteria.specificSymbol.toUpperCase()];
+    } else {
+      // Get symbols from positions and watchlists
+      const symbolsSet = new Set<string>();
+
+      // Get symbols from current positions
+      try {
+        const positions = await ibkrService.getPositions();
+        positions.forEach((pos) => {
+          if (pos.contract.secType === "STK" && pos.contract.symbol) {
+            symbolsSet.add(pos.contract.symbol);
+          }
+        });
+      } catch (err: unknown) {
+        const error = err as { message?: string; code?: string };
+        if (!error.message?.includes("does not support positions") && error.code !== "timeout") {
+          throw err;
         }
-      });
-    } catch (err: unknown) {
-      const error = err as { message?: string; code?: string };
-      if (!error.message?.includes("does not support positions") && error.code !== "timeout") {
-        throw err;
       }
+
+      // Get symbols from all watchlists
+      const watchlistItems = await prisma.watchlistItem.findMany({
+        where: {
+          secType: "STK",
+        },
+        select: {
+          symbol: true,
+        },
+      });
+
+      watchlistItems.forEach((item) => symbolsSet.add(item.symbol));
+
+      uniqueSymbols = Array.from(symbolsSet);
     }
-
-    // Get symbols from all watchlists
-    const watchlistItems = await prisma.watchlistItem.findMany({
-      where: {
-        secType: "STK",
-      },
-      select: {
-        symbol: true,
-      },
-    });
-
-    watchlistItems.forEach((item) => symbolsSet.add(item.symbol));
-
-    const uniqueSymbols = Array.from(symbolsSet);
 
     if (uniqueSymbols.length === 0) {
       res.json({
