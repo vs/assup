@@ -10,6 +10,7 @@ import { validate } from "../middleware/validate.js";
 import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
 import { allocationService } from "../services/allocation.service.js";
+import { sseService } from "../services/sse.js";
 import {
   scannerPresetCreateSchema,
   scannerPresetUpdateSchema,
@@ -294,6 +295,14 @@ async function scanOptionsForSymbols(
   const totalSymbols = symbols.length;
   console.log(`\n=== Starting Options Scan for ${totalSymbols} symbols ===\n`);
 
+  // Send initial progress
+  sseService.broadcast("scanner", {
+    status: "started",
+    totalSymbols,
+    currentSymbol: 0,
+    message: `Starting scan for ${totalSymbols} symbols`,
+  });
+
   for (let i = 0; i < symbols.length; i++) {
     const symbol = symbols[i];
     const assetClassInfo = symbolToAssetClass.get(symbol);
@@ -301,6 +310,16 @@ async function scanOptionsForSymbols(
 
     try {
       console.log(`[${i + 1}/${totalSymbols}] Scanning ${symbol} (${assetClassInfo.name})...`);
+
+      // Send progress update
+      sseService.broadcast("scanner", {
+        status: "scanning",
+        totalSymbols,
+        currentSymbol: i + 1,
+        symbol,
+        assetClass: assetClassInfo.name,
+        message: `Scanning ${symbol} (${i + 1}/${totalSymbols})`,
+      });
 
       // Get options chain
       const chain = await ibkrService.getOptionChain(symbol);
@@ -350,6 +369,19 @@ async function scanOptionsForSymbols(
 
       // Collect contracts to get market data for (only put options for cash-secured puts)
       const contracts = filteredChain.map((entry) => entry.put);
+
+      // Send progress update with details
+      sseService.broadcast("scanner", {
+        status: "fetching",
+        totalSymbols,
+        currentSymbol: i + 1,
+        symbol,
+        assetClass: assetClassInfo.name,
+        expirations: `${filteredExpirations[0]} to ${filteredExpirations[filteredExpirations.length - 1]}`,
+        strikeRange,
+        contractCount: contracts.length,
+        message: `Fetching ${contracts.length} contracts for ${symbol}`,
+      });
 
       // Get market data for options contracts (NOT the underlying!)
       if (contracts.length > 0) {
@@ -429,6 +461,14 @@ async function scanOptionsForSymbols(
   opportunities.sort((a, b) => b.annualizedReturn - a.annualizedReturn);
 
   console.log(`=== Scan Complete: ${opportunities.length} total opportunities found ===\n`);
+
+  // Send completion event
+  sseService.broadcast("scanner", {
+    status: "completed",
+    totalSymbols,
+    opportunitiesFound: opportunities.length,
+    message: `Scan complete: ${opportunities.length} opportunities found`,
+  });
 
   return opportunities;
 }
