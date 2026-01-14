@@ -11,6 +11,7 @@ export interface ScannerCriteria {
   minPremiumPercent: number;
   minStrikePercent: number;
   maxStrikePercent: number;
+  specificSymbol?: string;
   targetAssetClasses?: string[];
 }
 

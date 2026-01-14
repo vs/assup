@@ -13,6 +13,7 @@ export const scannerCriteriaSchema = z.object({
   minPremiumPercent: z.number().min(0).max(100),
   minStrikePercent: z.number().min(0).max(100),
   maxStrikePercent: z.number().min(0).max(150),
+  specificSymbol: z.string().min(1).max(10).toUpperCase().optional(),
   targetAssetClasses: z.array(z.string().uuid()).optional(),
 });
 
