@@ -11,6 +11,8 @@ export const scannerCriteriaSchema = z.object({
   maxDelta: z.number().min(0).max(1),
   minAnnualizedReturn: z.number().min(0).max(1000),
   minPremiumPercent: z.number().min(0).max(100),
+  minStrikePercent: z.number().min(0).max(100),
+  maxStrikePercent: z.number().min(0).max(150),
   targetAssetClasses: z.array(z.string().uuid()).optional(),
 });
 

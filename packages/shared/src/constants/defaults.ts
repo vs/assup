@@ -30,6 +30,8 @@ export const DEFAULT_SCANNER_CRITERIA: ScannerCriteria = {
   maxDelta: 0.4,
   minAnnualizedReturn: 10,
   minPremiumPercent: 1,
+  minStrikePercent: 75,
+  maxStrikePercent: 100,
 };
 
 /**

@@ -26,6 +26,8 @@ const DEFAULT_CRITERIA: ScannerCriteria = {
   maxDelta: 0.4,
   minAnnualizedReturn: 15,
   minPremiumPercent: 1,
+  minStrikePercent: 75,
+  maxStrikePercent: 100,
 };
 
 export function ScannerPage() {
@@ -185,7 +187,7 @@ export function ScannerPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
             <div className="space-y-2">
               <Label>Min Days to Expiry</Label>
               <Input
@@ -246,6 +248,26 @@ export function ScannerPage() {
                 value={criteria.minPremiumPercent}
                 onChange={(e) =>
                   setCriteria({ ...criteria, minPremiumPercent: parseFloat(e.target.value) || 0 })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Min Strike %</Label>
+              <Input
+                type="number"
+                value={criteria.minStrikePercent}
+                onChange={(e) =>
+                  setCriteria({ ...criteria, minStrikePercent: parseInt(e.target.value) || 0 })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Max Strike %</Label>
+              <Input
+                type="number"
+                value={criteria.maxStrikePercent}
+                onChange={(e) =>
+                  setCriteria({ ...criteria, maxStrikePercent: parseInt(e.target.value) || 0 })
                 }
               />
             </div>

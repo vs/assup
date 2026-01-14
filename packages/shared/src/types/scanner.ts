@@ -9,6 +9,8 @@ export interface ScannerCriteria {
   maxDelta: number;
   minAnnualizedReturn: number;
   minPremiumPercent: number;
+  minStrikePercent: number;
+  maxStrikePercent: number;
   targetAssetClasses?: string[];
 }
 

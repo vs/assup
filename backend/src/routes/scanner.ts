@@ -270,6 +270,8 @@ async function scanOptionsForSymbols(
     maxDelta: number;
     minAnnualizedReturn: number;
     minPremiumPercent: number;
+    minStrikePercent: number;
+    maxStrikePercent: number;
   }
 ) {
   const opportunities: Array<{
@@ -362,10 +364,9 @@ async function scanOptionsForSymbols(
       const uniqueStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
       const medianStrike = uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
 
-      // For cash-secured puts, focus on strikes within 25% below and 2% above median
-      // This range is optimal for selling puts: below current price with limited upside exposure
-      const minStrike = medianStrike * 0.75;
-      const maxStrike = medianStrike * 1.02;
+      // Filter strikes based on configured percentage range relative to median price
+      const minStrike = medianStrike * (criteria.minStrikePercent / 100);
+      const maxStrike = medianStrike * (criteria.maxStrikePercent / 100);
 
       const filteredChain = chain.filter((entry) => {
         const expirationDate = parseExpirationDate(entry.expiration);
