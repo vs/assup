@@ -46,13 +46,22 @@ export function PositionRow({
             <span className="font-medium">{position.symbol}</span>
           ) : (
             <>
-              <ExternalLinks symbol={position.underlying || position.symbol} />
-              <button
-                className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                onClick={() => onSymbolClick(position.underlying || position.symbol)}
+              <a
+                href={`https://www.tradingview.com/chart/?symbol=${position.underlying || position.symbol}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium hover:text-primary hover:underline"
+                onClick={(e) => {
+                  // Allow cmd/ctrl+click to open in new tab, otherwise use internal modal
+                  if (!e.metaKey && !e.ctrlKey) {
+                    e.preventDefault();
+                    onSymbolClick(position.underlying || position.symbol);
+                  }
+                }}
               >
                 {position.symbol}
-              </button>
+              </a>
+              <ExternalLinks symbol={position.underlying || position.symbol} />
             </>
           )}
         </div>

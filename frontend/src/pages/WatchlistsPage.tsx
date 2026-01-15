@@ -267,13 +267,22 @@ export function WatchlistsPage() {
                         <TableRow key={item.id}>
                           <TableCell>
                             <div className="flex items-center">
-                              <ExternalLinks symbol={item.symbol} />
-                              <button
-                                className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                                onClick={() => setChartSymbol(item.symbol)}
+                              <a
+                                href={`https://www.tradingview.com/chart/?symbol=${item.symbol}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium hover:text-primary hover:underline"
+                                onClick={(e) => {
+                                  // Allow cmd/ctrl+click to open in new tab, otherwise use internal modal
+                                  if (!e.metaKey && !e.ctrlKey) {
+                                    e.preventDefault();
+                                    setChartSymbol(item.symbol);
+                                  }
+                                }}
                               >
                                 {item.symbol}
-                              </button>
+                              </a>
+                              <ExternalLinks symbol={item.symbol} />
                             </div>
                           </TableCell>
                           <TableCell className="w-24">
