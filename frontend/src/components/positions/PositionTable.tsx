@@ -45,7 +45,7 @@ export function PositionTable({
       <TableHeader>
         <TableRow>
           <TableHead>Symbol</TableHead>
-          <TableHead className="w-24">30D</TableHead>
+          <TableHead className="w-24">7D</TableHead>
           <TableHead>Type</TableHead>
           {showAssetClassColumn && <TableHead>Asset Class</TableHead>}
           <TableHead className="text-right">Quantity</TableHead>

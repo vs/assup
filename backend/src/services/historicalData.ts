@@ -138,7 +138,7 @@ class HistoricalDataService {
         const bars = await ibkrService.getHistoricalData({
           contract,
           endDateTime: "",
-          duration: "30 D",
+          duration: "7 D",
           barSizeSetting: BarSizeSetting.DAYS_ONE,
           whatToShow,
           useRth: true,

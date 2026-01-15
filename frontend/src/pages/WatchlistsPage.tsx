@@ -256,7 +256,7 @@ export function WatchlistsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Symbol</TableHead>
-                        <TableHead className="w-24">30D</TableHead>
+                        <TableHead className="w-24">7D</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Asset Class</TableHead>
                         <TableHead className="w-12">Actions</TableHead>
