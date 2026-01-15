@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { TableCell, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,12 +9,14 @@ interface DTEGroupProps {
   dteGroup: DTEGroupType;
   isExpanded: boolean;
   onToggle: () => void;
+  gridCols: string;
 }
 
 export const DTEGroup = memo(function DTEGroup({
   dteGroup,
   isExpanded,
   onToggle,
+  gridCols,
 }: DTEGroupProps) {
   // Format expiration as YYYY-MM-DD
   const formattedExpiry = `${dteGroup.expiration.slice(0, 4)}-${dteGroup.expiration.slice(4, 6)}-${dteGroup.expiration.slice(6, 8)}`;
@@ -23,51 +24,58 @@ export const DTEGroup = memo(function DTEGroup({
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
       <CollapsibleTrigger asChild>
-        <TableRow
+        <div
           className={cn(
-            "bg-muted/10 hover:bg-muted/20 cursor-pointer select-none",
+            "grid w-full items-center bg-muted/10 hover:bg-muted/20 cursor-pointer select-none border-b py-2",
             isExpanded && "border-b-0"
           )}
+          style={{ gridTemplateColumns: gridCols }}
         >
-          <TableCell className="pl-8 py-2" colSpan={2}>
-            <div className="flex items-center gap-2">
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              )}
-              <span className="font-medium text-sm">{dteGroup.dte} DTE</span>
-              <span className="text-sm text-muted-foreground">({formattedExpiry})</span>
-              <span className="text-sm text-muted-foreground ml-2">
-                {dteGroup.summary.count} contract{dteGroup.summary.count !== 1 ? "s" : ""}
-              </span>
-            </div>
-          </TableCell>
-          <TableCell colSpan={4} />
-          <TableCell className="text-right text-sm">
+          <div className="flex items-center gap-2 pl-8 col-span-3">
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            )}
+            <span className="font-medium text-sm">{dteGroup.dte} DTE</span>
+            <span className="text-sm text-muted-foreground">({formattedExpiry})</span>
+            <span className="text-sm text-muted-foreground ml-2">
+              {dteGroup.summary.count} contract{dteGroup.summary.count !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div />
+          <div />
+          <div />
+          <div />
+          <div className="text-right text-sm pr-2">
             Best: <span className="font-semibold">{dteGroup.summary.bestPremiumPercent.toFixed(2)}%</span>
-          </TableCell>
-          <TableCell className="text-right text-sm">
+          </div>
+          <div className="text-right text-sm pr-2">
             <span className="font-semibold">{dteGroup.summary.bestAnnualReturn.toFixed(1)}%</span>
-          </TableCell>
-        </TableRow>
+          </div>
+        </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
         {/* Inline column header - shows when DTE group is expanded */}
-        <TableRow className="bg-muted/5 text-xs text-muted-foreground">
-          <TableCell className="pl-14 py-1 font-medium">Strike</TableCell>
-          <TableCell className="text-right py-1">Price</TableCell>
-          <TableCell className="text-right py-1">Bid</TableCell>
-          <TableCell className="text-right py-1">Ask</TableCell>
-          <TableCell className="text-right py-1">Premium</TableCell>
-          <TableCell className="text-right py-1">Delta</TableCell>
-          <TableCell className="text-right py-1">Premium %</TableCell>
-          <TableCell className="text-right py-1">Annual</TableCell>
-        </TableRow>
+        <div
+          className="grid w-full bg-muted/5 text-xs text-muted-foreground border-b"
+          style={{ gridTemplateColumns: gridCols }}
+        >
+          <div className="pl-14 py-1 font-medium">Contract</div>
+          <div className="text-right py-1 pr-2">Strike</div>
+          <div className="text-right py-1 pr-2">Price</div>
+          <div className="text-right py-1 pr-2">Bid</div>
+          <div className="text-right py-1 pr-2">Ask</div>
+          <div className="text-right py-1 pr-2">Premium</div>
+          <div className="text-right py-1 pr-2">Delta</div>
+          <div className="text-right py-1 pr-2">Premium %</div>
+          <div className="text-right py-1 pr-2">Annual</div>
+        </div>
         {dteGroup.opportunities.map((opp, i) => (
           <OpportunityRow
             key={`${opp.strike}-${opp.optionType}-${i}`}
             opportunity={opp}
+            gridCols={gridCols}
           />
         ))}
       </CollapsibleContent>

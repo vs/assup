@@ -1,10 +1,10 @@
 import { memo } from "react";
-import { TableCell, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import type { ExtendedOptionOpportunity } from "./types";
 
 interface OpportunityRowProps {
   opportunity: ExtendedOptionOpportunity;
+  gridCols: string;
 }
 
 /**
@@ -29,6 +29,7 @@ function estimatePutDelta(strike: number, underlyingPrice: number | undefined): 
 
 export const OpportunityRow = memo(function OpportunityRow({
   opportunity: opp,
+  gridCols,
 }: OpportunityRowProps) {
   const contractName = formatDisplayName({
     symbol: opp.symbol,
@@ -42,28 +43,34 @@ export const OpportunityRow = memo(function OpportunityRow({
   const delta = opp.delta ?? estimatePutDelta(opp.strike, opp.underlyingPrice);
 
   return (
-    <TableRow className="hover:bg-muted/30">
-      <TableCell className="pl-14 font-medium">{contractName}</TableCell>
-      <TableCell className="text-right font-mono">
+    <div
+      className="grid w-full items-center hover:bg-muted/30 border-b py-2"
+      style={{ gridTemplateColumns: gridCols }}
+    >
+      <div className="pl-14 font-medium">{contractName}</div>
+      <div className="text-right font-mono pr-2">
+        {formatCurrency(opp.strike, { maximumFractionDigits: 2 })}
+      </div>
+      <div className="text-right font-mono pr-2">
         {opp.underlyingPrice
           ? formatCurrency(opp.underlyingPrice, { maximumFractionDigits: 2 })
           : <span className="text-muted-foreground">N/A</span>
         }
-      </TableCell>
-      <TableCell className="text-right font-mono">
+      </div>
+      <div className="text-right font-mono pr-2">
         {formatCurrency(opp.bid, { maximumFractionDigits: 2 })}
-      </TableCell>
-      <TableCell className="text-right font-mono">
+      </div>
+      <div className="text-right font-mono pr-2">
         {formatCurrency(opp.ask, { maximumFractionDigits: 2 })}
-      </TableCell>
-      <TableCell className="text-right font-mono">
+      </div>
+      <div className="text-right font-mono pr-2">
         {formatCurrency(opp.midPrice, { maximumFractionDigits: 2 })}
-      </TableCell>
-      <TableCell className="text-right font-mono">
+      </div>
+      <div className="text-right font-mono pr-2">
         {delta !== null ? delta.toFixed(2) : <span className="text-muted-foreground">N/A</span>}
-      </TableCell>
-      <TableCell className="text-right">{opp.premiumPercent?.toFixed(2)}%</TableCell>
-      <TableCell className="text-right font-semibold">{opp.annualizedReturn?.toFixed(1)}%</TableCell>
-    </TableRow>
+      </div>
+      <div className="text-right pr-2">{opp.premiumPercent?.toFixed(2)}%</div>
+      <div className="text-right font-semibold pr-2">{opp.annualizedReturn?.toFixed(1)}%</div>
+    </div>
   );
 });

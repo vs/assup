@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { TableCell, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,6 +12,7 @@ interface TickerGroupProps {
   onToggle: () => void;
   expandedDTEs: Set<string>;
   onToggleDTE: (dteKey: string) => void;
+  gridCols: string;
 }
 
 export const TickerGroup = memo(function TickerGroup({
@@ -21,50 +21,52 @@ export const TickerGroup = memo(function TickerGroup({
   onToggle,
   expandedDTEs,
   onToggleDTE,
+  gridCols,
 }: TickerGroupProps) {
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
       <CollapsibleTrigger asChild>
-        <TableRow
+        <div
           className={cn(
-            "bg-muted/30 hover:bg-muted/40 cursor-pointer select-none",
+            "grid w-full items-center bg-muted/30 hover:bg-muted/40 cursor-pointer select-none border-b py-3",
             isExpanded && "border-b-0"
           )}
+          style={{ gridTemplateColumns: gridCols }}
         >
-          <TableCell className="pl-2 py-3">
-            <div className="flex items-center gap-2">
-              {isExpanded ? (
-                <ChevronDown className="h-5 w-5 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              )}
-              <div
-                className="w-3 h-3 rounded-full shrink-0"
-                style={{ backgroundColor: tickerGroup.assetClassColor }}
-              />
-              <span className="font-semibold text-base">{tickerGroup.symbol}</span>
-              <span className="text-sm text-muted-foreground">
-                ({tickerGroup.assetClassName})
+          <div className="flex items-center gap-2 pl-2 col-span-3">
+            {isExpanded ? (
+              <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />
+            ) : (
+              <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+            )}
+            <div
+              className="w-3 h-3 rounded-full shrink-0"
+              style={{ backgroundColor: tickerGroup.assetClassColor }}
+            />
+            <span className="font-semibold text-base">{tickerGroup.symbol}</span>
+            {tickerGroup.underlyingPrice && (
+              <span className="font-mono text-sm text-muted-foreground">
+                {formatCurrency(tickerGroup.underlyingPrice, { maximumFractionDigits: 2 })}
               </span>
-              <span className="text-sm text-muted-foreground ml-2">
-                {tickerGroup.summary.totalCount} contract{tickerGroup.summary.totalCount !== 1 ? "s" : ""}, {tickerGroup.summary.uniqueExpirations} expiration{tickerGroup.summary.uniqueExpirations !== 1 ? "s" : ""}
-              </span>
-            </div>
-          </TableCell>
-          <TableCell className="font-mono">
-            {tickerGroup.underlyingPrice
-              ? formatCurrency(tickerGroup.underlyingPrice, { maximumFractionDigits: 2 })
-              : <span className="text-muted-foreground">N/A</span>
-            }
-          </TableCell>
-          <TableCell colSpan={4} />
-          <TableCell className="text-right">
+            )}
+            <span className="text-sm text-muted-foreground">
+              ({tickerGroup.assetClassName})
+            </span>
+            <span className="text-sm text-muted-foreground ml-auto mr-4">
+              {tickerGroup.summary.totalCount} contract{tickerGroup.summary.totalCount !== 1 ? "s" : ""}, {tickerGroup.summary.uniqueExpirations} expiration{tickerGroup.summary.uniqueExpirations !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div />
+          <div />
+          <div />
+          <div />
+          <div className="text-right pr-2">
             Best: <span className="font-semibold">{tickerGroup.summary.bestPremiumPercent.toFixed(2)}%</span>
-          </TableCell>
-          <TableCell className="text-right">
+          </div>
+          <div className="text-right pr-2">
             <span className="font-semibold">{tickerGroup.summary.bestAnnualReturn.toFixed(1)}%</span>
-          </TableCell>
-        </TableRow>
+          </div>
+        </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
         {tickerGroup.dteGroups.map((dteGroup) => {
@@ -75,6 +77,7 @@ export const TickerGroup = memo(function TickerGroup({
               dteGroup={dteGroup}
               isExpanded={expandedDTEs.has(dteKey)}
               onToggle={() => onToggleDTE(dteKey)}
+              gridCols={gridCols}
             />
           );
         })}

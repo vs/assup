@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from "react";
-import { Table, TableBody } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import { TickerGroup } from "./TickerGroup";
@@ -70,6 +69,10 @@ function groupOpportunities(opportunities: ExtendedOptionOpportunity[]): TickerG
   // Sort ticker groups alphabetically
   return tickerGroups.sort((a, b) => a.symbol.localeCompare(b.symbol));
 }
+
+// Grid column widths - using fr units for flexible sizing
+// Columns: Contract, Strike, Price, Bid, Ask, Premium, Delta, Premium%, Annual
+const GRID_COLS = "minmax(180px,2fr) minmax(70px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(60px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(80px,1fr) minmax(70px,1fr)";
 
 export function GroupedResultsTable({ opportunities }: GroupedResultsTableProps) {
   const tickerGroups = useMemo(
@@ -155,30 +158,21 @@ export function GroupedResultsTable({ opportunities }: GroupedResultsTableProps)
           )}
         </Button>
       </div>
-      <Table className="table-fixed w-full">
-        <colgroup>
-          <col className="w-[32%]" />  {/* Contract */}
-          <col className="w-[9%]" />   {/* Price */}
-          <col className="w-[9%]" />   {/* Bid */}
-          <col className="w-[9%]" />   {/* Ask */}
-          <col className="w-[9%]" />   {/* Premium */}
-          <col className="w-[8%]" />   {/* Delta */}
-          <col className="w-[11%]" />  {/* Premium % */}
-          <col className="w-[13%]" />  {/* Annual Return */}
-        </colgroup>
-        <TableBody>
-          {tickerGroups.map((tickerGroup) => (
-            <TickerGroup
-              key={tickerGroup.symbol}
-              tickerGroup={tickerGroup}
-              isExpanded={expandedTickers.has(tickerGroup.symbol)}
-              onToggle={() => handleToggleTicker(tickerGroup.symbol)}
-              expandedDTEs={expandedDTEs}
-              onToggleDTE={handleToggleDTE}
-            />
-          ))}
-        </TableBody>
-      </Table>
+      <div className="w-full">
+        {tickerGroups.map((tickerGroup) => (
+          <TickerGroup
+            key={tickerGroup.symbol}
+            tickerGroup={tickerGroup}
+            isExpanded={expandedTickers.has(tickerGroup.symbol)}
+            onToggle={() => handleToggleTicker(tickerGroup.symbol)}
+            expandedDTEs={expandedDTEs}
+            onToggleDTE={handleToggleDTE}
+            gridCols={GRID_COLS}
+          />
+        ))}
+      </div>
     </div>
   );
 }
+
+export { GRID_COLS };
