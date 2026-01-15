@@ -306,6 +306,38 @@ async function scanOptionsForSymbols(
   const totalSymbols = symbols.length;
   console.log(`\n=== Starting Options Scan for ${totalSymbols} symbols ===\n`);
 
+  // Check if US stock market is currently open
+  // Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday (excluding holidays)
+  const isMarketOpen = (): boolean => {
+    const now = new Date();
+    const etTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const day = etTime.getDay();
+    const hours = etTime.getHours();
+    const minutes = etTime.getMinutes();
+    const timeInMinutes = hours * 60 + minutes;
+
+    // Weekend check (0 = Sunday, 6 = Saturday)
+    if (day === 0 || day === 6) return false;
+
+    // Market hours: 9:30 AM (570 min) to 4:00 PM (960 min) ET
+    const marketOpen = 9 * 60 + 30;  // 9:30 AM
+    const marketClose = 16 * 60;      // 4:00 PM
+
+    return timeInMinutes >= marketOpen && timeInMinutes < marketClose;
+  };
+
+  // Use Live data during market hours, Frozen (last close) outside market hours
+  const marketOpen = isMarketOpen();
+  const marketDataType = marketOpen ? 1 : 2; // 1 = Live, 2 = Frozen
+  const marketDataTypeName = marketOpen ? "Live" : "Frozen (last close)";
+
+  try {
+    ibkrService.setMarketDataType(marketDataType as 1 | 2);
+    console.log(`Market is ${marketOpen ? "OPEN" : "CLOSED"}, using ${marketDataTypeName} data`);
+  } catch (err) {
+    console.warn(`Could not switch to ${marketDataTypeName} market data, continuing with delayed:`, err);
+  }
+
   // Send initial progress
   sseService.broadcast("scanner", {
     status: "started",
@@ -314,7 +346,8 @@ async function scanOptionsForSymbols(
     message: `Starting scan for ${totalSymbols} symbols`,
   });
 
-  for (let i = 0; i < symbols.length; i++) {
+  try {
+    for (let i = 0; i < symbols.length; i++) {
     const symbol = symbols[i];
     const assetClassInfo = symbolToAssetClass.get(symbol);
     if (!assetClassInfo) continue;
@@ -506,6 +539,14 @@ async function scanOptionsForSymbols(
   });
 
   return opportunities;
+  } finally {
+    // Always switch back to delayed data after scan completes
+    try {
+      ibkrService.setMarketDataType(3); // 3 = Delayed
+    } catch (err) {
+      console.warn("Could not switch back to delayed market data:", err);
+    }
+  }
 }
 
 /**

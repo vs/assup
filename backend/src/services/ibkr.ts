@@ -558,6 +558,16 @@ class IBKRService {
     }
   }
 
+  // Set market data type: 1=Live, 2=Frozen, 3=Delayed, 4=Delayed-Frozen
+  setMarketDataType(type: 1 | 2 | 3 | 4) {
+    if (!this.api) {
+      throw new Error("Not connected to TWS");
+    }
+    const typeNames = { 1: "Live", 2: "Frozen", 3: "Delayed", 4: "Delayed-Frozen" };
+    this.api.setMarketDataType(type);
+    console.log(`Set market data type to: ${typeNames[type]} (${type})`);
+  }
+
   // Get market data for a contract (bid, ask, last)
   async getMarketData(contract: Contract): Promise<TickerData | null> {
     if (!this.api || !this.api.isConnected) {
