@@ -10,13 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -31,7 +24,7 @@ import {
 } from "@/components/ui/command";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Search, Save, X, Check, ChevronsUpDown } from "lucide-react";
+import { Search, Save, X, Check, ChevronsUpDown, Trash2, Settings2 } from "lucide-react";
 
 const DEFAULT_CRITERIA: ScannerCriteria = {
   minDaysToExpiry: 30,
@@ -73,6 +66,7 @@ export function ScannerPage() {
   } | null>(null);
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [symbolComboboxOpen, setSymbolComboboxOpen] = useState(false);
+  const [presetsPopoverOpen, setPresetsPopoverOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -187,6 +181,20 @@ export function ScannerPage() {
     }
   }
 
+  async function deletePreset(presetId: string) {
+    const preset = presets.find((p) => p.id === presetId);
+    if (!preset) return;
+
+    if (!confirm(`Delete preset "${preset.name}"?`)) return;
+
+    try {
+      await api.scanner.presets.delete(presetId);
+      setPresets(presets.filter((p) => p.id !== presetId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete preset");
+    }
+  }
+
   if (loading) {
     return <PageLoadingSkeleton />;
   }
@@ -208,18 +216,47 @@ export function ScannerPage() {
           <CardTitle>Scanner Criteria</CardTitle>
           <div className="flex items-center gap-2">
             {presets.length > 0 && (
-              <Select onValueChange={loadPreset}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Load preset..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {presets.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={presetsPopoverOpen} onOpenChange={setPresetsPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline">
+                    <Settings2 className="h-4 w-4 mr-2" />
+                    Presets
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="end">
+                  <div className="space-y-1">
+                    {presets.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted"
+                      >
+                        <button
+                          className="flex-1 text-left text-sm truncate hover:underline"
+                          onClick={() => {
+                            loadPreset(p.id);
+                            setPresetsPopoverOpen(false);
+                          }}
+                        >
+                          {p.name}
+                          {p.isDefault && (
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              Default
+                            </Badge>
+                          )}
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => deletePreset(p.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
             )}
             <Button variant="outline" onClick={savePreset}>
               <Save className="h-4 w-4 mr-2" />
