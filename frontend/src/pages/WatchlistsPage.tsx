@@ -272,13 +272,6 @@ export function WatchlistsPage() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="font-medium hover:text-primary hover:underline"
-                                onClick={(e) => {
-                                  // Allow cmd/ctrl+click to open in new tab, otherwise use internal modal
-                                  if (!e.metaKey && !e.ctrlKey) {
-                                    e.preventDefault();
-                                    setChartSymbol(item.symbol);
-                                  }
-                                }}
                               >
                                 {item.symbol}
                               </a>
@@ -293,7 +286,7 @@ export function WatchlistsPage() {
                                   data={sparkline.data}
                                   loading={sparkline.loading}
                                   error={sparkline.error}
-                                  symbol={item.symbol}
+                                  onChartClick={() => setChartSymbol(item.symbol)}
                                 />
                               );
                             })()}

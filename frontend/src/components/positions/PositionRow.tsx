@@ -51,13 +51,6 @@ export function PositionRow({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium hover:text-primary hover:underline"
-                onClick={(e) => {
-                  // Allow cmd/ctrl+click to open in new tab, otherwise use internal modal
-                  if (!e.metaKey && !e.ctrlKey) {
-                    e.preventDefault();
-                    onSymbolClick(position.underlying || position.symbol);
-                  }
-                }}
               >
                 {position.symbol}
               </a>
@@ -73,7 +66,7 @@ export function PositionRow({
           data={sparklineData}
           loading={sparklineLoading}
           error={sparklineError}
-          symbol={!isCash ? position.underlying || position.symbol : undefined}
+          onChartClick={!isCash ? () => onSymbolClick(position.underlying || position.symbol) : undefined}
         />
       </TableCell>
 

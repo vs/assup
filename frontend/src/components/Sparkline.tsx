@@ -7,7 +7,7 @@ interface SparklineProps {
   height?: number;
   loading?: boolean;
   error?: boolean;
-  symbol?: string;
+  onChartClick?: () => void;
 }
 
 export function Sparkline({
@@ -16,7 +16,7 @@ export function Sparkline({
   height = 30,
   loading = false,
   error = false,
-  symbol,
+  onChartClick,
 }: SparklineProps) {
   if (loading) {
     return (
@@ -60,17 +60,15 @@ export function Sparkline({
     </div>
   );
 
-  if (symbol) {
+  if (onChartClick) {
     return (
-      <a
-        href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block hover:opacity-80 transition-opacity"
-        title={`View ${symbol} chart on TradingView`}
+      <button
+        type="button"
+        onClick={onChartClick}
+        className="block hover:opacity-80 transition-opacity cursor-pointer"
       >
         {chart}
-      </a>
+      </button>
     );
   }
 
