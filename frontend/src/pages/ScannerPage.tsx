@@ -275,6 +275,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, minDaysToExpiry: parseInt(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">Earliest expiration</p>
             </div>
             <div className="space-y-2">
               <Label>Max Days to Expiry</Label>
@@ -285,6 +286,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, maxDaysToExpiry: parseInt(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">Latest expiration</p>
             </div>
             <div className="space-y-2">
               <Label>Min Delta</Label>
@@ -296,6 +298,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, minDelta: parseFloat(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">0.2 = ~20% ITM chance</p>
             </div>
             <div className="space-y-2">
               <Label>Max Delta</Label>
@@ -307,6 +310,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, maxDelta: parseFloat(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">0.4 = ~40% ITM chance</p>
             </div>
             <div className="space-y-2">
               <Label>Min Annual Return %</Label>
@@ -317,6 +321,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, minAnnualizedReturn: parseFloat(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">Premium annualized</p>
             </div>
             <div className="space-y-2">
               <Label>Min Premium %</Label>
@@ -328,6 +333,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, minPremiumPercent: parseFloat(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">Premium / strike price</p>
             </div>
             <div className="space-y-2">
               <Label>Min Strike %</Label>
@@ -338,6 +344,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, minStrikePercent: parseInt(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">% of stock price</p>
             </div>
             <div className="space-y-2">
               <Label>Max Strike %</Label>
@@ -348,6 +355,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, maxStrikePercent: parseInt(e.target.value) || 0 })
                 }
               />
+              <p className="text-xs text-muted-foreground">100% = at-the-money</p>
             </div>
           </div>
 
