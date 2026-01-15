@@ -37,6 +37,32 @@ const DEFAULT_CRITERIA: ScannerCriteria = {
   maxStrikePercent: 100,
 };
 
+const STORAGE_KEY = "scanner-results";
+
+function loadPersistedResults(): ScanResult | null {
+  try {
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored) as ScanResult;
+    }
+  } catch (err) {
+    console.error("Failed to load persisted scan results:", err);
+  }
+  return null;
+}
+
+function persistResults(result: ScanResult | null) {
+  try {
+    if (result) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+    } else {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch (err) {
+    console.error("Failed to persist scan results:", err);
+  }
+}
+
 export function ScannerPage() {
   const [searchParams] = useSearchParams();
   const [criteria, setCriteria] = useState<ScannerCriteria>(() => {
@@ -49,7 +75,7 @@ export function ScannerPage() {
   });
   const [presets, setPresets] = useState<ScannerPreset[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(loadPersistedResults);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +163,14 @@ export function ScannerPage() {
       setError(null);
       setScanProgress({ status: "starting", message: "Initializing scan..." });
 
+      // Clear previous results when starting a new scan
+      setScanResult(null);
+      persistResults(null);
+
+      // Track interim results and scanned symbols
+      const interimOpportunities: ScanResult["opportunities"] = [];
+      const scannedSymbols: string[] = [];
+
       // Subscribe to SSE for progress updates
       const eventSource = new EventSource("/api/updates/stream");
 
@@ -145,15 +179,35 @@ export function ScannerPage() {
           const data = JSON.parse(event.data);
           if (data.type === "scanner") {
             setScanProgress(data.data);
+
+            // Handle interim results when a symbol is complete
+            if (data.data.status === "symbol_complete" && data.data.opportunities) {
+              // Add new opportunities to interim results
+              interimOpportunities.push(...data.data.opportunities);
+              if (data.data.symbol && !scannedSymbols.includes(data.data.symbol)) {
+                scannedSymbols.push(data.data.symbol);
+              }
+
+              // Update scan result with interim data
+              const interimResult: ScanResult = {
+                criteria,
+                targetAssetClasses: criteria.targetAssetClasses || [],
+                symbolsScanned: [...scannedSymbols],
+                opportunities: [...interimOpportunities],
+              };
+              setScanResult(interimResult);
+              persistResults(interimResult);
+            }
           }
         } catch (err) {
           console.error("Failed to parse SSE message:", err);
         }
       });
 
-      // Run the scan
+      // Run the scan - this returns the final complete result
       const result = await api.scanner.scan(criteria);
       setScanResult(result);
+      persistResults(result);
 
       // Clean up SSE connection
       eventSource.close();

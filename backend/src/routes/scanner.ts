@@ -519,8 +519,20 @@ async function scanOptionsForSymbols(
         console.log(`  ↳ Filtered out: ${failedReturn} by annual return (min ${criteria.minAnnualizedReturn}%), ${failedPremium} by premium (min ${criteria.minPremiumPercent}%)`);
       }
 
-      const newOpportunities = opportunities.filter(o => o.symbol === symbol).length;
-      console.log(`  ↳ Found ${newOpportunities} qualifying opportunities\n`);
+      // Get opportunities just found for this symbol
+      const symbolOpportunities = opportunities.filter(o => o.symbol === symbol);
+      console.log(`  ↳ Found ${symbolOpportunities.length} qualifying opportunities\n`);
+
+      // Send interim results for this symbol
+      sseService.broadcast("scanner", {
+        status: "symbol_complete",
+        totalSymbols,
+        currentSymbol: i + 1,
+        symbol,
+        assetClass: assetClassInfo.name,
+        opportunities: symbolOpportunities,
+        message: `Found ${symbolOpportunities.length} opportunities for ${symbol}`,
+      });
     } catch (err) {
       console.error(`  ↳ Error: ${err instanceof Error ? err.message : String(err)}\n`);
     }
