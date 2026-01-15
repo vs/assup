@@ -6,7 +6,7 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40">
-        <div className="container mx-auto px-4 py-0 flex items-center justify-between">
+        <div className="max-w-[1800px] mx-auto px-4 py-0 flex items-center justify-between w-full">
           <div className="flex items-center gap-4 md:gap-8">
             <a href="/" className="shrink-0">
               <img
@@ -22,7 +22,7 @@ export function Layout() {
           </div>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-4 md:py-8 flex-1">
+      <main className="max-w-[1800px] mx-auto px-4 py-4 md:py-8 flex-1 w-full">
         <Outlet />
       </main>
       <footer className="border-t py-4 text-center text-xs text-muted-foreground">
