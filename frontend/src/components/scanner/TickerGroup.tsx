@@ -67,17 +67,6 @@ export const TickerGroup = memo(function TickerGroup({
         </TableRow>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        {/* Inline column header - shows when ticker is expanded */}
-        <TableRow className="bg-muted/5 text-xs text-muted-foreground">
-          <TableCell className="pl-14 py-1 font-medium">Strike</TableCell>
-          <TableCell className="text-right py-1">Price</TableCell>
-          <TableCell className="text-right py-1">Bid</TableCell>
-          <TableCell className="text-right py-1">Ask</TableCell>
-          <TableCell className="text-right py-1">Premium</TableCell>
-          <TableCell className="text-right py-1">Delta</TableCell>
-          <TableCell className="text-right py-1">Premium %</TableCell>
-          <TableCell className="text-right py-1">Annual</TableCell>
-        </TableRow>
         {tickerGroup.dteGroups.map((dteGroup) => {
           const dteKey = `${tickerGroup.symbol}-${dteGroup.dte}`;
           return (
