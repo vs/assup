@@ -1,11 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import { TickerGroup } from "./TickerGroup";
@@ -161,18 +155,17 @@ export function GroupedResultsTable({ opportunities }: GroupedResultsTableProps)
           )}
         </Button>
       </div>
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[35%]">Contract</TableHead>
-            <TableHead className="w-[10%] text-right">Price</TableHead>
-            <TableHead className="w-[10%] text-right">Bid</TableHead>
-            <TableHead className="w-[10%] text-right">Ask</TableHead>
-            <TableHead className="w-[10%] text-right">Premium</TableHead>
-            <TableHead className="w-[12%] text-right">Premium %</TableHead>
-            <TableHead className="w-[13%] text-right">Annual Return</TableHead>
-          </TableRow>
-        </TableHeader>
+      <Table className="table-fixed w-full">
+        <colgroup>
+          <col className="w-[32%]" />  {/* Contract */}
+          <col className="w-[9%]" />   {/* Price */}
+          <col className="w-[9%]" />   {/* Bid */}
+          <col className="w-[9%]" />   {/* Ask */}
+          <col className="w-[9%]" />   {/* Premium */}
+          <col className="w-[8%]" />   {/* Delta */}
+          <col className="w-[11%]" />  {/* Premium % */}
+          <col className="w-[13%]" />  {/* Annual Return */}
+        </colgroup>
         <TableBody>
           {tickerGroups.map((tickerGroup) => (
             <TickerGroup

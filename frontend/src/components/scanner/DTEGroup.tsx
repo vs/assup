@@ -43,7 +43,7 @@ export const DTEGroup = memo(function DTEGroup({
               </span>
             </div>
           </TableCell>
-          <TableCell colSpan={3} />
+          <TableCell colSpan={4} />
           <TableCell className="text-right text-sm">
             Best: <span className="font-semibold">{dteGroup.summary.bestPremiumPercent.toFixed(2)}%</span>
           </TableCell>

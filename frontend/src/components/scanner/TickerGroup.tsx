@@ -57,7 +57,7 @@ export const TickerGroup = memo(function TickerGroup({
               : <span className="text-muted-foreground">N/A</span>
             }
           </TableCell>
-          <TableCell colSpan={3} />
+          <TableCell colSpan={4} />
           <TableCell className="text-right">
             Best: <span className="font-semibold">{tickerGroup.summary.bestPremiumPercent.toFixed(2)}%</span>
           </TableCell>
@@ -74,6 +74,7 @@ export const TickerGroup = memo(function TickerGroup({
           <TableCell className="text-right py-1">Bid</TableCell>
           <TableCell className="text-right py-1">Ask</TableCell>
           <TableCell className="text-right py-1">Premium</TableCell>
+          <TableCell className="text-right py-1">Delta</TableCell>
           <TableCell className="text-right py-1">Premium %</TableCell>
           <TableCell className="text-right py-1">Annual</TableCell>
         </TableRow>
