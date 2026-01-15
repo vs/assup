@@ -161,16 +161,16 @@ export function GroupedResultsTable({ opportunities }: GroupedResultsTableProps)
           )}
         </Button>
       </div>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[280px]">Contract</TableHead>
-            <TableHead className="text-right">Price</TableHead>
-            <TableHead className="text-right">Bid</TableHead>
-            <TableHead className="text-right">Ask</TableHead>
-            <TableHead className="text-right">Premium</TableHead>
-            <TableHead className="text-right">Premium %</TableHead>
-            <TableHead className="text-right">Annual Return</TableHead>
+            <TableHead className="w-[35%]">Contract</TableHead>
+            <TableHead className="w-[10%] text-right">Price</TableHead>
+            <TableHead className="w-[10%] text-right">Bid</TableHead>
+            <TableHead className="w-[10%] text-right">Ask</TableHead>
+            <TableHead className="w-[10%] text-right">Premium</TableHead>
+            <TableHead className="w-[12%] text-right">Premium %</TableHead>
+            <TableHead className="w-[13%] text-right">Annual Return</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
