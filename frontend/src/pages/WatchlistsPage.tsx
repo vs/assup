@@ -293,6 +293,7 @@ export function WatchlistsPage() {
                                   data={sparkline.data}
                                   loading={sparkline.loading}
                                   error={sparkline.error}
+                                  symbol={item.symbol}
                                 />
                               );
                             })()}

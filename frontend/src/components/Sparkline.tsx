@@ -7,6 +7,7 @@ interface SparklineProps {
   height?: number;
   loading?: boolean;
   error?: boolean;
+  symbol?: string;
 }
 
 export function Sparkline({
@@ -15,6 +16,7 @@ export function Sparkline({
   height = 30,
   loading = false,
   error = false,
+  symbol,
 }: SparklineProps) {
   if (loading) {
     return (
@@ -41,7 +43,7 @@ export function Sparkline({
   const isPositive = lastPrice >= firstPrice;
   const strokeColor = isPositive ? "#22c55e" : "#ef4444";
 
-  return (
+  const chart = (
     <div style={{ width, height }}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
@@ -57,4 +59,20 @@ export function Sparkline({
       </ResponsiveContainer>
     </div>
   );
+
+  if (symbol) {
+    return (
+      <a
+        href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block hover:opacity-80 transition-opacity"
+        title={`View ${symbol} chart on TradingView`}
+      >
+        {chart}
+      </a>
+    );
+  }
+
+  return chart;
 }

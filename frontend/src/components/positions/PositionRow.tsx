@@ -73,6 +73,7 @@ export function PositionRow({
           data={sparklineData}
           loading={sparklineLoading}
           error={sparklineError}
+          symbol={!isCash ? position.underlying || position.symbol : undefined}
         />
       </TableCell>
 
