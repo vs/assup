@@ -505,6 +505,7 @@ async function scanOptionsForSymbols(
               bid: putData.bid,
               ask: putData.ask,
               midPrice,
+              delta: putData.delta,
               annualizedReturn,
               premiumPercent,
               underlyingPrice,

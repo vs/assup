@@ -59,6 +59,7 @@ export interface TickerData {
   ask?: number;
   last?: number;
   close?: number;
+  delta?: number;
 }
 
 class IBKRService {
@@ -595,12 +596,25 @@ class IBKRService {
       const lastTick = marketData.get(4); // LAST
       const closeTick = marketData.get(9); // CLOSE
 
+      // Extract delta for options (IBApiNext tick types)
+      // MODEL_OPTION_DELTA=10041, DELAYED_MODEL_OPTION_DELTA=10047
+      // BID_OPTION_DELTA=10005, DELAYED_BID_OPTION_DELTA=10011
+      let delta: number | undefined;
+      if (contract.secType === SecType.OPT) {
+        const modelDelta = marketData.get(10041); // MODEL_OPTION_DELTA
+        const delayedModelDelta = marketData.get(10047); // DELAYED_MODEL_OPTION_DELTA
+        const bidDelta = marketData.get(10005); // BID_OPTION_DELTA
+        const delayedBidDelta = marketData.get(10011); // DELAYED_BID_OPTION_DELTA
+        delta = modelDelta?.value ?? delayedModelDelta?.value ?? bidDelta?.value ?? delayedBidDelta?.value;
+      }
+
       return {
         contract,
         bid: bidTick?.value,
         ask: askTick?.value,
         last: lastTick?.value,
         close: closeTick?.value,
+        delta,
       };
     } catch (err) {
       // Check if it's a subscription error or no security definition error
