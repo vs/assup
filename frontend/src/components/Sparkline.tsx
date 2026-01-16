@@ -1,4 +1,4 @@
-import { LineChart, Line, ResponsiveContainer } from "recharts";
+import { LineChart, Line } from "recharts";
 import type { SparklinePoint } from "@assup/shared";
 
 interface SparklineProps {
@@ -44,20 +44,16 @@ export function Sparkline({
   const strokeColor = isPositive ? "#22c55e" : "#ef4444";
 
   const chart = (
-    <div style={{ width, height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <Line
-            type="monotone"
-            dataKey="close"
-            stroke={strokeColor}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+    <LineChart width={width} height={height} data={data}>
+      <Line
+        type="monotone"
+        dataKey="close"
+        stroke={strokeColor}
+        strokeWidth={1.5}
+        dot={false}
+        isAnimationActive={false}
+      />
+    </LineChart>
   );
 
   if (onChartClick) {
