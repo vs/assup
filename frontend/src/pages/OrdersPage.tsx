@@ -85,6 +85,8 @@ export function OrdersPage() {
                   <TableHead>Asset Class</TableHead>
                   <TableHead>Action</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Bid</TableHead>
+                  <TableHead className="text-right">Ask</TableHead>
                   <TableHead className="text-right">Limit Price</TableHead>
                   <TableHead className="text-right">Est. Value</TableHead>
                   <TableHead>Status</TableHead>
@@ -135,6 +137,12 @@ export function OrdersPage() {
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatNumber(order.quantity)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {order.bid != null ? formatCurrency(order.bid) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {order.ask != null ? formatCurrency(order.ask) : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(order.limitPrice || 0)}

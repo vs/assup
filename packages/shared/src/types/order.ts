@@ -23,6 +23,8 @@ export interface Order {
   assetClassName?: string | null;
   assetClassColor?: string | null;
   estimatedValue?: number;
+  bid?: number;
+  ask?: number;
 }
 
 export interface OrderImpact {

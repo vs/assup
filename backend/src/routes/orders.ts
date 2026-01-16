@@ -12,7 +12,7 @@ import { allocationService } from "../services/allocation.service.js";
 import { IBKRConnectionError } from "../errors/index.js";
 import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema } from "@assup/shared";
 import type { Order, OrderImpact } from "@assup/shared";
-import { OpenOrder as IBOpenOrder } from "@stoqey/ib";
+import { OpenOrder as IBOpenOrder, Contract } from "@stoqey/ib";
 
 const router = Router();
 
@@ -49,6 +49,42 @@ function enrichOrder(
     assetClassColor: assignment?.assetClass.color || null,
     estimatedValue: quantity * limitPrice,
   };
+}
+
+/**
+ * Fetch market data (bid/ask) for orders
+ * Uses the contract from each order to get current prices
+ */
+async function fetchMarketDataForOrders(
+  orders: Order[],
+  rawOrders: IBOpenOrder[]
+): Promise<void> {
+  // Build a map of orderId -> contract for lookup
+  const contractMap = new Map<number, Contract>();
+  for (const rawOrder of rawOrders) {
+    if (rawOrder.orderId && rawOrder.contract) {
+      contractMap.set(rawOrder.orderId, rawOrder.contract);
+    }
+  }
+
+  // Fetch market data for each order in parallel
+  const promises = orders.map(async (order) => {
+    const contract = contractMap.get(order.orderId);
+    if (!contract) return;
+
+    try {
+      const marketData = await ibkrService.getMarketData(contract);
+      if (marketData) {
+        order.bid = marketData.bid;
+        order.ask = marketData.ask;
+      }
+    } catch (err) {
+      // Log but don't fail - market data is optional
+      console.debug(`Failed to get market data for order ${order.orderId}:`, err);
+    }
+  });
+
+  await Promise.allSettled(promises);
 }
 
 /**
@@ -145,6 +181,9 @@ router.get(
       );
       totalProjectedValue += delta;
     }
+
+    // Fetch market data (bid/ask) for all orders
+    await fetchMarketDataForOrders(orders, limitOrders);
 
     const { currentAllocation, projectedAllocation } = allocationService.toAllocationBreakdown(
       values,
