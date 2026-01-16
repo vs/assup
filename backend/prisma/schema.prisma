@@ -124,3 +124,88 @@ model Setting {
 
   @@map("settings")
 }
+
+// Import Batches - tracks each Flex Query file import for deduplication
+model ImportBatch {
+  id          String   @id @default(uuid()) @db.Uuid
+  filename    String   @db.VarChar(255)
+  importedAt  DateTime @default(now()) @map("imported_at") @db.Timestamptz
+  periodStart DateTime @map("period_start") @db.Date
+  periodEnd   DateTime @map("period_end") @db.Date
+  recordCount Int      @map("record_count")
+  fileHash    String   @map("file_hash") @db.VarChar(64)
+
+  // Relations
+  trades           ImportedTrade[]
+  cashTransactions CashTransaction[]
+
+  @@map("import_batches")
+}
+
+// Imported Trades - options and stock trades from Flex Query
+model ImportedTrade {
+  id            String   @id @default(uuid()) @db.Uuid
+  importBatchId String   @map("import_batch_id") @db.Uuid
+  tradeId       String   @unique @map("trade_id") @db.VarChar(50)
+
+  // Security info
+  symbol      String  @db.VarChar(20)
+  description String? @db.Text
+  conId       Int?    @map("con_id")
+  secType     String  @map("sec_type") @db.VarChar(10) // STK, OPT
+
+  // Option-specific fields
+  strike     Float?    @db.DoublePrecision
+  expiry     DateTime? @db.Date
+  right      String?   @db.VarChar(1) // C or P
+  underlying String?   @db.VarChar(20)
+  multiplier Int       @default(100)
+
+  // Transaction details
+  tradeDate  DateTime @map("trade_date") @db.Date
+  quantity   Float    @db.DoublePrecision
+  tradePrice Float    @map("trade_price") @db.DoublePrecision
+  proceeds   Float    @db.DoublePrecision
+  commission Float    @default(0) @db.DoublePrecision
+  buySell    String   @map("buy_sell") @db.VarChar(10)
+  openClose  String?  @map("open_close") @db.VarChar(10)
+
+  // Assignment tracking (computed after import)
+  wasAssigned    Boolean   @default(false) @map("was_assigned")
+  assignmentDate DateTime? @map("assignment_date") @db.Date
+
+  // Relations
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([symbol])
+  @@index([tradeDate])
+  @@index([expiry])
+  @@index([secType])
+  @@map("imported_trades")
+}
+
+// Cash Transactions - dividends, interest, fees from Flex Query
+model CashTransaction {
+  id            String @id @default(uuid()) @db.Uuid
+  importBatchId String @map("import_batch_id") @db.Uuid
+  transactionId String @unique @map("transaction_id") @db.VarChar(50)
+
+  // Transaction info
+  symbol      String?  @db.VarChar(20)
+  description String   @db.Text
+  conId       Int?     @map("con_id")
+
+  // Transaction details
+  transactionDate DateTime @map("transaction_date") @db.Date
+  amount          Float    @db.DoublePrecision
+  currency        String   @default("USD") @db.VarChar(3)
+  type            String   @db.VarChar(30) // DIVIDEND, INTEREST, WITHHOLDING_TAX, etc.
+
+  // Relations
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([type])
+  @@index([transactionDate])
+  @@index([symbol])
+  @@map("cash_transactions")
+}
