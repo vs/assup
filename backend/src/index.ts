@@ -15,6 +15,7 @@ import ordersRouter from "./routes/orders.js";
 import scannerRouter from "./routes/scanner.js";
 import settingsRouter from "./routes/settings.js";
 import historicalDataRouter from "./routes/historicalData.js";
+import profitRouter from "./routes/profit.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,6 +33,7 @@ app.use("/api/orders", ordersRouter);
 app.use("/api/scanner", scannerRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/historical", historicalDataRouter);
+app.use("/api/profit", profitRouter);
 
 app.get("/api/health", asyncHandler(async (req, res) => {
   const assetClassCount = await prisma.assetClass.count();
