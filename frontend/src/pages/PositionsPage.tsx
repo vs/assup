@@ -6,7 +6,6 @@ import { useAllocationUpdates } from "@/hooks/useSSE";
 import { useSparklines } from "@/hooks/useSparklines";
 import { usePositionFilters } from "@/hooks/usePositionFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { PositionFilters, PositionSummaryCards, PositionTable } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
@@ -97,8 +96,6 @@ export function PositionsPage() {
       return true;
     });
   }, [positions, filters]);
-
-  const unassigned = useMemo(() => filteredPositions.filter((p) => !p.assetClassId), [filteredPositions]);
 
   // Sort positions to put Cash last
   const sortedPositions = useMemo(() => {
@@ -209,32 +206,6 @@ export function PositionsPage() {
         diffToTarget={diffToTarget}
         assetClassId={filters.assetClassId}
       />
-
-      {/* Unassigned Positions */}
-      {unassigned.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Unassigned Positions
-              <Badge variant="secondary">{unassigned.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PositionTable
-              positions={unassigned}
-              assetClasses={assetClasses}
-              netLiquidation={netLiquidation}
-              assigningKey={assigning}
-              onAssign={handleAssign}
-              onSymbolClick={setChartSymbol}
-              getSparkline={getPositionSparkline}
-              showAssetClassColumn={false}
-              showPercentColumn={false}
-              showAssignColumn={true}
-            />
-          </CardContent>
-        </Card>
-      )}
 
       {/* All Positions */}
       <Card>
