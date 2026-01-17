@@ -146,10 +146,10 @@ model ImportBatch {
 model ImportedTrade {
   id            String   @id @default(uuid()) @db.Uuid
   importBatchId String   @map("import_batch_id") @db.Uuid
-  tradeId       String   @unique @map("trade_id") @db.VarChar(50)
+  tradeId       String   @unique @map("trade_id") @db.VarChar(100)
 
   // Security info
-  symbol      String  @db.VarChar(20)
+  symbol      String  @db.VarChar(50)
   description String? @db.Text
   conId       Int?    @map("con_id")
   secType     String  @map("sec_type") @db.VarChar(10) // STK, OPT
@@ -158,7 +158,7 @@ model ImportedTrade {
   strike     Float?    @db.DoublePrecision
   expiry     DateTime? @db.Date
   right      String?   @db.VarChar(1) // C or P
-  underlying String?   @db.VarChar(20)
+  underlying String?   @db.VarChar(50)
   multiplier Int       @default(100)
 
   // Transaction details
