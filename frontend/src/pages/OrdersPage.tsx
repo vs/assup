@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PageHeader, ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
 
 export function OrdersPage() {
   const [impact, setImpact] = useState<OrderImpact | null>(null);
@@ -96,12 +96,15 @@ export function OrdersPage() {
                 {impact.orders.map((order) => (
                   <TableRow key={order.orderId}>
                     <TableCell>
-                      <button
-                        className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
-                        onClick={() => setChartSymbol(order.symbol)}
-                      >
-                        {order.displayName}
-                      </button>
+                      <div className="flex items-center">
+                        <button
+                          className="font-medium hover:text-primary hover:underline cursor-pointer text-left"
+                          onClick={() => setChartSymbol(order.symbol)}
+                        >
+                          {order.displayName}
+                        </button>
+                        <ExternalLinks symbol={order.symbol} />
+                      </div>
                     </TableCell>
                     <TableCell>
                       {order.secType === "OPT" && order.right ? (
