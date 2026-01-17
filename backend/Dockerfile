@@ -21,9 +21,11 @@ RUN rm -f package-lock.json && npm install
 COPY backend ./backend
 
 # Build shared package first, generate Prisma client, then build backend
+# Also compile the seed script for production use
 RUN npm run build -w @assup/shared && \
     cd backend && npx prisma generate && cd .. && \
-    npm run build -w backend
+    npm run build -w backend && \
+    cd backend && npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --module NodeNext --moduleResolution NodeNext --skipLibCheck
 
 FROM node:20-alpine
 
@@ -48,6 +50,7 @@ RUN rm -f package-lock.json && npm install --omit=dev && \
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/backend/dist ./backend/dist
 COPY --from=builder /app/backend/prisma.config.ts ./backend/prisma.config.ts
+COPY --from=builder /app/backend/dist/prisma ./backend/dist/prisma
 
 EXPOSE 3000
 
