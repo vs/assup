@@ -1,4 +1,4 @@
-import { LineChart, Line } from "recharts";
+import { LineChart, Line, YAxis } from "recharts";
 import type { SparklinePoint } from "@assup/shared";
 
 interface SparklineProps {
@@ -43,8 +43,18 @@ export function Sparkline({
   const isPositive = lastPrice >= firstPrice;
   const strokeColor = isPositive ? "#22c55e" : "#ef4444";
 
+  // Calculate domain with padding so data fills 80% of vertical space (10% to 90%)
+  const prices = data.map((d) => d.close);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const range = maxPrice - minPrice;
+  // Add 12.5% padding on each side (so data spans 80% of chart)
+  const padding = range > 0 ? range * 0.125 : Math.abs(minPrice) * 0.1 || 1;
+  const domain: [number, number] = [minPrice - padding, maxPrice + padding];
+
   const chart = (
     <LineChart width={width} height={height} data={data}>
+      <YAxis domain={domain} hide />
       <Line
         type="monotone"
         dataKey="close"
