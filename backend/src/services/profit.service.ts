@@ -326,12 +326,12 @@ class ProfitService {
           const costBasis = pos.avgCost * Math.abs(pos.pos);
           const marketValue = pos.marketValue || 0;
 
-          // Unrealized P&L: use IBKR's value if available, otherwise calculate
+          // Unrealized P&L calculation
           // For short positions: profit = premium received - current cost to close
           // marketValue for short is negative (liability), costBasis is positive (premium received)
-          const unrealizedPnl = pos.unrealizedPnl ?? (pos.pos < 0
+          const unrealizedPnl = pos.pos < 0
             ? costBasis + marketValue  // Short: premium - abs(marketValue)
-            : marketValue - costBasis); // Long: marketValue - costBasis
+            : marketValue - costBasis; // Long: marketValue - costBasis
 
           // Projected profit if option expires worthless
           // For short positions: we keep the premium (cost basis)
