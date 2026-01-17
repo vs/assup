@@ -26,7 +26,9 @@ function enrichOrder(
   const contract = order.contract;
   const symbol = contract?.symbol || "";
   const secType = contract?.secType || "STK";
-  const assignment = assignmentMap.get(getSecurityKey(symbol, secType));
+  // For options, look up assignment by underlying symbol with STK secType
+  const assignmentSecType = secType === "OPT" ? "STK" : secType;
+  const assignment = assignmentMap.get(getSecurityKey(symbol, assignmentSecType));
   const quantity = order.order?.totalQuantity || 0;
   const limitPrice = order.order?.lmtPrice || 0;
 
