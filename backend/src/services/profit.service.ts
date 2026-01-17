@@ -4,6 +4,7 @@
 
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
+import { formatDisplayName } from "@assup/shared";
 import type {
   MonthSummary,
   MonthDetail,
@@ -297,6 +298,27 @@ class ProfitService {
       try {
         const positions = await ibkrService.getPositions();
 
+        // Collect underlying symbols to fetch asset classes
+        const underlyingSymbols = new Set<string>();
+        for (const pos of positions) {
+          if (pos.contract.secType === "OPT" && pos.pos !== 0) {
+            const symbol = pos.contract.symbol || "";
+            underlyingSymbols.add(symbol.split(" ")[0] || symbol);
+          }
+        }
+
+        // Fetch asset class assignments for underlying symbols
+        const assignments = await prisma.securityAssignment.findMany({
+          where: {
+            symbol: { in: Array.from(underlyingSymbols) },
+            secType: "STK",
+          },
+          include: { assetClass: true },
+        });
+        const assignmentMap = new Map(
+          assignments.map((a) => [a.symbol, a])
+        );
+
         for (const pos of positions) {
           if (pos.contract.secType !== "OPT") continue;
 
@@ -343,9 +365,19 @@ class ProfitService {
           }
 
           const symbol = pos.contract.symbol || "";
+          const underlying = symbol.split(" ")[0] || symbol;
+          const assignment = assignmentMap.get(underlying);
+
           const optionPos: CurrentOptionPosition = {
             symbol,
-            underlying: symbol.split(" ")[0] || symbol,
+            displayName: formatDisplayName({
+              symbol: underlying,
+              secType: "OPT",
+              strike,
+              right,
+              lastTradeDateOrContractMonth: pos.contract.lastTradeDateOrContractMonth,
+            }),
+            underlying,
             strike,
             expiry: expiry.toISOString().split("T")[0],
             right,
@@ -355,6 +387,9 @@ class ProfitService {
             marketValue,
             unrealizedPnl,
             projectedProfit,
+            assetClassId: assignment?.assetClassId,
+            assetClassName: assignment?.assetClass.name,
+            assetClassColor: assignment?.assetClass.color,
           };
 
           unrealizedPositions.push(optionPos);

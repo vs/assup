@@ -130,6 +130,7 @@ export interface MonthDetail {
 // Current option position (from IBKR)
 export interface CurrentOptionPosition {
   symbol: string;
+  displayName: string;
   underlying: string;
   strike: number;
   expiry: string;
@@ -140,6 +141,9 @@ export interface CurrentOptionPosition {
   marketValue: number;
   unrealizedPnl: number;
   projectedProfit: number;
+  assetClassId?: string;
+  assetClassName?: string;
+  assetClassColor?: string;
 }
 
 // Current/next month profit view
