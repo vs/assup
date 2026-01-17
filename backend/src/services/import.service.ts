@@ -221,77 +221,94 @@ class ImportService {
    * Parse CSV format (Activity Statement export)
    */
   private parseCSV(content: string): ParsedFlexData {
-    const records = parseCSV(content, {
-      columns: true,
-      skip_empty_lines: true,
-      relax_column_count: true,
-    }) as Record<string, string>[];
-
-    console.log(`[Import] CSV parsed: ${records.length} records`);
-    if (records.length > 0) {
-      console.log(`[Import] CSV columns:`, Object.keys(records[0]));
-      console.log(`[Import] First record sample:`, records[0]);
-    }
+    // IBKR FLEX reports can have multiple sections with different headers
+    // Split by the cash transactions header and parse each section separately
+    const sections = content.split(/\n(?="CurrencyPrimary")/);
 
     const trades: FlexTrade[] = [];
     const cashTransactions: FlexCashTransaction[] = [];
 
-    for (const record of records) {
-      // Detect trade records - support multiple column name variations
-      const assetCategory = record["Asset Category"] || record["AssetClass"];
-      const buySell = record["Buy/Sell"] || record["Code"];
-      const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
-      const quantity = record["Quantity"];
+    // Parse trades section (first section)
+    if (sections[0]) {
+      const tradeRecords = parseCSV(sections[0], {
+        columns: true,
+        skip_empty_lines: true,
+        relax_column_count: true,
+      }) as Record<string, string>[];
 
-      // For FLEX queries without Buy/Sell, infer from quantity sign
-      const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
-
-      if (assetCategory && (buySell || quantity)) {
-        trades.push({
-          tradeID:
-            record["TradeID"] ||
-            record["Transaction ID"] ||
-            `${tradeDate}-${record["Symbol"]}-${quantity}`,
-          symbol: record["Symbol"],
-          description: record["Description"],
-          conid: record["Conid"],
-          assetCategory,
-          strike: record["Strike"],
-          expiry: record["Expiry"],
-          putCall: record["Put/Call"],
-          underlyingSymbol: record["Underlying Symbol"] || record["UnderlyingSymbol"],
-          multiplier: record["Multiplier"],
-          tradeDate,
-          quantity,
-          tradePrice: record["T. Price"] || record["Trade Price"] || record["TradePrice"],
-          proceeds: record["Proceeds"],
-          ibCommission: record["Comm/Fee"] || record["Commission"] || record["IBCommission"],
-          buySell: inferredBuySell,
-          openCloseIndicator: record["Open/Close"] || record["Open/CloseIndicator"],
-        });
+      console.log(`[Import] Trades section: ${tradeRecords.length} records`);
+      if (tradeRecords.length > 0) {
+        console.log(`[Import] Trade columns:`, Object.keys(tradeRecords[0]));
       }
 
-      // Detect cash transaction records - support multiple column name variations
-      const txType = record["Type"];
-      const txAmount = record["Amount"];
-      const txDate = record["Date"] || record["Date/Time"] || record["Settle Date"] || record["DateTime"];
-      const txCurrency = record["Currency"] || record["CurrencyPrimary"];
+      for (const record of tradeRecords) {
+        const assetCategory = record["Asset Category"] || record["AssetClass"];
+        const buySell = record["Buy/Sell"] || record["Code"];
+        const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
+        const quantity = record["Quantity"];
+        const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
 
-      // Cash transaction: has Type and Amount, but no asset category (not a trade)
-      if (txType && txAmount && !assetCategory) {
-        console.log(`[Import] Found cash transaction: ${txType} - ${txAmount} on ${txDate}`);
-        cashTransactions.push({
-          transactionID:
-            record["Transaction ID"] ||
-            `${txDate}-${txType}-${txAmount}`,
-          symbol: record["Symbol"],
-          description: record["Description"] || "",
-          conid: record["Conid"],
-          dateTime: txDate,
-          amount: txAmount,
-          currency: txCurrency,
-          type: txType,
-        });
+        if (assetCategory && (buySell || quantity)) {
+          trades.push({
+            tradeID:
+              record["TradeID"] ||
+              record["Transaction ID"] ||
+              `${tradeDate}-${record["Symbol"]}-${quantity}`,
+            symbol: record["Symbol"],
+            description: record["Description"],
+            conid: record["Conid"],
+            assetCategory,
+            strike: record["Strike"],
+            expiry: record["Expiry"],
+            putCall: record["Put/Call"],
+            underlyingSymbol: record["Underlying Symbol"] || record["UnderlyingSymbol"],
+            multiplier: record["Multiplier"],
+            tradeDate,
+            quantity,
+            tradePrice: record["T. Price"] || record["Trade Price"] || record["TradePrice"],
+            proceeds: record["Proceeds"],
+            ibCommission: record["Comm/Fee"] || record["Commission"] || record["IBCommission"],
+            buySell: inferredBuySell,
+            openCloseIndicator: record["Open/Close"] || record["Open/CloseIndicator"],
+          });
+        }
+      }
+    }
+
+    // Parse cash transactions section (second section, if present)
+    if (sections[1]) {
+      const cashSection = '"CurrencyPrimary"' + sections[1];
+      const cashRecords = parseCSV(cashSection, {
+        columns: true,
+        skip_empty_lines: true,
+        relax_column_count: true,
+      }) as Record<string, string>[];
+
+      console.log(`[Import] Cash section: ${cashRecords.length} records`);
+      if (cashRecords.length > 0) {
+        console.log(`[Import] Cash columns:`, Object.keys(cashRecords[0]));
+        console.log(`[Import] First cash record:`, cashRecords[0]);
+      }
+
+      for (const record of cashRecords) {
+        const txType = record["Type"];
+        const txAmount = record["Amount"];
+        const txDate = record["Date/Time"] || record["Date"];
+        const txCurrency = record["CurrencyPrimary"] || record["Currency"];
+
+        if (txType && txAmount) {
+          console.log(`[Import] Found cash transaction: ${txType} - ${txAmount} on ${txDate}`);
+          cashTransactions.push({
+            transactionID: `${txDate}-${txType}-${txAmount}`,
+            symbol: record["Symbol"],
+            description: record["Description"] || "",
+            conid: record["Conid"],
+            dateTime: txDate,
+            amount: txAmount,
+            currency: txCurrency,
+            type: txType,
+          });
+        }
       }
     }
 
