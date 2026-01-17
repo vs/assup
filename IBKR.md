@@ -27,12 +27,24 @@ Before using Assup, configure TWS:
    - Give it a name like "Options Trades for Assup"
 
 3. **Configure the query sections:**
-   - **Trades** - Select these fields:
-     - Symbol, Description, Asset Category, Underlying Symbol
-     - Trade Date, Quantity, Trade Price, Proceeds, Commission
-     - Put/Call, Strike, Expiry
-     - Open/Close Indicator
-   - Set **Date Period** to your desired range (e.g., Last 365 Days or custom)
+
+   **Trades** - Select these fields:
+   - Symbol, Description, Asset Category, Underlying Symbol
+   - Trade Date, Quantity, Trade Price, Proceeds, Commission
+   - Put/Call, Strike, Expiry
+   - Open/Close Indicator
+
+   **Cash Transactions** - Select these fields (for dividends & interest):
+   - Type
+   - Symbol
+   - Description
+   - Date/Time
+   - Amount
+   - CurrencyPrimary
+
+   Note: Deposits, withdrawals, and currency conversions are automatically filtered out.
+
+   Set **Date Period** to your desired range (e.g., Last 365 Days or custom)
 
 4. **Set Output Format:**
    - Format: **CSV**
@@ -59,4 +71,6 @@ Before using Assup, configure TWS:
 3. Select your downloaded CSV file
 4. Review the parsed trades and confirm import
 
-The import expects option trades with columns for symbol, date, quantity, price, strike, expiry, and put/call indicator.
+The import processes:
+- **Trades**: Option and stock trades (symbol, date, quantity, price, strike, expiry, put/call)
+- **Cash Transactions**: Dividends, interest, withholding tax, fees (type, symbol, date, amount)
