@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/api";
 import type {
   MonthlyProfitResponse,
@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { ImportDialog } from "@/components/profit/ImportDialog";
+import { Sparkline } from "@/components/Sparkline";
+import { useSparklines } from "@/hooks/useSparklines";
 
 const MONTH_NAMES = [
   "January",
@@ -228,6 +230,17 @@ function SummaryCard({
 function MonthProfitCard({ data }: { data: MonthProfitView }) {
   const monthLabel = `${MONTH_NAMES[data.month - 1]} ${data.year}`;
 
+  // Get unique underlying symbols for sparklines
+  const sparklineSymbols = useMemo(() => {
+    const symbols = new Set<string>();
+    for (const pos of data.unrealized.positions) {
+      symbols.add(pos.underlying);
+    }
+    return Array.from(symbols);
+  }, [data.unrealized.positions]);
+
+  const { getSparklineState } = useSparklines(sparklineSymbols);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -287,6 +300,7 @@ function MonthProfitCard({ data }: { data: MonthProfitView }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>
+                  <TableHead className="w-20"></TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Strike</TableHead>
                   <TableHead>Expiry</TableHead>
@@ -296,31 +310,41 @@ function MonthProfitCard({ data }: { data: MonthProfitView }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.unrealized.positions.map((pos, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-medium">{pos.underlying}</TableCell>
-                    <TableCell>
-                      <Badge variant={pos.right === "P" ? "destructive" : "default"}>
-                        {pos.right === "P" ? "PUT" : "CALL"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(pos.strike)}
-                    </TableCell>
-                    <TableCell>{pos.expiry}</TableCell>
-                    <TableCell className="text-right">{pos.quantity}</TableCell>
-                    <TableCell
-                      className={`text-right ${
-                        pos.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {formatCurrency(pos.unrealizedPnl)}
-                    </TableCell>
-                    <TableCell className="text-right text-blue-600">
-                      {formatCurrency(pos.projectedProfit)}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {data.unrealized.positions.map((pos, idx) => {
+                  const sparkline = getSparklineState(pos.underlying);
+                  return (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">{pos.underlying}</TableCell>
+                      <TableCell>
+                        <Sparkline
+                          data={sparkline.data}
+                          loading={sparkline.loading}
+                          error={sparkline.error}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={pos.right === "P" ? "danger" : "success"}>
+                          {pos.right === "P" ? "PUT" : "CALL"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(pos.strike)}
+                      </TableCell>
+                      <TableCell>{pos.expiry}</TableCell>
+                      <TableCell className="text-right">{pos.quantity}</TableCell>
+                      <TableCell
+                        className={`text-right ${
+                          pos.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {formatCurrency(pos.unrealizedPnl)}
+                      </TableCell>
+                      <TableCell className="text-right text-blue-600">
+                        {formatCurrency(pos.projectedProfit)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -443,7 +467,7 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                 <TableRow key={idx}>
                   <TableCell className="font-medium">{trade.underlying}</TableCell>
                   <TableCell>
-                    <Badge variant={trade.right === "P" ? "destructive" : "default"}>
+                    <Badge variant={trade.right === "P" ? "danger" : "success"}>
                       {trade.right === "P" ? "PUT" : "CALL"}
                     </Badge>
                   </TableCell>
