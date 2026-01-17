@@ -8,6 +8,7 @@ import {
   List,
   ShoppingCart,
   Search,
+  DollarSign,
   Menu,
   X,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const navItems = [
   { to: "/watchlists", label: "Watchlists", icon: List },
   { to: "/orders", label: "Orders", icon: ShoppingCart },
   { to: "/scanner", label: "Scanner", icon: Search },
+  { to: "/profit", label: "Profit", icon: DollarSign },
   { to: "/asset-classes", label: "Asset Classes", icon: Layers },
 ];
 

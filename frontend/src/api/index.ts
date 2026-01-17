@@ -17,6 +17,7 @@ export { ordersApi } from "./orders";
 export { scannerApi } from "./scanner";
 export { settingsApi } from "./settings";
 export { historicalApi } from "./historical";
+export { profitApi } from "./profit";
 
 // Combined api object for backward compatibility
 import { assetClassesApi } from "./assetClasses";
@@ -28,6 +29,7 @@ import { ordersApi } from "./orders";
 import { scannerApi } from "./scanner";
 import { settingsApi } from "./settings";
 import { historicalApi } from "./historical";
+import { profitApi } from "./profit";
 
 export const api = {
   assetClasses: assetClassesApi,
@@ -39,4 +41,5 @@ export const api = {
   scanner: scannerApi,
   settings: settingsApi,
   historical: historicalApi,
+  profit: profitApi,
 };
