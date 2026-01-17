@@ -24,10 +24,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PageHeader, ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
 import { ImportDialog } from "@/components/profit/ImportDialog";
 import { Sparkline } from "@/components/Sparkline";
+import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks/useSparklines";
+
+// Helper to calculate days to expiration
+function calculateDTE(expiry: string): number {
+  const expiryDate = new Date(expiry);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  expiryDate.setHours(0, 0, 0, 0);
+  return Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
 
 const MONTH_NAMES = [
   "January",
@@ -53,6 +63,7 @@ export function ProfitPage() {
   const [error, setError] = useState<string | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -157,12 +168,12 @@ export function ProfitPage() {
 
         {/* Current Month Tab */}
         <TabsContent value="current" className="space-y-4">
-          {currentMonth && <MonthProfitCard data={currentMonth} />}
+          {currentMonth && <MonthProfitCard data={currentMonth} onSymbolClick={setChartSymbol} />}
         </TabsContent>
 
         {/* Next Month Tab */}
         <TabsContent value="next" className="space-y-4">
-          {nextMonth && <MonthProfitCard data={nextMonth} />}
+          {nextMonth && <MonthProfitCard data={nextMonth} onSymbolClick={setChartSymbol} />}
         </TabsContent>
 
         {/* History Tab */}
@@ -200,6 +211,12 @@ export function ProfitPage() {
         onOpenChange={setImportDialogOpen}
         onImportComplete={handleImportComplete}
       />
+
+      <ChartModal
+        symbol={chartSymbol}
+        open={!!chartSymbol}
+        onClose={() => setChartSymbol(null)}
+      />
     </div>
   );
 }
@@ -227,7 +244,13 @@ function SummaryCard({
 }
 
 // Month Profit Card (for current/next month)
-function MonthProfitCard({ data }: { data: MonthProfitView }) {
+function MonthProfitCard({
+  data,
+  onSymbolClick
+}: {
+  data: MonthProfitView;
+  onSymbolClick: (symbol: string) => void;
+}) {
   const monthLabel = `${MONTH_NAMES[data.month - 1]} ${data.year}`;
 
   // Get unique underlying symbols for sparklines
@@ -299,11 +322,13 @@ function MonthProfitCard({ data }: { data: MonthProfitView }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead className="w-20"></TableHead>
+                  <TableHead>Contract</TableHead>
+                  <TableHead className="w-24"></TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Asset Class</TableHead>
                   <TableHead className="text-right">Strike</TableHead>
                   <TableHead>Expiry</TableHead>
+                  <TableHead className="text-right">DTE</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unrealized P&L</TableHead>
                   <TableHead className="text-right">Projected</TableHead>
@@ -312,14 +337,28 @@ function MonthProfitCard({ data }: { data: MonthProfitView }) {
               <TableBody>
                 {data.unrealized.positions.map((pos, idx) => {
                   const sparkline = getSparklineState(pos.underlying);
+                  const dte = calculateDTE(pos.expiry);
                   return (
                     <TableRow key={idx}>
-                      <TableCell className="font-medium">{pos.underlying}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <a
+                            href={`https://www.tradingview.com/chart/?symbol=${pos.underlying}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium hover:text-primary hover:underline"
+                          >
+                            {pos.displayName}
+                          </a>
+                          <ExternalLinks symbol={pos.underlying} />
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Sparkline
                           data={sparkline.data}
                           loading={sparkline.loading}
                           error={sparkline.error}
+                          onChartClick={() => onSymbolClick(pos.underlying)}
                         />
                       </TableCell>
                       <TableCell>
@@ -327,19 +366,35 @@ function MonthProfitCard({ data }: { data: MonthProfitView }) {
                           {pos.right === "P" ? "PUT" : "CALL"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(pos.strike)}
+                      <TableCell>
+                        {pos.assetClassName ? (
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: pos.assetClassColor }}
+                            />
+                            <span className="truncate text-sm">{pos.assetClassName}</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${pos.strike.toFixed(pos.strike % 1 === 0 ? 0 : 2)}
                       </TableCell>
                       <TableCell>{pos.expiry}</TableCell>
-                      <TableCell className="text-right">{pos.quantity}</TableCell>
+                      <TableCell className={`text-right font-mono ${dte <= 7 ? "text-red-600" : ""}`}>
+                        {dte}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">{pos.quantity}</TableCell>
                       <TableCell
-                        className={`text-right ${
+                        className={`text-right font-mono ${
                           pos.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
                         }`}
                       >
                         {formatCurrency(pos.unrealizedPnl)}
                       </TableCell>
-                      <TableCell className="text-right text-blue-600">
+                      <TableCell className="text-right font-mono text-blue-600">
                         {formatCurrency(pos.projectedProfit)}
                       </TableCell>
                     </TableRow>
