@@ -54,7 +54,7 @@ export function Sparkline({
 
   const chart = (
     <LineChart width={width} height={height} data={data}>
-      <YAxis domain={domain} hide />
+      <YAxis domain={domain} hide width={0} />
       <Line
         type="monotone"
         dataKey="close"
