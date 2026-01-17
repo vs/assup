@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -342,6 +343,13 @@ export function WatchlistsPage() {
                 ? "Edit Watchlist"
                 : "Add Symbol"}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {dialogMode === "create"
+                ? "Create a new watchlist"
+                : dialogMode === "edit"
+                ? "Edit watchlist details"
+                : "Add a symbol to the watchlist"}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             {dialogMode !== "addSymbol" ? (

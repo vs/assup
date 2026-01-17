@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -387,6 +388,9 @@ export function AssetClassesPage() {
             <DialogTitle>
               {editingClass ? "Edit Asset Class" : "Add Asset Class"}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {editingClass ? "Edit asset class details" : "Create a new asset class"}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
