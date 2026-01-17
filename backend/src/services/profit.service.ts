@@ -300,6 +300,9 @@ class ProfitService {
         for (const pos of positions) {
           if (pos.contract.secType !== "OPT") continue;
 
+          // Skip positions with zero quantity
+          if (pos.pos === 0) continue;
+
           // Parse expiry date from contract
           const expiryStr = pos.contract.lastTradeDateOrContractMonth;
           if (!expiryStr) continue;
@@ -317,23 +320,26 @@ class ProfitService {
 
           const strike = pos.contract.strike || 0;
           const right = (pos.contract.right || "C") as "C" | "P";
-          const rawMultiplier = pos.contract.multiplier;
-          const multiplier =
-            typeof rawMultiplier === "string"
-              ? parseInt(rawMultiplier, 10)
-              : rawMultiplier || 100;
 
-          // Calculate unrealized P&L
-          const costBasis = pos.avgCost * Math.abs(pos.pos) * multiplier;
+          // avgCost from IBKR already includes the multiplier (it's per contract, not per share)
+          // Cost basis = avgCost * number of contracts
+          const costBasis = pos.avgCost * Math.abs(pos.pos);
           const marketValue = pos.marketValue || 0;
-          const unrealizedPnl = marketValue - costBasis;
 
-          // Calculate projected profit if short (sell to open)
-          // If short option expires worthless, we keep the premium
+          // Unrealized P&L: use IBKR's value if available, otherwise calculate
+          // For short positions: profit = premium received - current cost to close
+          // marketValue for short is negative (liability), costBasis is positive (premium received)
+          const unrealizedPnl = pos.unrealizedPnl ?? (pos.pos < 0
+            ? costBasis + marketValue  // Short: premium - abs(marketValue)
+            : marketValue - costBasis); // Long: marketValue - costBasis
+
+          // Projected profit if option expires worthless
+          // For short positions: we keep the premium (cost basis)
+          // For long positions: we lose the premium (negative)
           let projectedProfit = 0;
           if (pos.pos < 0) {
-            // Short position - premium received is avgCost
-            projectedProfit = pos.avgCost * Math.abs(pos.pos) * multiplier;
+            // Short position - premium received is cost basis
+            projectedProfit = costBasis;
           }
 
           const symbol = pos.contract.symbol || "";
