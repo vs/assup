@@ -69,14 +69,21 @@ class ProfitService {
     }
 
     // Calculate options profit by grouping trades
+    const now = new Date();
     const optionGroups = this.groupOptionTrades(trades);
     for (const group of optionGroups) {
       // Determine which month this trade belongs to (close date or expiry for worthless/assigned)
       let tradeDate: Date | null = null;
       if (group.closeTrade) {
+        // Trade was closed - use close date
         tradeDate = new Date(group.closeTrade.tradeDate);
       } else if (group.expiry) {
-        tradeDate = new Date(group.expiry);
+        // No close trade - only count if expiry has passed (actually expired/assigned)
+        const expiryDate = new Date(group.expiry);
+        if (expiryDate < now) {
+          tradeDate = expiryDate;
+        }
+        // If expiry is in the future, don't count it yet - it's still an open position
       }
 
       if (tradeDate) {
@@ -162,13 +169,48 @@ class ProfitService {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    // Get all option trades that closed in this month
+    // First, find option trades that closed in this month
+    // Only include expired options if expiry date has passed
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // End of today
+
+    const closingTrades = await prisma.importedTrade.findMany({
+      where: {
+        secType: "OPT",
+        OR: [
+          // Trades with close date in this month
+          {
+            tradeDate: { gte: startDate, lte: endDate },
+            openClose: "C",
+          },
+          // Trades that expired in this month (expiry in the past)
+          {
+            expiry: { gte: startDate, lte: endDate < today ? endDate : today },
+            openClose: "O", // Only open trades (no close = expired/assigned)
+          },
+        ],
+      },
+    });
+
+    // Get unique contract keys for these trades
+    const contractKeys = new Set(
+      closingTrades.map(
+        (t) => `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
+      )
+    );
+
+    // Fetch ALL trades for these contracts (including opens from previous months)
     const trades = await prisma.importedTrade.findMany({
       where: {
-        tradeDate: { gte: startDate, lte: endDate },
         secType: "OPT",
       },
       orderBy: { tradeDate: "asc" },
+    });
+
+    // Filter to only trades matching our contract keys
+    const relevantTrades = trades.filter((t) => {
+      const key = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      return contractKeys.has(key);
     });
 
     // Get cash transactions
@@ -179,10 +221,11 @@ class ProfitService {
       orderBy: { transactionDate: "asc" },
     });
 
-    // Group option trades
-    const optionGroups = this.groupOptionTrades(trades);
+    // Group option trades (using relevant trades which include opens from previous months)
+    const optionGroups = this.groupOptionTrades(relevantTrades);
 
     // Filter to trades that closed or expired in this month
+    const now = new Date();
     const monthGroups = optionGroups.filter((g) => {
       // If there's a close trade, check if it's in this month
       if (g.closeTrade) {
@@ -192,13 +235,15 @@ class ProfitService {
           closeDate.getMonth() + 1 === month
         );
       }
-      // If no close trade, check if option expired in this month (expired worthless or assigned)
+      // If no close trade, check if option expired in this month AND expiry has passed
+      // (don't show future expirations as "expired" - those are still open positions)
       if (g.expiry) {
         const expiryDate = new Date(g.expiry);
-        return (
+        const expiryInThisMonth =
           expiryDate.getFullYear() === year &&
-          expiryDate.getMonth() + 1 === month
-        );
+          expiryDate.getMonth() + 1 === month;
+        const expiryHasPassed = expiryDate < now;
+        return expiryInThisMonth && expiryHasPassed;
       }
       return false;
     });
@@ -551,6 +596,11 @@ class ProfitService {
         // For BUY to close (closing short): proceeds is negative (cost to close)
         // For SELL to close (closing long): proceeds is positive (received)
         sellPrice = Math.abs(closeTrade.proceeds);
+
+        // If close trade has 0 proceeds, it was likely an assignment/exercise
+        if (closeTrade.proceeds === 0) {
+          wasAssigned = true;
+        }
       } else {
         // No close trade - option expired worthless or was assigned
         expiredWorthless = !wasAssigned;
