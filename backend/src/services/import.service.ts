@@ -271,19 +271,26 @@ class ImportService {
         });
       }
 
-      // Detect cash transaction records
-      if (record["Type"] && record["Amount"] && !record["Buy/Sell"]) {
+      // Detect cash transaction records - support multiple column name variations
+      const txType = record["Type"];
+      const txAmount = record["Amount"];
+      const txDate = record["Date"] || record["Date/Time"] || record["Settle Date"] || record["DateTime"];
+      const txCurrency = record["Currency"] || record["CurrencyPrimary"];
+
+      // Cash transaction: has Type and Amount, but no asset category (not a trade)
+      if (txType && txAmount && !assetCategory) {
+        console.log(`[Import] Found cash transaction: ${txType} - ${txAmount} on ${txDate}`);
         cashTransactions.push({
           transactionID:
             record["Transaction ID"] ||
-            `${record["Date"]}-${record["Type"]}-${record["Amount"]}`,
+            `${txDate}-${txType}-${txAmount}`,
           symbol: record["Symbol"],
           description: record["Description"] || "",
           conid: record["Conid"],
-          dateTime: record["Date"] || record["Settle Date"],
-          amount: record["Amount"],
-          currency: record["Currency"],
-          type: record["Type"],
+          dateTime: txDate,
+          amount: txAmount,
+          currency: txCurrency,
+          type: txType,
         });
       }
     }
@@ -503,6 +510,14 @@ class ImportService {
     if (!dateStr) return null;
 
     // Try various date formats
+    // YYYYMMDD;HHMMSS (IBKR Date/Time format)
+    if (/^\d{8};\d{6}$/.test(dateStr)) {
+      const datePart = dateStr.split(";")[0];
+      return new Date(
+        `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}`
+      );
+    }
+
     // YYYYMMDD
     if (/^\d{8}$/.test(dateStr)) {
       return new Date(
@@ -563,12 +578,15 @@ class ImportService {
       return "FEE";
     }
 
-    // Skip deposits, withdrawals, internal transfers
+    // Skip deposits, withdrawals, internal transfers, currency conversions
     if (
       upper.includes("DEPOSIT") ||
       upper.includes("WITHDRAWAL") ||
       upper.includes("TRANSFER") ||
-      upper.includes("INTERNAL")
+      upper.includes("INTERNAL") ||
+      upper.includes("FOREX") ||
+      upper.includes("CONVERSION") ||
+      upper.includes("FX")
     ) {
       return "SKIP";
     }
