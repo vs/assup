@@ -53,7 +53,7 @@ export function AssetClassSelect({
 
   return (
     <Select
-      value={value || undefined}
+      value={value ?? ""}
       onValueChange={onValueChange}
       disabled={disabled || loading}
     >

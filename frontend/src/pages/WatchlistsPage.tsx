@@ -299,7 +299,7 @@ export function WatchlistsPage() {
                           </TableCell>
                           <TableCell>
                             <AssetClassSelect
-                              value={item.assetClassId || undefined}
+                              value={item.assetClassId}
                               onValueChange={(v) => handleAssignAssetClass(item, v)}
                               placeholder="Assign..."
                               assetClasses={assetClasses}
