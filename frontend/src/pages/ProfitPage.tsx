@@ -513,6 +513,8 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">Strike</TableHead>
                 <TableHead>Expiry</TableHead>
+                <TableHead className="text-right">Premium</TableHead>
+                <TableHead className="text-right">Close Cost</TableHead>
                 <TableHead className="text-right">Profit</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -526,12 +528,22 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                       {trade.right === "P" ? "PUT" : "CALL"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(trade.strike)}
+                  <TableCell className="text-right font-mono">
+                    ${trade.strike.toFixed(trade.strike % 1 === 0 ? 0 : 2)}
                   </TableCell>
                   <TableCell>{trade.expiry}</TableCell>
+                  <TableCell className="text-right font-mono text-green-600">
+                    {formatCurrency(trade.costBasis)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {trade.sellPrice > 0 ? (
+                      <span className="text-red-600">{formatCurrency(trade.sellPrice)}</span>
+                    ) : (
+                      <span className="text-muted-foreground">$0</span>
+                    )}
+                  </TableCell>
                   <TableCell
-                    className={`text-right ${
+                    className={`text-right font-mono ${
                       trade.profit >= 0 ? "text-green-600" : "text-red-600"
                     }`}
                   >
@@ -540,6 +552,8 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                   <TableCell>
                     {trade.wasAssigned ? (
                       <Badge variant="outline">Assigned</Badge>
+                    ) : trade.expiredWorthless ? (
+                      <Badge variant="secondary">Expired</Badge>
                     ) : (
                       <Badge variant="secondary">Closed</Badge>
                     )}

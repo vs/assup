@@ -95,8 +95,11 @@ export interface OptionTradeGroup {
   right: "C" | "P";
   openTrade?: OptionTradeDetail;
   closeTrade?: OptionTradeDetail;
-  profit: number;
+  costBasis: number;       // Premium received (for short) or paid (for long)
+  sellPrice: number;       // Price to close (0 if expired worthless)
+  profit: number;          // costBasis - sellPrice (for short positions)
   wasAssigned: boolean;
+  expiredWorthless: boolean;
 }
 
 // Monthly summary

@@ -71,9 +71,16 @@ class ProfitService {
     // Calculate options profit by grouping trades
     const optionGroups = this.groupOptionTrades(trades);
     for (const group of optionGroups) {
+      // Determine which month this trade belongs to (close date or expiry for worthless/assigned)
+      let tradeDate: Date | null = null;
       if (group.closeTrade) {
-        const closeDate = new Date(group.closeTrade.tradeDate);
-        const key = `${closeDate.getFullYear()}-${closeDate.getMonth() + 1}`;
+        tradeDate = new Date(group.closeTrade.tradeDate);
+      } else if (group.expiry) {
+        tradeDate = new Date(group.expiry);
+      }
+
+      if (tradeDate) {
+        const key = `${tradeDate.getFullYear()}-${tradeDate.getMonth() + 1}`;
         const summary = monthMap.get(key);
         if (summary) {
           if (!group.wasAssigned) {
@@ -175,14 +182,25 @@ class ProfitService {
     // Group option trades
     const optionGroups = this.groupOptionTrades(trades);
 
-    // Filter to only trades with closing trades in this month
+    // Filter to trades that closed or expired in this month
     const monthGroups = optionGroups.filter((g) => {
-      if (!g.closeTrade) return false;
-      const closeDate = new Date(g.closeTrade.tradeDate);
-      return (
-        closeDate.getFullYear() === year &&
-        closeDate.getMonth() + 1 === month
-      );
+      // If there's a close trade, check if it's in this month
+      if (g.closeTrade) {
+        const closeDate = new Date(g.closeTrade.tradeDate);
+        return (
+          closeDate.getFullYear() === year &&
+          closeDate.getMonth() + 1 === month
+        );
+      }
+      // If no close trade, check if option expired in this month (expired worthless or assigned)
+      if (g.expiry) {
+        const expiryDate = new Date(g.expiry);
+        return (
+          expiryDate.getFullYear() === year &&
+          expiryDate.getMonth() + 1 === month
+        );
+      }
+      return false;
     });
 
     // Categorize cash transactions
@@ -501,10 +519,58 @@ class ProfitService {
         }
       }
 
-      // Calculate profit: proceeds from sell - proceeds from buy (proceeds already signed)
-      const totalProceeds = sorted.reduce((sum, t) => sum + t.proceeds, 0);
+      // Calculate cost basis and sell price for clearer profit display
+      // For short options (selling to open):
+      //   - costBasis = premium received (positive proceeds from open)
+      //   - sellPrice = cost to close (absolute value of close proceeds, or 0 if expired worthless)
+      //   - profit = costBasis - sellPrice - commissions
+      // For long options (buying to open):
+      //   - costBasis = premium paid (absolute value of negative proceeds from open)
+      //   - sellPrice = proceeds from selling (positive proceeds from close)
+      //   - profit = sellPrice - costBasis - commissions
+
       const totalCommission = sorted.reduce((sum, t) => sum + t.commission, 0);
-      const profit = totalProceeds - totalCommission;
+
+      let costBasis = 0;
+      let sellPrice = 0;
+      let expiredWorthless = false;
+
+      if (openTrade) {
+        // For SELL to open (short): proceeds is positive (premium received)
+        // For BUY to open (long): proceeds is negative (premium paid)
+        if (openTrade.buySell === "SELL") {
+          // Short position - we received premium
+          costBasis = Math.abs(openTrade.proceeds);
+        } else {
+          // Long position - we paid premium
+          costBasis = Math.abs(openTrade.proceeds);
+        }
+      }
+
+      if (closeTrade) {
+        // For BUY to close (closing short): proceeds is negative (cost to close)
+        // For SELL to close (closing long): proceeds is positive (received)
+        sellPrice = Math.abs(closeTrade.proceeds);
+      } else {
+        // No close trade - option expired worthless or was assigned
+        expiredWorthless = !wasAssigned;
+        sellPrice = 0;
+      }
+
+      // Calculate profit based on position type
+      let profit: number;
+      if (openTrade?.buySell === "SELL") {
+        // Short position: profit = premium received - cost to close - commissions
+        profit = costBasis - sellPrice - totalCommission;
+      } else {
+        // Long position: profit = sell price - cost basis - commissions
+        profit = sellPrice - costBasis - totalCommission;
+      }
+
+      // For assigned options, set profit to 0 (P&L is realized in stock position)
+      if (wasAssigned) {
+        profit = 0;
+      }
 
       const first = sorted[0];
       result.push({
@@ -546,8 +612,11 @@ class ProfitService {
               wasAssigned: closeTrade.wasAssigned,
             }
           : undefined,
+        costBasis,
+        sellPrice,
         profit,
         wasAssigned,
+        expiredWorthless,
       });
     }
 
