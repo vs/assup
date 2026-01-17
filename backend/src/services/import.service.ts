@@ -64,6 +64,8 @@ class ImportService {
     fileContent: string,
     filename: string
   ): Promise<ImportResult> {
+    console.log(`[Import] Starting import for file: ${filename} (${fileContent.length} bytes)`);
+
     // Calculate file hash for deduplication
     const fileHash = createHash("sha256").update(fileContent).digest("hex");
 
@@ -108,16 +110,22 @@ class ImportService {
     });
 
     // Import trades (with deduplication)
+    console.log(`[Import] Importing ${parsed.trades.length} trades...`);
     const tradeStats = await this.importTrades(batch.id, parsed.trades);
+    console.log(`[Import] Trade import complete: ${tradeStats.imported} imported, ${tradeStats.skipped} skipped`);
 
     // Import cash transactions (with deduplication)
+    console.log(`[Import] Importing ${parsed.cashTransactions.length} cash transactions...`);
     const cashStats = await this.importCashTransactions(
       batch.id,
       parsed.cashTransactions
     );
+    console.log(`[Import] Cash import complete: ${cashStats.dividends} dividends, ${cashStats.interest} interest`);
 
     // Detect assignments
+    console.log(`[Import] Detecting assignments...`);
     const assignmentsDetected = await this.detectAssignments();
+    console.log(`[Import] Assignment detection complete: ${assignmentsDetected} detected`);
 
     return {
       batchId: batch.id,
@@ -219,36 +227,47 @@ class ImportService {
       relax_column_count: true,
     }) as Record<string, string>[];
 
+    console.log(`[Import] CSV parsed: ${records.length} records`);
+    if (records.length > 0) {
+      console.log(`[Import] CSV columns:`, Object.keys(records[0]));
+      console.log(`[Import] First record sample:`, records[0]);
+    }
+
     const trades: FlexTrade[] = [];
     const cashTransactions: FlexCashTransaction[] = [];
 
     for (const record of records) {
-      // Detect trade records
-      if (
-        record["Asset Category"] &&
-        (record["Buy/Sell"] || record["Code"])
-      ) {
+      // Detect trade records - support multiple column name variations
+      const assetCategory = record["Asset Category"] || record["AssetClass"];
+      const buySell = record["Buy/Sell"] || record["Code"];
+      const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
+      const quantity = record["Quantity"];
+
+      // For FLEX queries without Buy/Sell, infer from quantity sign
+      const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
+
+      if (assetCategory && (buySell || quantity)) {
         trades.push({
           tradeID:
             record["TradeID"] ||
             record["Transaction ID"] ||
-            `${record["Trade Date"]}-${record["Symbol"]}-${record["Quantity"]}`,
+            `${tradeDate}-${record["Symbol"]}-${quantity}`,
           symbol: record["Symbol"],
           description: record["Description"],
           conid: record["Conid"],
-          assetCategory: record["Asset Category"],
+          assetCategory,
           strike: record["Strike"],
           expiry: record["Expiry"],
           putCall: record["Put/Call"],
-          underlyingSymbol: record["Underlying Symbol"],
+          underlyingSymbol: record["Underlying Symbol"] || record["UnderlyingSymbol"],
           multiplier: record["Multiplier"],
-          tradeDate: record["Trade Date"] || record["Date/Time"],
-          quantity: record["Quantity"],
-          tradePrice: record["T. Price"] || record["Trade Price"],
+          tradeDate,
+          quantity,
+          tradePrice: record["T. Price"] || record["Trade Price"] || record["TradePrice"],
           proceeds: record["Proceeds"],
-          ibCommission: record["Comm/Fee"] || record["Commission"],
-          buySell: record["Buy/Sell"] || record["Code"],
-          openCloseIndicator: record["Open/Close"],
+          ibCommission: record["Comm/Fee"] || record["Commission"] || record["IBCommission"],
+          buySell: inferredBuySell,
+          openCloseIndicator: record["Open/Close"] || record["Open/CloseIndicator"],
         });
       }
 
@@ -282,6 +301,9 @@ class ImportService {
       allDates.length > 0
         ? new Date(Math.max(...allDates.map((d) => d.getTime())))
         : new Date();
+
+    console.log(`[Import] Parsed ${trades.length} trades, ${cashTransactions.length} cash transactions`);
+    console.log(`[Import] Period: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
     return { trades, cashTransactions, periodStart, periodEnd };
   }
