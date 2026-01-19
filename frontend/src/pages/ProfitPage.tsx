@@ -720,6 +720,8 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Contract</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Asset Class</TableHead>
                 <TableHead className="text-right">Premium</TableHead>
                 <TableHead className="text-right">Close Cost</TableHead>
                 <TableHead className="text-right">Profit</TableHead>
@@ -741,6 +743,27 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                       </a>
                       <ExternalLinks symbol={trade.underlying} />
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={trade.right === "P" ? "danger" : "success"}>
+                      {trade.right === "P" ? "PUT" : "CALL"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {trade.assetClassName ? (
+                      <Link
+                        to={`/positions?assetClassId=${trade.assetClassId}`}
+                        className="flex items-center gap-2 hover:text-primary"
+                      >
+                        <div
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: trade.assetClassColor }}
+                        />
+                        <span className="truncate text-sm">{trade.assetClassName}</span>
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-mono text-green-600">
                     {formatCurrency(trade.costBasis)}
