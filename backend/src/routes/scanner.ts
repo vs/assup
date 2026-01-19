@@ -271,14 +271,17 @@ async function scanOptionsForSymbols(
   symbols: string[],
   symbolAssignments: Array<{ symbol: string; assetClass: { name: string; color: string } }>,
   criteria: {
+    optionTypes?: "PUT" | "CALL" | "BOTH";
     minDaysToExpiry: number;
     maxDaysToExpiry: number;
     minDelta: number;
     maxDelta: number;
     minAnnualizedReturn: number;
     minPremiumPercent: number;
-    minStrikePercent: number;
-    maxStrikePercent: number;
+    putMinStrikePercent: number;
+    putMaxStrikePercent: number;
+    callMinStrikePercent: number;
+    callMaxStrikePercent: number;
   }
 ) {
   const opportunities: Array<{
@@ -407,35 +410,70 @@ async function scanOptionsForSymbols(
       // Fall back to median strike only if underlying price is unavailable
       const referencePrice = underlyingPrice ?? uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
 
-      // Filter strikes based on configured percentage range relative to underlying price
-      const minStrike = referencePrice * (criteria.minStrikePercent / 100);
-      const maxStrike = referencePrice * (criteria.maxStrikePercent / 100);
-      console.log(`  ↳ Reference price: $${referencePrice.toFixed(2)}, strike range: $${minStrike.toFixed(0)}-$${maxStrike.toFixed(0)} (${criteria.minStrikePercent}%-${criteria.maxStrikePercent}%)`);
+      // Determine which option types to scan
+      const optionTypes = criteria.optionTypes || "PUT";
+      const scanPuts = optionTypes === "PUT" || optionTypes === "BOTH";
+      const scanCalls = optionTypes === "CALL" || optionTypes === "BOTH";
 
-      const filteredChain = chain.filter((entry) => {
+      // Calculate separate strike ranges for PUTs and CALLs
+      const putMinStrike = referencePrice * (criteria.putMinStrikePercent / 100);
+      const putMaxStrike = referencePrice * (criteria.putMaxStrikePercent / 100);
+      const callMinStrike = referencePrice * (criteria.callMinStrikePercent / 100);
+      const callMaxStrike = referencePrice * (criteria.callMaxStrikePercent / 100);
+
+      console.log(`  ↳ Reference price: $${referencePrice.toFixed(2)}, scanning: ${optionTypes}`);
+      if (scanPuts) {
+        console.log(`  ↳ PUT strike range: $${putMinStrike.toFixed(0)}-$${putMaxStrike.toFixed(0)} (${criteria.putMinStrikePercent}%-${criteria.putMaxStrikePercent}%)`);
+      }
+      if (scanCalls) {
+        console.log(`  ↳ CALL strike range: $${callMinStrike.toFixed(0)}-$${callMaxStrike.toFixed(0)} (${criteria.callMinStrikePercent}%-${criteria.callMaxStrikePercent}%)`);
+      }
+
+      // Filter chain by expiration only first (strike ranges depend on option type)
+      const expirationFilteredChain = chain.filter((entry) => {
         const expirationDate = parseExpirationDate(entry.expiration);
         const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        const inExpirationRange = daysToExpiry >= criteria.minDaysToExpiry && daysToExpiry <= criteria.maxDaysToExpiry;
-        const inStrikeRange = entry.strike >= minStrike && entry.strike <= maxStrike;
-        return inExpirationRange && inStrikeRange;
+        return daysToExpiry >= criteria.minDaysToExpiry && daysToExpiry <= criteria.maxDaysToExpiry;
       });
 
-      if (filteredChain.length === 0) {
-        console.log(`  ↳ No options in range (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry} days, strikes $${minStrike.toFixed(0)}-$${maxStrike.toFixed(0)})`);
+      if (expirationFilteredChain.length === 0) {
+        console.log(`  ↳ No options in expiration range (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry} days)`);
+        continue;
+      }
+
+      // Filter for PUT contracts (within PUT strike range)
+      const putFilteredChain = scanPuts
+        ? expirationFilteredChain.filter((entry) => entry.strike >= putMinStrike && entry.strike <= putMaxStrike)
+        : [];
+
+      // Filter for CALL contracts (within CALL strike range)
+      const callFilteredChain = scanCalls
+        ? expirationFilteredChain.filter((entry) => entry.strike >= callMinStrike && entry.strike <= callMaxStrike)
+        : [];
+
+      if (putFilteredChain.length === 0 && callFilteredChain.length === 0) {
+        console.log(`  ↳ No options in strike ranges`);
         continue;
       }
 
       // Show what's being evaluated
-      const filteredExpirations = [...new Set(filteredChain.map(c => c.expiration))].sort();
-      const filteredStrikes = [...new Set(filteredChain.map(c => c.strike))].sort((a, b) => a - b);
+      const allFilteredEntries = [...putFilteredChain, ...callFilteredChain];
+      const filteredExpirations = [...new Set(allFilteredEntries.map(c => c.expiration))].sort();
+      const filteredStrikes = [...new Set(allFilteredEntries.map(c => c.strike))].sort((a, b) => a - b);
       const strikeRange = filteredStrikes.length > 0
         ? `$${filteredStrikes[0]}-$${filteredStrikes[filteredStrikes.length - 1]}`
         : 'none';
       console.log(`  ↳ Evaluating ${filteredExpirations.length} expirations (${filteredExpirations[0]} to ${filteredExpirations[filteredExpirations.length - 1]})`);
-      console.log(`  ↳ Strike range: ${strikeRange} (${filteredStrikes.length} strikes, filtered from ${uniqueStrikes.length})`);
+      console.log(`  ↳ Combined strike range: ${strikeRange} (${filteredStrikes.length} strikes, filtered from ${uniqueStrikes.length})`);
 
-      // Collect contracts to get market data for (only put options for cash-secured puts)
-      const contracts = filteredChain.map((entry) => entry.put);
+      // Collect contracts to get market data for
+      const contracts: typeof chain[0]['put'][] = [];
+      if (scanPuts) {
+        contracts.push(...putFilteredChain.map((entry) => entry.put));
+      }
+      if (scanCalls) {
+        contracts.push(...callFilteredChain.map((entry) => entry.call));
+      }
 
       // Send progress update with details
       sseService.broadcast("scanner", {
@@ -455,7 +493,9 @@ async function scanOptionsForSymbols(
         const sample = contracts[0];
         console.log(`  ↳ Sample contract: ${sample.symbol} $${sample.strike} ${sample.lastTradeDateOrContractMonth} ${sample.right} on ${sample.exchange}`);
       }
-      console.log(`  ↳ Fetching market data for ${contracts.length} PUT contracts...`);
+      const putCount = scanPuts ? putFilteredChain.length : 0;
+      const callCount = scanCalls ? callFilteredChain.length : 0;
+      console.log(`  ↳ Fetching market data for ${contracts.length} contracts (${putCount} PUTs, ${callCount} CALLs)...`);
       const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
       console.log(`  ↳ Received market data for ${marketDataMap.size} contracts`);
 
@@ -465,24 +505,25 @@ async function scanOptionsForSymbols(
       let failedReturn = 0;
       let failedPremium = 0;
 
-      // Process each option and calculate metrics
-      for (const entry of filteredChain) {
-        const expirationDate = parseExpirationDate(entry.expiration);
-        const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      // Helper function to process an option entry
+      const processOption = (
+        entry: typeof chain[0],
+        optionType: "PUT" | "CALL",
+        contract: typeof chain[0]['put'],
+        daysToExpiry: number
+      ) => {
+        const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
+        const data = marketDataMap.get(key);
 
-        // Process PUT option (cash-secured put strategy)
-        const putKey = `${entry.put.symbol}_${entry.put.lastTradeDateOrContractMonth}_${entry.put.strike}_${entry.put.right}`;
-        const putData = marketDataMap.get(putKey);
-
-        if (putData && putData.bid !== undefined && putData.ask !== undefined && putData.bid > 0 && putData.ask > 0) {
+        if (data && data.bid !== undefined && data.ask !== undefined && data.bid > 0 && data.ask > 0) {
           withBidAsk++;
-          const midPrice = (putData.bid + putData.ask) / 2;
+          const midPrice = (data.bid + data.ask) / 2;
           const premiumPercent = (midPrice / entry.strike) * 100;
           const annualizedReturn = (premiumPercent * 365) / daysToExpiry;
 
           // Debug: Log first few samples
           if (withBidAsk <= 3) {
-            console.log(`  ↳ Sample: ${symbol} $${entry.strike} ${entry.expiration}: bid=${putData.bid}, ask=${putData.ask}, premium=${premiumPercent.toFixed(2)}%, annual=${annualizedReturn.toFixed(2)}%`);
+            console.log(`  ↳ Sample ${optionType}: ${symbol} $${entry.strike} ${entry.expiration}: bid=${data.bid}, ask=${data.ask}, premium=${premiumPercent.toFixed(2)}%, annual=${annualizedReturn.toFixed(2)}%`);
           }
 
           // Filter by criteria
@@ -501,16 +542,34 @@ async function scanOptionsForSymbols(
               strike: entry.strike,
               expiration: entry.expiration,
               daysToExpiry,
-              optionType: "PUT",
-              bid: putData.bid,
-              ask: putData.ask,
+              optionType,
+              bid: data.bid,
+              ask: data.ask,
               midPrice,
-              delta: putData.delta,
+              delta: data.delta,
               annualizedReturn,
               premiumPercent,
               underlyingPrice,
             });
           }
+        }
+      };
+
+      // Process PUT options
+      if (scanPuts) {
+        for (const entry of putFilteredChain) {
+          const expirationDate = parseExpirationDate(entry.expiration);
+          const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          processOption(entry, "PUT", entry.put, daysToExpiry);
+        }
+      }
+
+      // Process CALL options
+      if (scanCalls) {
+        for (const entry of callFilteredChain) {
+          const expirationDate = parseExpirationDate(entry.expiration);
+          const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          processOption(entry, "CALL", entry.call, daysToExpiry);
         }
       }
 

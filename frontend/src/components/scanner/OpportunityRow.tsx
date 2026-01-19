@@ -27,6 +27,40 @@ function estimatePutDelta(strike: number, underlyingPrice: number | undefined): 
   return Math.max(-0.95, Math.min(-0.05, delta));
 }
 
+/**
+ * Estimate delta for a call option based on moneyness (strike vs underlying).
+ * Uses a simple linear approximation:
+ * - ATM (strike = price): delta ≈ 0.50
+ * - OTM (strike > price): delta approaches 0
+ * - ITM (strike < price): delta approaches 1
+ */
+function estimateCallDelta(strike: number, underlyingPrice: number | undefined): number | null {
+  if (!underlyingPrice || underlyingPrice <= 0) return null;
+
+  // Moneyness ratio: strike / underlying
+  // For calls: > 1 = OTM, = 1 = ATM, < 1 = ITM
+  const moneyness = strike / underlyingPrice;
+
+  // Simple linear approximation centered at ATM = 0.5
+  // Clamp between 0.05 and 0.95
+  const delta = 0.5 - (moneyness - 1) * 2;
+  return Math.max(0.05, Math.min(0.95, delta));
+}
+
+/**
+ * Estimate delta based on option type and moneyness
+ */
+function estimateDelta(
+  optionType: "PUT" | "CALL",
+  strike: number,
+  underlyingPrice: number | undefined
+): number | null {
+  if (optionType === "PUT") {
+    return estimatePutDelta(strike, underlyingPrice);
+  }
+  return estimateCallDelta(strike, underlyingPrice);
+}
+
 export const OpportunityRow = memo(function OpportunityRow({
   opportunity: opp,
   gridCols,
@@ -39,8 +73,8 @@ export const OpportunityRow = memo(function OpportunityRow({
     lastTradeDateOrContractMonth: opp.expiration,
   });
 
-  // Use provided delta or estimate it
-  const delta = opp.delta ?? estimatePutDelta(opp.strike, opp.underlyingPrice);
+  // Use provided delta or estimate it based on option type
+  const delta = opp.delta ?? estimateDelta(opp.optionType, opp.strike, opp.underlyingPrice);
 
   return (
     <div

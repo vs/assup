@@ -4,15 +4,22 @@
 
 import { z } from "zod";
 
+export const optionTypeFilterSchema = z.enum(["PUT", "CALL", "BOTH"]);
+
 export const scannerCriteriaSchema = z.object({
+  optionTypes: optionTypeFilterSchema.default("PUT"),
   minDaysToExpiry: z.number().int().min(0).max(365),
   maxDaysToExpiry: z.number().int().min(0).max(365),
   minDelta: z.number().min(0).max(1),
   maxDelta: z.number().min(0).max(1),
   minAnnualizedReturn: z.number().min(0).max(1000),
   minPremiumPercent: z.number().min(0).max(100),
-  minStrikePercent: z.number().min(0).max(100),
-  maxStrikePercent: z.number().min(0).max(150),
+  // PUT strike range (% of underlying price, typically 50-100 for OTM puts)
+  putMinStrikePercent: z.number().min(0).max(150).default(75),
+  putMaxStrikePercent: z.number().min(0).max(150).default(100),
+  // CALL strike range (% of underlying price, typically 100-150 for OTM calls)
+  callMinStrikePercent: z.number().min(0).max(200).default(100),
+  callMaxStrikePercent: z.number().min(0).max(200).default(125),
   specificSymbol: z.string().min(1).max(10).toUpperCase().optional(),
   targetAssetClasses: z.array(z.string().uuid()).optional(),
 });

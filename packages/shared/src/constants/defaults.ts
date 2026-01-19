@@ -24,14 +24,17 @@ export const DEFAULT_ASSIGNMENT_SOURCE = "manual";
  * Default scanner criteria
  */
 export const DEFAULT_SCANNER_CRITERIA: ScannerCriteria = {
+  optionTypes: "PUT",
   minDaysToExpiry: 14,
   maxDaysToExpiry: 60,
   minDelta: 0.2,
   maxDelta: 0.4,
   minAnnualizedReturn: 10,
   minPremiumPercent: 1,
-  minStrikePercent: 75,
-  maxStrikePercent: 100,
+  putMinStrikePercent: 75,
+  putMaxStrikePercent: 100,
+  callMinStrikePercent: 100,
+  callMaxStrikePercent: 125,
 };
 
 /**

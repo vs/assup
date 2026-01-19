@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api";
-import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass } from "@assup/shared";
+import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass, OptionTypeFilter } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { GroupedResultsTable } from "@/components/scanner";
@@ -24,17 +24,21 @@ import {
 } from "@/components/ui/command";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Search, Save, X, Check, ChevronsUpDown, Trash2, Settings2 } from "lucide-react";
 
 const DEFAULT_CRITERIA: ScannerCriteria = {
+  optionTypes: "PUT",
   minDaysToExpiry: 30,
   maxDaysToExpiry: 60,
   minDelta: 0.2,
   maxDelta: 0.4,
   minAnnualizedReturn: 15,
   minPremiumPercent: 1,
-  minStrikePercent: 75,
-  maxStrikePercent: 100,
+  putMinStrikePercent: 75,
+  putMaxStrikePercent: 100,
+  callMinStrikePercent: 100,
+  callMaxStrikePercent: 125,
 };
 
 const STORAGE_KEY = "scanner-results";
@@ -319,7 +323,37 @@ export function ScannerPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+          {/* Option Strategy Toggle */}
+          <div className="space-y-2">
+            <Label>Option Strategy</Label>
+            <ToggleGroup
+              type="single"
+              value={criteria.optionTypes}
+              onValueChange={(value: string) => {
+                if (value) {
+                  setCriteria({ ...criteria, optionTypes: value as OptionTypeFilter });
+                }
+              }}
+              className="justify-start"
+            >
+              <ToggleGroupItem value="PUT" className="px-4">
+                PUTs
+              </ToggleGroupItem>
+              <ToggleGroupItem value="CALL" className="px-4">
+                CALLs
+              </ToggleGroupItem>
+              <ToggleGroupItem value="BOTH" className="px-4">
+                Both
+              </ToggleGroupItem>
+            </ToggleGroup>
+            <p className="text-xs text-muted-foreground">
+              {criteria.optionTypes === "PUT" && "Cash-secured puts for buying opportunities"}
+              {criteria.optionTypes === "CALL" && "Covered calls for income on existing positions"}
+              {criteria.optionTypes === "BOTH" && "Scan for both put and call opportunities"}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <div className="space-y-2">
               <Label>Min Days to Expiry</Label>
               <Input
@@ -389,28 +423,64 @@ export function ScannerPage() {
               />
               <p className="text-xs text-muted-foreground">Premium / strike price</p>
             </div>
-            <div className="space-y-2">
-              <Label>Min Strike %</Label>
-              <Input
-                type="number"
-                value={criteria.minStrikePercent}
-                onChange={(e) =>
-                  setCriteria({ ...criteria, minStrikePercent: parseInt(e.target.value) || 0 })
-                }
-              />
-              <p className="text-xs text-muted-foreground">% of stock price</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Max Strike %</Label>
-              <Input
-                type="number"
-                value={criteria.maxStrikePercent}
-                onChange={(e) =>
-                  setCriteria({ ...criteria, maxStrikePercent: parseInt(e.target.value) || 0 })
-                }
-              />
-              <p className="text-xs text-muted-foreground">100% = at-the-money</p>
-            </div>
+          </div>
+
+          {/* Strike Range Controls - conditional based on option type */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* PUT Strike Range */}
+            {(criteria.optionTypes === "PUT" || criteria.optionTypes === "BOTH") && (
+              <>
+                <div className="space-y-2">
+                  <Label>PUT Min Strike %</Label>
+                  <Input
+                    type="number"
+                    value={criteria.putMinStrikePercent}
+                    onChange={(e) =>
+                      setCriteria({ ...criteria, putMinStrikePercent: parseInt(e.target.value) || 0 })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">Below stock price</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>PUT Max Strike %</Label>
+                  <Input
+                    type="number"
+                    value={criteria.putMaxStrikePercent}
+                    onChange={(e) =>
+                      setCriteria({ ...criteria, putMaxStrikePercent: parseInt(e.target.value) || 0 })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">100% = ATM</p>
+                </div>
+              </>
+            )}
+            {/* CALL Strike Range */}
+            {(criteria.optionTypes === "CALL" || criteria.optionTypes === "BOTH") && (
+              <>
+                <div className="space-y-2">
+                  <Label>CALL Min Strike %</Label>
+                  <Input
+                    type="number"
+                    value={criteria.callMinStrikePercent}
+                    onChange={(e) =>
+                      setCriteria({ ...criteria, callMinStrikePercent: parseInt(e.target.value) || 0 })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">100% = ATM</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>CALL Max Strike %</Label>
+                  <Input
+                    type="number"
+                    value={criteria.callMaxStrikePercent}
+                    onChange={(e) =>
+                      setCriteria({ ...criteria, callMaxStrikePercent: parseInt(e.target.value) || 0 })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">Above stock price</p>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="space-y-2">

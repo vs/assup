@@ -2,15 +2,22 @@
  * Scanner types for options opportunity discovery
  */
 
+export type OptionTypeFilter = "PUT" | "CALL" | "BOTH";
+
 export interface ScannerCriteria {
+  optionTypes: OptionTypeFilter;
   minDaysToExpiry: number;
   maxDaysToExpiry: number;
   minDelta: number;
   maxDelta: number;
   minAnnualizedReturn: number;
   minPremiumPercent: number;
-  minStrikePercent: number;
-  maxStrikePercent: number;
+  // PUT strike range (% of underlying price)
+  putMinStrikePercent: number;
+  putMaxStrikePercent: number;
+  // CALL strike range (% of underlying price)
+  callMinStrikePercent: number;
+  callMaxStrikePercent: number;
   specificSymbol?: string;
   targetAssetClasses?: string[];
 }
