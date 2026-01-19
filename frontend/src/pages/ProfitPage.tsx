@@ -372,42 +372,65 @@ function MonthProfitCard({
                     </div>
                   )}
 
-                  {/* Cash Transactions (Dividends, Interest) */}
-                  {data.realized.cashTransactions.length > 0 && (
+                  {/* Dividends */}
+                  {data.realized.cashTransactions.filter(tx => tx.type === "DIVIDEND").length > 0 && (
                     <div>
-                      <h4 className="font-medium mb-2">Cash Transactions</h4>
+                      <h4 className="font-medium mb-2">Dividends</h4>
                       <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Date</TableHead>
-                            <TableHead>Type</TableHead>
                             <TableHead>Symbol</TableHead>
                             <TableHead>Description</TableHead>
                             <TableHead className="text-right">Amount</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {data.realized.cashTransactions.map((tx) => (
-                            <TableRow key={tx.id}>
-                              <TableCell>{tx.transactionDate}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{tx.type}</Badge>
-                              </TableCell>
-                              <TableCell className="font-medium">{tx.symbol || "-"}</TableCell>
-                              <TableCell className="text-muted-foreground text-sm">
-                                {tx.description}
-                              </TableCell>
-                              <TableCell
-                                className={`text-right font-mono ${
-                                  tx.type === "DIVIDEND" ? "text-green-600" :
-                                  tx.type === "INTEREST" ? "text-purple-600" :
-                                  tx.amount >= 0 ? "text-green-600" : "text-red-600"
-                                }`}
-                              >
-                                {formatCurrency(tx.amount)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {data.realized.cashTransactions
+                            .filter(tx => tx.type === "DIVIDEND")
+                            .map((div) => (
+                              <TableRow key={div.id}>
+                                <TableCell>{div.transactionDate}</TableCell>
+                                <TableCell className="font-medium">{div.symbol || "-"}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {div.description}
+                                </TableCell>
+                                <TableCell className="text-right text-green-600">
+                                  {formatCurrency(div.amount)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+
+                  {/* Interest */}
+                  {data.realized.cashTransactions.filter(tx => tx.type === "INTEREST").length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Interest</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.realized.cashTransactions
+                            .filter(tx => tx.type === "INTEREST")
+                            .map((int) => (
+                              <TableRow key={int.id}>
+                                <TableCell>{int.transactionDate}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {int.description}
+                                </TableCell>
+                                <TableCell className="text-right text-purple-600">
+                                  {formatCurrency(int.amount)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
                         </TableBody>
                       </Table>
                     </div>
