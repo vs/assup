@@ -6,7 +6,7 @@ import type {
   MonthSummary,
   ImportBatch,
 } from "@assup/shared";
-import { formatCurrency } from "@assup/shared";
+import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,19 @@ function calculateDTE(expiry: string): number {
   today.setHours(0, 0, 0, 0);
   expiryDate.setHours(0, 0, 0, 0);
   return Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+// Helper to format contract display name from trade data
+function formatTradeDisplayName(trade: { underlying: string; strike: number; expiry: string; right: "C" | "P" }): string {
+  // Convert YYYY-MM-DD to YYYYMMDD for formatDisplayName
+  const expiryYYYYMMDD = trade.expiry.replace(/-/g, "");
+  return formatDisplayName({
+    symbol: trade.underlying,
+    secType: "OPT",
+    strike: trade.strike,
+    right: trade.right,
+    lastTradeDateOrContractMonth: expiryYYYYMMDD,
+  });
 }
 
 const MONTH_NAMES = [
@@ -316,10 +329,7 @@ function MonthProfitCard({
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Symbol</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead className="text-right">Strike</TableHead>
-                            <TableHead>Expiry</TableHead>
+                            <TableHead>Contract</TableHead>
                             <TableHead className="text-right">Premium</TableHead>
                             <TableHead className="text-right">Close Cost</TableHead>
                             <TableHead className="text-right">Profit</TableHead>
@@ -329,16 +339,19 @@ function MonthProfitCard({
                         <TableBody>
                           {data.realized.closedTrades.map((trade, idx) => (
                             <TableRow key={idx}>
-                              <TableCell className="font-medium">{trade.underlying}</TableCell>
                               <TableCell>
-                                <Badge variant={trade.right === "P" ? "danger" : "success"}>
-                                  {trade.right === "P" ? "PUT" : "CALL"}
-                                </Badge>
+                                <div className="flex items-center">
+                                  <a
+                                    href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-medium hover:text-primary hover:underline"
+                                  >
+                                    {formatTradeDisplayName(trade)}
+                                  </a>
+                                  <ExternalLinks symbol={trade.underlying} />
+                                </div>
                               </TableCell>
-                              <TableCell className="text-right font-mono">
-                                ${trade.strike.toFixed(trade.strike % 1 === 0 ? 0 : 2)}
-                              </TableCell>
-                              <TableCell>{trade.expiry}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
                                 {formatCurrency(trade.costBasis)}
                               </TableCell>
@@ -679,10 +692,7 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Symbol</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Strike</TableHead>
-                <TableHead>Expiry</TableHead>
+                <TableHead>Contract</TableHead>
                 <TableHead className="text-right">Premium</TableHead>
                 <TableHead className="text-right">Close Cost</TableHead>
                 <TableHead className="text-right">Profit</TableHead>
@@ -692,16 +702,19 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
             <TableBody>
               {detail.realized.optionTrades.map((trade, idx) => (
                 <TableRow key={idx}>
-                  <TableCell className="font-medium">{trade.underlying}</TableCell>
                   <TableCell>
-                    <Badge variant={trade.right === "P" ? "danger" : "success"}>
-                      {trade.right === "P" ? "PUT" : "CALL"}
-                    </Badge>
+                    <div className="flex items-center">
+                      <a
+                        href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium hover:text-primary hover:underline"
+                      >
+                        {formatTradeDisplayName(trade)}
+                      </a>
+                      <ExternalLinks symbol={trade.underlying} />
+                    </div>
                   </TableCell>
-                  <TableCell className="text-right font-mono">
-                    ${trade.strike.toFixed(trade.strike % 1 === 0 ? 0 : 2)}
-                  </TableCell>
-                  <TableCell>{trade.expiry}</TableCell>
                   <TableCell className="text-right font-mono text-green-600">
                     {formatCurrency(trade.costBasis)}
                   </TableCell>
