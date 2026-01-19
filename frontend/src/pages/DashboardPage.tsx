@@ -57,14 +57,15 @@ export function DashboardPage() {
     }
   }
 
-  async function loadData() {
+  async function loadData(overrideSettings?: DashboardSettings) {
+    const currentSettings = overrideSettings ?? settings;
     try {
       setLoading(true);
       const [profileData, summaryData] = await Promise.all([
         api.allocationProfiles.getActive().catch(() => null),
         api.positions.summary({
-          includeOptions: settings.includeOptions,
-          optionsWeightMode: settings.optionsWeightMode,
+          includeOptions: currentSettings.includeOptions,
+          optionsWeightMode: currentSettings.optionsWeightMode,
         }).catch(() => null),
       ]);
       setProfile(profileData);
@@ -87,7 +88,7 @@ export function DashboardPage() {
       console.error("Failed to save settings:", err);
     }
 
-    loadData();
+    loadData(updated);
   }
 
   // Combine target and actual allocation data
@@ -145,7 +146,6 @@ export function DashboardPage() {
               data={allocationData}
               netLiquidation={summary?.account.netLiquidation ?? 0}
               includeOptions={settings.includeOptions}
-              optionsWeightMode={settings.optionsWeightMode}
             />
           )}
         </CardContent>

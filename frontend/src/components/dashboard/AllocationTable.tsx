@@ -19,14 +19,12 @@ interface AllocationTableProps {
   data: AllocationData[];
   netLiquidation: number;
   includeOptions?: boolean;
-  optionsWeightMode?: "notional" | "delta";
 }
 
 export function AllocationTable({
   data,
   netLiquidation,
   includeOptions = false,
-  optionsWeightMode = "notional",
 }: AllocationTableProps) {
   const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
@@ -40,17 +38,13 @@ export function AllocationTable({
             <th className="text-right py-3 px-2">Current %</th>
             <th className="text-right py-3 px-2">Diff %</th>
             <th className="text-right py-3 px-2">Target Value</th>
-            {includeOptions && (
-              <>
-                <th className="text-right py-3 px-2">Stock Value</th>
-                <th className="text-right py-3 px-2">
-                  <span className="inline-flex items-center gap-1">
-                    Options {optionsWeightMode === "delta" ? "Delta" : "Notional"}
-                    <ExposureTooltip showStocks={false} />
-                  </span>
-                </th>
-              </>
-            )}
+            <th className="text-right py-3 px-2">Stock Value</th>
+            <th className="text-right py-3 px-2">
+              <span className="inline-flex items-center gap-1">
+                Options Notional
+                <ExposureTooltip showStocks={false} />
+              </span>
+            </th>
             <th className="text-right py-3 px-2">Current Value</th>
             <th className="text-right py-3 px-2">Action</th>
           </tr>
@@ -80,16 +74,12 @@ export function AllocationTable({
                   <DiffBar diff={row.diff} />
                 </td>
                 <td className="text-right py-3 px-2 font-mono">{fmtCurrency(targetValue)}</td>
-                {includeOptions && (
-                  <>
-                    <td className="text-right py-3 px-2 font-mono">{fmtCurrency(row.stockValue)}</td>
-                    <td className="text-right py-3 px-2 font-mono">
-                      <span className={row.optionsExposure > 0 ? "text-green-600" : row.optionsExposure < 0 ? "text-red-600" : ""}>
-                        {row.optionsExposure > 0 ? "+" : ""}{fmtCurrency(row.optionsExposure)}
-                      </span>
-                    </td>
-                  </>
-                )}
+                <td className="text-right py-3 px-2 font-mono">{fmtCurrency(row.stockValue)}</td>
+                <td className="text-right py-3 px-2 font-mono">
+                  <span className={row.optionsExposure > 0 ? "text-green-600" : row.optionsExposure < 0 ? "text-red-600" : ""}>
+                    {row.optionsExposure > 0 ? "+" : ""}{fmtCurrency(row.optionsExposure)}
+                  </span>
+                </td>
                 <td className="text-right py-3 px-2 font-mono">{fmtCurrency(currentValue)}</td>
                 <td className="text-right py-3 px-2">
                   <ActionBadge id={row.id} diffValue={diffValue} />
