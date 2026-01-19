@@ -233,6 +233,32 @@ class ProfitService {
       );
     }
 
+    // Fetch asset class assignments for underlying symbols
+    const underlyingSymbols = new Set<string>();
+    for (const trade of relevantTrades) {
+      const underlying = trade.underlying || trade.symbol.split(" ")[0];
+      underlyingSymbols.add(underlying);
+    }
+
+    const assignments = await prisma.securityAssignment.findMany({
+      where: {
+        symbol: { in: Array.from(underlyingSymbols) },
+        secType: "STK",
+      },
+      include: { assetClass: true },
+    });
+
+    const assignmentMap = new Map(
+      assignments.map((a) => [
+        a.symbol,
+        {
+          assetClassId: a.assetClassId,
+          assetClassName: a.assetClass.name,
+          assetClassColor: a.assetClass.color,
+        },
+      ])
+    );
+
     // Get cash transactions
     const cashTransactions = await prisma.cashTransaction.findMany({
       where: {
@@ -242,7 +268,7 @@ class ProfitService {
     });
 
     // Group option trades (using relevant trades which include opens from previous months)
-    const optionGroups = this.groupOptionTrades(relevantTrades);
+    const optionGroups = this.groupOptionTrades(relevantTrades, assignmentMap);
 
     // Filter to trades that closed or expired in this month
     const now = new Date();
@@ -544,7 +570,8 @@ class ProfitService {
       buySell: string;
       openClose: string | null;
       wasAssigned: boolean;
-    }>
+    }>,
+    assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
   ): OptionTradeGroup[] {
     // Group by contract key
     const groups = new Map<string, typeof trades>();
@@ -643,8 +670,11 @@ class ProfitService {
       }
 
       const first = sorted[0];
+      const underlying = first.underlying || first.symbol.split(" ")[0];
+      const assetClass = assignmentMap?.get(underlying);
+
       result.push({
-        underlying: first.underlying || first.symbol.split(" ")[0],
+        underlying,
         strike: first.strike || 0,
         expiry: first.expiry?.toISOString().split("T")[0] || "",
         right: (first.right || "C") as "C" | "P",
@@ -687,6 +717,9 @@ class ProfitService {
         profit,
         wasAssigned,
         expiredWorthless,
+        assetClassId: assetClass?.assetClassId,
+        assetClassName: assetClass?.assetClassName,
+        assetClassColor: assetClass?.assetClassColor,
       });
     }
 

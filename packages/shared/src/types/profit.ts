@@ -100,6 +100,10 @@ export interface OptionTradeGroup {
   profit: number;          // costBasis - sellPrice (for short positions)
   wasAssigned: boolean;
   expiredWorthless: boolean;
+  // Asset class info (from underlying's security assignment)
+  assetClassId?: string;
+  assetClassName?: string;
+  assetClassColor?: string;
 }
 
 // Monthly summary
