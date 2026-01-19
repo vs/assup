@@ -5,6 +5,8 @@
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
 import { formatDisplayName } from "@assup/shared";
+import type { ImportedTrade } from "@prisma/client";
+import type { ExecutionDetail, CommissionReport } from "@stoqey/ib";
 import type {
   MonthSummary,
   MonthDetail,
@@ -192,9 +194,16 @@ class ProfitService {
       },
     });
 
+    // Fetch today's executions from TWS (for current month only)
+    const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+    const todayExecutions = isCurrentMonth ? await this.getTodayExecutions() : [];
+
+    // Add today's executions that are closing trades to the closing trades set
+    const closingFromTws = todayExecutions.filter((t) => t.buySell === "BUY");
+
     // Get unique contract keys for these trades
     const contractKeys = new Set(
-      closingTrades.map(
+      [...closingTrades, ...closingFromTws].map(
         (t) => `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
       )
     );
@@ -208,10 +217,21 @@ class ProfitService {
     });
 
     // Filter to only trades matching our contract keys
-    const relevantTrades = trades.filter((t) => {
+    let relevantTrades = trades.filter((t) => {
       const key = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
       return contractKeys.has(key);
     });
+
+    // Merge today's executions with imported trades (avoid duplicates by tradeId)
+    if (todayExecutions.length > 0) {
+      const existingTradeIds = new Set(relevantTrades.map((t) => t.tradeId).filter(Boolean));
+      const newTrades = todayExecutions.filter(
+        (t) => !t.tradeId || !existingTradeIds.has(t.tradeId)
+      );
+      relevantTrades = [...relevantTrades, ...newTrades].sort(
+        (a, b) => a.tradeDate.getTime() - b.tradeDate.getTime()
+      );
+    }
 
     // Get cash transactions
     const cashTransactions = await prisma.cashTransaction.findMany({
@@ -690,6 +710,144 @@ class ProfitService {
     // Try ISO format
     const date = new Date(expiryStr);
     return isNaN(date.getTime()) ? null : date;
+  }
+
+  /**
+   * Fetch today's option executions from TWS and convert to ImportedTrade-like objects
+   */
+  async getTodayExecutions(): Promise<ImportedTrade[]> {
+    if (!ibkrService.isConnected()) {
+      return [];
+    }
+
+    try {
+      const { executions, commissions } = await ibkrService.getExecutions();
+      return this.convertExecutionsToTrades(executions, commissions);
+    } catch (err) {
+      console.error("Failed to fetch today's executions:", err);
+      return [];
+    }
+  }
+
+  /**
+   * Convert TWS ExecutionDetail objects to ImportedTrade-like objects
+   * for use with the existing groupOptionTrades logic
+   */
+  private convertExecutionsToTrades(
+    executions: ExecutionDetail[],
+    commissions: Map<string, CommissionReport>
+  ): ImportedTrade[] {
+    const trades: ImportedTrade[] = [];
+
+    // Group executions by execId prefix (same order fills get merged)
+    // execId format: "0000e0d5.67576f4f.01.01" - the last part is the fill number
+    const groupedByOrder = new Map<string, ExecutionDetail[]>();
+
+    for (const exec of executions) {
+      // Only process options
+      if (exec.contract.secType !== "OPT") continue;
+
+      // Group by order (everything except last part of execId)
+      const execId = exec.execution.execId || "";
+      const orderKey = execId.split(".").slice(0, -1).join(".") || execId;
+
+      if (!groupedByOrder.has(orderKey)) {
+        groupedByOrder.set(orderKey, []);
+      }
+      groupedByOrder.get(orderKey)!.push(exec);
+    }
+
+    // Convert grouped executions to trades
+    for (const [, orderExecs] of groupedByOrder) {
+      if (orderExecs.length === 0) continue;
+
+      const first = orderExecs[0];
+      const contract = first.contract;
+      const exec = first.execution;
+
+      // Aggregate quantity and calculate average price for partial fills
+      let totalShares = 0;
+      let totalValue = 0;
+      let totalCommission = 0;
+
+      for (const e of orderExecs) {
+        const shares = e.execution.shares || 0;
+        const price = e.execution.price || 0;
+        totalShares += shares;
+        totalValue += shares * price;
+        // Get commission from commissions map
+        const execId = e.execution.execId || "";
+        const commissionReport = commissions.get(execId);
+        totalCommission += commissionReport?.commission || 0;
+      }
+
+      const avgPrice = totalShares > 0 ? totalValue / totalShares : 0;
+      const quantity = totalShares; // In contracts (not shares)
+
+      // Determine buy/sell and open/close
+      const side = exec.side || ""; // "BOT" or "SLD"
+      const isBuy = side === "BOT";
+
+      // Parse execution time (format: "YYYYMMDD HH:MM:SS timezone")
+      const execTime = exec.time || "";
+      let tradeDate = new Date();
+      if (execTime) {
+        const match = execTime.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+        if (match) {
+          tradeDate = new Date(
+            parseInt(match[1]),
+            parseInt(match[2]) - 1,
+            parseInt(match[3]),
+            parseInt(match[4]),
+            parseInt(match[5]),
+            parseInt(match[6])
+          );
+        }
+      }
+
+      // Parse expiry from contract
+      const expiryStr = contract.lastTradeDateOrContractMonth || "";
+      const expiry = this.parseContractExpiry(expiryStr);
+
+      // Calculate proceeds (positive for selling, negative for buying)
+      // Options have a multiplier of 100
+      const multiplier = contract.multiplier ? parseInt(String(contract.multiplier)) : 100;
+      const proceeds = isBuy
+        ? -(quantity * avgPrice * multiplier)
+        : (quantity * avgPrice * multiplier);
+
+      // Create a synthetic ImportedTrade
+      // Use negative IDs to distinguish from database records
+      const syntheticId = `tws-${exec.execId || Date.now()}`;
+
+      const trade: ImportedTrade = {
+        id: syntheticId,
+        importBatchId: "tws-live",
+        tradeId: exec.execId || syntheticId,
+        symbol: contract.localSymbol || contract.symbol || "",
+        description: null,
+        conId: contract.conId || null,
+        secType: "OPT",
+        strike: contract.strike || null,
+        expiry,
+        right: (contract.right?.charAt(0).toUpperCase() || null) as "C" | "P" | null,
+        underlying: contract.symbol || null,
+        multiplier: contract.multiplier ? parseInt(String(contract.multiplier)) : 100,
+        tradeDate,
+        quantity: isBuy ? quantity : -quantity, // Negative for sells
+        tradePrice: avgPrice,
+        proceeds,
+        commission: totalCommission,
+        buySell: isBuy ? "BUY" : "SELL",
+        openClose: null, // TWS doesn't provide this directly, will infer in grouping
+        wasAssigned: false,
+        assignmentDate: null,
+      };
+
+      trades.push(trade);
+    }
+
+    return trades;
   }
 }
 

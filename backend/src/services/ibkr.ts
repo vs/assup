@@ -10,6 +10,9 @@ import {
   WhatToShow,
   OptionType,
   SecType,
+  ExecutionFilter,
+  ExecutionDetail,
+  CommissionReport,
 } from "@stoqey/ib";
 import { Subscription } from "rxjs";
 
@@ -696,6 +699,40 @@ class IBKRService {
     }
 
     return results;
+  }
+
+  // Get today's executions (trades) with commission reports
+  async getExecutions(filter?: Partial<ExecutionFilter>): Promise<{
+    executions: ExecutionDetail[];
+    commissions: Map<string, CommissionReport>;
+  }> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const execFilter: ExecutionFilter = {
+      ...filter,
+    };
+
+    try {
+      const [executions, commissionReports] = await Promise.all([
+        this.api.getExecutionDetails(execFilter),
+        this.api.getCommissionReport(execFilter),
+      ]);
+
+      // Map commission reports by execId for easy lookup
+      const commissions = new Map<string, CommissionReport>();
+      for (const report of commissionReports) {
+        if (report.execId) {
+          commissions.set(report.execId, report);
+        }
+      }
+
+      return { executions, commissions };
+    } catch (err) {
+      console.error("Failed to get executions:", err);
+      return { executions: [], commissions: new Map() };
+    }
   }
 
   async disconnect() {
