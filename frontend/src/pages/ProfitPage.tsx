@@ -252,6 +252,7 @@ function MonthProfitCard({
   onSymbolClick: (symbol: string) => void;
 }) {
   const monthLabel = `${MONTH_NAMES[data.month - 1]} ${data.year}`;
+  const [realizedExpanded, setRealizedExpanded] = useState(false);
 
   // Get unique underlying symbols for sparklines
   const sparklineSymbols = useMemo(() => {
@@ -264,27 +265,173 @@ function MonthProfitCard({
 
   const { getSparklineState } = useSparklines(sparklineSymbols);
 
+  const hasRealizedTrades = data.realized.closedTrades.length > 0 ||
+    data.realized.cashTransactions.length > 0;
+
   return (
     <div className="space-y-4">
+      {/* Realized Profit Section */}
+      <Collapsible open={realizedExpanded} onOpenChange={setRealizedExpanded}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">{monthLabel} - Realized</CardTitle>
+                <div className="flex items-center gap-4">
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Options:</span>{" "}
+                    <span className={data.realized.optionsProfit >= 0 ? "text-green-600" : "text-red-600"}>
+                      {formatCurrency(data.realized.optionsProfit)}
+                    </span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Div:</span>{" "}
+                    <span className="text-green-600">{formatCurrency(data.realized.dividends)}</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Int:</span>{" "}
+                    <span className="text-purple-600">{formatCurrency(data.realized.interest)}</span>
+                  </div>
+                  <div className="text-sm font-semibold">
+                    <span className="text-muted-foreground">Total:</span>{" "}
+                    <span className={data.realized.total >= 0 ? "text-green-600" : "text-red-600"}>
+                      {formatCurrency(data.realized.total)}
+                    </span>
+                  </div>
+                  {data.realized.closedTrades.length > 0 && (
+                    <Badge variant="secondary">{data.realized.closedTrades.length} trades</Badge>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent>
+              {hasRealizedTrades ? (
+                <div className="space-y-4">
+                  {/* Closed Option Trades */}
+                  {data.realized.closedTrades.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Option Trades</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Symbol</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead className="text-right">Strike</TableHead>
+                            <TableHead>Expiry</TableHead>
+                            <TableHead className="text-right">Premium</TableHead>
+                            <TableHead className="text-right">Close Cost</TableHead>
+                            <TableHead className="text-right">Profit</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.realized.closedTrades.map((trade, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-medium">{trade.underlying}</TableCell>
+                              <TableCell>
+                                <Badge variant={trade.right === "P" ? "danger" : "success"}>
+                                  {trade.right === "P" ? "PUT" : "CALL"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-mono">
+                                ${trade.strike.toFixed(trade.strike % 1 === 0 ? 0 : 2)}
+                              </TableCell>
+                              <TableCell>{trade.expiry}</TableCell>
+                              <TableCell className="text-right font-mono text-green-600">
+                                {formatCurrency(trade.costBasis)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono">
+                                {trade.sellPrice > 0 ? (
+                                  <span className="text-red-600">{formatCurrency(trade.sellPrice)}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">$0</span>
+                                )}
+                              </TableCell>
+                              <TableCell
+                                className={`text-right font-mono ${
+                                  trade.profit >= 0 ? "text-green-600" : "text-red-600"
+                                }`}
+                              >
+                                {formatCurrency(trade.profit)}
+                              </TableCell>
+                              <TableCell>
+                                {trade.wasAssigned ? (
+                                  <Badge variant="outline">Assigned</Badge>
+                                ) : trade.expiredWorthless ? (
+                                  <Badge variant="secondary">Expired</Badge>
+                                ) : (
+                                  <Badge variant="secondary">Closed</Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+
+                  {/* Cash Transactions (Dividends, Interest) */}
+                  {data.realized.cashTransactions.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Cash Transactions</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Symbol</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.realized.cashTransactions.map((tx) => (
+                            <TableRow key={tx.id}>
+                              <TableCell>{tx.transactionDate}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{tx.type}</Badge>
+                              </TableCell>
+                              <TableCell className="font-medium">{tx.symbol || "-"}</TableCell>
+                              <TableCell className="text-muted-foreground text-sm">
+                                {tx.description}
+                              </TableCell>
+                              <TableCell
+                                className={`text-right font-mono ${
+                                  tx.type === "DIVIDEND" ? "text-green-600" :
+                                  tx.type === "INTEREST" ? "text-purple-600" :
+                                  tx.amount >= 0 ? "text-green-600" : "text-red-600"
+                                }`}
+                              >
+                                {formatCurrency(tx.amount)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-4">
+                  No realized trades yet this month
+                </p>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      {/* Summary Card */}
       <Card>
         <CardHeader>
-          <CardTitle>{monthLabel} Summary</CardTitle>
+          <CardTitle>{monthLabel} - Unrealized & Projected</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <div className="text-sm text-muted-foreground">Realized</div>
-              <div className="text-lg font-semibold text-green-600">
-                {formatCurrency(data.realized.total)}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Options: {formatCurrency(data.realized.optionsProfit)} | Div:{" "}
-                {formatCurrency(data.realized.dividends)} | Int:{" "}
-                {formatCurrency(data.realized.interest)}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Unrealized</div>
+              <div className="text-sm text-muted-foreground">Unrealized P&L</div>
               <div
                 className={`text-lg font-semibold ${
                   data.unrealized.value >= 0 ? "text-green-600" : "text-red-600"
@@ -293,13 +440,13 @@ function MonthProfitCard({
                 {formatCurrency(data.unrealized.value)}
               </div>
               <div className="text-xs text-muted-foreground">
-                {data.unrealized.positions.length} positions expiring
+                {data.unrealized.positions.length} positions expiring this month
               </div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Projected</div>
+              <div className="text-sm text-muted-foreground">Projected Total</div>
               <div className="text-lg font-semibold text-blue-600">
-                {formatCurrency(data.projected.value)}
+                {formatCurrency(data.realized.total + data.projected.value)}
               </div>
               <div className="text-xs text-muted-foreground">
                 if options expire worthless
