@@ -9,7 +9,6 @@ import { PageHeader, ErrorAlert, PageLoadingSkeleton } from "@/components/common
 import {
   AccountSummaryCards,
   AllocationTable,
-  OptionsExposureTable,
   type AllocationData,
 } from "@/components/dashboard";
 
@@ -145,25 +144,13 @@ export function DashboardPage() {
             <AllocationTable
               data={allocationData}
               netLiquidation={summary?.account.netLiquidation ?? 0}
+              includeOptions={settings.includeOptions}
+              optionsWeightMode={settings.optionsWeightMode}
             />
           )}
         </CardContent>
       </Card>
 
-      {/* Options Exposure Breakdown */}
-      {settings.includeOptions && hasOptionsPositions && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Options Exposure by Asset Class</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <OptionsExposureTable
-              data={allocationData.filter((row) => row.optionsExposure !== 0)}
-              optionsWeightMode={settings.optionsWeightMode}
-            />
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

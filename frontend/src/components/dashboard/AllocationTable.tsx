@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { formatCurrency } from "@assup/shared";
 import { Badge } from "@/components/ui/badge";
+import { ExposureTooltip } from "@/components/common";
 
 export interface AllocationData {
   id: string | null;
@@ -17,9 +18,16 @@ export interface AllocationData {
 interface AllocationTableProps {
   data: AllocationData[];
   netLiquidation: number;
+  includeOptions?: boolean;
+  optionsWeightMode?: "notional" | "delta";
 }
 
-export function AllocationTable({ data, netLiquidation }: AllocationTableProps) {
+export function AllocationTable({
+  data,
+  netLiquidation,
+  includeOptions = false,
+  optionsWeightMode = "notional",
+}: AllocationTableProps) {
   const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
   return (
@@ -32,6 +40,17 @@ export function AllocationTable({ data, netLiquidation }: AllocationTableProps) 
             <th className="text-right py-3 px-2">Current %</th>
             <th className="text-right py-3 px-2">Diff %</th>
             <th className="text-right py-3 px-2">Target Value</th>
+            {includeOptions && (
+              <>
+                <th className="text-right py-3 px-2">Stock Value</th>
+                <th className="text-right py-3 px-2">
+                  <span className="inline-flex items-center gap-1">
+                    Options {optionsWeightMode === "delta" ? "Delta" : "Notional"}
+                    <ExposureTooltip showStocks={false} />
+                  </span>
+                </th>
+              </>
+            )}
             <th className="text-right py-3 px-2">Current Value</th>
             <th className="text-right py-3 px-2">Action</th>
           </tr>
@@ -39,7 +58,8 @@ export function AllocationTable({ data, netLiquidation }: AllocationTableProps) 
         <tbody>
           {data.map((row) => {
             const targetValue = (row.target / 100) * netLiquidation;
-            const diffValue = row.value - targetValue;
+            const currentValue = includeOptions ? row.value : row.stockValue;
+            const diffValue = currentValue - targetValue;
             return (
               <tr key={row.name} className="border-b">
                 <td className="py-3 px-2">
@@ -60,7 +80,17 @@ export function AllocationTable({ data, netLiquidation }: AllocationTableProps) 
                   <DiffBar diff={row.diff} />
                 </td>
                 <td className="text-right py-3 px-2 font-mono">{fmtCurrency(targetValue)}</td>
-                <td className="text-right py-3 px-2 font-mono">{fmtCurrency(row.value)}</td>
+                {includeOptions && (
+                  <>
+                    <td className="text-right py-3 px-2 font-mono">{fmtCurrency(row.stockValue)}</td>
+                    <td className="text-right py-3 px-2 font-mono">
+                      <span className={row.optionsExposure > 0 ? "text-green-600" : row.optionsExposure < 0 ? "text-red-600" : ""}>
+                        {row.optionsExposure > 0 ? "+" : ""}{fmtCurrency(row.optionsExposure)}
+                      </span>
+                    </td>
+                  </>
+                )}
+                <td className="text-right py-3 px-2 font-mono">{fmtCurrency(currentValue)}</td>
                 <td className="text-right py-3 px-2">
                   <ActionBadge id={row.id} diffValue={diffValue} />
                 </td>
