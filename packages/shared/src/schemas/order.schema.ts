@@ -18,3 +18,18 @@ export const simulateOrdersRequestSchema = z.object({
 
 export type SimulatedOrderInput = z.infer<typeof simulatedOrderSchema>;
 export type SimulateOrdersRequestInput = z.infer<typeof simulateOrdersRequestSchema>;
+
+/**
+ * Schema for placing option orders
+ */
+export const placeOrderSchema = z.object({
+  symbol: z.string().min(1, "Symbol is required").max(20).toUpperCase(),
+  expiration: z.string().length(8, "Expiration must be YYYYMMDD format"),
+  strike: z.number().positive("Strike must be positive"),
+  right: z.enum(["C", "P"], { errorMap: () => ({ message: "Right must be 'C' or 'P'" }) }),
+  action: z.enum(["BUY", "SELL"]),
+  quantity: z.number().int().positive("Quantity must be positive"),
+  limitPrice: z.number().positive("Limit price must be positive"),
+});
+
+export type PlaceOrderSchemaInput = z.infer<typeof placeOrderSchema>;

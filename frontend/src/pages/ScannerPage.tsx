@@ -4,7 +4,8 @@ import { api } from "@/api";
 import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass, OptionTypeFilter } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
-import { GroupedResultsTable } from "@/components/scanner";
+import { GroupedResultsTable, SellOptionDialog } from "@/components/scanner";
+import type { ExtendedOptionOpportunity } from "@/components/scanner/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -97,6 +98,13 @@ export function ScannerPage() {
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [symbolComboboxOpen, setSymbolComboboxOpen] = useState(false);
   const [presetsPopoverOpen, setPresetsPopoverOpen] = useState(false);
+  const [sellDialogOpen, setSellDialogOpen] = useState(false);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<ExtendedOptionOpportunity | null>(null);
+
+  function handleSellClick(opportunity: ExtendedOptionOpportunity) {
+    setSelectedOpportunity(opportunity);
+    setSellDialogOpen(true);
+  }
 
   useEffect(() => {
     loadData();
@@ -669,11 +677,21 @@ export function ScannerPage() {
                 </span>
               </p>
             ) : (
-              <GroupedResultsTable opportunities={scanResult.opportunities} />
+              <GroupedResultsTable
+                opportunities={scanResult.opportunities}
+                onSellClick={handleSellClick}
+              />
             )}
           </CardContent>
         </Card>
       )}
+
+      {/* Sell Option Dialog */}
+      <SellOptionDialog
+        open={sellDialogOpen}
+        onOpenChange={setSellDialogOpen}
+        opportunity={selectedOpportunity}
+      />
     </div>
   );
 }

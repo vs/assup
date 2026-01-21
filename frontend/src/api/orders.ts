@@ -3,7 +3,7 @@
  */
 
 import { request } from "./client";
-import type { Order, OrderImpact } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult } from "@assup/shared";
 
 export interface SimulateOrderInput {
   symbol: string;
@@ -22,5 +22,11 @@ export const ordersApi = {
     request<OrderImpact>("/api/orders/simulate", {
       method: "POST",
       body: JSON.stringify({ orders }),
+    }),
+
+  place: (order: PlaceOrderInput) =>
+    request<PlaceOrderResult>("/api/orders/place", {
+      method: "POST",
+      body: JSON.stringify(order),
     }),
 };

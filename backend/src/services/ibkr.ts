@@ -13,6 +13,10 @@ import {
   ExecutionFilter,
   ExecutionDetail,
   CommissionReport,
+  Order,
+  OrderAction,
+  OrderType,
+  TimeInForce,
 } from "@stoqey/ib";
 import { Subscription } from "rxjs";
 
@@ -733,6 +737,43 @@ class IBKRService {
       console.error("Failed to get executions:", err);
       return { executions: [], commissions: new Map() };
     }
+  }
+
+  /**
+   * Place a new order with TWS
+   * @param contract The contract to trade
+   * @param orderParams Order parameters (action, quantity, limit price)
+   * @returns Order ID assigned by TWS
+   */
+  async placeOrder(
+    contract: Contract,
+    orderParams: {
+      action: "BUY" | "SELL";
+      quantity: number;
+      limitPrice: number;
+      orderType?: "LMT" | "MKT";
+    }
+  ): Promise<number> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const order: Order = {
+      action: orderParams.action === "BUY" ? OrderAction.BUY : OrderAction.SELL,
+      totalQuantity: orderParams.quantity,
+      orderType: orderParams.orderType === "MKT" ? OrderType.MKT : OrderType.LMT,
+      lmtPrice: orderParams.limitPrice,
+      tif: TimeInForce.DAY,
+      transmit: true,
+    };
+
+    console.log(`Placing order: ${orderParams.action} ${orderParams.quantity} @ $${orderParams.limitPrice}`);
+    console.log(`Contract: ${contract.symbol} ${contract.secType} ${contract.strike} ${contract.right} ${contract.lastTradeDateOrContractMonth}`);
+
+    const orderId = await this.api.placeNewOrder(contract, order);
+    console.log(`Order placed successfully, orderId: ${orderId}`);
+
+    return orderId;
   }
 
   async disconnect() {

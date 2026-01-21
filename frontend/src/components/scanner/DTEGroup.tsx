@@ -3,13 +3,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OpportunityRow } from "./OpportunityRow";
-import type { DTEGroup as DTEGroupType } from "./types";
+import type { DTEGroup as DTEGroupType, ExtendedOptionOpportunity } from "./types";
 
 interface DTEGroupProps {
   dteGroup: DTEGroupType;
   isExpanded: boolean;
   onToggle: () => void;
   gridCols: string;
+  onSellClick?: (opportunity: ExtendedOptionOpportunity) => void;
 }
 
 export const DTEGroup = memo(function DTEGroup({
@@ -17,6 +18,7 @@ export const DTEGroup = memo(function DTEGroup({
   isExpanded,
   onToggle,
   gridCols,
+  onSellClick,
 }: DTEGroupProps) {
   // Format expiration as YYYY-MM-DD
   const formattedExpiry = `${dteGroup.expiration.slice(0, 4)}-${dteGroup.expiration.slice(4, 6)}-${dteGroup.expiration.slice(6, 8)}`;
@@ -70,12 +72,14 @@ export const DTEGroup = memo(function DTEGroup({
           <div className="text-right py-1 pr-2">Delta</div>
           <div className="text-right py-1 pr-2">Premium %</div>
           <div className="text-right py-1 pr-2">Annual</div>
+          <div className="text-right py-1 pr-2">Action</div>
         </div>
         {dteGroup.opportunities.map((opp, i) => (
           <OpportunityRow
             key={`${opp.strike}-${opp.optionType}-${i}`}
             opportunity={opp}
             gridCols={gridCols}
+            onSellClick={onSellClick}
           />
         ))}
       </CollapsibleContent>

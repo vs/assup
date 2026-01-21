@@ -1,10 +1,12 @@
 import { memo } from "react";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import type { ExtendedOptionOpportunity } from "./types";
+import { Button } from "@/components/ui/button";
 
 interface OpportunityRowProps {
   opportunity: ExtendedOptionOpportunity;
   gridCols: string;
+  onSellClick?: (opportunity: ExtendedOptionOpportunity) => void;
 }
 
 /**
@@ -64,6 +66,7 @@ function estimateDelta(
 export const OpportunityRow = memo(function OpportunityRow({
   opportunity: opp,
   gridCols,
+  onSellClick,
 }: OpportunityRowProps) {
   const contractName = formatDisplayName({
     symbol: opp.symbol,
@@ -105,6 +108,15 @@ export const OpportunityRow = memo(function OpportunityRow({
       </div>
       <div className="text-right pr-2">{opp.premiumPercent?.toFixed(2)}%</div>
       <div className="text-right font-semibold pr-2">{opp.annualizedReturn?.toFixed(1)}%</div>
+      <div className="text-right pr-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onSellClick?.(opp)}
+        >
+          Sell
+        </Button>
+      </div>
     </div>
   );
 });

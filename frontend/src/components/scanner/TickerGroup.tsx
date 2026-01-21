@@ -4,7 +4,7 @@ import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@assup/shared";
 import { DTEGroup } from "./DTEGroup";
-import type { TickerGroup as TickerGroupType } from "./types";
+import type { TickerGroup as TickerGroupType, ExtendedOptionOpportunity } from "./types";
 
 interface TickerGroupProps {
   tickerGroup: TickerGroupType;
@@ -13,6 +13,7 @@ interface TickerGroupProps {
   expandedDTEs: Set<string>;
   onToggleDTE: (dteKey: string) => void;
   gridCols: string;
+  onSellClick?: (opportunity: ExtendedOptionOpportunity) => void;
 }
 
 export const TickerGroup = memo(function TickerGroup({
@@ -22,6 +23,7 @@ export const TickerGroup = memo(function TickerGroup({
   expandedDTEs,
   onToggleDTE,
   gridCols,
+  onSellClick,
 }: TickerGroupProps) {
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
@@ -78,6 +80,7 @@ export const TickerGroup = memo(function TickerGroup({
               isExpanded={expandedDTEs.has(dteKey)}
               onToggle={() => onToggleDTE(dteKey)}
               gridCols={gridCols}
+              onSellClick={onSellClick}
             />
           );
         })}

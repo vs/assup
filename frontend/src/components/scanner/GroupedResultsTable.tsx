@@ -7,6 +7,7 @@ import type { ExtendedOptionOpportunity, TickerGroup as TickerGroupType, DTEGrou
 
 interface GroupedResultsTableProps {
   opportunities: (OptionOpportunity & { underlyingPrice?: number })[];
+  onSellClick?: (opportunity: ExtendedOptionOpportunity) => void;
 }
 
 function groupOpportunities(opportunities: ExtendedOptionOpportunity[]): TickerGroupType[] {
@@ -71,10 +72,10 @@ function groupOpportunities(opportunities: ExtendedOptionOpportunity[]): TickerG
 }
 
 // Grid column widths - using fr units for flexible sizing
-// Columns: Contract, Strike, Price, Bid, Ask, Premium, Delta, Premium%, Annual
-const GRID_COLS = "minmax(180px,2fr) minmax(70px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(60px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(80px,1fr) minmax(70px,1fr)";
+// Columns: Contract, Strike, Price, Bid, Ask, Premium, Delta, Premium%, Annual, Action
+const GRID_COLS = "minmax(180px,2fr) minmax(70px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(60px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(80px,1fr) minmax(70px,1fr) minmax(60px,1fr)";
 
-export function GroupedResultsTable({ opportunities }: GroupedResultsTableProps) {
+export function GroupedResultsTable({ opportunities, onSellClick }: GroupedResultsTableProps) {
   const tickerGroups = useMemo(
     () => groupOpportunities(opportunities as ExtendedOptionOpportunity[]),
     [opportunities]
@@ -168,6 +169,7 @@ export function GroupedResultsTable({ opportunities }: GroupedResultsTableProps)
             expandedDTEs={expandedDTEs}
             onToggleDTE={handleToggleDTE}
             gridCols={GRID_COLS}
+            onSellClick={onSellClick}
           />
         ))}
       </div>

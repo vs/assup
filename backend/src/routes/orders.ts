@@ -10,9 +10,9 @@ import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
 import { allocationService } from "../services/allocation.service.js";
 import { IBKRConnectionError } from "../errors/index.js";
-import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema } from "@assup/shared";
-import type { Order, OrderImpact } from "@assup/shared";
-import { OpenOrder as IBOpenOrder, Contract } from "@stoqey/ib";
+import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderResult } from "@assup/shared";
+import { OpenOrder as IBOpenOrder, Contract, SecType, OptionType } from "@stoqey/ib";
 
 const router = Router();
 
@@ -260,6 +260,51 @@ router.post(
       totalCurrentValue,
       totalProjectedValue,
     });
+  })
+);
+
+/**
+ * POST /api/orders/place
+ * Place a new option order with TWS
+ */
+router.post(
+  "/place",
+  validate({ body: placeOrderSchema }),
+  asyncHandler(async (req, res) => {
+    if (!ibkrService.isConnected()) {
+      throw new IBKRConnectionError();
+    }
+
+    const { symbol, expiration, strike, right, action, quantity, limitPrice } = req.body;
+
+    // Build the option contract
+    const contract: Contract = {
+      symbol,
+      secType: SecType.OPT,
+      exchange: "SMART",
+      currency: "USD",
+      lastTradeDateOrContractMonth: expiration,
+      strike,
+      right: right === "C" ? OptionType.Call : OptionType.Put,
+    };
+
+    // Place the order
+    const orderId = await ibkrService.placeOrder(contract, {
+      action,
+      quantity,
+      limitPrice,
+      orderType: "LMT",
+    });
+
+    const result: PlaceOrderResult = {
+      orderId,
+      symbol,
+      action,
+      quantity,
+      limitPrice,
+    };
+
+    res.status(201).json(result);
   })
 );
 

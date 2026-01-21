@@ -35,3 +35,26 @@ export interface OrderImpact {
   totalProjectedValue: number;
 }
 
+/**
+ * Input for placing a new order
+ */
+export interface PlaceOrderInput {
+  symbol: string;
+  expiration: string;     // YYYYMMDD format
+  strike: number;
+  right: "C" | "P";       // Call or Put
+  action: "BUY" | "SELL";
+  quantity: number;
+  limitPrice: number;
+}
+
+/**
+ * Response from placing an order
+ */
+export interface PlaceOrderResult {
+  orderId: number;
+  symbol: string;
+  action: "BUY" | "SELL";
+  quantity: number;
+  limitPrice: number;
+}
