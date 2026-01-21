@@ -42,6 +42,28 @@ const DEFAULT_CRITERIA: ScannerCriteria = {
   callMaxStrikePercent: 125,
 };
 
+/**
+ * Normalize preset criteria to handle legacy field names and missing fields
+ */
+function normalizePresetCriteria(criteria: ScannerCriteria): ScannerCriteria {
+  // Handle legacy field names (minStrikePercent -> putMinStrikePercent, etc.)
+  const legacyCriteria = criteria as ScannerCriteria & {
+    minStrikePercent?: number;
+    maxStrikePercent?: number;
+  };
+  return {
+    ...DEFAULT_CRITERIA,
+    ...legacyCriteria,
+    // Map legacy strike fields to PUT fields if new fields are missing
+    putMinStrikePercent: legacyCriteria.putMinStrikePercent ?? legacyCriteria.minStrikePercent ?? DEFAULT_CRITERIA.putMinStrikePercent,
+    putMaxStrikePercent: legacyCriteria.putMaxStrikePercent ?? legacyCriteria.maxStrikePercent ?? DEFAULT_CRITERIA.putMaxStrikePercent,
+    callMinStrikePercent: legacyCriteria.callMinStrikePercent ?? DEFAULT_CRITERIA.callMinStrikePercent,
+    callMaxStrikePercent: legacyCriteria.callMaxStrikePercent ?? DEFAULT_CRITERIA.callMaxStrikePercent,
+    // Ensure optionTypes has a value
+    optionTypes: legacyCriteria.optionTypes ?? DEFAULT_CRITERIA.optionTypes,
+  };
+}
+
 const STORAGE_KEY = "scanner-results";
 
 function loadPersistedResults(): ScanResult | null {
@@ -149,7 +171,7 @@ export function ScannerPage() {
       const defaultPreset = presetsData.find((p) => p.isDefault);
       if (defaultPreset) {
         setCriteria((prev) => ({
-          ...defaultPreset.criteria,
+          ...normalizePresetCriteria(defaultPreset.criteria),
           targetAssetClasses: prev.targetAssetClasses,
         }));
       }
@@ -165,7 +187,7 @@ export function ScannerPage() {
   function loadPreset(presetId: string) {
     const preset = presets.find((p) => p.id === presetId);
     if (preset) {
-      setCriteria(preset.criteria);
+      setCriteria(normalizePresetCriteria(preset.criteria));
     }
   }
 
