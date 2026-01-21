@@ -504,6 +504,7 @@ async function scanOptionsForSymbols(
       let passedCriteria = 0;
       let failedReturn = 0;
       let failedPremium = 0;
+      let failedDelta = 0;
 
       // Helper function to process an option entry
       const processOption = (
@@ -530,10 +531,15 @@ async function scanOptionsForSymbols(
           const passesReturn = annualizedReturn >= criteria.minAnnualizedReturn;
           const passesPremium = premiumPercent >= criteria.minPremiumPercent;
 
+          // Delta filtering - use absolute value since puts have negative delta
+          const absDelta = data.delta !== undefined ? Math.abs(data.delta) : null;
+          const passesDelta = absDelta === null || (absDelta >= criteria.minDelta && absDelta <= criteria.maxDelta);
+
           if (!passesReturn) failedReturn++;
           if (!passesPremium) failedPremium++;
+          if (!passesDelta) failedDelta++;
 
-          if (passesReturn && passesPremium) {
+          if (passesReturn && passesPremium && passesDelta) {
             passedCriteria++;
             opportunities.push({
               symbol,
@@ -574,8 +580,8 @@ async function scanOptionsForSymbols(
       }
 
       console.log(`  ↳ Market data stats: ${withBidAsk} with valid bid/ask, ${passedCriteria} passed criteria`);
-      if (failedReturn > 0 || failedPremium > 0) {
-        console.log(`  ↳ Filtered out: ${failedReturn} by annual return (min ${criteria.minAnnualizedReturn}%), ${failedPremium} by premium (min ${criteria.minPremiumPercent}%)`);
+      if (failedReturn > 0 || failedPremium > 0 || failedDelta > 0) {
+        console.log(`  ↳ Filtered out: ${failedReturn} by annual return (min ${criteria.minAnnualizedReturn}%), ${failedPremium} by premium (min ${criteria.minPremiumPercent}%), ${failedDelta} by delta (${criteria.minDelta}-${criteria.maxDelta})`);
       }
 
       // Get opportunities just found for this symbol
