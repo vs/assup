@@ -54,11 +54,9 @@ export function SellOptionDialog({
   }, [open, opportunity]);
 
   const handleClose = () => {
-    if (!placing) {
-      setError(null);
-      setSuccess(null);
-      onOpenChange(false);
-    }
+    setError(null);
+    setSuccess(null);
+    onOpenChange(false);
   };
 
   const handleUseMid = () => {
@@ -213,7 +211,7 @@ export function SellOptionDialog({
         </div>
 
         <div className="flex justify-end gap-2 mt-4">
-          <Button type="button" variant="outline" onClick={handleClose} disabled={placing}>
+          <Button type="button" variant="outline" onClick={handleClose}>
             Cancel
           </Button>
           <Button

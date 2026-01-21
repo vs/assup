@@ -532,7 +532,21 @@ async function scanOptionsForSymbols(
           const passesPremium = premiumPercent >= criteria.minPremiumPercent;
 
           // Delta filtering - use absolute value since puts have negative delta
-          const absDelta = data.delta !== undefined ? Math.abs(data.delta) : null;
+          // If TWS doesn't provide delta, estimate it from moneyness
+          let absDelta: number | null = null;
+          if (data.delta !== undefined) {
+            absDelta = Math.abs(data.delta);
+          } else if (underlyingPrice && underlyingPrice > 0) {
+            // Estimate delta from moneyness (simple linear approximation)
+            const moneyness = entry.strike / underlyingPrice;
+            if (optionType === "PUT") {
+              // PUT: ATM=-0.5, OTM approaches 0, ITM approaches -1
+              absDelta = Math.abs(Math.max(-0.95, Math.min(-0.05, -0.5 - (moneyness - 1) * 2)));
+            } else {
+              // CALL: ATM=0.5, OTM approaches 0, ITM approaches 1
+              absDelta = Math.max(0.05, Math.min(0.95, 0.5 - (moneyness - 1) * 2));
+            }
+          }
           const passesDelta = absDelta === null || (absDelta >= criteria.minDelta && absDelta <= criteria.maxDelta);
 
           if (!passesReturn) failedReturn++;
