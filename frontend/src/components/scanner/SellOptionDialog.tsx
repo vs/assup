@@ -213,10 +213,11 @@ export function SellOptionDialog({
         </div>
 
         <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={handleClose} disabled={placing}>
+          <Button type="button" variant="outline" onClick={handleClose} disabled={placing}>
             Cancel
           </Button>
           <Button
+            type="button"
             onClick={handlePlaceOrder}
             disabled={placing || quantity < 1 || limitPrice <= 0}
           >
