@@ -771,9 +771,57 @@ class IBKRService {
     console.log(`Contract: ${contract.symbol} ${contract.secType} ${contract.strike} ${contract.right} ${contract.lastTradeDateOrContractMonth}`);
 
     const orderId = await this.api.placeNewOrder(contract, order);
-    console.log(`Order placed successfully, orderId: ${orderId}`);
+    console.log(`Order submitted, orderId: ${orderId}`);
+
+    // Wait briefly and check order status to catch immediate rejections
+    // TWS sends async error messages for rejected orders
+    await this.waitForOrderConfirmation(orderId);
 
     return orderId;
+  }
+
+  /**
+   * Wait for order confirmation or rejection from TWS
+   * Polls open orders briefly to check if order was accepted or cancelled
+   */
+  private async waitForOrderConfirmation(orderId: number): Promise<void> {
+    const maxWaitMs = 3000;
+    const pollIntervalMs = 500;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+      try {
+        const orders = await this.getAllOpenOrders();
+        const order = orders.find((o) => o.orderId === orderId);
+
+        if (order) {
+          const status = order.orderStatus?.status || order.orderState?.status;
+          console.log(`Order ${orderId} status: ${status}`);
+
+          if (status === "Cancelled" || status === "Inactive") {
+            throw new Error(`Order was ${status.toLowerCase()} by TWS`);
+          }
+
+          // Order exists and is not cancelled - consider it confirmed
+          if (status === "PreSubmitted" || status === "Submitted" || status === "Filled") {
+            console.log(`Order ${orderId} confirmed with status: ${status}`);
+            return;
+          }
+        }
+      } catch (err) {
+        // If error is our own rejection, rethrow it
+        if (err instanceof Error && err.message.includes("Order was")) {
+          throw err;
+        }
+        // Otherwise log and continue polling
+        console.debug(`Error checking order status: ${err}`);
+      }
+    }
+
+    // After timeout, assume order is ok if we didn't see rejection
+    console.log(`Order ${orderId} confirmation timeout - assuming submitted`);
   }
 
   async disconnect() {
