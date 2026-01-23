@@ -475,9 +475,9 @@ function MonthProfitCard({
                               </TableCell>
                               <TableCell className="text-right font-mono">{trade.quantity}</TableCell>
                               <TableCell className="text-right font-mono">
-                                {formatCurrency(trade.buyTrade?.tradePrice || 0)}
+                                {formatCurrency(trade.buyTrade?.tradePrice ?? (trade.quantity > 0 ? trade.costBasis / trade.quantity : 0))}
                               </TableCell>
-                              <TableCell>{trade.buyTrade?.tradeDate || "-"}</TableCell>
+                              <TableCell>{trade.buyTrade?.tradeDate ?? "-"}</TableCell>
                               <TableCell className="text-right font-mono">
                                 {formatCurrency(trade.sellTrade?.tradePrice || 0)}
                               </TableCell>
@@ -949,9 +949,9 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                   </TableCell>
                   <TableCell className="text-right font-mono">{trade.quantity}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(trade.buyTrade?.tradePrice || 0)}
+                    {formatCurrency(trade.buyTrade?.tradePrice ?? (trade.quantity > 0 ? trade.costBasis / trade.quantity : 0))}
                   </TableCell>
-                  <TableCell>{trade.buyTrade?.tradeDate || "-"}</TableCell>
+                  <TableCell>{trade.buyTrade?.tradeDate ?? "-"}</TableCell>
                   <TableCell className="text-right font-mono">
                     {formatCurrency(trade.sellTrade?.tradePrice || 0)}
                   </TableCell>

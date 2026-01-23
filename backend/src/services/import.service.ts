@@ -26,6 +26,9 @@ interface FlexTrade {
   ibCommission?: string;
   buySell: string;
   openCloseIndicator?: string;
+  // IBKR cost basis and realized P&L (for positions opened before import period)
+  costBasis?: string;
+  fifoPnlRealized?: string;
 }
 
 interface FlexCashTransaction {
@@ -182,6 +185,8 @@ class ImportService {
       ibCommission: t.ibCommission || t.commission,
       buySell: t.buySell,
       openCloseIndicator: t.openCloseIndicator,
+      costBasis: t.cost || t.costBasis,
+      fifoPnlRealized: t.fifoPnlRealized || t.realizedPnl || t.mtmPnl,
     }));
 
     // Extract cash transactions
@@ -273,6 +278,8 @@ class ImportService {
             ibCommission: record["Comm/Fee"] || record["Commission"] || record["IBCommission"],
             buySell: inferredBuySell,
             openCloseIndicator: record["Open/Close"] || record["Open/CloseIndicator"],
+            costBasis: record["Basis"] || record["Cost Basis"] || record["CostBasis"],
+            fifoPnlRealized: record["Realized P/L"] || record["FIFO P/L Realized"] || record["FifoPnlRealized"] || record["MTM P/L"],
           });
         }
       }
@@ -384,6 +391,8 @@ class ImportService {
             : 0,
           buySell: trade.buySell.toUpperCase(),
           openClose: trade.openCloseIndicator?.toUpperCase(),
+          costBasis: trade.costBasis ? parseFloat(trade.costBasis) : null,
+          realizedPnl: trade.fifoPnlRealized ? parseFloat(trade.fifoPnlRealized) : null,
         },
       });
 

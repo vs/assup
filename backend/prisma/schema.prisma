@@ -170,6 +170,10 @@ model ImportedTrade {
   buySell    String   @map("buy_sell") @db.VarChar(10)
   openClose  String?  @map("open_close") @db.VarChar(10)
 
+  // IBKR cost basis and realized P&L (for sells without matching buys in import)
+  costBasis   Float? @map("cost_basis") @db.DoublePrecision
+  realizedPnl Float? @map("realized_pnl") @db.DoublePrecision
+
   // Assignment tracking (computed after import)
   wasAssigned    Boolean   @default(false) @map("was_assigned")
   assignmentDate DateTime? @map("assignment_date") @db.Date

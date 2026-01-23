@@ -812,8 +812,8 @@ class ProfitService {
   }
 
   /**
-   * Group stock trades by symbol and pair buy orders with sell orders using FIFO
-   * Returns only CLOSED positions (buy that has been sold)
+   * Group stock trades for display - uses IBKR's realizedPnl directly instead of FIFO matching
+   * Returns only sell trades (realized P&L)
    */
   private groupStockTrades(
     trades: Array<{
@@ -827,112 +827,52 @@ class ProfitService {
       commission: number;
       buySell: string;
       openClose: string | null;
+      costBasis: number | null;
+      realizedPnl: number | null;
     }>,
     assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
   ): StockTradeGroup[] {
-    // Group trades by symbol
-    const bySymbol = new Map<string, typeof trades>();
-
-    for (const trade of trades) {
-      if (!bySymbol.has(trade.symbol)) {
-        bySymbol.set(trade.symbol, []);
-      }
-      bySymbol.get(trade.symbol)!.push(trade);
-    }
-
     const result: StockTradeGroup[] = [];
 
-    for (const [symbol, symbolTrades] of bySymbol) {
-      // Sort by date (FIFO)
-      const sorted = symbolTrades.sort(
-        (a, b) => a.tradeDate.getTime() - b.tradeDate.getTime()
-      );
+    // Only process sell trades - they have the realized P&L from IBKR
+    const sells = trades.filter((t) => t.buySell === "SELL");
 
-      // Separate buys and sells
-      const buys: typeof trades = [];
-      const sells: typeof trades = [];
+    for (const sell of sells) {
+      // Skip sells without realized P&L data
+      if (sell.realizedPnl === null) continue;
 
-      for (const trade of sorted) {
-        if (trade.buySell === "BUY") {
-          buys.push(trade);
-        } else {
-          sells.push(trade);
-        }
-      }
+      const assetClass = assignmentMap?.get(sell.symbol);
+      const quantity = Math.abs(sell.quantity);
+      const sellProceeds = quantity * sell.tradePrice - sell.commission;
 
-      // Match sells to buys using FIFO
-      let buyIdx = 0;
-      let remainingBuyQty = buys[buyIdx]?.quantity || 0;
-      let remainingBuyCommission = buys[buyIdx]?.commission || 0;
+      // Use IBKR's cost basis if available, otherwise derive from proceeds and P&L
+      const costBasis = sell.costBasis !== null
+        ? sell.costBasis
+        : sellProceeds - sell.realizedPnl;
 
-      for (const sell of sells) {
-        let sellQty = Math.abs(sell.quantity);
-        let remainingSellCommission = sell.commission;
+      const sellDetail: StockTradeDetail = {
+        id: sell.id,
+        symbol: sell.symbol,
+        tradeDate: sell.tradeDate.toISOString().split("T")[0],
+        quantity,
+        tradePrice: sell.tradePrice,
+        proceeds: quantity * sell.tradePrice,
+        commission: sell.commission,
+        buySell: sell.buySell,
+      };
 
-        while (sellQty > 0 && buyIdx < buys.length) {
-          const buy = buys[buyIdx];
-          const matchQty = Math.min(remainingBuyQty, sellQty);
-
-          if (matchQty > 0) {
-            // Pro-rate commissions for partial fills
-            const buyCommissionPortion = (matchQty / buy.quantity) * remainingBuyCommission;
-            const sellCommissionPortion = (matchQty / Math.abs(sell.quantity)) * remainingSellCommission;
-
-            const costBasis = matchQty * buy.tradePrice + buyCommissionPortion;
-            const sellProceeds = matchQty * sell.tradePrice - sellCommissionPortion;
-            const profit = sellProceeds - costBasis;
-
-            const assetClass = assignmentMap?.get(symbol);
-
-            const buyDetail: StockTradeDetail = {
-              id: buy.id,
-              symbol: buy.symbol,
-              tradeDate: buy.tradeDate.toISOString().split("T")[0],
-              quantity: matchQty,
-              tradePrice: buy.tradePrice,
-              proceeds: matchQty * buy.tradePrice,
-              commission: buyCommissionPortion,
-              buySell: buy.buySell,
-            };
-
-            const sellDetail: StockTradeDetail = {
-              id: sell.id,
-              symbol: sell.symbol,
-              tradeDate: sell.tradeDate.toISOString().split("T")[0],
-              quantity: matchQty,
-              tradePrice: sell.tradePrice,
-              proceeds: matchQty * sell.tradePrice,
-              commission: sellCommissionPortion,
-              buySell: sell.buySell,
-            };
-
-            result.push({
-              symbol,
-              buyTrade: buyDetail,
-              sellTrade: sellDetail,
-              costBasis,
-              sellProceeds,
-              profit,
-              quantity: matchQty,
-              assetClassId: assetClass?.assetClassId,
-              assetClassName: assetClass?.assetClassName,
-              assetClassColor: assetClass?.assetClassColor,
-            });
-
-            remainingBuyCommission -= buyCommissionPortion;
-            remainingSellCommission -= sellCommissionPortion;
-          }
-
-          remainingBuyQty -= matchQty;
-          sellQty -= matchQty;
-
-          if (remainingBuyQty <= 0) {
-            buyIdx++;
-            remainingBuyQty = buys[buyIdx]?.quantity || 0;
-            remainingBuyCommission = buys[buyIdx]?.commission || 0;
-          }
-        }
-      }
+      result.push({
+        symbol: sell.symbol,
+        buyTrade: undefined, // Not tracking individual buys
+        sellTrade: sellDetail,
+        costBasis,
+        sellProceeds,
+        profit: sell.realizedPnl,
+        quantity,
+        assetClassId: assetClass?.assetClassId,
+        assetClassName: assetClass?.assetClassName,
+        assetClassColor: assetClass?.assetClassColor,
+      });
     }
 
     return result;
@@ -1085,6 +1025,8 @@ class ProfitService {
         commission: totalCommission,
         buySell: isBuy ? "BUY" : "SELL",
         openClose: null, // TWS doesn't provide this directly, will infer in grouping
+        costBasis: null,
+        realizedPnl: null,
         wasAssigned: false,
         assignmentDate: null,
       };
