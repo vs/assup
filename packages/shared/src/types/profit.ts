@@ -106,17 +106,46 @@ export interface OptionTradeGroup {
   assetClassColor?: string;
 }
 
+// Stock trade detail
+export interface StockTradeDetail {
+  id: string;
+  symbol: string;
+  tradeDate: string;
+  quantity: number;
+  tradePrice: number;
+  proceeds: number;
+  commission: number;
+  buySell: string;
+}
+
+// Grouped stock trade (buy + sell)
+export interface StockTradeGroup {
+  symbol: string;
+  buyTrade?: StockTradeDetail;
+  sellTrade?: StockTradeDetail;
+  costBasis: number;        // Total cost including commission (for buy)
+  sellProceeds: number;     // Total proceeds minus commission (for sell)
+  profit: number;           // sellProceeds - costBasis
+  quantity: number;         // Number of shares traded
+  // Asset class info
+  assetClassId?: string;
+  assetClassName?: string;
+  assetClassColor?: string;
+}
+
 // Monthly summary
 export interface MonthSummary {
   year: number;
   month: number;
   optionsProfit: number;
+  stocksProfit: number;
   dividends: number;
   interest: number;
   withholdingTax: number;
   fees: number;
   total: number;
   tradeCount: number;
+  stockTradeCount: number;
   assignedCount: number;
 }
 
@@ -126,6 +155,7 @@ export interface MonthDetail {
   month: number;
   realized: {
     optionTrades: OptionTradeGroup[];
+    stockTrades: StockTradeGroup[];
     dividends: CashTransaction[];
     interest: CashTransaction[];
     withholdingTax: CashTransaction[];
@@ -159,10 +189,12 @@ export interface MonthProfitView {
   month: number;
   realized: {
     optionsProfit: number;
+    stocksProfit: number;
     dividends: number;
     interest: number;
     total: number;
     closedTrades: OptionTradeGroup[];
+    stockTrades: StockTradeGroup[];
     cashTransactions: CashTransaction[];
   };
   unrealized: {
@@ -180,6 +212,7 @@ export interface MonthlyProfitResponse {
   months: MonthSummary[];
   totals: {
     optionsProfit: number;
+    stocksProfit: number;
     dividends: number;
     interest: number;
     withholdingTax: number;

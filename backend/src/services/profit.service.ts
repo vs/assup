@@ -13,6 +13,8 @@ import type {
   MonthProfitView,
   MonthlyProfitResponse,
   OptionTradeGroup,
+  StockTradeGroup,
+  StockTradeDetail,
   CashTransaction,
   CurrentOptionPosition,
 } from "@assup/shared";
@@ -31,11 +33,20 @@ class ProfitService {
       startDate ||
       new Date(end.getFullYear(), end.getMonth() - 11, 1);
 
-    // Get all trades in range
-    const trades = await prisma.importedTrade.findMany({
+    // Get all option trades in range
+    const optionTrades = await prisma.importedTrade.findMany({
       where: {
         tradeDate: { gte: start, lte: end },
         secType: "OPT",
+      },
+      orderBy: { tradeDate: "asc" },
+    });
+
+    // Get all stock trades in range
+    const stockTrades = await prisma.importedTrade.findMany({
+      where: {
+        tradeDate: { gte: start, lte: end },
+        secType: "STK",
       },
       orderBy: { tradeDate: "asc" },
     });
@@ -59,12 +70,14 @@ class ProfitService {
         year: current.getFullYear(),
         month: current.getMonth() + 1,
         optionsProfit: 0,
+        stocksProfit: 0,
         dividends: 0,
         interest: 0,
         withholdingTax: 0,
         fees: 0,
         total: 0,
         tradeCount: 0,
+        stockTradeCount: 0,
         assignedCount: 0,
       });
       current.setMonth(current.getMonth() + 1);
@@ -72,7 +85,7 @@ class ProfitService {
 
     // Calculate options profit by grouping trades
     const now = new Date();
-    const optionGroups = this.groupOptionTrades(trades);
+    const optionGroups = this.groupOptionTrades(optionTrades);
     for (const group of optionGroups) {
       // Determine which month this trade belongs to (close date or expiry for worthless/assigned)
       let tradeDate: Date | null = null;
@@ -98,6 +111,21 @@ class ProfitService {
           } else {
             summary.assignedCount++;
           }
+        }
+      }
+    }
+
+    // Calculate stocks profit by grouping trades
+    const stockGroups = this.groupStockTrades(stockTrades);
+    for (const group of stockGroups) {
+      // Stock trades are realized when sold - use sell date
+      if (group.sellTrade) {
+        const sellDate = new Date(group.sellTrade.tradeDate);
+        const key = `${sellDate.getFullYear()}-${sellDate.getMonth() + 1}`;
+        const summary = monthMap.get(key);
+        if (summary) {
+          summary.stocksProfit += group.profit;
+          summary.stockTradeCount++;
         }
       }
     }
@@ -130,6 +158,7 @@ class ProfitService {
       ...m,
       total:
         m.optionsProfit +
+        m.stocksProfit +
         m.dividends +
         m.interest +
         m.withholdingTax +
@@ -139,6 +168,7 @@ class ProfitService {
     const totals = months.reduce(
       (acc, m) => ({
         optionsProfit: acc.optionsProfit + m.optionsProfit,
+        stocksProfit: acc.stocksProfit + m.stocksProfit,
         dividends: acc.dividends + m.dividends,
         interest: acc.interest + m.interest,
         withholdingTax: acc.withholdingTax + m.withholdingTax,
@@ -147,6 +177,7 @@ class ProfitService {
       }),
       {
         optionsProfit: 0,
+        stocksProfit: 0,
         dividends: 0,
         interest: 0,
         withholdingTax: 0,
@@ -267,6 +298,52 @@ class ProfitService {
       orderBy: { transactionDate: "asc" },
     });
 
+    // Get all stock trades (we need full history to pair buys with sells)
+    const allStockTrades = await prisma.importedTrade.findMany({
+      where: {
+        secType: "STK",
+      },
+      orderBy: { tradeDate: "asc" },
+    });
+
+    // Get stock symbols for asset class lookup
+    const stockSymbols = new Set(allStockTrades.map((t) => t.symbol));
+    for (const sym of stockSymbols) {
+      underlyingSymbols.add(sym);
+    }
+
+    // Fetch additional asset class assignments for stock symbols not already fetched
+    const additionalAssignments = await prisma.securityAssignment.findMany({
+      where: {
+        symbol: { in: Array.from(stockSymbols) },
+        secType: "STK",
+      },
+      include: { assetClass: true },
+    });
+
+    for (const a of additionalAssignments) {
+      if (!assignmentMap.has(a.symbol)) {
+        assignmentMap.set(a.symbol, {
+          assetClassId: a.assetClassId,
+          assetClassName: a.assetClass.name,
+          assetClassColor: a.assetClass.color,
+        });
+      }
+    }
+
+    // Group stock trades and filter to those sold in this month
+    const allStockGroups = this.groupStockTrades(allStockTrades, assignmentMap);
+    const monthStockGroups = allStockGroups.filter((g) => {
+      if (g.sellTrade) {
+        const sellDate = new Date(g.sellTrade.tradeDate);
+        return (
+          sellDate.getFullYear() === year &&
+          sellDate.getMonth() + 1 === month
+        );
+      }
+      return false;
+    });
+
     // Group option trades (using relevant trades which include opens from previous months)
     const optionGroups = this.groupOptionTrades(relevantTrades, assignmentMap);
 
@@ -332,6 +409,7 @@ class ProfitService {
     const optionsProfit = monthGroups
       .filter((g) => !g.wasAssigned)
       .reduce((sum, g) => sum + g.profit, 0);
+    const stocksProfit = monthStockGroups.reduce((sum, g) => sum + g.profit, 0);
     const dividendsTotal = dividends.reduce((sum, d) => sum + d.amount, 0);
     const interestTotal = interest.reduce((sum, i) => sum + i.amount, 0);
     const withholdingTaxTotal = withholdingTax.reduce(
@@ -345,6 +423,7 @@ class ProfitService {
       month,
       realized: {
         optionTrades: monthGroups,
+        stockTrades: monthStockGroups,
         dividends,
         interest,
         withholdingTax,
@@ -354,17 +433,20 @@ class ProfitService {
         year,
         month,
         optionsProfit,
+        stocksProfit,
         dividends: dividendsTotal,
         interest: interestTotal,
         withholdingTax: withholdingTaxTotal,
         fees: feesTotal,
         total:
           optionsProfit +
+          stocksProfit +
           dividendsTotal +
           interestTotal +
           withholdingTaxTotal +
           feesTotal,
         tradeCount: monthGroups.filter((g) => !g.wasAssigned).length,
+        stockTradeCount: monthStockGroups.length,
         assignedCount: monthGroups.filter((g) => g.wasAssigned).length,
       },
     };
@@ -525,13 +607,16 @@ class ProfitService {
       month,
       realized: {
         optionsProfit: detail.summary.optionsProfit,
+        stocksProfit: detail.summary.stocksProfit,
         dividends: detail.summary.dividends,
         interest: detail.summary.interest,
         total:
           detail.summary.optionsProfit +
+          detail.summary.stocksProfit +
           detail.summary.dividends +
           detail.summary.interest,
         closedTrades: detail.realized.optionTrades,
+        stockTrades: detail.realized.stockTrades,
         cashTransactions: [
           ...detail.realized.dividends,
           ...detail.realized.interest,
@@ -721,6 +806,133 @@ class ProfitService {
         assetClassName: assetClass?.assetClassName,
         assetClassColor: assetClass?.assetClassColor,
       });
+    }
+
+    return result;
+  }
+
+  /**
+   * Group stock trades by symbol and pair buy orders with sell orders using FIFO
+   * Returns only CLOSED positions (buy that has been sold)
+   */
+  private groupStockTrades(
+    trades: Array<{
+      id: string;
+      tradeId: string;
+      symbol: string;
+      tradeDate: Date;
+      quantity: number;
+      tradePrice: number;
+      proceeds: number;
+      commission: number;
+      buySell: string;
+      openClose: string | null;
+    }>,
+    assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
+  ): StockTradeGroup[] {
+    // Group trades by symbol
+    const bySymbol = new Map<string, typeof trades>();
+
+    for (const trade of trades) {
+      if (!bySymbol.has(trade.symbol)) {
+        bySymbol.set(trade.symbol, []);
+      }
+      bySymbol.get(trade.symbol)!.push(trade);
+    }
+
+    const result: StockTradeGroup[] = [];
+
+    for (const [symbol, symbolTrades] of bySymbol) {
+      // Sort by date (FIFO)
+      const sorted = symbolTrades.sort(
+        (a, b) => a.tradeDate.getTime() - b.tradeDate.getTime()
+      );
+
+      // Separate buys and sells
+      const buys: typeof trades = [];
+      const sells: typeof trades = [];
+
+      for (const trade of sorted) {
+        if (trade.buySell === "BUY") {
+          buys.push(trade);
+        } else {
+          sells.push(trade);
+        }
+      }
+
+      // Match sells to buys using FIFO
+      let buyIdx = 0;
+      let remainingBuyQty = buys[buyIdx]?.quantity || 0;
+      let remainingBuyCommission = buys[buyIdx]?.commission || 0;
+
+      for (const sell of sells) {
+        let sellQty = Math.abs(sell.quantity);
+        let remainingSellCommission = sell.commission;
+
+        while (sellQty > 0 && buyIdx < buys.length) {
+          const buy = buys[buyIdx];
+          const matchQty = Math.min(remainingBuyQty, sellQty);
+
+          if (matchQty > 0) {
+            // Pro-rate commissions for partial fills
+            const buyCommissionPortion = (matchQty / buy.quantity) * remainingBuyCommission;
+            const sellCommissionPortion = (matchQty / Math.abs(sell.quantity)) * remainingSellCommission;
+
+            const costBasis = matchQty * buy.tradePrice + buyCommissionPortion;
+            const sellProceeds = matchQty * sell.tradePrice - sellCommissionPortion;
+            const profit = sellProceeds - costBasis;
+
+            const assetClass = assignmentMap?.get(symbol);
+
+            const buyDetail: StockTradeDetail = {
+              id: buy.id,
+              symbol: buy.symbol,
+              tradeDate: buy.tradeDate.toISOString().split("T")[0],
+              quantity: matchQty,
+              tradePrice: buy.tradePrice,
+              proceeds: matchQty * buy.tradePrice,
+              commission: buyCommissionPortion,
+              buySell: buy.buySell,
+            };
+
+            const sellDetail: StockTradeDetail = {
+              id: sell.id,
+              symbol: sell.symbol,
+              tradeDate: sell.tradeDate.toISOString().split("T")[0],
+              quantity: matchQty,
+              tradePrice: sell.tradePrice,
+              proceeds: matchQty * sell.tradePrice,
+              commission: sellCommissionPortion,
+              buySell: sell.buySell,
+            };
+
+            result.push({
+              symbol,
+              buyTrade: buyDetail,
+              sellTrade: sellDetail,
+              costBasis,
+              sellProceeds,
+              profit,
+              quantity: matchQty,
+              assetClassId: assetClass?.assetClassId,
+              assetClassName: assetClass?.assetClassName,
+              assetClassColor: assetClass?.assetClassColor,
+            });
+
+            remainingBuyCommission -= buyCommissionPortion;
+            remainingSellCommission -= sellCommissionPortion;
+          }
+
+          remainingBuyQty -= matchQty;
+          sellQty -= matchQty;
+
+          if (remainingBuyQty <= 0) {
+            buyIdx++;
+            remainingBuyQty = buys[buyIdx]?.quantity || 0;
+            remainingBuyCommission = buys[buyIdx]?.commission || 0;
+          }
+        }
+      }
     }
 
     return result;

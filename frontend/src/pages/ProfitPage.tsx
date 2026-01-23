@@ -131,7 +131,7 @@ export function ProfitPage() {
     <div className="space-y-6">
       <PageHeader
         title="Profit"
-        subtitle="Track your options trading income, dividends, and interest"
+        subtitle="Track your options, stocks, dividends, and interest"
         loading={loading}
         onRefresh={loadData}
         actions={
@@ -143,11 +143,16 @@ export function ProfitPage() {
 
       {/* Summary Cards */}
       {monthlyData && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <SummaryCard
             label="Options"
             value={monthlyData.totals.optionsProfit}
             className="text-blue-600"
+          />
+          <SummaryCard
+            label="Stocks"
+            value={monthlyData.totals.stocksProfit}
+            className="text-orange-600"
           />
           <SummaryCard
             label="Dividends"
@@ -280,6 +285,7 @@ function MonthProfitCard({
   const { getSparklineState } = useSparklines(sparklineSymbols);
 
   const hasRealizedTrades = data.realized.closedTrades.length > 0 ||
+    data.realized.stockTrades.length > 0 ||
     data.realized.cashTransactions.length > 0;
 
   return (
@@ -299,6 +305,12 @@ function MonthProfitCard({
                     </span>
                   </div>
                   <div className="text-sm">
+                    <span className="text-muted-foreground">Stocks:</span>{" "}
+                    <span className={data.realized.stocksProfit >= 0 ? "text-orange-600" : "text-red-600"}>
+                      {formatCurrency(data.realized.stocksProfit)}
+                    </span>
+                  </div>
+                  <div className="text-sm">
                     <span className="text-muted-foreground">Div:</span>{" "}
                     <span className="text-green-600">{formatCurrency(data.realized.dividends)}</span>
                   </div>
@@ -313,7 +325,10 @@ function MonthProfitCard({
                     </span>
                   </div>
                   {data.realized.closedTrades.length > 0 && (
-                    <Badge variant="secondary">{data.realized.closedTrades.length} trades</Badge>
+                    <Badge variant="secondary">{data.realized.closedTrades.length} opt trades</Badge>
+                  )}
+                  {data.realized.stockTrades.length > 0 && (
+                    <Badge variant="secondary">{data.realized.stockTrades.length} stk trades</Badge>
                   )}
                 </div>
               </div>
@@ -401,6 +416,78 @@ function MonthProfitCard({
                                 ) : (
                                   <Badge variant="secondary">Closed</Badge>
                                 )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+
+                  {/* Stock Trades */}
+                  {data.realized.stockTrades.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Stock Trades</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Symbol</TableHead>
+                            <TableHead>Asset Class</TableHead>
+                            <TableHead className="text-right">Qty</TableHead>
+                            <TableHead className="text-right">Buy Price</TableHead>
+                            <TableHead>Buy Date</TableHead>
+                            <TableHead className="text-right">Sell Price</TableHead>
+                            <TableHead>Sell Date</TableHead>
+                            <TableHead className="text-right">Profit</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.realized.stockTrades.map((trade, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell>
+                                <div className="flex items-center">
+                                  <a
+                                    href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-medium hover:text-primary hover:underline"
+                                  >
+                                    {trade.symbol}
+                                  </a>
+                                  <ExternalLinks symbol={trade.symbol} />
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {trade.assetClassName ? (
+                                  <Link
+                                    to={`/positions?assetClassId=${trade.assetClassId}`}
+                                    className="flex items-center gap-2 hover:text-primary"
+                                  >
+                                    <div
+                                      className="h-2 w-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: trade.assetClassColor }}
+                                    />
+                                    <span className="truncate text-sm">{trade.assetClassName}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right font-mono">{trade.quantity}</TableCell>
+                              <TableCell className="text-right font-mono">
+                                {formatCurrency(trade.buyTrade?.tradePrice || 0)}
+                              </TableCell>
+                              <TableCell>{trade.buyTrade?.tradeDate || "-"}</TableCell>
+                              <TableCell className="text-right font-mono">
+                                {formatCurrency(trade.sellTrade?.tradePrice || 0)}
+                              </TableCell>
+                              <TableCell>{trade.sellTrade?.tradeDate || "-"}</TableCell>
+                              <TableCell
+                                className={`text-right font-mono ${
+                                  trade.profit >= 0 ? "text-green-600" : "text-red-600"
+                                }`}
+                              >
+                                {formatCurrency(trade.profit)}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -650,6 +737,16 @@ function MonthHistoryCard({
                   </span>
                 </div>
                 <div className="text-sm">
+                  <span className="text-muted-foreground">Stocks:</span>{" "}
+                  <span
+                    className={
+                      month.stocksProfit >= 0 ? "text-orange-600" : "text-red-600"
+                    }
+                  >
+                    {formatCurrency(month.stocksProfit)}
+                  </span>
+                </div>
+                <div className="text-sm">
                   <span className="text-muted-foreground">Div:</span>{" "}
                   <span className="text-green-600">
                     {formatCurrency(month.dividends)}
@@ -669,7 +766,10 @@ function MonthHistoryCard({
                     {formatCurrency(month.total)}
                   </span>
                 </div>
-                <Badge variant="secondary">{month.tradeCount} trades</Badge>
+                <Badge variant="secondary">{month.tradeCount} opt</Badge>
+                {month.stockTradeCount > 0 && (
+                  <Badge variant="secondary">{month.stockTradeCount} stk</Badge>
+                )}
                 {month.assignedCount > 0 && (
                   <Badge variant="outline">{month.assignedCount} assigned</Badge>
                 )}
@@ -790,6 +890,78 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                     ) : (
                       <Badge variant="secondary">Closed</Badge>
                     )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Stock Trades */}
+      {detail.realized.stockTrades.length > 0 && (
+        <div>
+          <h4 className="font-medium mb-2">Stock Trades</h4>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Symbol</TableHead>
+                <TableHead>Asset Class</TableHead>
+                <TableHead className="text-right">Qty</TableHead>
+                <TableHead className="text-right">Buy Price</TableHead>
+                <TableHead>Buy Date</TableHead>
+                <TableHead className="text-right">Sell Price</TableHead>
+                <TableHead>Sell Date</TableHead>
+                <TableHead className="text-right">Profit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {detail.realized.stockTrades.map((trade, idx) => (
+                <TableRow key={idx}>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <a
+                        href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium hover:text-primary hover:underline"
+                      >
+                        {trade.symbol}
+                      </a>
+                      <ExternalLinks symbol={trade.symbol} />
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {trade.assetClassName ? (
+                      <Link
+                        to={`/positions?assetClassId=${trade.assetClassId}`}
+                        className="flex items-center gap-2 hover:text-primary"
+                      >
+                        <div
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: trade.assetClassColor }}
+                        />
+                        <span className="truncate text-sm">{trade.assetClassName}</span>
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">{trade.quantity}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatCurrency(trade.buyTrade?.tradePrice || 0)}
+                  </TableCell>
+                  <TableCell>{trade.buyTrade?.tradeDate || "-"}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatCurrency(trade.sellTrade?.tradePrice || 0)}
+                  </TableCell>
+                  <TableCell>{trade.sellTrade?.tradeDate || "-"}</TableCell>
+                  <TableCell
+                    className={`text-right font-mono ${
+                      trade.profit >= 0 ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
+                    {formatCurrency(trade.profit)}
                   </TableCell>
                 </TableRow>
               ))}
