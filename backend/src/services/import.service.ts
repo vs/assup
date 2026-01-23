@@ -161,10 +161,11 @@ class ImportService {
     // Extract trades
     const tradesSection = statement.Trades || {};
     const rawTrades = tradesSection.Trade || [];
+    let tradeSeq = 0;
     const trades: FlexTrade[] = (
       Array.isArray(rawTrades) ? rawTrades : rawTrades ? [rawTrades] : []
     ).map((t: Record<string, string>) => ({
-      tradeID: t.tradeID || t.transactionID || `${t.tradeDate}-${t.symbol}-${t.quantity}`,
+      tradeID: t.tradeID || t.transactionID || `${t.tradeDate}-${t.symbol}-${t.quantity}-${t.tradePrice}-${++tradeSeq}`,
       symbol: t.symbol,
       description: t.description,
       conid: t.conid,
@@ -241,11 +242,13 @@ class ImportService {
         console.log(`[Import] Trade columns:`, Object.keys(tradeRecords[0]));
       }
 
+      let csvTradeSeq = 0;
       for (const record of tradeRecords) {
         const assetCategory = record["Asset Category"] || record["AssetClass"];
         const buySell = record["Buy/Sell"] || record["Code"];
         const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
         const quantity = record["Quantity"];
+        const tradePrice = record["T. Price"] || record["Trade Price"] || record["TradePrice"];
         const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
 
         if (assetCategory && (buySell || quantity)) {
@@ -253,7 +256,7 @@ class ImportService {
             tradeID:
               record["TradeID"] ||
               record["Transaction ID"] ||
-              `${tradeDate}-${record["Symbol"]}-${quantity}`,
+              `${tradeDate}-${record["Symbol"]}-${quantity}-${tradePrice}-${++csvTradeSeq}`,
             symbol: record["Symbol"],
             description: record["Description"],
             conid: record["Conid"],
