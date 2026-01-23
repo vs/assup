@@ -300,13 +300,13 @@ function MonthProfitCard({
                 <div className="flex items-center gap-4">
                   <div className="text-sm">
                     <span className="text-muted-foreground">Options:</span>{" "}
-                    <span className={data.realized.optionsProfit >= 0 ? "text-green-600" : "text-red-600"}>
+                    <span className="text-blue-600">
                       {formatCurrency(data.realized.optionsProfit)}
                     </span>
                   </div>
                   <div className="text-sm">
                     <span className="text-muted-foreground">Stocks:</span>{" "}
-                    <span className={data.realized.stocksProfit >= 0 ? "text-orange-600" : "text-red-600"}>
+                    <span className="text-orange-600">
                       {formatCurrency(data.realized.stocksProfit)}
                     </span>
                   </div>
@@ -728,21 +728,13 @@ function MonthHistoryCard({
               <div className="flex items-center gap-4">
                 <div className="text-sm">
                   <span className="text-muted-foreground">Options:</span>{" "}
-                  <span
-                    className={
-                      month.optionsProfit >= 0 ? "text-green-600" : "text-red-600"
-                    }
-                  >
+                  <span className="text-blue-600">
                     {formatCurrency(month.optionsProfit)}
                   </span>
                 </div>
                 <div className="text-sm">
                   <span className="text-muted-foreground">Stocks:</span>{" "}
-                  <span
-                    className={
-                      month.stocksProfit >= 0 ? "text-orange-600" : "text-red-600"
-                    }
-                  >
+                  <span className="text-orange-600">
                     {formatCurrency(month.stocksProfit)}
                   </span>
                 </div>
