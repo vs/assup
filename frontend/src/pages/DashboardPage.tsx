@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/api";
 import type { AllocationProfile, PositionSummary, DashboardSettings } from "@assup/shared";
 import { useAllocationUpdates } from "@/hooks/useSSE";
@@ -25,10 +25,20 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Use ref to always have access to latest settings in callbacks
+  const settingsRef = useRef<DashboardSettings>(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
   const handleAllocationUpdate = useCallback(() => {
-    loadData();
+    loadData(settingsRef.current);
   }, []);
   useAllocationUpdates(handleAllocationUpdate);
+
+  const handleRefresh = useCallback(() => {
+    loadData(settingsRef.current);
+  }, []);
 
   useEffect(() => {
     loadInitialData();
@@ -105,7 +115,7 @@ export function DashboardPage() {
         title="Allocation Dashboard"
         subtitle="Monitor your portfolio allocation vs. target."
         loading={loading}
-        onRefresh={loadData}
+        onRefresh={handleRefresh}
         actions={
           <div className="flex items-center gap-2">
             <Switch
