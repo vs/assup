@@ -26,7 +26,8 @@ import { Badge } from "@/components/ui/badge";
 import { ChartModal } from "@/components/ChartModal";
 import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
-import { Plus, Trash2, Pencil, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Trash2, Pencil, X, Search } from "lucide-react";
 
 export function WatchlistsPage() {
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
@@ -307,13 +308,26 @@ export function WatchlistsPage() {
                             />
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveItem(item)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                asChild
+                                title="Scan options"
+                              >
+                                <Link to={`/scanner?symbol=${item.symbol}`}>
+                                  <Search className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveItem(item)}
+                                title="Remove from watchlist"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
