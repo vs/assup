@@ -30,12 +30,12 @@ import { Search, Save, X, Check, ChevronsUpDown, Trash2, Settings2 } from "lucid
 
 const DEFAULT_CRITERIA: ScannerCriteria = {
   optionTypes: "PUT",
-  minDaysToExpiry: 30,
-  maxDaysToExpiry: 60,
-  minDelta: 0.2,
-  maxDelta: 0.4,
-  minAnnualizedReturn: 15,
-  minPremiumPercent: 1,
+  minDaysToExpiry: 14,
+  maxDaysToExpiry: 45,
+  minDelta: 0.1,
+  maxDelta: 0.3,
+  minAnnualizedReturn: 6,
+  minPremiumPercent: 0.4,
   putMinStrikePercent: 75,
   putMaxStrikePercent: 100,
   callMinStrikePercent: 100,
@@ -93,7 +93,11 @@ function persistResults(result: ScanResult | null) {
 export function ScannerPage() {
   const [searchParams] = useSearchParams();
   const [criteria, setCriteria] = useState<ScannerCriteria>(() => {
-    // Check URL for pre-selected asset class
+    // Check URL for pre-selected symbol or asset class
+    const symbol = searchParams.get("symbol");
+    if (symbol) {
+      return { ...DEFAULT_CRITERIA, specificSymbol: symbol.toUpperCase() };
+    }
     const assetClassId = searchParams.get("assetClassId");
     if (assetClassId) {
       return { ...DEFAULT_CRITERIA, targetAssetClasses: [assetClassId] };
@@ -416,7 +420,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, minDelta: parseFloat(e.target.value) || 0 })
                 }
               />
-              <p className="text-xs text-muted-foreground">0.2 = ~20% ITM chance</p>
+              <p className="text-xs text-muted-foreground">0.1 = ~10% ITM chance</p>
             </div>
             <div className="space-y-2">
               <Label>Max Delta</Label>
@@ -428,7 +432,7 @@ export function ScannerPage() {
                   setCriteria({ ...criteria, maxDelta: parseFloat(e.target.value) || 0 })
                 }
               />
-              <p className="text-xs text-muted-foreground">0.4 = ~40% ITM chance</p>
+              <p className="text-xs text-muted-foreground">0.3 = ~30% ITM chance</p>
             </div>
             <div className="space-y-2">
               <Label>Min Annual Return %</Label>
