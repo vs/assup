@@ -3,6 +3,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@assup/shared";
+import { ExternalLinks } from "@/components/common";
 import { DTEGroup } from "./DTEGroup";
 import type { TickerGroup as TickerGroupType, ExtendedOptionOpportunity } from "./types";
 
@@ -45,7 +46,18 @@ export const TickerGroup = memo(function TickerGroup({
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: tickerGroup.assetClassColor }}
             />
-            <span className="font-semibold text-base">{tickerGroup.symbol}</span>
+            <a
+              href={`https://www.tradingview.com/chart/?symbol=${tickerGroup.symbol}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-base hover:text-primary hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {tickerGroup.symbol}
+            </a>
+            <span onClick={(e) => e.stopPropagation()}>
+              <ExternalLinks symbol={tickerGroup.symbol} />
+            </span>
             {tickerGroup.underlyingPrice && (
               <span className="font-mono text-sm text-muted-foreground">
                 {formatCurrency(tickerGroup.underlyingPrice, { maximumFractionDigits: 2 })}
