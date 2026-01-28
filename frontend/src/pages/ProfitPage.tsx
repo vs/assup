@@ -750,6 +750,22 @@ function MonthHistoryCard({
                     {formatCurrency(month.interest)}
                   </span>
                 </div>
+                {month.withholdingTax !== 0 && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Tax:</span>{" "}
+                    <span className="text-red-600">
+                      {formatCurrency(month.withholdingTax)}
+                    </span>
+                  </div>
+                )}
+                {month.fees !== 0 && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Fees:</span>{" "}
+                    <span className="text-red-600">
+                      {formatCurrency(month.fees)}
+                    </span>
+                  </div>
+                )}
                 <div className="text-sm font-semibold">
                   <span className="text-muted-foreground">Total:</span>{" "}
                   <span
@@ -1014,6 +1030,66 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                   </TableCell>
                   <TableCell className="text-right text-purple-600">
                     {formatCurrency(int.amount)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Withholding Tax */}
+      {detail.realized.withholdingTax.length > 0 && (
+        <div>
+          <h4 className="font-medium mb-2">Withholding Tax</h4>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Symbol</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {detail.realized.withholdingTax.map((tax) => (
+                <TableRow key={tax.id}>
+                  <TableCell>{tax.transactionDate}</TableCell>
+                  <TableCell className="font-medium">{tax.symbol || "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {tax.description}
+                  </TableCell>
+                  <TableCell className="text-right text-red-600">
+                    {formatCurrency(tax.amount)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Fees */}
+      {detail.realized.fees.length > 0 && (
+        <div>
+          <h4 className="font-medium mb-2">Fees</h4>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {detail.realized.fees.map((fee) => (
+                <TableRow key={fee.id}>
+                  <TableCell>{fee.transactionDate}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {fee.description}
+                  </TableCell>
+                  <TableCell className="text-right text-red-600">
+                    {formatCurrency(fee.amount)}
                   </TableCell>
                 </TableRow>
               ))}
