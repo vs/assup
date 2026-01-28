@@ -681,24 +681,28 @@ class ProfitService {
         (a, b) => a.tradeDate.getTime() - b.tradeDate.getTime()
       );
 
-      // Find open and close trades
-      let openTrade: (typeof trades)[0] | undefined;
-      let closeTrade: (typeof trades)[0] | undefined;
+      // Collect ALL open and close trades (there may be multiple partial fills)
+      const openTrades: (typeof trades)[0][] = [];
+      const closeTrades: (typeof trades)[0][] = [];
       let wasAssigned = false;
 
       for (const trade of sorted) {
         if (trade.wasAssigned) wasAssigned = true;
 
-        if (trade.openClose === "O" || (!openTrade && trade.buySell === "SELL")) {
-          openTrade = trade;
+        if (trade.openClose === "O" || (openTrades.length === 0 && trade.buySell === "SELL")) {
+          openTrades.push(trade);
         } else if (trade.openClose === "C" || trade.buySell === "BUY") {
-          closeTrade = trade;
+          closeTrades.push(trade);
         }
       }
 
+      // Use first trades for display purposes
+      const openTrade = openTrades[0];
+      const closeTrade = closeTrades[0];
+
       // Calculate cost basis and sell price for clearer profit display
       // For short options (selling to open):
-      //   - costBasis = premium received (positive proceeds from open)
+      //   - costBasis = premium received (positive proceeds from open) - SUM of all open trades
       //   - sellPrice = cost to close (absolute value of close proceeds, or 0 if expired worthless)
       //   - profit = costBasis - sellPrice - commissions
       // For long options (buying to open):
@@ -712,25 +716,21 @@ class ProfitService {
       let sellPrice = 0;
       let expiredWorthless = false;
 
-      if (openTrade) {
+      // Sum proceeds from ALL open trades
+      if (openTrades.length > 0) {
         // For SELL to open (short): proceeds is positive (premium received)
         // For BUY to open (long): proceeds is negative (premium paid)
-        if (openTrade.buySell === "SELL") {
-          // Short position - we received premium
-          costBasis = Math.abs(openTrade.proceeds);
-        } else {
-          // Long position - we paid premium
-          costBasis = Math.abs(openTrade.proceeds);
-        }
+        costBasis = openTrades.reduce((sum, t) => sum + Math.abs(t.proceeds), 0);
       }
 
-      if (closeTrade) {
+      // Sum proceeds from ALL close trades
+      if (closeTrades.length > 0) {
         // For BUY to close (closing short): proceeds is negative (cost to close)
         // For SELL to close (closing long): proceeds is positive (received)
-        sellPrice = Math.abs(closeTrade.proceeds);
+        sellPrice = closeTrades.reduce((sum, t) => sum + Math.abs(t.proceeds), 0);
 
-        // If close trade has 0 proceeds, it was likely an assignment/exercise
-        if (closeTrade.proceeds === 0) {
+        // If any close trade has 0 proceeds, it was likely an assignment/exercise
+        if (closeTrades.some(t => t.proceeds === 0)) {
           wasAssigned = true;
         }
       } else {
@@ -758,6 +758,18 @@ class ProfitService {
       const underlying = first.underlying || first.symbol.split(" ")[0];
       const assetClass = assignmentMap?.get(underlying);
 
+      // Aggregate open trades for display (sum quantity and proceeds, average price)
+      const openQuantity = openTrades.reduce((sum, t) => sum + t.quantity, 0);
+      const openProceeds = openTrades.reduce((sum, t) => sum + t.proceeds, 0);
+      const openCommission = openTrades.reduce((sum, t) => sum + t.commission, 0);
+      const openAvgPrice = openQuantity !== 0 ? Math.abs(openProceeds / openQuantity / 100) : 0;
+
+      // Aggregate close trades for display
+      const closeQuantity = closeTrades.reduce((sum, t) => sum + t.quantity, 0);
+      const closeProceeds = closeTrades.reduce((sum, t) => sum + t.proceeds, 0);
+      const closeCommission = closeTrades.reduce((sum, t) => sum + t.commission, 0);
+      const closeAvgPrice = closeQuantity !== 0 ? Math.abs(closeProceeds / closeQuantity / 100) : 0;
+
       result.push({
         underlying,
         strike: first.strike || 0,
@@ -772,10 +784,10 @@ class ProfitService {
               expiry: openTrade.expiry?.toISOString().split("T")[0] || "",
               right: (openTrade.right || "C") as "C" | "P",
               tradeDate: openTrade.tradeDate.toISOString().split("T")[0],
-              quantity: openTrade.quantity,
-              tradePrice: openTrade.tradePrice,
-              proceeds: openTrade.proceeds,
-              commission: openTrade.commission,
+              quantity: openQuantity,
+              tradePrice: openAvgPrice,
+              proceeds: openProceeds,
+              commission: openCommission,
               buySell: openTrade.buySell,
               wasAssigned: openTrade.wasAssigned,
             }
@@ -789,10 +801,10 @@ class ProfitService {
               expiry: closeTrade.expiry?.toISOString().split("T")[0] || "",
               right: (closeTrade.right || "C") as "C" | "P",
               tradeDate: closeTrade.tradeDate.toISOString().split("T")[0],
-              quantity: closeTrade.quantity,
-              tradePrice: closeTrade.tradePrice,
-              proceeds: closeTrade.proceeds,
-              commission: closeTrade.commission,
+              quantity: closeQuantity,
+              tradePrice: closeAvgPrice,
+              proceeds: closeProceeds,
+              commission: closeCommission,
               buySell: closeTrade.buySell,
               wasAssigned: closeTrade.wasAssigned,
             }
