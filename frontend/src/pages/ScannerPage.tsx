@@ -191,7 +191,12 @@ export function ScannerPage() {
   function loadPreset(presetId: string) {
     const preset = presets.find((p) => p.id === presetId);
     if (preset) {
-      setCriteria(normalizePresetCriteria(preset.criteria));
+      setCriteria((prev) => ({
+        ...normalizePresetCriteria(preset.criteria),
+        // Preserve current symbol and asset class selections
+        specificSymbol: prev.specificSymbol,
+        targetAssetClasses: prev.targetAssetClasses,
+      }));
     }
   }
 
