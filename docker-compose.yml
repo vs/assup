@@ -57,3 +57,4 @@ networks:
 
 volumes:
   assup-postgres-data:
+    external: true
