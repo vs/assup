@@ -33,6 +33,7 @@ Before using Assup, configure TWS:
    - Trade Date, Quantity, Trade Price, Proceeds, Commission
    - Put/Call, Strike, Expiry
    - Open/Close Indicator
+   - Cost Basis, Realized P&L (for stock trades with external cost basis)
 
    **Cash Transactions** - Select these fields (for dividends & interest):
    - Type
@@ -72,5 +73,7 @@ Before using Assup, configure TWS:
 4. Review the parsed trades and confirm import
 
 The import processes:
-- **Trades**: Option and stock trades (symbol, date, quantity, price, strike, expiry, put/call)
+- **Trades**: Option and stock trades (symbol, date, quantity, price, strike, expiry, put/call, cost basis, realized P&L)
 - **Cash Transactions**: Dividends, interest, withholding tax, fees (type, symbol, date, amount)
+
+Partial fills are aggregated automatically. Duplicate imports are prevented using file hashing and trade IDs.

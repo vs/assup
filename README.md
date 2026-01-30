@@ -4,11 +4,12 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
 
 ## Features
 
-- **Dashboard** - View current vs. target allocation percentages
+- **Dashboard** - View current vs. target allocation with options exposure (notional/delta-weighted)
 - **Positions** - View IBKR positions with asset class assignments and filtering
-- **Watchlists** - Track securities with TradingView chart integration
+- **Watchlists** - Track securities with TradingView chart integration and scanner shortcuts
 - **Order Simulator** - Analyze how trades would impact portfolio allocation
-- **Options Scanner** - Find options opportunities for underinvested asset classes
+- **Options Scanner** - Find options opportunities with PUT/CALL selection, place orders directly, external research links (TradingView, Seeking Alpha)
+- **Profit Tracker** - Import IBKR FLEX reports to track realized P&L, dividends, interest, and withholding tax
 - **Asset Classes** - Define custom categories and allocation targets
 
 ## Tech Stack

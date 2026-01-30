@@ -8,10 +8,11 @@
 - **Asset Allocation:** Define target portfolio distribution across asset classes with validation that percentages sum to 100%. Support for multiple allocation profiles.
 - **Security Assignment:** Assign any security to an asset class from the positions or watchlist views.
 - **IBKR Integration:** Connects to Interactive Brokers TWS to fetch positions, account data, and market information.
-- **Allocation Dashboard:** View current vs. target allocation. Identify underinvested and overinvested asset classes. Toggle to include options positions using notional or delta-weighted calculations.
-- **Watchlist Management:** Maintain lists of securities for monitoring with inline asset class assignment and TradingView chart integration.
-- **Orders Impact Analysis:** Simulate orders to see how execution would affect portfolio allocation before placing trades.
-- **Options Scanner:** Find options opportunities for underinvested asset classes based on configurable criteria (expiration, delta, annualized return, premium percentage).
+- **Allocation Dashboard:** View current vs. target allocation with options exposure columns (notional and delta-weighted). Identify underinvested and overinvested asset classes.
+- **Watchlist Management:** Maintain lists of securities for monitoring with inline asset class assignment, TradingView chart integration, and scanner shortcuts.
+- **Orders Impact Analysis:** Simulate orders to see how execution would affect portfolio allocation before placing trades. Order confirmation from TWS.
+- **Options Scanner:** Find PUT/CALL options for underinvested asset classes based on configurable criteria (expiration, delta, annualized return, premium percentage). Place orders directly from scanner. External research links (TradingView, Seeking Alpha).
+- **Profit Tracking:** Import IBKR FLEX reports to track realized P&L from options and stock trades, dividends, interest, and withholding tax. Supports partial fill aggregation and cost basis from IBKR.
 - **Real-time Updates:** Server-sent events (SSE) for live position and allocation updates.
 
 ## Architecture & Tech Stack
@@ -49,8 +50,10 @@
 | `/api/security-assignments` | Symbol-to-asset-class mappings |
 | `/api/positions` | IBKR positions with enrichment |
 | `/api/watchlists` | Watchlist management |
-| `/api/orders` | Order simulation and impact analysis |
-| `/api/scanner` | Options opportunity scanner |
+| `/api/orders` | Order simulation, impact analysis, and placement |
+| `/api/scanner` | Options opportunity scanner with order placement |
+| `/api/profit` | Profit tracking, FLEX report import, realized P&L |
+| `/api/historical-data` | Historical price data for charts |
 | `/api/settings` | User preferences |
 | `/api/updates/stream` | SSE endpoint for real-time updates |
 
@@ -114,3 +117,6 @@ Key models in Prisma:
 - `Watchlist` / `WatchlistItem` - Security watchlists
 - `ScannerPreset` - Saved scanner configurations
 - `Setting` - Key-value application settings
+- `ImportBatch` - Tracks FLEX report imports for deduplication
+- `ImportedTrade` - Options and stock trades from FLEX reports (with cost basis, realized P&L)
+- `CashTransaction` - Dividends, interest, withholding tax, fees from FLEX reports
