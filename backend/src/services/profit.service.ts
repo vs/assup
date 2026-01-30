@@ -689,10 +689,24 @@ class ProfitService {
       for (const trade of sorted) {
         if (trade.wasAssigned) wasAssigned = true;
 
-        if (trade.openClose === "O" || (openTrades.length === 0 && trade.buySell === "SELL")) {
+        if (trade.openClose === "O") {
+          // Explicitly marked as open
           openTrades.push(trade);
-        } else if (trade.openClose === "C" || trade.buySell === "BUY") {
+        } else if (trade.openClose === "C") {
+          // Explicitly marked as close
           closeTrades.push(trade);
+        } else {
+          // openClose not specified - use heuristics
+          if (openTrades.length === 0 && closeTrades.length === 0) {
+            // First trade in the group is the opening trade
+            openTrades.push(trade);
+          } else if (openTrades.length > 0 && openTrades[0].buySell === trade.buySell) {
+            // Same direction as original open = adding to position
+            openTrades.push(trade);
+          } else {
+            // Opposite direction = closing position
+            closeTrades.push(trade);
+          }
         }
       }
 
@@ -734,23 +748,79 @@ class ProfitService {
           wasAssigned = true;
         }
       } else {
-        // No close trade - option expired worthless or was assigned
-        expiredWorthless = !wasAssigned;
+        // No close trade - check if option has expired
+        const first = sorted[0];
+        const expiryDate = first.expiry;
+        const hasExpired = expiryDate && expiryDate < new Date();
+
+        if (hasExpired) {
+          // Option expired worthless (or was assigned)
+          expiredWorthless = !wasAssigned;
+        }
+        // If not expired, this is an open position - no realized P&L yet
         sellPrice = 0;
       }
 
-      // Calculate profit based on position type
+      // Calculate profit using FIFO matching for partial closes
+      // This matches close trades against open trades in chronological order
+      const openQuantity = openTrades.reduce((sum, t) => sum + Math.abs(t.quantity), 0);
+      const closeQuantity = closeTrades.reduce((sum, t) => sum + Math.abs(t.quantity), 0);
+
+      // Prepare open trades with per-contract values for FIFO matching
+      const openTradesForFifo = openTrades.map(t => ({
+        remainingQty: Math.abs(t.quantity),
+        pricePerContract: Math.abs(t.proceeds) / Math.abs(t.quantity),
+        commissionPerContract: t.commission / Math.abs(t.quantity)
+      }));
+
+      // FIFO matching: match close trades against open trades in order
+      let fifoCostBasis = 0;
+      let fifoOpenCommission = 0;
+
+      for (const closeTrade of closeTrades) {
+        let closeQtyRemaining = Math.abs(closeTrade.quantity);
+
+        for (const openTradeInfo of openTradesForFifo) {
+          if (closeQtyRemaining <= 0) break;
+          if (openTradeInfo.remainingQty <= 0) continue;
+
+          const matchedQty = Math.min(closeQtyRemaining, openTradeInfo.remainingQty);
+
+          fifoCostBasis += openTradeInfo.pricePerContract * matchedQty;
+          fifoOpenCommission += openTradeInfo.commissionPerContract * matchedQty;
+
+          openTradeInfo.remainingQty -= matchedQty;
+          closeQtyRemaining -= matchedQty;
+        }
+      }
+
+      // If no closes yet, use full cost basis (for unrealized/projected calculations)
+      const effectiveCostBasis = closeQuantity > 0 ? fifoCostBasis : costBasis;
+
+      // Commission: FIFO-matched portion of open commissions + all close commissions
+      const openCommission = openTrades.reduce((sum, t) => sum + t.commission, 0);
+      const closeCommission = closeTrades.reduce((sum, t) => sum + t.commission, 0);
+      const effectiveCommission = closeQuantity > 0
+        ? fifoOpenCommission + closeCommission
+        : openCommission;
+
       let profit: number;
       if (openTrade?.buySell === "SELL") {
         // Short position: profit = premium received - cost to close - commissions
-        profit = costBasis - sellPrice - totalCommission;
+        profit = effectiveCostBasis - sellPrice - effectiveCommission;
       } else {
         // Long position: profit = sell price - cost basis - commissions
-        profit = sellPrice - costBasis - totalCommission;
+        profit = sellPrice - effectiveCostBasis - effectiveCommission;
       }
 
       // For assigned options, set profit to 0 (P&L is realized in stock position)
       if (wasAssigned) {
+        profit = 0;
+      }
+
+      // For open positions (not closed, not expired), no realized P&L yet
+      const isOpenPosition = closeQuantity === 0 && !expiredWorthless && !wasAssigned;
+      if (isOpenPosition) {
         profit = 0;
       }
 
@@ -759,15 +829,11 @@ class ProfitService {
       const assetClass = assignmentMap?.get(underlying);
 
       // Aggregate open trades for display (sum quantity and proceeds, average price)
-      const openQuantity = openTrades.reduce((sum, t) => sum + t.quantity, 0);
       const openProceeds = openTrades.reduce((sum, t) => sum + t.proceeds, 0);
-      const openCommission = openTrades.reduce((sum, t) => sum + t.commission, 0);
       const openAvgPrice = openQuantity !== 0 ? Math.abs(openProceeds / openQuantity / 100) : 0;
 
       // Aggregate close trades for display
-      const closeQuantity = closeTrades.reduce((sum, t) => sum + t.quantity, 0);
       const closeProceeds = closeTrades.reduce((sum, t) => sum + t.proceeds, 0);
-      const closeCommission = closeTrades.reduce((sum, t) => sum + t.commission, 0);
       const closeAvgPrice = closeQuantity !== 0 ? Math.abs(closeProceeds / closeQuantity / 100) : 0;
 
       result.push({
@@ -809,7 +875,7 @@ class ProfitService {
               wasAssigned: closeTrade.wasAssigned,
             }
           : undefined,
-        costBasis,
+        costBasis: effectiveCostBasis,
         sellPrice,
         profit,
         wasAssigned,
