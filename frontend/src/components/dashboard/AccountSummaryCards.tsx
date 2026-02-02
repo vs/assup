@@ -16,8 +16,10 @@ export function AccountSummaryCards({
 }: AccountSummaryCardsProps) {
   const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
+  const gridCols = hasOptionsPositions ? "md:grid-cols-5" : "md:grid-cols-3";
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div className={`grid grid-cols-1 ${gridCols} gap-4`}>
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -61,26 +63,48 @@ export function AccountSummaryCards({
       </Card>
 
       {hasOptionsPositions && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-              Options Exposure
-              <ExposureTooltip showStocks={false} />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {fmtCurrency(
-                settings.optionsWeightMode === "delta"
-                  ? summary.summary.totalOptionsDelta
-                  : summary.summary.totalOptionsNotional
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {settings.optionsWeightMode === "delta" ? "Delta-weighted" : "Notional"}
-            </p>
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                Put Exposure
+                <ExposureTooltip showStocks={false} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {fmtCurrency(
+                  settings.optionsWeightMode === "delta"
+                    ? summary.summary.totalPutDelta
+                    : summary.summary.totalPutNotional
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {settings.optionsWeightMode === "delta" ? "Delta-weighted" : "Notional"}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                Call Exposure
+                <ExposureTooltip showStocks={false} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {fmtCurrency(
+                  settings.optionsWeightMode === "delta"
+                    ? summary.summary.totalCallDelta
+                    : summary.summary.totalCallNotional
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {settings.optionsWeightMode === "delta" ? "Delta-weighted" : "Notional"}
+              </p>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

@@ -65,6 +65,10 @@ export interface PositionSummaryData {
   totalStockValue: number;
   totalOptionsNotional: number;
   totalOptionsDelta: number;
+  totalPutNotional: number;
+  totalCallNotional: number;
+  totalPutDelta: number;
+  totalCallDelta: number;
   unassignedValue: number;
   unassignedPercentage: number;
   includeOptions: boolean;

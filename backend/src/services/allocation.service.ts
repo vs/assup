@@ -34,6 +34,10 @@ export interface AllocationResult {
   totalStockValue: number;
   totalOptionsNotional: number;
   totalOptionsDelta: number;
+  totalPutNotional: number;
+  totalCallNotional: number;
+  totalPutDelta: number;
+  totalCallDelta: number;
   unassignedValue: number;
   unassignedPercentage: number;
 }
@@ -79,6 +83,10 @@ class AllocationService {
     let totalStockValue = 0;
     let totalOptionsNotional = 0;
     let totalOptionsDelta = 0;
+    let totalPutNotional = 0;
+    let totalCallNotional = 0;
+    let totalPutDelta = 0;
+    let totalCallDelta = 0;
 
     // First pass: stocks (skip options and cash)
     for (const pos of positions) {
@@ -110,6 +118,15 @@ class AllocationService {
       const delta = pos.deltaExposure || 0;
       const isPut = pos.right === "P";
       const isShort = pos.position < 0;
+
+      // Track totals by option type (using absolute values for exposure)
+      if (isPut) {
+        totalPutNotional += Math.abs(notional);
+        totalPutDelta += Math.abs(delta);
+      } else {
+        totalCallNotional += Math.abs(notional);
+        totalCallDelta += Math.abs(delta);
+      }
 
       if (pos.assetClassId && pos.assetClassName) {
         if (!byAssetClass[pos.assetClassId]) {
@@ -209,6 +226,10 @@ class AllocationService {
       totalStockValue,
       totalOptionsNotional,
       totalOptionsDelta,
+      totalPutNotional,
+      totalCallNotional,
+      totalPutDelta,
+      totalCallDelta,
       unassignedValue,
       unassignedPercentage: totalValue > 0 ? (unassignedValue / totalValue) * 100 : 0,
     };
