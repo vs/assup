@@ -43,3 +43,6 @@ coverage/
 # Misc
 .cache/
 tmp/
+
+# Worktrees
+.worktrees/
