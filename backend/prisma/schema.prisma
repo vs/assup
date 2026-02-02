@@ -115,6 +115,37 @@ model ScannerPreset {
   @@map("scanner_presets")
 }
 
+// Scan Jobs - tracks background scanner executions with results
+model ScanJob {
+  id               String    @id @default(uuid()) @db.Uuid
+  presetId         String?   @map("preset_id") @db.Uuid
+  presetName       String    @map("preset_name") @db.VarChar(100)
+  criteria         Json      @db.JsonB
+  status           String    @db.VarChar(20) // running, completed, failed, cancelled
+
+  // Progress tracking
+  totalSymbols     Int       @default(0) @map("total_symbols")
+  scannedSymbols   Int       @default(0) @map("scanned_symbols")
+  opportunityCount Int       @default(0) @map("opportunity_count")
+  bestAnnualReturn Float?    @map("best_annual_return") @db.DoublePrecision
+  bestPremiumPct   Float?    @map("best_premium_pct") @db.DoublePrecision
+
+  // Results stored as JSON array of OptionOpportunity
+  opportunities    Json      @default("[]") @db.JsonB
+
+  // Lifecycle timestamps
+  startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz
+
+  // Error info
+  errorMessage     String?   @map("error_message") @db.Text
+
+  @@index([status])
+  @@index([expiresAt])
+  @@map("scan_jobs")
+}
+
 // Settings - key-value store for application settings
 model Setting {
   id        String   @id @default(uuid()) @db.Uuid
