@@ -241,13 +241,23 @@ class ProfitService {
     const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
     const todayExecutions = isCurrentMonth ? await this.getTodayExecutions() : [];
 
-    // Add today's executions that are closing trades to the closing trades set
-    const closingFromTws = todayExecutions.filter((t) => t.buySell === "BUY");
-
-    // Get unique contract keys for these trades
-    const contractKeys = new Set(
-      [...closingTrades, ...closingFromTws].map(
+    // Get unique contract keys for trades that may have closed this month
+    // Include ALL today's executions (both BUY and SELL) since either could be a close:
+    // - BUY closes a short position (sell-to-open earlier)
+    // - SELL closes a long position (buy-to-open earlier)
+    //
+    // We use two key types:
+    // 1. Exact keys (with strike) for normal matching
+    // 2. Relaxed keys (without strike) to handle strike adjustments from corporate actions
+    //    (e.g., special dividends can adjust a $55 strike to $54.70)
+    const exactContractKeys = new Set(
+      [...closingTrades, ...todayExecutions].map(
         (t) => `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
+      )
+    );
+    const relaxedContractKeys = new Set(
+      [...closingTrades, ...todayExecutions].map(
+        (t) => `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
       )
     );
 
@@ -259,10 +269,12 @@ class ProfitService {
       orderBy: { tradeDate: "asc" },
     });
 
-    // Filter to only trades matching our contract keys
+    // Filter to trades matching our contract keys
+    // First try exact match, then fall back to relaxed match (for strike-adjusted contracts)
     let relevantTrades = trades.filter((t) => {
-      const key = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
-      return contractKeys.has(key);
+      const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      const relaxedKey = `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      return exactContractKeys.has(exactKey) || relaxedContractKeys.has(relaxedKey);
     });
 
     // Merge today's executions with imported trades (avoid duplicates by tradeId)
@@ -670,10 +682,14 @@ class ProfitService {
     assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
   ): OptionTradeGroup[] {
     // Group by contract key
+    // Use relaxed key (without strike) to handle strike adjustments from corporate actions
+    // (e.g., special dividends can adjust a $55 strike to $54.70, but it's still the same contract)
     const groups = new Map<string, typeof trades>();
 
     for (const trade of trades) {
-      const key = `${trade.underlying || trade.symbol}-${trade.strike}-${
+      // Relaxed key: underlying-expiry-right (without strike)
+      // This allows matching trades where strike was adjusted due to corporate actions
+      const key = `${trade.underlying || trade.symbol}-${
         trade.expiry?.toISOString().split("T")[0]
       }-${trade.right}`;
 
@@ -848,9 +864,13 @@ class ProfitService {
       const closeProceeds = closeTrades.reduce((sum, t) => sum + t.proceeds, 0);
       const closeAvgPrice = closeQuantity !== 0 ? Math.abs(closeProceeds / closeQuantity / 100) : 0;
 
+      // Use close trade's strike if available (it has the adjusted value after corporate actions)
+      // Otherwise fall back to open trade's strike
+      const displayStrike = closeTrade?.strike || openTrade?.strike || first.strike || 0;
+
       result.push({
         underlying,
-        strike: first.strike || 0,
+        strike: displayStrike,
         expiry: first.expiry?.toISOString().split("T")[0] || "",
         right: (first.right || "C") as "C" | "P",
         openTrade: openTrade
