@@ -19,6 +19,19 @@ import type {
   CurrentOptionPosition,
 } from "@assup/shared";
 
+/**
+ * Check if an expiry date has passed (is before today, not including today).
+ * Options expiring today are still trading and shouldn't be marked as expired
+ * until the next business day when settlement occurs.
+ */
+function hasExpiryPassed(expiryDate: Date): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiry = new Date(expiryDate);
+  expiry.setHours(0, 0, 0, 0);
+  return expiry < today;
+}
+
 class ProfitService {
   /**
    * Get monthly profit summaries for a date range
@@ -84,7 +97,6 @@ class ProfitService {
     }
 
     // Calculate options profit by grouping trades
-    const now = new Date();
     const optionGroups = this.groupOptionTrades(optionTrades);
     for (const group of optionGroups) {
       // Determine which month this trade belongs to (close date or expiry for worthless/assigned)
@@ -94,11 +106,11 @@ class ProfitService {
         tradeDate = new Date(group.closeTrade.tradeDate);
       } else if (group.expiry) {
         // No close trade - only count if expiry has passed (actually expired/assigned)
+        // Options expiring today are still open until settlement (next business day)
         const expiryDate = new Date(group.expiry);
-        if (expiryDate < now) {
+        if (hasExpiryPassed(expiryDate)) {
           tradeDate = expiryDate;
         }
-        // If expiry is in the future, don't count it yet - it's still an open position
       }
 
       if (tradeDate) {
@@ -348,7 +360,6 @@ class ProfitService {
     const optionGroups = this.groupOptionTrades(relevantTrades, assignmentMap);
 
     // Filter to trades that closed or expired in this month
-    const now = new Date();
     const monthGroups = optionGroups.filter((g) => {
       // If there's a close trade, check if it's in this month
       if (g.closeTrade) {
@@ -360,13 +371,13 @@ class ProfitService {
       }
       // If no close trade, check if option expired in this month AND expiry has passed
       // (don't show future expirations as "expired" - those are still open positions)
+      // Options expiring today are still open until settlement (next business day)
       if (g.expiry) {
         const expiryDate = new Date(g.expiry);
         const expiryInThisMonth =
           expiryDate.getFullYear() === year &&
           expiryDate.getMonth() + 1 === month;
-        const expiryHasPassed = expiryDate < now;
-        return expiryInThisMonth && expiryHasPassed;
+        return expiryInThisMonth && hasExpiryPassed(expiryDate);
       }
       return false;
     });
@@ -749,9 +760,10 @@ class ProfitService {
         }
       } else {
         // No close trade - check if option has expired
+        // Options expiring today are still open until settlement (next business day)
         const first = sorted[0];
         const expiryDate = first.expiry;
-        const hasExpired = expiryDate && expiryDate < new Date();
+        const hasExpired = expiryDate && hasExpiryPassed(expiryDate);
 
         if (hasExpired) {
           // Option expired worthless (or was assigned)
