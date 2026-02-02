@@ -71,3 +71,37 @@ export interface UnderinvestedResult {
   underinvested: UnderinvestedClass[];
   totalPortfolioValue: number;
 }
+
+export type ScanJobStatus = "running" | "completed" | "failed" | "cancelled";
+
+export interface ScanJob {
+  id: string;
+  presetId: string | null;
+  presetName: string;
+  criteria: ScannerCriteria;
+  status: ScanJobStatus;
+  totalSymbols: number;
+  scannedSymbols: number;
+  opportunityCount: number;
+  bestAnnualReturn: number | null;
+  bestPremiumPct: number | null;
+  opportunities: OptionOpportunity[];
+  startedAt: string;
+  completedAt: string | null;
+  expiresAt: string;
+  errorMessage: string | null;
+}
+
+export interface ScanJobCreateInput {
+  presetId?: string;
+  criteria: ScannerCriteria;
+}
+
+export interface ScanJobProgress {
+  jobId: string;
+  scannedSymbols: number;
+  totalSymbols: number;
+  opportunityCount: number;
+  symbol?: string;
+  assetClass?: string;
+}
