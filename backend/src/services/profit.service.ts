@@ -666,6 +666,7 @@ class ProfitService {
       tradeId: string;
       symbol: string;
       description: string | null;
+      conId: number | null;
       strike: number | null;
       expiry: Date | null;
       right: string | null;
@@ -681,13 +682,18 @@ class ProfitService {
     }>,
     assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
   ): OptionTradeGroup[] {
-    // First, group by EXACT contract key (including strike)
+    // First, group by conId if available (most reliable - survives strike adjustments)
+    // Fall back to exact key (underlying-strike-expiry-right) when conId not available
     const exactGroups = new Map<string, typeof trades>();
 
     for (const trade of trades) {
-      const key = `${trade.underlying || trade.symbol}-${trade.strike}-${
-        trade.expiry?.toISOString().split("T")[0]
-      }-${trade.right}`;
+      // Prefer conId for grouping (unique contract identifier, never changes)
+      // Fall back to composite key when conId not available
+      const key = trade.conId
+        ? `conId:${trade.conId}`
+        : `${trade.underlying || trade.symbol}-${trade.strike}-${
+            trade.expiry?.toISOString().split("T")[0]
+          }-${trade.right}`;
 
       if (!exactGroups.has(key)) {
         exactGroups.set(key, []);
@@ -728,28 +734,47 @@ class ProfitService {
       }
     }
 
-    // Try to match open-only groups with close-only groups by relaxed key
-    // Only match if strikes are within tolerance (handles corporate action adjustments)
+    // Try to match open-only groups with close-only groups
+    // Use conId if both have it, otherwise use relaxed matching with strike tolerance
     const STRIKE_TOLERANCE_PERCENT = 0.02; // 2% tolerance for strike adjustment
     const STRIKE_TOLERANCE_ABS = 1.0; // Max $1 absolute difference
 
     const matchedCloseGroups = new Set<string>();
 
     for (const openGroup of openOnlyGroups) {
-      const [underlying, strike, expiry, right] = openGroup.key.split("-");
-      const openStrike = parseFloat(strike);
+      // Get trade details from first trade in group
+      const openTrade = openGroup.trades[0];
+      const openUnderlying = openTrade.underlying || openTrade.symbol.split(" ")[0];
+      const openExpiry = openTrade.expiry?.toISOString().split("T")[0];
+      const openRight = openTrade.right;
+      const openStrike = openTrade.strike || 0;
+      const openConId = openTrade.conId;
 
       // Look for matching close-only group
       for (const closeGroup of closeOnlyGroups) {
         if (matchedCloseGroups.has(closeGroup.key)) continue;
 
-        const [cUnderlying, cStrike, cExpiry, cRight] = closeGroup.key.split("-");
-        const closeStrike = parseFloat(cStrike);
+        const closeTrade = closeGroup.trades[0];
+        const closeUnderlying = closeTrade.underlying || closeTrade.symbol.split(" ")[0];
+        const closeExpiry = closeTrade.expiry?.toISOString().split("T")[0];
+        const closeRight = closeTrade.right;
+        const closeStrike = closeTrade.strike || 0;
+        const closeConId = closeTrade.conId;
 
-        // Check if this could be the same contract with adjusted strike
-        if (underlying === cUnderlying && expiry === cExpiry && right === cRight) {
+        // If both have conId, use that for matching (most reliable)
+        if (openConId && closeConId) {
+          if (openConId === closeConId) {
+            openGroup.trades.push(...closeGroup.trades);
+            matchedCloseGroups.add(closeGroup.key);
+            break;
+          }
+          continue; // Different conIds, definitely not the same contract
+        }
+
+        // Fall back to relaxed matching: same underlying/expiry/right with strike tolerance
+        if (openUnderlying === closeUnderlying && openExpiry === closeExpiry && openRight === closeRight) {
           const strikeDiff = Math.abs(openStrike - closeStrike);
-          const percentDiff = strikeDiff / openStrike;
+          const percentDiff = openStrike > 0 ? strikeDiff / openStrike : 0;
 
           if (strikeDiff <= STRIKE_TOLERANCE_ABS || percentDiff <= STRIKE_TOLERANCE_PERCENT) {
             // Merge the groups
