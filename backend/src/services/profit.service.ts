@@ -681,22 +681,99 @@ class ProfitService {
     }>,
     assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
   ): OptionTradeGroup[] {
-    // Group by contract key
-    // Use relaxed key (without strike) to handle strike adjustments from corporate actions
-    // (e.g., special dividends can adjust a $55 strike to $54.70, but it's still the same contract)
-    const groups = new Map<string, typeof trades>();
+    // First, group by EXACT contract key (including strike)
+    const exactGroups = new Map<string, typeof trades>();
 
     for (const trade of trades) {
-      // Relaxed key: underlying-expiry-right (without strike)
-      // This allows matching trades where strike was adjusted due to corporate actions
-      const key = `${trade.underlying || trade.symbol}-${
+      const key = `${trade.underlying || trade.symbol}-${trade.strike}-${
         trade.expiry?.toISOString().split("T")[0]
       }-${trade.right}`;
 
-      if (!groups.has(key)) {
-        groups.set(key, []);
+      if (!exactGroups.has(key)) {
+        exactGroups.set(key, []);
       }
-      groups.get(key)!.push(trade);
+      exactGroups.get(key)!.push(trade);
+    }
+
+    // Identify groups that might need strike adjustment matching:
+    // - Groups with only opens (no closes) might have closes with adjusted strike
+    // - Groups with only closes (no opens) might have opens with original strike
+    const openOnlyGroups: Array<{ key: string; trades: typeof trades }> = [];
+    const closeOnlyGroups: Array<{ key: string; trades: typeof trades }> = [];
+    const completeGroups: Array<{ key: string; trades: typeof trades }> = [];
+
+    for (const [key, groupTrades] of exactGroups) {
+      const hasOpen = groupTrades.some(t => t.openClose === "O" ||
+        (t.openClose === null && groupTrades.indexOf(t) === 0));
+      const hasClose = groupTrades.some(t => t.openClose === "C" ||
+        (t.openClose === null && groupTrades.some(other =>
+          other !== t && (other.openClose === "O" || groupTrades.indexOf(other) < groupTrades.indexOf(t))
+        )));
+
+      // Check if group has both opens and closes by looking at trade directions
+      const sorted = [...groupTrades].sort((a, b) => a.tradeDate.getTime() - b.tradeDate.getTime());
+      const hasSells = sorted.some(t => t.buySell === "SELL");
+      const hasBuys = sorted.some(t => t.buySell === "BUY");
+      const hasBothDirections = hasSells && hasBuys;
+
+      if (hasBothDirections) {
+        // Has both opens and closes - complete group, process normally
+        completeGroups.push({ key, trades: groupTrades });
+      } else if (hasSells) {
+        // Only sells - likely opens without closes (may need strike adjustment matching)
+        openOnlyGroups.push({ key, trades: groupTrades });
+      } else {
+        // Only buys - likely closes without opens (may need strike adjustment matching)
+        closeOnlyGroups.push({ key, trades: groupTrades });
+      }
+    }
+
+    // Try to match open-only groups with close-only groups by relaxed key
+    // Only match if strikes are within tolerance (handles corporate action adjustments)
+    const STRIKE_TOLERANCE_PERCENT = 0.02; // 2% tolerance for strike adjustment
+    const STRIKE_TOLERANCE_ABS = 1.0; // Max $1 absolute difference
+
+    const matchedCloseGroups = new Set<string>();
+
+    for (const openGroup of openOnlyGroups) {
+      const [underlying, strike, expiry, right] = openGroup.key.split("-");
+      const openStrike = parseFloat(strike);
+
+      // Look for matching close-only group
+      for (const closeGroup of closeOnlyGroups) {
+        if (matchedCloseGroups.has(closeGroup.key)) continue;
+
+        const [cUnderlying, cStrike, cExpiry, cRight] = closeGroup.key.split("-");
+        const closeStrike = parseFloat(cStrike);
+
+        // Check if this could be the same contract with adjusted strike
+        if (underlying === cUnderlying && expiry === cExpiry && right === cRight) {
+          const strikeDiff = Math.abs(openStrike - closeStrike);
+          const percentDiff = strikeDiff / openStrike;
+
+          if (strikeDiff <= STRIKE_TOLERANCE_ABS || percentDiff <= STRIKE_TOLERANCE_PERCENT) {
+            // Merge the groups
+            openGroup.trades.push(...closeGroup.trades);
+            matchedCloseGroups.add(closeGroup.key);
+            break;
+          }
+        }
+      }
+
+      completeGroups.push(openGroup);
+    }
+
+    // Add remaining unmatched close-only groups
+    for (const closeGroup of closeOnlyGroups) {
+      if (!matchedCloseGroups.has(closeGroup.key)) {
+        completeGroups.push(closeGroup);
+      }
+    }
+
+    // Now use the merged groups for processing
+    const groups = new Map<string, typeof trades>();
+    for (const group of completeGroups) {
+      groups.set(group.key, group.trades);
     }
 
     // Create trade groups
