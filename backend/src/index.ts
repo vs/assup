@@ -12,10 +12,12 @@ import positionsRouter from "./routes/positions.js";
 import securityAssignmentsRouter from "./routes/securityAssignments.js";
 import watchlistsRouter from "./routes/watchlists.js";
 import ordersRouter from "./routes/orders.js";
+import scannerJobsRouter from "./routes/scannerJobs.js";
 import scannerRouter from "./routes/scanner.js";
 import settingsRouter from "./routes/settings.js";
 import historicalDataRouter from "./routes/historicalData.js";
 import profitRouter from "./routes/profit.js";
+import { scanJobService } from "./services/scanJob.service.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +32,7 @@ app.use("/api/positions", positionsRouter);
 app.use("/api/security-assignments", securityAssignmentsRouter);
 app.use("/api/watchlists", watchlistsRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/api/scanner/jobs", scannerJobsRouter);
 app.use("/api/scanner", scannerRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/historical", historicalDataRouter);
@@ -133,4 +136,5 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  scanJobService.init();
 });

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api";
-import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass, OptionTypeFilter } from "@assup/shared";
+import type { ScannerCriteria, ScannerPreset, AssetClass, OptionTypeFilter } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
-import { GroupedResultsTable, SellOptionDialog } from "@/components/scanner";
+import { SellOptionDialog, ScanJobList } from "@/components/scanner";
+import { useScanJobs } from "@/hooks";
 import type { ExtendedOptionOpportunity } from "@/components/scanner/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Search, Save, X, Check, ChevronsUpDown, Trash2, Settings2 } from "lucide-react";
@@ -64,32 +64,6 @@ function normalizePresetCriteria(criteria: ScannerCriteria): ScannerCriteria {
   };
 }
 
-const STORAGE_KEY = "scanner-results";
-
-function loadPersistedResults(): ScanResult | null {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored) as ScanResult;
-    }
-  } catch (err) {
-    console.error("Failed to load persisted scan results:", err);
-  }
-  return null;
-}
-
-function persistResults(result: ScanResult | null) {
-  try {
-    if (result) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(result));
-    } else {
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  } catch (err) {
-    console.error("Failed to persist scan results:", err);
-  }
-}
-
 export function ScannerPage() {
   const [searchParams] = useSearchParams();
   const [criteria, setCriteria] = useState<ScannerCriteria>(() => {
@@ -106,26 +80,20 @@ export function ScannerPage() {
   });
   const [presets, setPresets] = useState<ScannerPreset[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(loadPersistedResults);
   const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scanProgress, setScanProgress] = useState<{
-    status: string;
-    message: string;
-    currentSymbol?: number;
-    totalSymbols?: number;
-    symbol?: string;
-    assetClass?: string;
-    expirations?: string;
-    strikeRange?: string;
-    contractCount?: number;
-  } | null>(null);
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [symbolComboboxOpen, setSymbolComboboxOpen] = useState(false);
   const [presetsPopoverOpen, setPresetsPopoverOpen] = useState(false);
   const [sellDialogOpen, setSellDialogOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<ExtendedOptionOpportunity | null>(null);
+
+  const {
+    jobs,
+    createJob,
+    cancelJob,
+    deleteJob,
+  } = useScanJobs();
 
   function handleSellClick(opportunity: ExtendedOptionOpportunity) {
     setSelectedOpportunity(opportunity);
@@ -200,65 +168,36 @@ export function ScannerPage() {
     }
   }
 
-  async function runScan() {
+  async function handleScan() {
     try {
-      setScanning(true);
       setError(null);
-      setScanProgress({ status: "starting", message: "Initializing scan..." });
 
-      // Clear previous results when starting a new scan
-      setScanResult(null);
-      persistResults(null);
+      // Get preset info if one is selected
+      const selectedPreset = presets.find((p) =>
+        JSON.stringify(p.criteria) === JSON.stringify(criteria)
+      );
 
-      // Track interim results and scanned symbols
-      const interimOpportunities: ScanResult["opportunities"] = [];
-      const scannedSymbols: string[] = [];
-
-      // Subscribe to SSE for progress updates
-      const eventSource = new EventSource("/api/updates/stream");
-
-      eventSource.addEventListener("message", (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "scanner") {
-            setScanProgress(data.data);
-
-            // Handle interim results when a symbol is complete
-            if (data.data.status === "symbol_complete" && data.data.opportunities) {
-              // Add new opportunities to interim results
-              interimOpportunities.push(...data.data.opportunities);
-              if (data.data.symbol && !scannedSymbols.includes(data.data.symbol)) {
-                scannedSymbols.push(data.data.symbol);
-              }
-
-              // Update scan result with interim data
-              const interimResult: ScanResult = {
-                criteria,
-                targetAssetClasses: criteria.targetAssetClasses || [],
-                symbolsScanned: [...scannedSymbols],
-                opportunities: [...interimOpportunities],
-              };
-              setScanResult(interimResult);
-              persistResults(interimResult);
-            }
-          }
-        } catch (err) {
-          console.error("Failed to parse SSE message:", err);
-        }
+      await createJob({
+        presetId: selectedPreset?.id,
+        criteria,
       });
 
-      // Run the scan - this returns the final complete result
-      const result = await api.scanner.scan(criteria);
-      setScanResult(result);
-      persistResults(result);
-
-      // Clean up SSE connection
-      eventSource.close();
+      // No longer need to set scanning/scanResult - job list handles it
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Scan failed");
-    } finally {
-      setScanning(false);
-      setScanProgress(null);
+      setError(err instanceof Error ? err.message : "Failed to start scan");
+    }
+  }
+
+  async function handleClearCompleted() {
+    const completedJobs = jobs.filter(
+      (j) => j.status !== "running"
+    );
+    for (const job of completedJobs) {
+      try {
+        await deleteJob(job.id);
+      } catch (err) {
+        console.error("Failed to delete job:", err);
+      }
     }
   }
 
@@ -624,98 +563,21 @@ export function ScannerPage() {
             </p>
           </div>
 
-          <Button onClick={runScan} disabled={scanning}>
+          <Button onClick={handleScan} disabled={jobs.some((j) => j.status === "running")}>
             <Search className="h-4 w-4 mr-2" />
-            {scanning ? "Scanning..." : "Run Scan"}
+            {jobs.some((j) => j.status === "running") ? "Scanning..." : "Run Scan"}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Scan Progress */}
-      {scanning && scanProgress && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">{scanProgress.message}</span>
-                {scanProgress.currentSymbol && scanProgress.totalSymbols && (
-                  <span className="text-muted-foreground">
-                    {scanProgress.currentSymbol} / {scanProgress.totalSymbols}
-                  </span>
-                )}
-              </div>
-
-              <Progress
-                value={
-                  scanProgress.currentSymbol && scanProgress.totalSymbols
-                    ? (scanProgress.currentSymbol / scanProgress.totalSymbols) * 100
-                    : 0
-                }
-              />
-
-              {scanProgress.status === "fetching" && (
-                <div className="text-sm text-muted-foreground space-y-1">
-                  {scanProgress.symbol && (
-                    <div>
-                      Symbol: <span className="font-medium">{scanProgress.symbol}</span>
-                      {scanProgress.assetClass && (
-                        <span className="ml-2">({scanProgress.assetClass})</span>
-                      )}
-                    </div>
-                  )}
-                  {scanProgress.expirations && (
-                    <div>Expirations: {scanProgress.expirations}</div>
-                  )}
-                  {scanProgress.strikeRange && (
-                    <div>Strikes: {scanProgress.strikeRange}</div>
-                  )}
-                  {scanProgress.contractCount !== undefined && (
-                    <div>Contracts: {scanProgress.contractCount}</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Scan Results */}
-      {scanResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Scan Results</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {scanResult.message && (
-              <div className="bg-muted px-4 py-3 rounded-lg mb-4">
-                <p className="text-sm">{scanResult.message}</p>
-              </div>
-            )}
-
-            <div className="mb-4">
-              <p className="text-sm text-muted-foreground">
-                Scanned {scanResult.symbolsScanned.length} symbols:{" "}
-                {scanResult.symbolsScanned.join(", ") || "None"}
-              </p>
-            </div>
-
-            {scanResult.opportunities.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                No opportunities found matching your criteria.
-                <br />
-                <span className="text-sm">
-                  Tip: Options scanning requires active market data subscriptions in TWS.
-                </span>
-              </p>
-            ) : (
-              <GroupedResultsTable
-                opportunities={scanResult.opportunities}
-                onSellClick={handleSellClick}
-              />
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Scan Jobs */}
+      <ScanJobList
+        jobs={jobs}
+        onCancel={cancelJob}
+        onDelete={deleteJob}
+        onClearAll={handleClearCompleted}
+        onSellClick={handleSellClick}
+      />
 
       {/* Sell Option Dialog */}
       <SellOptionDialog
