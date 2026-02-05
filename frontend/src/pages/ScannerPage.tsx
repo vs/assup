@@ -4,7 +4,8 @@ import { api } from "@/api";
 import type { ScannerCriteria, ScannerPreset, ScanResult, AssetClass, OptionTypeFilter } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
-import { GroupedResultsTable, SellOptionDialog } from "@/components/scanner";
+import { GroupedResultsTable, SellOptionDialog, ScanJobList } from "@/components/scanner";
+import { useScanJobs } from "@/hooks";
 import type { ExtendedOptionOpportunity } from "@/components/scanner/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,6 +128,14 @@ export function ScannerPage() {
   const [sellDialogOpen, setSellDialogOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<ExtendedOptionOpportunity | null>(null);
 
+  const {
+    jobs,
+    loading: jobsLoading,
+    createJob,
+    cancelJob,
+    deleteJob,
+  } = useScanJobs();
+
   function handleSellClick(opportunity: ExtendedOptionOpportunity) {
     setSelectedOpportunity(opportunity);
     setSellDialogOpen(true);
@@ -197,6 +206,39 @@ export function ScannerPage() {
         specificSymbol: prev.specificSymbol,
         targetAssetClasses: prev.targetAssetClasses,
       }));
+    }
+  }
+
+  async function handleScan() {
+    try {
+      setError(null);
+
+      // Get preset info if one is selected
+      const selectedPreset = presets.find((p) =>
+        JSON.stringify(p.criteria) === JSON.stringify(criteria)
+      );
+
+      await createJob({
+        presetId: selectedPreset?.id,
+        criteria,
+      });
+
+      // No longer need to set scanning/scanResult - job list handles it
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start scan");
+    }
+  }
+
+  async function handleClearCompleted() {
+    const completedJobs = jobs.filter(
+      (j) => j.status !== "running"
+    );
+    for (const job of completedJobs) {
+      try {
+        await deleteJob(job.id);
+      } catch (err) {
+        console.error("Failed to delete job:", err);
+      }
     }
   }
 
@@ -624,12 +666,21 @@ export function ScannerPage() {
             </p>
           </div>
 
-          <Button onClick={runScan} disabled={scanning}>
+          <Button onClick={handleScan} disabled={jobs.some((j) => j.status === "running")}>
             <Search className="h-4 w-4 mr-2" />
-            {scanning ? "Scanning..." : "Run Scan"}
+            {jobs.some((j) => j.status === "running") ? "Scanning..." : "Run Scan"}
           </Button>
         </CardContent>
       </Card>
+
+      {/* Scan Jobs */}
+      <ScanJobList
+        jobs={jobs}
+        onCancel={cancelJob}
+        onDelete={deleteJob}
+        onClearAll={handleClearCompleted}
+        onSellClick={handleSellClick}
+      />
 
       {/* Scan Progress */}
       {scanning && scanProgress && (
