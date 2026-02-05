@@ -34,7 +34,6 @@ export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowP
   const isRunning = job.status === "running";
   const isCompleted = job.status === "completed";
   const isFailed = job.status === "failed";
-  const isCancelled = job.status === "cancelled";
 
   const progressPercent =
     job.totalSymbols > 0 ? Math.round((job.scannedSymbols / job.totalSymbols) * 100) : 0;
