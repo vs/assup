@@ -3,7 +3,7 @@
  */
 
 import { request } from "./client";
-import type { ScannerPreset, ScannerCriteria, ScanResult, UnderinvestedClass } from "@assup/shared";
+import type { ScannerPreset, ScannerCriteria, ScanResult, UnderinvestedClass, ScanJob, ScanJobCreateInput } from "@assup/shared";
 
 export interface ScannerPresetCreateInput {
   name: string;
@@ -49,4 +49,24 @@ export const scannerApi = {
     request<{ underinvested: UnderinvestedClass[]; totalPortfolioValue: number }>(
       "/api/scanner/underinvested"
     ),
+
+  jobs: {
+    list: () => request<ScanJob[]>("/api/scanner/jobs"),
+
+    get: (id: string) => request<ScanJob>(`/api/scanner/jobs/${id}`),
+
+    create: (data: ScanJobCreateInput) =>
+      request<ScanJob>("/api/scanner/jobs", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    cancel: (id: string) =>
+      request<ScanJob>(`/api/scanner/jobs/${id}/cancel`, {
+        method: "POST",
+      }),
+
+    delete: (id: string) =>
+      request<void>(`/api/scanner/jobs/${id}`, { method: "DELETE" }),
+  },
 };
