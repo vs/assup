@@ -68,7 +68,7 @@ export function AccountSummaryCards({
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                 Put Exposure
-                <ExposureTooltip showStocks={false} />
+                <ExposureTooltip showStocks={false} optionType="put" />
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -88,7 +88,7 @@ export function AccountSummaryCards({
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                 Call Exposure
-                <ExposureTooltip showStocks={false} />
+                <ExposureTooltip showStocks={false} optionType="call" />
               </CardTitle>
             </CardHeader>
             <CardContent>
