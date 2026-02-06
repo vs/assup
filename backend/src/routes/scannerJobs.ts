@@ -366,6 +366,7 @@ async function executeJobScan(
                 delta: data.delta,
                 annualizedReturn,
                 premiumPercent,
+                underlyingPrice,
               });
             }
           }

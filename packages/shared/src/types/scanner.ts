@@ -57,6 +57,7 @@ export interface OptionOpportunity {
   delta?: number;
   annualizedReturn: number;
   premiumPercent: number;
+  underlyingPrice?: number;
 }
 
 export interface ScanResult {

@@ -54,10 +54,34 @@ export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowP
         ? "text-red-500"
         : "text-yellow-500";
 
-  // Extend opportunities with underlyingPrice for GroupedResultsTable
+  // Format the scan target description
+  const getScanTarget = () => {
+    if (job.criteria.specificSymbol) {
+      return job.criteria.specificSymbol;
+    }
+    if (job.criteria.targetAssetClasses && job.criteria.targetAssetClasses.length > 0) {
+      // We don't have asset class names here, just IDs - show count
+      const count = job.criteria.targetAssetClasses.length;
+      return `${count} asset class${count > 1 ? "es" : ""}`;
+    }
+    return "All symbols";
+  };
+
+  // Format the start time
+  const formatStartTime = () => {
+    const date = new Date(job.startedAt);
+    return date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // Opportunities now include underlyingPrice from backend
   const extendedOpportunities: ExtendedOptionOpportunity[] = job.opportunities.map((opp) => ({
     ...opp,
-    underlyingPrice: undefined, // Not stored in job results currently
+    underlyingPrice: opp.underlyingPrice,
   }));
 
   return (
@@ -80,9 +104,16 @@ export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowP
           className={cn("h-5 w-5", statusColor, isRunning && "animate-spin")}
         />
 
-        {/* Preset name */}
-        <div className="font-medium flex-1 min-w-0">
-          <span className="truncate">{job.presetName}</span>
+        {/* Job title: time + target */}
+        <div className="flex-1 min-w-0">
+          <div className="font-medium truncate">
+            {formatStartTime()} · {getScanTarget()}
+          </div>
+          {job.presetName !== "Manual Scan" && (
+            <div className="text-xs text-muted-foreground truncate">
+              {job.presetName}
+            </div>
+          )}
         </div>
 
         {/* Progress (if running) */}
