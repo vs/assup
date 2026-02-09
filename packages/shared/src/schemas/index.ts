@@ -13,3 +13,4 @@ export * from "./settings.schema.js";
 export * from "./historical.schema.js";
 export * from "./order.schema.js";
 export * from "./profit.schema.js";
+export * from "./taxes.schema.js";
