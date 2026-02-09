@@ -87,13 +87,48 @@ class ProfitService {
       startDate ||
       new Date(end.getFullYear(), end.getMonth() - 11, 1);
 
-    // Get all option trades in range
-    const optionTrades = await prisma.importedTrade.findMany({
+    // Find closing trades and expired options in range
+    // This identifies which contracts were realized in this period
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
+    const closingTrades = await prisma.importedTrade.findMany({
       where: {
-        tradeDate: { gte: start, lte: end },
+        secType: "OPT",
+        OR: [
+          // Trades with close date in range
+          {
+            tradeDate: { gte: start, lte: end },
+            openClose: "C",
+          },
+          // Trades that expired in range (expiry in the past)
+          {
+            expiry: { gte: start, lte: end < today ? end : today },
+            openClose: "O",
+          },
+        ],
+      },
+    });
+
+    // Get unique contract keys for trades that closed in this period
+    const contractKeys = new Set(
+      closingTrades.map(
+        (t) => `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
+      )
+    );
+
+    // Fetch ALL option trades for these contracts (including opens from previous periods)
+    const allOptionTrades = await prisma.importedTrade.findMany({
+      where: {
         secType: "OPT",
       },
       orderBy: { tradeDate: "asc" },
+    });
+
+    // Filter to trades matching our contract keys
+    const optionTrades = allOptionTrades.filter((t) => {
+      const key = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      return contractKeys.has(key);
     });
 
     // Get all stock trades in range
