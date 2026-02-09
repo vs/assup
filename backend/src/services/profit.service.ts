@@ -1487,6 +1487,7 @@ class ProfitService {
         realizedPnl: null,
         wasAssigned: false,
         assignmentDate: null,
+        currency: contract.currency || "USD",
       };
 
       trades.push(trade);
