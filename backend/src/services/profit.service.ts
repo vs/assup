@@ -323,12 +323,26 @@ class ProfitService {
     });
 
     // Get all stock trades (we need full history to pair buys with sells)
-    const allStockTrades = await prisma.importedTrade.findMany({
+    let allStockTrades = await prisma.importedTrade.findMany({
       where: {
         secType: "STK",
       },
       orderBy: { tradeDate: "asc" },
     });
+
+    // Merge today's stock executions from TWS (for current month only)
+    if (isCurrentMonth) {
+      const todayStockExecutions = await this.getTodayStockExecutions();
+      if (todayStockExecutions.length > 0) {
+        const existingTradeIds = new Set(allStockTrades.map((t) => t.tradeId).filter(Boolean));
+        const newTrades = todayStockExecutions.filter(
+          (t) => !t.tradeId || !existingTradeIds.has(t.tradeId)
+        );
+        allStockTrades = [...allStockTrades, ...newTrades].sort(
+          (a, b) => a.tradeDate.getTime() - b.tradeDate.getTime()
+        );
+      }
+    }
 
     // Get stock symbols for asset class lookup
     const stockSymbols = new Set(allStockTrades.map((t) => t.symbol));
@@ -393,6 +407,85 @@ class ProfitService {
       }
       return false;
     });
+
+    // Add assignment premium to stock trades
+    // When a PUT is assigned, we receive shares at the strike price, but we also keep the premium
+    // The stock trade's cost basis from IBKR only reflects the strike price, not the premium
+    // So we need to add the PUT premium to the stock profit
+    //
+    // We look at raw imported trades to find assignments:
+    // 1. Find stock BUY trades (from assignment)
+    // 2. Find PUT SELL trades (open) that match: same underlying, strike = stock price, expiry = stock buy date
+    // 3. The PUT premium received is added to the stock profit
+    for (const stockGroup of monthStockGroups) {
+      // Find stock BUYs for this symbol that came from assignments
+      const stockBuys = allStockTrades.filter(
+        (t) => t.symbol === stockGroup.symbol && t.buySell === "BUY"
+      );
+
+      if (stockBuys.length === 0) continue;
+
+      // For each stock BUY, find matching PUT SELL trades
+      let totalAssignmentPremium = 0;
+      let sharesAccountedFor = 0;
+      const targetShares = stockGroup.quantity;
+
+      // Fetch PUT trades that were assigned (marked in database)
+      const assignedPutTrades = await prisma.importedTrade.findMany({
+        where: {
+          underlying: stockGroup.symbol,
+          secType: "OPT",
+          right: "P",
+          buySell: "SELL",
+          wasAssigned: true,
+        },
+        orderBy: { tradeDate: "desc" },
+      });
+
+      for (const stockBuy of stockBuys) {
+        if (sharesAccountedFor >= targetShares) break;
+
+        const buyDate = stockBuy.tradeDate.toISOString().split("T")[0];
+        const buyPrice = stockBuy.tradePrice;
+        const buyShares = Math.abs(stockBuy.quantity);
+
+        // Find PUT SELL trades that match this assignment
+        // Match criteria: strike = buy price, expiry = buy date
+        const matchingPuts = assignedPutTrades.filter((put) => {
+          const putExpiry = put.expiry?.toISOString().split("T")[0];
+          const putStrike = put.strike || 0;
+          return putExpiry === buyDate && Math.abs(putStrike - buyPrice) < 0.01;
+        });
+
+        for (const put of matchingPuts) {
+          if (sharesAccountedFor >= targetShares) break;
+
+          const putContracts = Math.abs(put.quantity);
+          const putShares = putContracts * 100;
+          const putPremium = put.proceeds; // Premium received (positive for SELL)
+
+          // Calculate how many shares from this PUT apply
+          const applicableShares = Math.min(
+            putShares,
+            targetShares - sharesAccountedFor,
+            buyShares
+          );
+          const applicableContracts = applicableShares / 100;
+
+          // Prorate the premium based on contracts used
+          const premiumPerContract = putContracts > 0 ? putPremium / putContracts : 0;
+          totalAssignmentPremium += premiumPerContract * applicableContracts;
+          sharesAccountedFor += applicableShares;
+        }
+      }
+
+      if (totalAssignmentPremium > 0) {
+        // Adjust the stock profit to include the PUT premium
+        stockGroup.profit += totalAssignmentPremium;
+        // Also adjust cost basis (reduce it by premium received)
+        stockGroup.costBasis -= totalAssignmentPremium;
+      }
+    }
 
     // Categorize cash transactions
     const dividends: CashTransaction[] = [];
@@ -1119,9 +1212,67 @@ class ProfitService {
 
     try {
       const { executions, commissions } = await ibkrService.getExecutions();
-      return this.convertExecutionsToTrades(executions, commissions);
+      return this.convertExecutionsToTrades(executions, commissions, "OPT");
     } catch (err) {
       console.error("Failed to fetch today's executions:", err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch today's stock executions from TWS and calculate realizedPnl from cost basis
+   */
+  async getTodayStockExecutions(): Promise<ImportedTrade[]> {
+    if (!ibkrService.isConnected()) {
+      return [];
+    }
+
+    try {
+      const { executions, commissions } = await ibkrService.getExecutions();
+      const stockTrades = this.convertExecutionsToTrades(executions, commissions, "STK");
+
+      // For SELL trades, we need to calculate realizedPnl from cost basis
+      // Look up cost basis from existing BUY trades in the database
+      const sellTrades = stockTrades.filter((t) => t.buySell === "SELL");
+      if (sellTrades.length === 0) {
+        return stockTrades;
+      }
+
+      const symbols = [...new Set(sellTrades.map((t) => t.symbol))];
+      const buyTrades = await prisma.importedTrade.findMany({
+        where: {
+          symbol: { in: symbols },
+          secType: "STK",
+          buySell: "BUY",
+        },
+        orderBy: { tradeDate: "asc" },
+      });
+
+      // Build cost basis per symbol using FIFO
+      const costBasisMap = new Map<string, { totalQty: number; totalCost: number }>();
+      for (const buy of buyTrades) {
+        const existing = costBasisMap.get(buy.symbol) || { totalQty: 0, totalCost: 0 };
+        existing.totalQty += Math.abs(buy.quantity);
+        existing.totalCost += Math.abs(buy.quantity) * buy.tradePrice + buy.commission;
+        costBasisMap.set(buy.symbol, existing);
+      }
+
+      // Calculate realizedPnl for each sell trade
+      for (const sell of sellTrades) {
+        const costInfo = costBasisMap.get(sell.symbol);
+        if (costInfo && costInfo.totalQty > 0) {
+          const avgCostPerShare = costInfo.totalCost / costInfo.totalQty;
+          const sellQty = Math.abs(sell.quantity);
+          const costBasis = avgCostPerShare * sellQty;
+          const sellProceeds = sellQty * sell.tradePrice - sell.commission;
+          sell.costBasis = costBasis;
+          sell.realizedPnl = sellProceeds - costBasis;
+        }
+      }
+
+      return stockTrades;
+    } catch (err) {
+      console.error("Failed to fetch today's stock executions:", err);
       return [];
     }
   }
@@ -1132,7 +1283,8 @@ class ProfitService {
    */
   private convertExecutionsToTrades(
     executions: ExecutionDetail[],
-    commissions: Map<string, CommissionReport>
+    commissions: Map<string, CommissionReport>,
+    secTypeFilter: "OPT" | "STK" = "OPT"
   ): ImportedTrade[] {
     const trades: ImportedTrade[] = [];
 
@@ -1141,8 +1293,8 @@ class ProfitService {
     const groupedByOrder = new Map<string, ExecutionDetail[]>();
 
     for (const exec of executions) {
-      // Only process options
-      if (exec.contract.secType !== "OPT") continue;
+      // Filter by security type
+      if (exec.contract.secType !== secTypeFilter) continue;
 
       // Group by order (everything except last part of execId)
       const execId = exec.execution.execId || "";
@@ -1179,7 +1331,7 @@ class ProfitService {
       }
 
       const avgPrice = totalShares > 0 ? totalValue / totalShares : 0;
-      const quantity = totalShares; // In contracts (not shares)
+      const quantity = totalShares; // In contracts (for options) or shares (for stocks)
 
       // Determine buy/sell and open/close
       const side = exec.side || ""; // "BOT" or "SLD"
@@ -1202,13 +1354,15 @@ class ProfitService {
         }
       }
 
-      // Parse expiry from contract
+      // Parse expiry from contract (only for options)
       const expiryStr = contract.lastTradeDateOrContractMonth || "";
-      const expiry = this.parseContractExpiry(expiryStr);
+      const expiry = secTypeFilter === "OPT" ? this.parseContractExpiry(expiryStr) : null;
 
       // Calculate proceeds (positive for selling, negative for buying)
-      // Options have a multiplier of 100
-      const multiplier = contract.multiplier ? parseInt(String(contract.multiplier)) : 100;
+      // Options have a multiplier of 100, stocks have multiplier of 1
+      const multiplier = secTypeFilter === "OPT"
+        ? (contract.multiplier ? parseInt(String(contract.multiplier)) : 100)
+        : 1;
       const proceeds = isBuy
         ? -(quantity * avgPrice * multiplier)
         : (quantity * avgPrice * multiplier);
@@ -1221,15 +1375,21 @@ class ProfitService {
         id: syntheticId,
         importBatchId: "tws-live",
         tradeId: exec.execId || syntheticId,
-        symbol: contract.localSymbol || contract.symbol || "",
+        symbol: secTypeFilter === "OPT"
+          ? (contract.localSymbol || contract.symbol || "")
+          : (contract.symbol || ""),
         description: null,
         conId: contract.conId || null,
-        secType: "OPT",
-        strike: contract.strike || null,
+        secType: secTypeFilter,
+        strike: secTypeFilter === "OPT" ? (contract.strike || null) : null,
         expiry,
-        right: (contract.right?.charAt(0).toUpperCase() || null) as "C" | "P" | null,
-        underlying: contract.symbol || null,
-        multiplier: contract.multiplier ? parseInt(String(contract.multiplier)) : 100,
+        right: secTypeFilter === "OPT"
+          ? ((contract.right?.charAt(0).toUpperCase() || null) as "C" | "P" | null)
+          : null,
+        underlying: secTypeFilter === "OPT" ? (contract.symbol || null) : null,
+        multiplier: secTypeFilter === "OPT"
+          ? (contract.multiplier ? parseInt(String(contract.multiplier)) : 100)
+          : 1,
         tradeDate,
         quantity: isBuy ? quantity : -quantity, // Negative for sells
         tradePrice: avgPrice,
