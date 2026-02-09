@@ -11,6 +11,13 @@ import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Collapsible,
@@ -150,31 +157,32 @@ export function ProfitPage() {
         loading={loading}
         onRefresh={() => loadData(selectedYear)}
         actions={
-          <Button onClick={() => setImportDialogOpen(true)}>Import Data</Button>
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedYear.toString()}
+              onValueChange={(value) => handleYearChange(parseInt(value, 10))}
+            >
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableYears.map((year) => (
+                  <SelectItem key={year} value={year.toString()}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={() => setImportDialogOpen(true)}>Import Data</Button>
+          </div>
         }
       />
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Year Selector and Summary Cards */}
+      {/* Summary Cards */}
       {monthlyData && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-muted-foreground">Year:</span>
-            <div className="flex gap-1">
-              {availableYears.map((year) => (
-                <Button
-                  key={year}
-                  variant={selectedYear === year ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleYearChange(year)}
-                >
-                  {year === currentYear ? `${year} (YTD)` : year}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <SummaryCard
             label="Options"
             value={monthlyData.totals.optionsProfit}
@@ -205,7 +213,6 @@ export function ProfitPage() {
             value={monthlyData.totals.total}
             className={monthlyData.totals.total >= 0 ? "text-green-600" : "text-red-600"}
           />
-          </div>
         </div>
       )}
 
@@ -253,7 +260,7 @@ export function ProfitPage() {
 
         {/* Imports Tab */}
         <TabsContent value="imports" className="space-y-4">
-          <ImportsCard imports={imports} onDelete={loadData} />
+          <ImportsCard imports={imports} onDelete={() => loadData(selectedYear)} />
         </TabsContent>
       </Tabs>
 
