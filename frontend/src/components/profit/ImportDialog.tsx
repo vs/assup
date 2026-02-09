@@ -148,7 +148,7 @@ export function ImportDialog({
                 <label>
                   <input
                     type="file"
-                    accept=".xml,.csv"
+                    accept=".xml,.csv,text/xml,application/xml,text/csv"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
