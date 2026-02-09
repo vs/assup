@@ -209,6 +209,9 @@ model ImportedTrade {
   wasAssigned    Boolean   @default(false) @map("was_assigned")
   assignmentDate DateTime? @map("assignment_date") @db.Date
 
+  // Currency for tax calculations
+  currency String @default("USD") @db.VarChar(3)
+
   // Relations
   importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
 
@@ -243,4 +246,19 @@ model CashTransaction {
   @@index([transactionDate])
   @@index([symbol])
   @@map("cash_transactions")
+}
+
+// Exchange Rates - cached CNB daily exchange rates for tax calculations
+model ExchangeRate {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @db.Date
+  currency  String   @db.VarChar(3)
+  rate      Decimal  @db.Decimal(10, 4)
+  source    String   @default("CNB")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([date, currency])
+  @@index([date])
+  @@index([currency])
+  @@map("exchange_rates")
 }
