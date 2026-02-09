@@ -34,6 +34,47 @@ function hasExpiryPassed(expiryDate: Date): boolean {
 
 class ProfitService {
   /**
+   * Get list of years that have profit data
+   */
+  async getAvailableYears(): Promise<number[]> {
+    // Get min/max dates from trades
+    const tradeStats = await prisma.importedTrade.aggregate({
+      _min: { tradeDate: true },
+      _max: { tradeDate: true },
+    });
+
+    // Get min/max dates from cash transactions
+    const cashStats = await prisma.cashTransaction.aggregate({
+      _min: { transactionDate: true },
+      _max: { transactionDate: true },
+    });
+
+    // Find overall min/max
+    const dates = [
+      tradeStats._min.tradeDate,
+      tradeStats._max.tradeDate,
+      cashStats._min.transactionDate,
+      cashStats._max.transactionDate,
+    ].filter((d): d is Date => d !== null);
+
+    if (dates.length === 0) {
+      // No data - return current year
+      return [new Date().getFullYear()];
+    }
+
+    const minYear = Math.min(...dates.map((d) => d.getFullYear()));
+    const maxYear = Math.max(...dates.map((d) => d.getFullYear()));
+
+    // Generate array of years from min to max
+    const years: number[] = [];
+    for (let year = maxYear; year >= minYear; year--) {
+      years.push(year);
+    }
+
+    return years;
+  }
+
+  /**
    * Get monthly profit summaries for a date range
    */
   async getMonthlyProfits(

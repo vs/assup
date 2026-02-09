@@ -69,6 +69,7 @@ const MONTH_NAMES = [
 ];
 
 export function ProfitPage() {
+  const currentYear = new Date().getFullYear();
   const [monthlyData, setMonthlyData] = useState<MonthlyProfitResponse | null>(null);
   const [currentMonth, setCurrentMonth] = useState<MonthProfitView | null>(null);
   const [nextMonth, setNextMonth] = useState<MonthProfitView | null>(null);
@@ -78,36 +79,50 @@ export function ProfitPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (year: number) => {
     try {
       setLoading(true);
-      const [monthly, current, next, importList] = await Promise.all([
-        api.profit.monthly(),
+      // Calculate date range for the selected year
+      const startDate = `${year}-01-01`;
+      const endDate = year === currentYear
+        ? new Date().toISOString().split("T")[0] // YTD for current year
+        : `${year}-12-31`; // Full year for past years
+
+      const [monthly, current, next, importList, yearsData] = await Promise.all([
+        api.profit.monthly({ startDate, endDate }),
         api.profit.current(),
         api.profit.next(),
         api.profit.imports.list(),
+        api.profit.years(),
       ]);
       setMonthlyData(monthly);
       setCurrentMonth(current);
       setNextMonth(next);
       setImports(importList.imports);
+      setAvailableYears(yearsData.years);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentYear]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadData(selectedYear);
+  }, [loadData, selectedYear]);
 
   const handleImportComplete = useCallback(() => {
-    loadData();
+    loadData(selectedYear);
     setImportDialogOpen(false);
-  }, [loadData]);
+  }, [loadData, selectedYear]);
+
+  const handleYearChange = useCallback((year: number) => {
+    setSelectedYear(year);
+  }, []);
 
   const toggleMonth = (key: string) => {
     setExpandedMonths((prev) => {
@@ -133,7 +148,7 @@ export function ProfitPage() {
         title="Profit"
         subtitle="Track your options, stocks, dividends, and interest"
         loading={loading}
-        onRefresh={loadData}
+        onRefresh={() => loadData(selectedYear)}
         actions={
           <Button onClick={() => setImportDialogOpen(true)}>Import Data</Button>
         }
@@ -141,9 +156,25 @@ export function ProfitPage() {
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Summary Cards */}
+      {/* Year Selector and Summary Cards */}
       {monthlyData && (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium text-muted-foreground">Year:</span>
+            <div className="flex gap-1">
+              {availableYears.map((year) => (
+                <Button
+                  key={year}
+                  variant={selectedYear === year ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleYearChange(year)}
+                >
+                  {year === currentYear ? `${year} (YTD)` : year}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <SummaryCard
             label="Options"
             value={monthlyData.totals.optionsProfit}
@@ -174,6 +205,7 @@ export function ProfitPage() {
             value={monthlyData.totals.total}
             className={monthlyData.totals.total >= 0 ? "text-green-600" : "text-red-600"}
           />
+          </div>
         </div>
       )}
 
@@ -345,6 +377,7 @@ function MonthProfitCard({
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead>Date</TableHead>
                             <TableHead>Contract</TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Asset Class</TableHead>
@@ -355,8 +388,17 @@ function MonthProfitCard({
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {data.realized.closedTrades.map((trade, idx) => (
+                          {[...data.realized.closedTrades]
+                            .sort((a, b) => {
+                              const dateA = a.closeTrade?.tradeDate || a.expiry;
+                              const dateB = b.closeTrade?.tradeDate || b.expiry;
+                              return dateB.localeCompare(dateA); // Most recent first
+                            })
+                            .map((trade, idx) => (
                             <TableRow key={idx}>
+                              <TableCell className="text-muted-foreground">
+                                {trade.closeTrade?.tradeDate || trade.expiry}
+                              </TableCell>
                               <TableCell>
                                 <div className="flex items-center">
                                   <a
@@ -431,19 +473,27 @@ function MonthProfitCard({
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead>Sell Date</TableHead>
                             <TableHead>Symbol</TableHead>
                             <TableHead>Asset Class</TableHead>
                             <TableHead className="text-right">Qty</TableHead>
-                            <TableHead className="text-right">Buy Price</TableHead>
-                            <TableHead>Buy Date</TableHead>
-                            <TableHead className="text-right">Sell Price</TableHead>
-                            <TableHead>Sell Date</TableHead>
+                            <TableHead className="text-right">Cost Basis</TableHead>
+                            <TableHead className="text-right">Sell Proceeds</TableHead>
                             <TableHead className="text-right">Profit</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {data.realized.stockTrades.map((trade, idx) => (
+                          {[...data.realized.stockTrades]
+                            .sort((a, b) => {
+                              const dateA = a.sellTrade?.tradeDate || "";
+                              const dateB = b.sellTrade?.tradeDate || "";
+                              return dateB.localeCompare(dateA); // Most recent first
+                            })
+                            .map((trade, idx) => (
                             <TableRow key={idx}>
+                              <TableCell className="text-muted-foreground">
+                                {trade.sellTrade?.tradeDate || "-"}
+                              </TableCell>
                               <TableCell>
                                 <div className="flex items-center">
                                   <a
@@ -475,13 +525,11 @@ function MonthProfitCard({
                               </TableCell>
                               <TableCell className="text-right font-mono">{trade.quantity}</TableCell>
                               <TableCell className="text-right font-mono">
-                                {formatCurrency(trade.buyTrade?.tradePrice ?? (trade.quantity > 0 ? trade.costBasis / trade.quantity : 0))}
+                                {formatCurrency(trade.costBasis)}
                               </TableCell>
-                              <TableCell>{trade.buyTrade?.tradeDate ?? "-"}</TableCell>
                               <TableCell className="text-right font-mono">
-                                {formatCurrency(trade.sellTrade?.tradePrice || 0)}
+                                {formatCurrency(trade.sellProceeds)}
                               </TableCell>
-                              <TableCell>{trade.sellTrade?.tradeDate || "-"}</TableCell>
                               <TableCell
                                 className={`text-right font-mono ${
                                   trade.profit >= 0 ? "text-green-600" : "text-red-600"
@@ -827,6 +875,7 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Date</TableHead>
                 <TableHead>Contract</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Asset Class</TableHead>
@@ -837,8 +886,17 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {detail.realized.optionTrades.map((trade, idx) => (
+              {[...detail.realized.optionTrades]
+                .sort((a, b) => {
+                  const dateA = a.closeTrade?.tradeDate || a.expiry;
+                  const dateB = b.closeTrade?.tradeDate || b.expiry;
+                  return dateB.localeCompare(dateA); // Most recent first
+                })
+                .map((trade, idx) => (
                 <TableRow key={idx}>
+                  <TableCell className="text-muted-foreground">
+                    {trade.closeTrade?.tradeDate || trade.expiry}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center">
                       <a
@@ -913,19 +971,27 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Sell Date</TableHead>
                 <TableHead>Symbol</TableHead>
                 <TableHead>Asset Class</TableHead>
                 <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Buy Price</TableHead>
-                <TableHead>Buy Date</TableHead>
-                <TableHead className="text-right">Sell Price</TableHead>
-                <TableHead>Sell Date</TableHead>
+                <TableHead className="text-right">Cost Basis</TableHead>
+                <TableHead className="text-right">Sell Proceeds</TableHead>
                 <TableHead className="text-right">Profit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {detail.realized.stockTrades.map((trade, idx) => (
+              {[...detail.realized.stockTrades]
+                .sort((a, b) => {
+                  const dateA = a.sellTrade?.tradeDate || "";
+                  const dateB = b.sellTrade?.tradeDate || "";
+                  return dateB.localeCompare(dateA); // Most recent first
+                })
+                .map((trade, idx) => (
                 <TableRow key={idx}>
+                  <TableCell className="text-muted-foreground">
+                    {trade.sellTrade?.tradeDate || "-"}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center">
                       <a
@@ -957,13 +1023,11 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
                   </TableCell>
                   <TableCell className="text-right font-mono">{trade.quantity}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(trade.buyTrade?.tradePrice ?? (trade.quantity > 0 ? trade.costBasis / trade.quantity : 0))}
+                    {formatCurrency(trade.costBasis)}
                   </TableCell>
-                  <TableCell>{trade.buyTrade?.tradeDate ?? "-"}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(trade.sellTrade?.tradePrice || 0)}
+                    {formatCurrency(trade.sellProceeds)}
                   </TableCell>
-                  <TableCell>{trade.sellTrade?.tradeDate || "-"}</TableCell>
                   <TableCell
                     className={`text-right font-mono ${
                       trade.profit >= 0 ? "text-green-600" : "text-red-600"

@@ -20,6 +20,11 @@ export interface MonthlyProfitQueryParams {
 
 export const profitApi = {
   /**
+   * Get available years with profit data
+   */
+  years: () => request<{ years: number[] }>("/api/profit/years"),
+
+  /**
    * Import a Flex Query file
    */
   import: async (file: File): Promise<ImportResult> => {

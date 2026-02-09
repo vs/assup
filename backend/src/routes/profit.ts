@@ -110,6 +110,18 @@ router.delete(
 );
 
 /**
+ * GET /api/profit/years
+ * Get list of years that have profit data
+ */
+router.get(
+  "/years",
+  asyncHandler(async (_req, res) => {
+    const years = await profitService.getAvailableYears();
+    res.json({ years });
+  })
+);
+
+/**
  * GET /api/profit/monthly
  * Get monthly profit summaries
  */
