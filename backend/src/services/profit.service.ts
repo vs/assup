@@ -484,16 +484,26 @@ class ProfitService {
       return false;
     });
 
-    // Add assignment premium to stock trades
+    // Add assignment premium to stock trades (ONLY for real-time trades from TWS API)
     // When a PUT is assigned, we receive shares at the strike price, but we also keep the premium
     // The stock trade's cost basis from IBKR only reflects the strike price, not the premium
     // So we need to add the PUT premium to the stock profit
+    //
+    // IMPORTANT: This adjustment is ONLY needed for real-time trades (ID starts with "tws-")
+    // that don't have IBKR's authoritative realizedPnl. FLEX-imported trades already have
+    // accurate realizedPnl from IBKR and should NOT be modified.
     //
     // We look at raw imported trades to find assignments:
     // 1. Find stock BUY trades (from assignment)
     // 2. Find PUT SELL trades (open) that match: same underlying, strike = stock price, expiry = stock buy date
     // 3. The PUT premium received is added to the stock profit
     for (const stockGroup of monthStockGroups) {
+      // Skip FLEX-imported trades - they already have accurate realizedPnl from IBKR
+      // Only apply assignment premium adjustment to real-time trades (synthetic IDs)
+      const sellTradeId = stockGroup.sellTrade?.id || "";
+      if (!sellTradeId.startsWith("tws-")) {
+        continue;
+      }
       // Find stock BUYs for this symbol that came from assignments
       const stockBuys = allStockTrades.filter(
         (t) => t.symbol === stockGroup.symbol && t.buySell === "BUY"
