@@ -16,6 +16,7 @@ import { PageHeader, PageLoadingSkeleton, ErrorAlert } from "@/components/common
 import { taxesApi } from "@/api/taxes";
 import { StockTradesTable } from "@/components/taxes/StockTradesTable";
 import { OptionTradesTable } from "@/components/taxes/OptionTradesTable";
+import { DividendsTable } from "@/components/taxes/DividendsTable";
 import type { TaxSummary } from "@assup/shared";
 
 export function TaxesPage() {
@@ -289,13 +290,5 @@ function OptionTradesTab({ year }: { year: number }) {
 }
 
 function DividendsTab({ year }: { year: number }) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <p className="text-muted-foreground">
-          Dividends for {year} - Loading...
-        </p>
-      </CardContent>
-    </Card>
-  );
+  return <DividendsTable year={year} />;
 }
