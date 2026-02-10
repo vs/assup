@@ -9,6 +9,7 @@ import { OrdersPage } from "@/pages/OrdersPage";
 import { ScannerPage } from "@/pages/ScannerPage";
 import { ProfitPage } from "@/pages/ProfitPage";
 import { TaxesPage } from "@/pages/TaxesPage";
+import { ExchangeRatesPage } from "@/pages/ExchangeRatesPage";
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/profit" element={<ProfitPage />} />
             <Route path="/taxes" element={<TaxesPage />} />
+            <Route path="/settings/exchange-rates" element={<ExchangeRatesPage />} />
             <Route path="/asset-classes" element={<AssetClassesPage />} />
           </Route>
         </Routes>
