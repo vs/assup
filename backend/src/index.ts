@@ -18,6 +18,7 @@ import settingsRouter from "./routes/settings.js";
 import historicalDataRouter from "./routes/historicalData.js";
 import profitRouter from "./routes/profit.js";
 import exchangeRatesRouter from "./routes/exchangeRates.js";
+import taxesRouter from "./routes/taxes.js";
 import { scanJobService } from "./services/scanJob.service.js";
 
 const app = express();
@@ -39,6 +40,7 @@ app.use("/api/settings", settingsRouter);
 app.use("/api/historical", historicalDataRouter);
 app.use("/api/profit", profitRouter);
 app.use("/api/exchange-rates", exchangeRatesRouter);
+app.use("/api/taxes", taxesRouter);
 
 app.get("/api/health", asyncHandler(async (req, res) => {
   const assetClassCount = await prisma.assetClass.count();
