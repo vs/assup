@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   Search,
   TrendingUp,
+  Receipt,
   Menu,
   X,
 } from "lucide-react";
@@ -46,6 +47,7 @@ const navItems = [
   { to: "/orders", label: "Orders", icon: ShoppingCart },
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },
+  { to: "/taxes", label: "Taxes", icon: Receipt },
   { to: "/asset-classes", label: "Asset Classes", icon: Layers },
 ];
 
