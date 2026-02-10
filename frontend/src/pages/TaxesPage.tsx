@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PageHeader, PageLoadingSkeleton, ErrorAlert } from "@/components/common";
 import { taxesApi } from "@/api/taxes";
+import { StockTradesTable } from "@/components/taxes/StockTradesTable";
 import type { TaxSummary } from "@assup/shared";
 
 export function TaxesPage() {
@@ -277,17 +278,9 @@ export function TaxesPage() {
   );
 }
 
-// Placeholder components - will be implemented in next tasks
+// Tab components
 function StockTradesTab({ year }: { year: number }) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <p className="text-muted-foreground">
-          Stock trades for {year} - Loading...
-        </p>
-      </CardContent>
-    </Card>
-  );
+  return <StockTradesTable year={year} />;
 }
 
 function OptionTradesTab({ year }: { year: number }) {
