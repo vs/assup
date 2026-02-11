@@ -290,29 +290,70 @@ class TaxCalculationService {
         closeType = "expired";
       }
 
-      // For assigned options (sold PUTs/CALLs), the accounting is different:
-      // - Income = premium received when selling the option (from open trade)
-      // - Expense = 0 (no buyback, the stock transaction is separate)
-      // For regular closes: proceeds is what you received, costBasis is what you paid
-      let proceedsUsd: number;
-      let costBasisUsd: number;
+      // Czech tax reporting for derivatives (§10 F):
+      // - Income = money received (premiums from selling options)
+      // - Expense = money paid (premiums to buy options)
+      //
+      // IBKR FLEX data semantics for close trades:
+      // - "BUY to close" (closing short options): proceeds < 0 (paid), costBasis > 0 (received earlier)
+      // - "SELL to close" (closing long options): proceeds > 0 (received), costBasis < 0 (paid earlier)
+      // - Assigned options: proceeds = 0, costBasis > 0 (premium received, stock deal is separate)
+      // - Expired options: proceeds = 0, costBasis = 0 (worthless)
+      let incomeUsd: number;
+      let expenseUsd: number;
       let pnlUsd: number;
 
       if (isAssigned && open) {
-        // Assigned option: premium received is income, no expense
-        // open.proceeds is negative for sold options (you received money)
-        proceedsUsd = Math.abs(open.proceeds);
-        costBasisUsd = 0;
-        pnlUsd = proceedsUsd; // Full premium is profit
+        // Assigned option: premium received is income, no expense for the option itself
+        // (the stock transaction is handled separately in securities section)
+        incomeUsd = Math.abs(open.proceeds);
+        expenseUsd = 0;
+        pnlUsd = incomeUsd;
+      } else if (closeType === "expired") {
+        // Expired worthless: no income or expense from close itself
+        // We need to check the original position to determine if we sold or bought
+        if (open) {
+          // If we sold the option (received premium), that's income with no expense
+          if (open.proceeds < 0) {
+            // Sold to open: received premium (proceeds is negative for sold)
+            incomeUsd = Math.abs(open.proceeds);
+            expenseUsd = 0;
+          } else {
+            // Bought to open: paid premium (now worthless)
+            incomeUsd = 0;
+            expenseUsd = open.proceeds;
+          }
+          pnlUsd = incomeUsd - expenseUsd;
+        } else {
+          incomeUsd = 0;
+          expenseUsd = 0;
+          pnlUsd = 0;
+        }
       } else {
-        // Regular close or expired
-        proceedsUsd = close.proceeds || 0;
-        costBasisUsd = Math.abs(close.costBasis || 0);
-        pnlUsd = close.realizedPnl || proceedsUsd - costBasisUsd;
+        // Regular close trade
+        // For BUY to close: proceeds < 0 (expense), costBasis > 0 (income from original sale)
+        // For SELL to close: proceeds > 0 (income), costBasis < 0 (expense from original purchase)
+        const closeProceeds = close.proceeds || 0;
+        const closeCostBasis = close.costBasis || 0;
+
+        if (closeProceeds <= 0 && closeCostBasis >= 0) {
+          // BUY to close a short position
+          incomeUsd = closeCostBasis;  // Premium received when opening short
+          expenseUsd = Math.abs(closeProceeds);  // Paid to close
+        } else if (closeProceeds >= 0 && closeCostBasis <= 0) {
+          // SELL to close a long position
+          incomeUsd = closeProceeds;  // Received when closing
+          expenseUsd = Math.abs(closeCostBasis);  // Paid when opening
+        } else {
+          // Unusual case, fall back to realized P&L if available
+          incomeUsd = Math.max(0, closeProceeds, closeCostBasis);
+          expenseUsd = Math.abs(Math.min(0, closeProceeds, closeCostBasis));
+        }
+        pnlUsd = close.realizedPnl ?? (incomeUsd - expenseUsd);
       }
 
-      const proceedsCzk = rate ? proceedsUsd * rate : 0;
-      const costBasisCzk = rate ? costBasisUsd * rate : 0;
+      const incomeCzk = rate ? incomeUsd * rate : 0;
+      const expenseCzk = rate ? expenseUsd * rate : 0;
       const pnlCzk = rate ? pnlUsd * rate : 0;
 
       // Build description
@@ -330,12 +371,12 @@ class TaxCalculationService {
         quantity: Math.abs(close.quantity),
         closeType,
         dateClosed: close.tradeDate.toISOString().split("T")[0],
-        proceedsUsd,
-        costBasisUsd,
+        proceedsUsd: incomeUsd,
+        costBasisUsd: expenseUsd,
         pnlUsd,
         rate: rate || 0,
-        proceedsCzk,
-        costBasisCzk,
+        proceedsCzk: incomeCzk,
+        costBasisCzk: expenseCzk,
         pnlCzk,
         status: open ? "complete" : "missing_open",
         currency: close.currency || "USD",
@@ -344,8 +385,8 @@ class TaxCalculationService {
       trades.push(trade);
 
       if (trade.status === "complete") {
-        if (proceedsCzk > 0) totalIncome += proceedsCzk;
-        if (costBasisCzk > 0) totalExpenses += costBasisCzk;
+        totalIncome += incomeCzk;
+        totalExpenses += expenseCzk;
       }
     }
 
