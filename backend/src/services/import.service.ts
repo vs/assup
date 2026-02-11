@@ -230,20 +230,23 @@ class ImportService {
     // IBKR FLEX reports can have multiple sections with different headers
     // Find the cash transactions section by looking for a header line that:
     // - Contains "Type" and "Amount" columns (cash-specific)
-    // - Does NOT contain "Asset Category" (trade-specific)
+    // - Does NOT contain trade-specific columns
     const lines = content.split("\n");
     let cashSectionIndex = -1;
 
+    console.log(`[Import] CSV has ${lines.length} lines`);
+    console.log(`[Import] First line: ${lines[0]?.substring(0, 100)}...`);
+
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
-      // Look for a header line (starts with quote, contains column names)
-      if (
-        line.startsWith('"') &&
-        (line.includes('"Type"') || line.includes('"type"')) &&
-        (line.includes('"Amount"') || line.includes('"amount"')) &&
-        !line.includes('"Asset Category"') &&
-        !line.includes('"Trade Price"')
-      ) {
+      // Look for a header line that contains cash-specific columns
+      const hasType = line.includes('"Type"') || line.includes('"type"');
+      const hasAmount = line.includes('"Amount"') || line.includes('"amount"');
+      const hasAssetCategory = line.includes('"Asset Category"') || line.includes('"AssetClass"');
+      const hasTradePrice = line.includes('"Trade Price"') || line.includes('"TradePrice"');
+
+      if (hasType && hasAmount && !hasAssetCategory && !hasTradePrice) {
+        console.log(`[Import] Found cash section header at line ${i}: ${line.substring(0, 100)}...`);
         cashSectionIndex = i;
         break;
       }
@@ -255,7 +258,9 @@ class ImportService {
     if (cashSectionIndex > 0) {
       tradesSection = lines.slice(0, cashSectionIndex).join("\n");
       cashSection = lines.slice(cashSectionIndex).join("\n");
-      console.log(`[Import] Found cash section at line ${cashSectionIndex}`);
+      console.log(`[Import] Split: ${cashSectionIndex} lines for trades, ${lines.length - cashSectionIndex} lines for cash`);
+    } else {
+      console.log(`[Import] WARNING: No cash section found in CSV`);
     }
 
     const trades: FlexTrade[] = [];
