@@ -12,6 +12,9 @@ interface CnbRate {
   rate: number;
 }
 
+/** Only these currencies are needed for tax documentation */
+const ALLOWED_CURRENCIES = ["USD", "EUR"];
+
 class CnbExchangeRateService {
   private readonly CNB_URL =
     "https://www.cnb.cz/cs/financni-trhy/devizovy-trh/kurzy-devizoveho-trhu/kurzy-devizoveho-trhu/denni_kurz.txt";
@@ -129,14 +132,20 @@ class CnbExchangeRateService {
   }
 
   /**
-   * Cache rates in database
+   * Cache rates in database (only allowed currencies)
    */
   private async cacheRates(date: Date, rates: CnbRate[]): Promise<void> {
     const normalizedDate = new Date(
       Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
     );
 
-    const data = rates.map((r) => ({
+    const filteredRates = rates.filter((r) =>
+      ALLOWED_CURRENCIES.includes(r.currency)
+    );
+
+    if (filteredRates.length === 0) return;
+
+    const data = filteredRates.map((r) => ({
       date: normalizedDate,
       currency: r.currency,
       rate: new Prisma.Decimal(r.rate.toFixed(4)),
@@ -154,7 +163,7 @@ class CnbExchangeRateService {
    */
   async prefetchRatesForYear(
     year: number,
-    currencies: string[] = ["USD", "EUR"]
+    currencies: string[] = ALLOWED_CURRENCIES
   ): Promise<{ fetched: number; skipped: number }> {
     const startDate = new Date(Date.UTC(year, 0, 1));
     const endDate = new Date(Date.UTC(year, 11, 31));
@@ -203,7 +212,7 @@ class CnbExchangeRateService {
   }
 
   /**
-   * Get all rates for a year
+   * Get all rates for a year (only allowed currencies)
    */
   async getRatesForYear(year: number): Promise<
     Array<{
@@ -221,6 +230,7 @@ class CnbExchangeRateService {
           gte: startDate,
           lte: endDate,
         },
+        currency: { in: ALLOWED_CURRENCIES },
       },
       orderBy: { date: "asc" },
     });
@@ -233,7 +243,7 @@ class CnbExchangeRateService {
   }
 
   /**
-   * Get status of rates for a year
+   * Get status of rates for a year (only allowed currencies)
    */
   async getStatusForYear(year: number): Promise<{
     year: number;
@@ -261,13 +271,14 @@ class CnbExchangeRateService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Get loaded dates
+    // Get loaded dates (only for allowed currencies)
     const loadedRates = await prisma.exchangeRate.findMany({
       where: {
         date: {
           gte: startDate,
           lte: actualEndDate,
         },
+        currency: { in: ALLOWED_CURRENCIES },
       },
       select: {
         date: true,
@@ -280,13 +291,14 @@ class CnbExchangeRateService {
       loadedRates.map((r) => r.date.toISOString().split("T")[0])
     );
 
-    // Get unique currencies
+    // Get unique currencies (only from allowed list that exist in DB)
     const allCurrencies = await prisma.exchangeRate.findMany({
       where: {
         date: {
           gte: startDate,
           lte: actualEndDate,
         },
+        currency: { in: ALLOWED_CURRENCIES },
       },
       select: {
         currency: true,
