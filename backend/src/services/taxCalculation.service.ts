@@ -275,21 +275,39 @@ class TaxCalculationService {
         close.currency || "USD"
       );
 
-      const proceedsUsd = close.proceeds || 0;
-      const costBasisUsd = Math.abs(close.costBasis || 0);
-      const pnlUsd = close.realizedPnl || proceedsUsd - costBasisUsd;
+      // Determine close type first to handle assigned options correctly
+      let closeType: "closed" | "expired" | "assigned" = "closed";
+      const isAssigned = close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0);
+      if (isAssigned) {
+        closeType = "assigned";
+      } else if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
+        closeType = "expired";
+      }
+
+      // For assigned options (sold PUTs/CALLs), the accounting is different:
+      // - Income = premium received when selling the option (from open trade)
+      // - Expense = 0 (no buyback, the stock transaction is separate)
+      // For regular closes: proceeds is what you received, costBasis is what you paid
+      let proceedsUsd: number;
+      let costBasisUsd: number;
+      let pnlUsd: number;
+
+      if (isAssigned && open) {
+        // Assigned option: premium received is income, no expense
+        // open.proceeds is negative for sold options (you received money)
+        proceedsUsd = Math.abs(open.proceeds);
+        costBasisUsd = 0;
+        pnlUsd = proceedsUsd; // Full premium is profit
+      } else {
+        // Regular close or expired
+        proceedsUsd = close.proceeds || 0;
+        costBasisUsd = Math.abs(close.costBasis || 0);
+        pnlUsd = close.realizedPnl || proceedsUsd - costBasisUsd;
+      }
 
       const proceedsCzk = rate ? proceedsUsd * rate : 0;
       const costBasisCzk = rate ? costBasisUsd * rate : 0;
       const pnlCzk = rate ? pnlUsd * rate : 0;
-
-      // Determine close type
-      let closeType: "closed" | "expired" | "assigned" = "closed";
-      if (close.wasAssigned) {
-        closeType = "assigned";
-      } else if (proceedsUsd === 0 && costBasisUsd === 0) {
-        closeType = "expired";
-      }
 
       // Build description
       const strike = close.strike || 0;
