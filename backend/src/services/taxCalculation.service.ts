@@ -204,9 +204,17 @@ class TaxCalculationService {
     let totalIncome = 0;
     let totalExpenses = 0;
 
+    // Strike tolerance for matching contracts adjusted by corporate actions
+    const STRIKE_TOLERANCE_PERCENT = 0.02; // 2% tolerance
+    const STRIKE_TOLERANCE_ABS = 1.0; // Max $1 absolute difference
+
     for (const close of closes) {
-      // Find matching open
-      const open = await prisma.importedTrade.findFirst({
+      // Find matching open using multiple strategies:
+      // 1. Exact symbol match (fastest, works for most cases)
+      // 2. conId match (most reliable, survives strike adjustments)
+      // 3. Relaxed match by underlying/expiry/right with strike tolerance
+
+      let open = await prisma.importedTrade.findFirst({
         where: {
           symbol: close.symbol,
           secType: "OPT",
@@ -215,6 +223,52 @@ class TaxCalculationService {
         },
         orderBy: { tradeDate: "asc" },
       });
+
+      // If no exact match and we have conId, try matching by conId
+      if (!open && close.conId) {
+        open = await prisma.importedTrade.findFirst({
+          where: {
+            conId: close.conId,
+            secType: "OPT",
+            openClose: "O",
+            tradeDate: { lt: close.tradeDate },
+          },
+          orderBy: { tradeDate: "asc" },
+        });
+      }
+
+      // If still no match, try relaxed matching by underlying/expiry/right with strike tolerance
+      // This handles cases where strike was adjusted due to corporate actions (e.g., special dividends)
+      if (!open && close.underlying && close.expiry && close.right) {
+        const potentialOpens = await prisma.importedTrade.findMany({
+          where: {
+            underlying: close.underlying,
+            expiry: close.expiry,
+            right: close.right,
+            secType: "OPT",
+            openClose: "O",
+            tradeDate: { lt: close.tradeDate },
+          },
+          orderBy: { tradeDate: "asc" },
+        });
+
+        // Find one with strike within tolerance
+        for (const candidate of potentialOpens) {
+          if (candidate.strike && close.strike) {
+            const strikeDiff = Math.abs(candidate.strike - close.strike);
+            const percentDiff =
+              close.strike > 0 ? strikeDiff / close.strike : 0;
+
+            if (
+              strikeDiff <= STRIKE_TOLERANCE_ABS ||
+              percentDiff <= STRIKE_TOLERANCE_PERCENT
+            ) {
+              open = candidate;
+              break;
+            }
+          }
+        }
+      }
 
       const rate = await cnbExchangeRateService.getRate(
         close.tradeDate,
