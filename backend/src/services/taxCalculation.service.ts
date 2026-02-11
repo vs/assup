@@ -219,7 +219,7 @@ class TaxCalculationService {
           symbol: close.symbol,
           secType: "OPT",
           openClose: "O",
-          tradeDate: { lt: close.tradeDate },
+          tradeDate: { lte: close.tradeDate },
         },
         orderBy: { tradeDate: "asc" },
       });
@@ -231,7 +231,7 @@ class TaxCalculationService {
             conId: close.conId,
             secType: "OPT",
             openClose: "O",
-            tradeDate: { lt: close.tradeDate },
+            tradeDate: { lte: close.tradeDate },
           },
           orderBy: { tradeDate: "asc" },
         });
@@ -247,7 +247,7 @@ class TaxCalculationService {
             right: close.right,
             secType: "OPT",
             openClose: "O",
-            tradeDate: { lt: close.tradeDate },
+            tradeDate: { lte: close.tradeDate },
           },
           orderBy: { tradeDate: "asc" },
         });
