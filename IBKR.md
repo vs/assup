@@ -77,3 +77,44 @@ The import processes:
 - **Cash Transactions**: Dividends, interest, withholding tax, fees (type, symbol, date, amount)
 
 Partial fills are aggregated automatically. Duplicate imports are prevented using file hashing and trade IDs.
+
+## FLEX Report Configuration for Tax Reporting
+
+To use the Taxes page for Czech tax reporting, your FLEX report must include additional fields.
+
+### Required Fields for Trades Section
+
+Ensure your FLEX query includes these fields in the Trades section:
+- `TradeDate` - Exact trade date for CNB rate lookup
+- `Currency` - Trade currency (USD, EUR, etc.)
+- `Symbol`, `Quantity`, `TradePrice`, `Proceeds`, `Commission`
+- `CostBasis`, `RealizedPnl`
+- `BuySell`, `OpenCloseIndicator`
+- `SecType` - Security type (STK, OPT)
+- For options: `Strike`, `Expiry`, `Right`, `Underlying`
+
+### Required Fields for Cash Transactions
+
+Ensure your FLEX query includes:
+- `Type` - Transaction type (Dividends, Withholding Tax)
+- `Currency`
+- `Amount`
+- `Symbol`
+- `Description` - Often contains ISIN for country identification
+
+### Country Identification for Dividends
+
+The system extracts the dividend source country from:
+1. ISIN in the description (first 2 characters, e.g., "US" from "USZ363198954")
+2. Falls back to "USA" for unidentified sources
+
+For accurate foreign tax credit reporting, ensure your FLEX report includes dividend descriptions with ISINs.
+
+### Recommended FLEX Query Setup
+
+1. Go to IBKR Account Management → Reports → Flex Queries
+2. Create or edit your Activity FLEX Query
+3. In Trades section, select all fields listed above
+4. In Cash Transactions section, include Dividends and Withholding Tax
+5. Set date range to cover your tax year
+6. Export as CSV format
