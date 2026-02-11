@@ -14,107 +14,99 @@ Before using Assup, configure TWS:
    - Add `127.0.0.1` to Trusted IPs
    - Add `host.docker.internal` if running via Docker
 
-## FLEX Query Report (for Trade Import)
+## FLEX Query Configuration
 
-### Create FLEX Query (one-time setup)
+The Profit and Taxes pages require importing FLEX reports from IBKR. This section explains how to create a single FLEX query that works for both features.
 
-1. **Log into Account Management** (not TWS itself)
-   - Go to https://www.interactivebrokers.com
-   - Log in → **Performance & Reports** → **Flex Queries**
+### Creating the FLEX Query
 
-2. **Create a new Activity Flex Query**
-   - Click **Create** under "Activity Flex Queries"
-   - Give it a name like "Options Trades for Assup"
+1. Log into **IBKR Account Management** at https://www.interactivebrokers.com
+2. Navigate to **Performance & Reports** → **Flex Queries**
+3. Click **Create** under "Activity Flex Queries"
+4. Name it (e.g., "Assup Import")
 
-3. **Configure the query sections:**
+### Required Fields
 
-   **Trades** - Select these fields:
-   - Symbol, Description, Asset Category, Underlying Symbol
-   - Trade Date, Quantity, Trade Price, Proceeds, Commission
-   - Put/Call, Strike, Expiry
-   - Open/Close Indicator
-   - Cost Basis, Realized P&L (for stock trades with external cost basis)
+Configure the following sections in your FLEX query:
 
-   **Cash Transactions** - Select these fields (for dividends & interest):
-   - Type
-   - Symbol
-   - Description
-   - Date/Time
-   - Amount
-   - CurrencyPrimary
+#### Trades Section
 
-   Note: Deposits, withdrawals, and currency conversions are automatically filtered out.
+| Field Name in IBKR | Required | Purpose |
+|--------------------|----------|---------|
+| TradeID | Yes | Deduplication, prevents duplicate imports |
+| Symbol | Yes | Security identifier |
+| Description | No | Human-readable name |
+| Conid | No | IBKR contract ID |
+| Asset Category | Yes | Determines security type (STK, OPT, etc.) |
+| Strike | Yes* | Option strike price |
+| Expiry | Yes* | Option expiration date |
+| Put/Call | Yes* | Option type (P or C) |
+| Underlying Symbol | Yes* | Underlying for options |
+| Multiplier | No | Contract multiplier (defaults to 100) |
+| Trade Date | Yes | Execution date |
+| Quantity | Yes | Number of shares/contracts |
+| Trade Price | Yes | Execution price |
+| Proceeds | Yes | Total cash amount |
+| Comm/Fee | Yes | Commission and fees |
+| Buy/Sell | Yes | Trade direction |
+| Open/Close | Yes | Position opening or closing |
+| Cost Basis | Yes | IBKR's cost basis (for taxes) |
+| Realized P/L | Yes | IBKR's FIFO realized P&L (for taxes) |
+| Currency | Yes | Trade currency (for taxes) |
 
-   Set **Date Period** to your desired range (e.g., Last 365 Days or custom)
+*Required for options trading
 
-4. **Set Output Format:**
-   - Format: **CSV**
-   - Include headers: **Yes**
+#### Cash Transactions Section
 
-5. **Save the query**
+| Field Name in IBKR | Required | Purpose |
+|--------------------|----------|---------|
+| Transaction ID | Yes | Deduplication |
+| Type | Yes | Transaction category |
+| Symbol | No | Related security |
+| Description | Yes | Contains ISIN for country identification |
+| Date/Time | Yes | Transaction date |
+| Amount | Yes | Transaction amount |
+| Currency | Yes | Currency code |
 
-### Run the Query
+**Included transaction types:** Dividends, Interest, Withholding Tax, Fees
 
-#### Option A: From Account Management
-1. Go to **Flex Queries** page
-2. Click **Run** next to your query
-3. Download the CSV file
+**Automatically filtered out:** Deposits, Withdrawals, Transfers, Forex conversions
 
-#### Option B: From TWS
-1. **Account** menu → **Reports** → **Flex Queries**
-2. Select your query and run it
-3. Save the downloaded file
+### Output Settings
 
-### Import into Assup
+| Setting | Value |
+|---------|-------|
+| Date Period | Your desired range (e.g., Last 365 Days, or specific tax year) |
+| Format | **XML** (recommended) or **CSV** |
+| Include Headers | Yes (if using CSV) |
 
-1. Go to the **Profit** page in Assup
-2. Click **Import** button
-3. Select your downloaded CSV file
-4. Review the parsed trades and confirm import
+### Running and Importing
 
-The import processes:
-- **Trades**: Option and stock trades (symbol, date, quantity, price, strike, expiry, put/call, cost basis, realized P&L)
-- **Cash Transactions**: Dividends, interest, withholding tax, fees (type, symbol, date, amount)
+**Run the Query:**
+1. In Account Management → Flex Queries, click **Run** next to your query
+2. Download the file
 
-Partial fills are aggregated automatically. Duplicate imports are prevented using file hashing and trade IDs.
+**Import into Assup:**
+1. Go to **Profit** page
+2. Click **Import**
+3. Select your downloaded file
+4. Review parsed data and confirm
 
-## FLEX Report Configuration for Tax Reporting
+The same imported data is used by both Profit and Taxes pages.
 
-To use the Taxes page for Czech tax reporting, your FLEX report must include additional fields.
+### How Data is Processed
 
-### Required Fields for Trades Section
+**Trades:**
+- Options and stock trades are parsed with full position details
+- Partial fills are aggregated automatically
+- Option assignments are detected by matching stock trades near expiry at strike price
+- Duplicates are prevented via TradeID
 
-Ensure your FLEX query includes these fields in the Trades section:
-- `TradeDate` - Exact trade date for CNB rate lookup
-- `Currency` - Trade currency (USD, EUR, etc.)
-- `Symbol`, `Quantity`, `TradePrice`, `Proceeds`, `Commission`
-- `CostBasis`, `RealizedPnl`
-- `BuySell`, `OpenCloseIndicator`
-- `SecType` - Security type (STK, OPT)
-- For options: `Strike`, `Expiry`, `Right`, `Underlying`
+**Cash Transactions:**
+- Dividends and interest are tracked per symbol
+- Withholding tax is matched to dividends for foreign tax credit calculations
+- Source country is extracted from ISIN in the description (e.g., "US" from "USZ363198954")
 
-### Required Fields for Cash Transactions
-
-Ensure your FLEX query includes:
-- `Type` - Transaction type (Dividends, Withholding Tax)
-- `Currency`
-- `Amount`
-- `Symbol`
-- `Description` - Often contains ISIN for country identification
-
-### Country Identification for Dividends
-
-The system extracts the dividend source country from:
-1. ISIN in the description (first 2 characters, e.g., "US" from "USZ363198954")
-2. Falls back to "USA" for unidentified sources
-
-For accurate foreign tax credit reporting, ensure your FLEX report includes dividend descriptions with ISINs.
-
-### Recommended FLEX Query Setup
-
-1. Go to IBKR Account Management → Reports → Flex Queries
-2. Create or edit your Activity FLEX Query
-3. In Trades section, select all fields listed above
-4. In Cash Transactions section, include Dividends and Withholding Tax
-5. Set date range to cover your tax year
-6. Export as CSV format
+**Currency Conversion (Taxes):**
+- Non-CZK amounts are converted using CNB exchange rates for the trade date
+- Both USD and EUR rates are fetched automatically
