@@ -17,6 +17,7 @@ import { taxesApi } from "@/api/taxes";
 import { StockTradesTable } from "@/components/taxes/StockTradesTable";
 import { OptionTradesTable } from "@/components/taxes/OptionTradesTable";
 import { DividendsTable } from "@/components/taxes/DividendsTable";
+import { InterestTable } from "@/components/taxes/InterestTable";
 import type { TaxSummary } from "@assup/shared";
 
 export function TaxesPage() {
@@ -118,7 +119,7 @@ export function TaxesPage() {
       {summary && (
         <>
           {/* Summary Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -208,6 +209,28 @@ export function TaxesPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  §8 Interest
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Count:</span>
+                    <span>{summary.interest.count}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t pt-1">
+                    <span>Total:</span>
+                    <span className="text-green-600">
+                      {formatCzk(summary.interest.total)}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Tabs */}
@@ -217,6 +240,7 @@ export function TaxesPage() {
               <TabsTrigger value="stocks">Stock Trades</TabsTrigger>
               <TabsTrigger value="options">Option Trades</TabsTrigger>
               <TabsTrigger value="dividends">Dividends</TabsTrigger>
+              <TabsTrigger value="interest">Interest</TabsTrigger>
             </TabsList>
 
             <TabsContent value="summary">
@@ -273,6 +297,10 @@ export function TaxesPage() {
             <TabsContent value="dividends">
               <DividendsTab year={selectedYear} />
             </TabsContent>
+
+            <TabsContent value="interest">
+              <InterestTab year={selectedYear} />
+            </TabsContent>
           </Tabs>
         </>
       )}
@@ -291,4 +319,8 @@ function OptionTradesTab({ year }: { year: number }) {
 
 function DividendsTab({ year }: { year: number }) {
   return <DividendsTable year={year} />;
+}
+
+function InterestTab({ year }: { year: number }) {
+  return <InterestTable year={year} />;
 }

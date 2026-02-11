@@ -10,6 +10,7 @@ import type {
   TaxStockTrade,
   TaxOptionTrade,
   TaxDividend,
+  TaxInterest,
   DividendsByCountry,
   MissingTradeRecord,
 } from "@assup/shared";
@@ -22,6 +23,7 @@ class TaxCalculationService {
     const stockTrades = await this.getStockTrades(year);
     const optionTrades = await this.getOptionTrades(year);
     const dividends = await this.getDividends(year);
+    const interest = await this.getInterest(year);
 
     const missingRecords: MissingTradeRecord[] = [
       ...stockTrades.trades
@@ -66,6 +68,10 @@ class TaxCalculationService {
         withholdingTax: dividends.totals.withholdingTax,
         net: dividends.totals.net,
         byCountry: dividends.byCountry,
+      },
+      interest: {
+        total: interest.total,
+        count: interest.interest.length,
       },
       missingRecords,
       canExport: missingRecords.length === 0,
@@ -507,6 +513,55 @@ class TaxCalculationService {
     };
 
     return { dividends, byCountry, totals };
+  }
+
+  /**
+   * Get interest payments with CZK conversion for tax reporting
+   */
+  async getInterest(year: number): Promise<{
+    interest: TaxInterest[];
+    total: number;
+  }> {
+    const startDate = new Date(Date.UTC(year, 0, 1));
+    const endDate = new Date(Date.UTC(year, 11, 31));
+
+    const interestTxns = await prisma.cashTransaction.findMany({
+      where: {
+        type: "INTEREST",
+        transactionDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      orderBy: { transactionDate: "asc" },
+    });
+
+    const interest: TaxInterest[] = [];
+    let total = 0;
+
+    for (const txn of interestTxns) {
+      const rate = await cnbExchangeRateService.getRate(
+        txn.transactionDate,
+        txn.currency || "USD"
+      );
+
+      const amountUsd = txn.amount || 0;
+      const amountCzk = rate ? amountUsd * rate : 0;
+
+      interest.push({
+        id: txn.id,
+        date: txn.transactionDate.toISOString().split("T")[0],
+        description: txn.description || "",
+        amountUsd,
+        rate: rate || 0,
+        amountCzk,
+        currency: txn.currency || "USD",
+      });
+
+      total += amountCzk;
+    }
+
+    return { interest, total };
   }
 
   /**

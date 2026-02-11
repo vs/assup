@@ -70,6 +70,20 @@ router.get(
 );
 
 /**
+ * GET /api/taxes/interest/:year
+ * Get interest with CZK conversion
+ */
+router.get(
+  "/interest/:year",
+  validate({ params: yearParamSchema }),
+  asyncHandler(async (req, res) => {
+    const year = parseInt(req.params.year, 10);
+    const result = await taxCalculationService.getInterest(year);
+    res.json(result);
+  })
+);
+
+/**
  * GET /api/taxes/export/:year
  * Download XLSX export
  */

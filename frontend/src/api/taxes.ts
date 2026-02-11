@@ -8,6 +8,7 @@ import type {
   TaxStockTradesResponse,
   TaxOptionTradesResponse,
   TaxDividendsResponse,
+  TaxInterestResponse,
 } from "@assup/shared";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
@@ -24,6 +25,9 @@ export const taxesApi = {
 
   dividends: (year: number) =>
     request<TaxDividendsResponse>(`/api/taxes/dividends/${year}`),
+
+  interest: (year: number) =>
+    request<TaxInterestResponse>(`/api/taxes/interest/${year}`),
 
   export: (year: number) => {
     // Direct download - opens in new tab/downloads file

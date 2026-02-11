@@ -37,6 +37,10 @@ export interface TaxSummary {
     net: number;
     byCountry: DividendsByCountry[];
   };
+  interest: {
+    total: number;
+    count: number;
+  };
   missingRecords: MissingTradeRecord[];
   canExport: boolean;
 }
@@ -114,6 +118,17 @@ export interface TaxDividend {
   currency: string;
 }
 
+// Interest for Tax Reporting
+export interface TaxInterest {
+  id: string;
+  date: string;
+  description: string;
+  amountUsd: number;
+  rate: number;
+  amountCzk: number;
+  currency: string;
+}
+
 // API Response Types
 export interface TaxStockTradesResponse {
   trades: TaxStockTrade[];
@@ -141,4 +156,9 @@ export interface TaxDividendsResponse {
     withholdingTax: number;
     net: number;
   };
+}
+
+export interface TaxInterestResponse {
+  interest: TaxInterest[];
+  total: number;
 }
