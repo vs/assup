@@ -31,42 +31,46 @@ Configure the following sections in your FLEX query:
 
 #### Trades Section
 
-| Field Name in IBKR | Required | Purpose |
-|--------------------|----------|---------|
-| TradeID | Yes | Deduplication, prevents duplicate imports |
+Select these fields in your FLEX query (exact names as shown in IBKR):
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| Trade ID | No | Deduplication (auto-generated if missing) |
 | Symbol | Yes | Security identifier |
 | Description | No | Human-readable name |
 | Conid | No | IBKR contract ID |
-| Asset Category | Yes | Determines security type (STK, OPT, etc.) |
+| AssetClass | Yes | Determines security type (STK, OPT, etc.) |
 | Strike | Yes* | Option strike price |
 | Expiry | Yes* | Option expiration date |
 | Put/Call | Yes* | Option type (P or C) |
-| Underlying Symbol | Yes* | Underlying for options |
+| UnderlyingSymbol | Yes* | Underlying for options |
 | Multiplier | No | Contract multiplier (defaults to 100) |
-| Trade Date | Yes | Execution date |
+| TradeDate | Yes | Execution date |
 | Quantity | Yes | Number of shares/contracts |
-| Trade Price | Yes | Execution price |
+| TradePrice | Yes | Execution price |
 | Proceeds | Yes | Total cash amount |
-| Comm/Fee | Yes | Commission and fees |
+| IBCommission | Yes | Commission and fees |
 | Buy/Sell | Yes | Trade direction |
-| Open/Close | Yes | Position opening or closing |
-| Cost Basis | Yes | IBKR's cost basis (for taxes) |
-| Realized P/L | Yes | IBKR's FIFO realized P&L (for taxes) |
-| Currency | Yes | Trade currency (for taxes) |
+| Open/CloseIndicator | Yes | Position opening or closing |
+| CostBasis | Yes | IBKR's cost basis (for taxes) |
+| FifoPnlRealized | Yes | IBKR's FIFO realized P&L (for taxes) |
+| CurrencyPrimary | Yes | Trade currency (for taxes) |
 
 *Required for options trading
 
 #### Cash Transactions Section
 
-| Field Name in IBKR | Required | Purpose |
-|--------------------|----------|---------|
-| Transaction ID | Yes | Deduplication |
-| Type | Yes | Transaction category |
+Select these fields in your FLEX query (exact names as shown in IBKR):
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| TransactionID | No | Deduplication (auto-generated if missing) |
+| Type | Yes | Transaction category (Dividends, Withholding Tax, etc.) |
 | Symbol | No | Related security |
 | Description | Yes | Contains ISIN for country identification |
 | Date/Time | Yes | Transaction date |
 | Amount | Yes | Transaction amount |
-| Currency | Yes | Currency code |
+| CurrencyPrimary | Yes | Currency code |
 
 **Included transaction types:** Dividends, Interest, Withholding Tax, Fees
 
@@ -77,8 +81,10 @@ Configure the following sections in your FLEX query:
 | Setting | Value |
 |---------|-------|
 | Date Period | Your desired range (e.g., Last 365 Days, or specific tax year) |
-| Format | **XML** (recommended) or **CSV** |
+| Format | **XML** (recommended) |
 | Include Headers | Yes (if using CSV) |
+
+**Why XML?** XML format preserves the document structure reliably. CSV exports can have parsing issues if column order changes between FLEX query configurations.
 
 ### Running and Importing
 

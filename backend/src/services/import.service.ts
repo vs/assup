@@ -228,15 +228,42 @@ class ImportService {
    */
   private parseCSV(content: string): ParsedFlexData {
     // IBKR FLEX reports can have multiple sections with different headers
-    // Split by the cash transactions header and parse each section separately
-    const sections = content.split(/\n(?="CurrencyPrimary")/);
+    // Find the cash transactions section by looking for a header line that:
+    // - Contains "Type" and "Amount" columns (cash-specific)
+    // - Does NOT contain "Asset Category" (trade-specific)
+    const lines = content.split("\n");
+    let cashSectionIndex = -1;
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      // Look for a header line (starts with quote, contains column names)
+      if (
+        line.startsWith('"') &&
+        (line.includes('"Type"') || line.includes('"type"')) &&
+        (line.includes('"Amount"') || line.includes('"amount"')) &&
+        !line.includes('"Asset Category"') &&
+        !line.includes('"Trade Price"')
+      ) {
+        cashSectionIndex = i;
+        break;
+      }
+    }
+
+    let tradesSection = content;
+    let cashSection: string | null = null;
+
+    if (cashSectionIndex > 0) {
+      tradesSection = lines.slice(0, cashSectionIndex).join("\n");
+      cashSection = lines.slice(cashSectionIndex).join("\n");
+      console.log(`[Import] Found cash section at line ${cashSectionIndex}`);
+    }
 
     const trades: FlexTrade[] = [];
     const cashTransactions: FlexCashTransaction[] = [];
 
-    // Parse trades section (first section)
-    if (sections[0]) {
-      const tradeRecords = parseCSV(sections[0], {
+    // Parse trades section
+    if (tradesSection) {
+      const tradeRecords = parseCSV(tradesSection, {
         columns: true,
         skip_empty_lines: true,
         relax_column_count: true,
@@ -260,6 +287,7 @@ class ImportService {
           trades.push({
             tradeID:
               record["TradeID"] ||
+              record["Trade ID"] ||
               record["Transaction ID"] ||
               `${tradeDate}-${record["Symbol"]}-${quantity}-${tradePrice}-${++csvTradeSeq}`,
             symbol: record["Symbol"],
@@ -285,9 +313,8 @@ class ImportService {
       }
     }
 
-    // Parse cash transactions section (second section, if present)
-    if (sections[1]) {
-      const cashSection = '"CurrencyPrimary"' + sections[1];
+    // Parse cash transactions section (if found)
+    if (cashSection) {
       const cashRecords = parseCSV(cashSection, {
         columns: true,
         skip_empty_lines: true,
@@ -303,13 +330,14 @@ class ImportService {
       for (const record of cashRecords) {
         const txType = record["Type"];
         const txAmount = record["Amount"];
-        const txDate = record["Date/Time"] || record["Date"];
+        const txDate = record["Date/Time"] || record["DateTime"] || record["Date"];
         const txCurrency = record["CurrencyPrimary"] || record["Currency"];
+        const txId = record["Transaction ID"] || record["TransactionID"] || record["transactionID"];
 
         if (txType && txAmount) {
           console.log(`[Import] Found cash transaction: ${txType} - ${txAmount} on ${txDate}`);
           cashTransactions.push({
-            transactionID: `${txDate}-${txType}-${txAmount}`,
+            transactionID: txId || `${txDate}-${txType}-${txAmount}`,
             symbol: record["Symbol"],
             description: record["Description"] || "",
             conid: record["Conid"],
