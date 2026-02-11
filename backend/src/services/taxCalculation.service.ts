@@ -355,6 +355,7 @@ class TaxCalculationService {
 
   /**
    * Get dividends with CZK conversion for tax reporting
+   * Aggregates dividends and withholding taxes by symbol+date to handle reversals
    */
   async getDividends(year: number): Promise<{
     dividends: TaxDividend[];
@@ -387,39 +388,82 @@ class TaxCalculationService {
       },
     });
 
+    // Aggregate dividends by symbol+date to handle reversals
+    // (e.g., a reversal of -5.97 and a re-payment of +5.97 should net to one entry)
+    const dividendAggregates = new Map<
+      string,
+      {
+        id: string;
+        symbol: string;
+        date: Date;
+        amount: number;
+        currency: string;
+        description: string;
+      }
+    >();
+
+    for (const div of dividendTxns) {
+      const dateKey = div.transactionDate.toISOString().split("T")[0];
+      const key = `${div.symbol || ""}:${dateKey}`;
+
+      const existing = dividendAggregates.get(key);
+      if (existing) {
+        existing.amount += div.amount || 0;
+      } else {
+        dividendAggregates.set(key, {
+          id: div.id,
+          symbol: div.symbol || "",
+          date: div.transactionDate,
+          amount: div.amount || 0,
+          currency: div.currency || "USD",
+          description: div.description || "",
+        });
+      }
+    }
+
+    // Aggregate withholding taxes by symbol+date to handle reversals
+    const withholdingAggregates = new Map<string, number>();
+    for (const wh of withholdingTxns) {
+      const dateKey = wh.transactionDate.toISOString().split("T")[0];
+      const key = `${wh.symbol || ""}:${dateKey}`;
+
+      const existing = withholdingAggregates.get(key) || 0;
+      withholdingAggregates.set(key, existing + (wh.amount || 0));
+    }
+
     const dividends: TaxDividend[] = [];
     const countryTotals: Map<
       string,
       { gross: number; withholdingTax: number; count: number }
     > = new Map();
 
-    for (const div of dividendTxns) {
+    for (const [key, div] of dividendAggregates) {
+      // Skip if the aggregated dividend is zero (fully reversed)
+      if (Math.abs(div.amount) < 0.01) {
+        continue;
+      }
+
       const rate = await cnbExchangeRateService.getRate(
-        div.transactionDate,
+        div.date,
         div.currency || "USD"
       );
 
-      // Find matching withholding tax (same symbol, close date)
-      const withholding = withholdingTxns.find(
-        (w) =>
-          w.symbol === div.symbol &&
-          Math.abs(
-            w.transactionDate.getTime() - div.transactionDate.getTime()
-          ) <
-            7 * 24 * 60 * 60 * 1000 // Within 7 days
-      );
+      // Find matching aggregated withholding tax (same symbol+date)
+      const withholdingAmount = withholdingAggregates.get(key) || 0;
+      // Withholding taxes are stored as negative, so we negate to get positive amount
+      // But if the dividend is negative (reversal), the withholding should also remain negative
+      const withholdingTaxUsd = -withholdingAmount;
 
-      const grossUsd = div.amount || 0;
-      const withholdingTaxUsd = Math.abs(withholding?.amount || 0);
+      const grossUsd = div.amount;
       const netUsd = grossUsd - withholdingTaxUsd;
 
       // Extract country from ISIN or description (first 2 chars of ISIN)
-      const country = this.extractCountry(div.description || "", div.symbol);
+      const country = this.extractCountry(div.description, div.symbol);
 
       const dividend: TaxDividend = {
         id: div.id,
-        date: div.transactionDate.toISOString().split("T")[0],
-        symbol: div.symbol || "",
+        date: div.date.toISOString().split("T")[0],
+        symbol: div.symbol,
         country,
         grossUsd,
         withholdingTaxUsd,
@@ -428,7 +472,7 @@ class TaxCalculationService {
         grossCzk: rate ? grossUsd * rate : 0,
         withholdingTaxCzk: rate ? withholdingTaxUsd * rate : 0,
         netCzk: rate ? netUsd * rate : 0,
-        currency: div.currency || "USD",
+        currency: div.currency,
       };
 
       dividends.push(dividend);
