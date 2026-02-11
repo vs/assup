@@ -581,22 +581,28 @@ class TaxCalculationService {
     let total = 0;
 
     for (const txn of interestTxns) {
-      const rate = await cnbExchangeRateService.getRate(
-        txn.transactionDate,
-        txn.currency || "USD"
-      );
+      const currency = txn.currency || "USD";
+      const amount = txn.amount || 0;
 
-      const amountUsd = txn.amount || 0;
-      const amountCzk = rate ? amountUsd * rate : 0;
+      // CZK amounts don't need conversion
+      let rate: number;
+      let amountCzk: number;
+      if (currency === "CZK") {
+        rate = 1;
+        amountCzk = amount;
+      } else {
+        rate = await cnbExchangeRateService.getRate(txn.transactionDate, currency) || 0;
+        amountCzk = amount * rate;
+      }
 
       interest.push({
         id: txn.id,
         date: txn.transactionDate.toISOString().split("T")[0],
         description: txn.description || "",
-        amountUsd,
-        rate: rate || 0,
+        amountUsd: amount,
+        rate,
         amountCzk,
-        currency: txn.currency || "USD",
+        currency,
       });
 
       total += amountCzk;
