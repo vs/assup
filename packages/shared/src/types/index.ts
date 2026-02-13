@@ -14,3 +14,4 @@ export * from "./settings.js";
 export * from "./historical.js";
 export * from "./profit.js";
 export * from "./taxes.js";
+export * from "./wheel.js";
