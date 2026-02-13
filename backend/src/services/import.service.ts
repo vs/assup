@@ -516,6 +516,23 @@ class ImportService {
         continue;
       }
 
+      // Parse and validate transaction date
+      const transactionDate = this.parseDate(tx.dateTime);
+      if (!transactionDate) {
+        throw new Error(
+          `Import failed: Invalid transaction date format '${tx.dateTime}' for transaction ${tx.transactionID} (${tx.type}). ` +
+          `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+        );
+      }
+
+      // Parse and validate amount
+      const amount = parseFloat(tx.amount);
+      if (isNaN(amount)) {
+        throw new Error(
+          `Import failed: Invalid amount '${tx.amount}' for transaction ${tx.transactionID} (${tx.type}).`
+        );
+      }
+
       await prisma.cashTransaction.create({
         data: {
           importBatchId: batchId,
@@ -523,8 +540,8 @@ class ImportService {
           symbol: tx.symbol || null,
           description: tx.description,
           conId: tx.conid ? parseInt(tx.conid, 10) : null,
-          transactionDate: this.parseDate(tx.dateTime) || new Date(),
-          amount: parseFloat(tx.amount),
+          transactionDate,
+          amount,
           currency: tx.currency || "USD",
           type,
         },
