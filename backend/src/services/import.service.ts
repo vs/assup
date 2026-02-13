@@ -313,6 +313,17 @@ class ImportService {
         const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
         const quantity = record["Quantity"];
         const tradePrice = record["T. Price"] || record["Trade Price"] || record["TradePrice"];
+
+        // Skip intermediate header rows (quantity and price must be valid numbers)
+        if (quantity && isNaN(parseFloat(quantity))) {
+          console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${quantity}`);
+          continue;
+        }
+        if (tradePrice && isNaN(parseFloat(tradePrice))) {
+          console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${tradePrice}`);
+          continue;
+        }
+
         const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
 
         if (assetCategory && (buySell || quantity)) {
@@ -365,6 +376,12 @@ class ImportService {
         const txDate = record["Date/Time"] || record["DateTime"] || record["Date"];
         const txCurrency = record["CurrencyPrimary"] || record["Currency"];
         const txId = record["Transaction ID"] || record["TransactionID"] || record["transactionID"];
+
+        // Skip intermediate header rows (amount must be a valid number)
+        if (txAmount && isNaN(parseFloat(txAmount))) {
+          console.log(`[Import] Skipping intermediate header row: ${txType} - ${txAmount}`);
+          continue;
+        }
 
         if (txType && txAmount) {
           console.log(`[Import] Found cash transaction: ${txType} - ${txAmount} on ${txDate}`);
