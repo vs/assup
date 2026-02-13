@@ -262,3 +262,22 @@ model ExchangeRate {
   @@index([currency])
   @@map("exchange_rates")
 }
+
+// Wheel Trackers - tickers being tracked for wheel strategy
+model WheelTracker {
+  id        String    @id @default(uuid()) @db.Uuid
+  symbol    String    @unique @db.VarChar(20)
+  startDate DateTime? @map("start_date") @db.Date
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("wheel_trackers")
+}
+
+// Wheel Suggestion Dismissals - hidden suggestions
+model WheelSuggestionDismissal {
+  id          String   @id @default(uuid()) @db.Uuid
+  symbol      String   @unique @db.VarChar(20)
+  dismissedAt DateTime @default(now()) @map("dismissed_at") @db.Timestamptz
+
+  @@map("wheel_suggestion_dismissals")
+}
