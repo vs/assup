@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   Search,
   TrendingUp,
+  RefreshCw,
   Receipt,
   Menu,
   X,
@@ -47,6 +48,7 @@ const navItems = [
   { to: "/orders", label: "Orders", icon: ShoppingCart },
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },
+  { to: "/wheel", label: "Wheel", icon: RefreshCw },
   { to: "/taxes", label: "Taxes", icon: Receipt },
   { to: "/asset-classes", label: "Asset Classes", icon: Layers },
 ];
