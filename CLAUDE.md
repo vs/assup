@@ -120,3 +120,20 @@ Key models in Prisma:
 - `ImportBatch` - Tracks FLEX report imports for deduplication
 - `ImportedTrade` - Options and stock trades from FLEX reports (with cost basis, realized P&L)
 - `CashTransaction` - Dividends, interest, withholding tax, fees from FLEX reports
+
+## Programming Principles
+
+### Fail Fast and Loud
+- **Never silently skip invalid data.** If a record has invalid or missing required fields, fail the entire operation with a clear error message.
+- **Never guess or calculate missing values.** If a required field is missing from input data, fail with an error explaining what's missing and how to fix it.
+- **Never use fallback defaults for critical data.** If a date can't be parsed, don't default to today's date - throw an error with the invalid value and supported formats.
+
+### Error Messages Must Be Actionable
+- Include the actual invalid value in error messages
+- List the expected/supported formats
+- Suggest how to fix the issue (e.g., "Please reconfigure your FLEX Query to include the TradeDate field")
+
+### Data Import Rules
+- Validate that all required columns exist before processing any records
+- Fail immediately on the first invalid record - don't continue processing
+- Never infer or calculate values that should be explicitly provided in the source data
