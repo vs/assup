@@ -279,6 +279,33 @@ class ImportService {
         console.log(`[Import] Trade columns:`, Object.keys(tradeRecords[0]));
       }
 
+      // Validate required columns exist
+      if (tradeRecords.length > 0) {
+        const columns = Object.keys(tradeRecords[0]);
+        const hasQuantity = columns.some(c =>
+          c === "Quantity"
+        );
+        const hasTradeDate = columns.some(c =>
+          c === "Trade Date" || c === "TradeDate" || c === "Date/Time"
+        );
+
+        if (!hasQuantity) {
+          throw new Error(
+            `CSV import failed: Missing required 'Quantity' column. ` +
+            `Available columns: ${columns.join(", ")}. ` +
+            `Please reconfigure your FLEX Query to include the Quantity field.`
+          );
+        }
+
+        if (!hasTradeDate) {
+          throw new Error(
+            `CSV import failed: Missing required trade date column (expected 'Trade Date', 'TradeDate', or 'Date/Time'). ` +
+            `Available columns: ${columns.join(", ")}. ` +
+            `Please reconfigure your FLEX Query to include the TradeDate field.`
+          );
+        }
+      }
+
       let csvTradeSeq = 0;
       for (const record of tradeRecords) {
         const assetCategory = record["Asset Category"] || record["AssetClass"];
@@ -402,6 +429,31 @@ class ImportService {
       // Parse expiry date
       const expiry = trade.expiry ? this.parseDate(trade.expiry) : null;
 
+      // Parse and validate trade date
+      const tradeDate = this.parseDate(trade.tradeDate);
+      if (!tradeDate) {
+        throw new Error(
+          `Import failed: Invalid trade date format '${trade.tradeDate}' for trade ${trade.tradeID} (${trade.symbol}). ` +
+          `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+        );
+      }
+
+      // Parse and validate quantity
+      const quantity = parseFloat(trade.quantity);
+      if (isNaN(quantity)) {
+        throw new Error(
+          `Import failed: Invalid quantity '${trade.quantity}' for trade ${trade.tradeID} (${trade.symbol}).`
+        );
+      }
+
+      // Parse and validate trade price
+      const tradePrice = parseFloat(trade.tradePrice);
+      if (isNaN(tradePrice)) {
+        throw new Error(
+          `Import failed: Invalid trade price '${trade.tradePrice}' for trade ${trade.tradeID} (${trade.symbol}).`
+        );
+      }
+
       await prisma.importedTrade.create({
         data: {
           importBatchId: batchId,
@@ -415,9 +467,9 @@ class ImportService {
           right: trade.putCall?.charAt(0).toUpperCase() as "C" | "P" | undefined,
           underlying: trade.underlyingSymbol || (secType === "OPT" ? trade.symbol.split(" ")[0] : null),
           multiplier: trade.multiplier ? parseInt(trade.multiplier, 10) : 100,
-          tradeDate: this.parseDate(trade.tradeDate) || new Date(),
-          quantity: parseFloat(trade.quantity),
-          tradePrice: parseFloat(trade.tradePrice),
+          tradeDate,
+          quantity,
+          tradePrice,
           proceeds: parseFloat(trade.proceeds),
           commission: trade.ibCommission
             ? Math.abs(parseFloat(trade.ibCommission))
@@ -571,36 +623,53 @@ class ImportService {
   private parseDate(dateStr: string | undefined): Date | null {
     if (!dateStr) return null;
 
-    // Try various date formats
+    // Trim whitespace
+    const trimmed = dateStr.trim();
+    if (!trimmed) return null;
+
     // YYYYMMDD;HHMMSS (IBKR Date/Time format)
-    if (/^\d{8};\d{6}$/.test(dateStr)) {
-      const datePart = dateStr.split(";")[0];
+    if (/^\d{8};\d{6}$/.test(trimmed)) {
+      const datePart = trimmed.split(";")[0];
       return new Date(
         `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}`
       );
     }
 
-    // YYYYMMDD
-    if (/^\d{8}$/.test(dateStr)) {
+    // YYYYMMDD (plain 8-digit date)
+    if (/^\d{8}$/.test(trimmed)) {
       return new Date(
-        `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`
+        `${trimmed.slice(0, 4)}-${trimmed.slice(4, 6)}-${trimmed.slice(6, 8)}`
       );
     }
 
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-      return new Date(dateStr.split(/[T;]/)[0]);
+    // YYYY-MM-DD (with optional time component)
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+      return new Date(trimmed.split(/[T;]/)[0]);
     }
 
-    // MM/DD/YYYY
-    if (/^\d{2}\/\d{2}\/\d{4}/.test(dateStr)) {
-      const [month, day, year] = dateStr.split("/");
+    // MM/DD/YYYY (US format, must be exactly 2-digit month and day)
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+      const [month, day, year] = trimmed.split("/");
       return new Date(`${year}-${month}-${day}`);
     }
 
-    // Try native parsing
-    const parsed = new Date(dateStr);
-    return isNaN(parsed.getTime()) ? null : parsed;
+    // DD-MMM-YY or DD-MMM-YYYY (e.g., "15-Feb-19" or "15-Feb-2019")
+    const monthNames: Record<string, string> = {
+      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
+    };
+    const dmmyMatch = trimmed.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
+    if (dmmyMatch) {
+      const [, day, monthStr, yearStr] = dmmyMatch;
+      const month = monthNames[monthStr.toLowerCase()];
+      const year = yearStr.length === 2 ? `20${yearStr}` : yearStr;
+      if (month) {
+        return new Date(`${year}-${month}-${day.padStart(2, "0")}`);
+      }
+    }
+
+    // No guessing - return null for unrecognized formats
+    return null;
   }
 
   private mapAssetCategory(category: string): string {
