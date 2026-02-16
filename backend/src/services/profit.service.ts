@@ -4,6 +4,7 @@
 
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
+import { cnbExchangeRateService } from "./cnbExchangeRate.service.js";
 import { formatDisplayName } from "@assup/shared";
 import type { ImportedTrade } from "@prisma/client";
 import type { ExecutionDetail, CommissionReport } from "@stoqey/ib";
@@ -30,6 +31,46 @@ function hasExpiryPassed(expiryDate: Date): boolean {
   const expiry = new Date(expiryDate);
   expiry.setHours(0, 0, 0, 0);
   return expiry < today;
+}
+
+/**
+ * Convert an amount from a foreign currency to USD using CNB rates.
+ * CNB rates are expressed as CZK per 1 unit of foreign currency.
+ * To convert currency X to USD: (amount in X) * (CZK per X) / (CZK per USD)
+ */
+async function convertToUsd(
+  amount: number,
+  currency: string,
+  date: Date
+): Promise<number> {
+  // USD amounts don't need conversion
+  if (currency === "USD") {
+    return amount;
+  }
+
+  // Get USD rate (CZK per 1 USD)
+  const usdRate = await cnbExchangeRateService.getRate(date, "USD");
+  if (!usdRate) {
+    // If no USD rate available, return original amount (will be treated as USD)
+    console.warn(`No USD exchange rate found for ${date.toISOString().split("T")[0]}`);
+    return amount;
+  }
+
+  // CZK amounts: divide by USD rate to get USD
+  if (currency === "CZK") {
+    return amount / usdRate;
+  }
+
+  // Other currencies: get the currency's rate and convert via CZK
+  const currencyRate = await cnbExchangeRateService.getRate(date, currency);
+  if (!currencyRate) {
+    // If no rate available, return original amount (will be treated as USD)
+    console.warn(`No ${currency} exchange rate found for ${date.toISOString().split("T")[0]}`);
+    return amount;
+  }
+
+  // Convert: amount * (CZK per currency) / (CZK per USD) = amount in USD
+  return (amount * currencyRate) / usdRate;
 }
 
 class ProfitService {
@@ -218,24 +259,26 @@ class ProfitService {
       }
     }
 
-    // Aggregate cash transactions
+    // Aggregate cash transactions (convert non-USD to USD)
     for (const tx of cashTransactions) {
       const date = new Date(tx.transactionDate);
       const key = `${date.getFullYear()}-${date.getMonth() + 1}`;
       const summary = monthMap.get(key);
       if (summary) {
+        // Convert amount to USD if in different currency
+        const amountUsd = await convertToUsd(tx.amount, tx.currency, date);
         switch (tx.type) {
           case "DIVIDEND":
-            summary.dividends += tx.amount;
+            summary.dividends += amountUsd;
             break;
           case "INTEREST":
-            summary.interest += tx.amount;
+            summary.interest += amountUsd;
             break;
           case "WITHHOLDING_TAX":
-            summary.withholdingTax += tx.amount;
+            summary.withholdingTax += amountUsd;
             break;
           case "FEE":
-            summary.fees += tx.amount;
+            summary.fees += amountUsd;
             break;
         }
       }
@@ -573,20 +616,22 @@ class ProfitService {
       }
     }
 
-    // Categorize cash transactions
+    // Categorize cash transactions (convert non-USD to USD)
     const dividends: CashTransaction[] = [];
     const interest: CashTransaction[] = [];
     const withholdingTax: CashTransaction[] = [];
     const fees: CashTransaction[] = [];
 
     for (const tx of cashTransactions) {
+      // Convert amount to USD if in different currency
+      const amountUsd = await convertToUsd(tx.amount, tx.currency, tx.transactionDate);
       const mapped: CashTransaction = {
         id: tx.id,
         transactionId: tx.transactionId,
         symbol: tx.symbol || undefined,
         description: tx.description,
         transactionDate: tx.transactionDate.toISOString().split("T")[0],
-        amount: tx.amount,
+        amount: amountUsd,
         currency: tx.currency,
         type: tx.type as CashTransaction["type"],
       };

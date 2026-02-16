@@ -13,7 +13,7 @@ interface CnbRate {
 }
 
 /** Only these currencies are needed for tax documentation */
-const ALLOWED_CURRENCIES = ["USD", "EUR"];
+const ALLOWED_CURRENCIES = ["USD", "EUR", "RUB", "CZK"];
 
 class CnbExchangeRateService {
   private readonly CNB_URL =
