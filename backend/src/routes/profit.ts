@@ -193,4 +193,17 @@ router.post(
   })
 );
 
+/**
+ * POST /api/profit/recalculate-assignments
+ * Clear and re-detect assignments for all expired options.
+ * Use this to fix false positives from earlier detection runs.
+ */
+router.post(
+  "/recalculate-assignments",
+  asyncHandler(async (_req, res) => {
+    const result = await importService.recalculateAssignments();
+    res.json(result);
+  })
+);
+
 export default router;

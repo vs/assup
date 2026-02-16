@@ -1096,9 +1096,13 @@ class ProfitService {
         // For SELL to close (closing long): proceeds is positive (received)
         sellPrice = closeTrades.reduce((sum, t) => sum + Math.abs(t.proceeds), 0);
 
-        // If any close trade has 0 proceeds, it was likely an assignment/exercise
-        if (closeTrades.some(t => t.proceeds === 0)) {
-          wasAssigned = true;
+        // Zero proceeds on close can mean either:
+        // 1. Assignment/exercise (wasAssigned flag is set by detectAssignments based on stock trade)
+        // 2. Expired worthless (no stock trade, TWS sends close event with 0 proceeds)
+        // We rely on the wasAssigned database flag (already checked above) instead of guessing.
+        // If there's a 0-proceeds close and NOT assigned, it's expired worthless.
+        if (closeTrades.some(t => t.proceeds === 0) && !wasAssigned) {
+          expiredWorthless = true;
         }
       } else {
         // No close trade - check if option has expired

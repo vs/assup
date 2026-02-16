@@ -573,7 +573,25 @@ class ImportService {
   }
 
   /**
-   * Detect option assignments by correlating option expirations with stock trades
+   * Check if an expiry date has passed (is before today, not including today).
+   * Options expiring today are still trading and shouldn't be marked as expired/assigned
+   * until the next business day when settlement occurs.
+   */
+  private hasExpiryPassed(expiryDate: Date): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+    return expiry < today;
+  }
+
+  /**
+   * Detect option assignments by correlating option expirations with stock trades.
+   * An assignment is detected when:
+   * 1. The option has expired (expiry date is in the past)
+   * 2. There's a stock trade on or shortly after expiry (0-5 days)
+   * 3. The trade price is close to the strike (within 2%)
+   * 4. The trade quantity matches the option contracts (100 shares per contract)
    */
   async detectAssignments(): Promise<number> {
     let detected = 0;
@@ -592,15 +610,20 @@ class ImportService {
     for (const option of shortOptions) {
       if (!option.expiry || !option.underlying) continue;
 
-      // Look for stock trades on the underlying near/after expiry
-      // that match the option's strike price
+      // Only check assignments for expired options
+      // Options that haven't expired yet cannot be assigned
+      if (!this.hasExpiryPassed(option.expiry)) continue;
+
+      // Look for stock trades on the underlying on or after expiry
+      // Assignments settle on expiry day (after market close) or the next business day
       const expiryDate = new Date(option.expiry);
       const searchStart = new Date(expiryDate);
-      searchStart.setDate(searchStart.getDate() - 1);
+      // Start from expiry date, not before (stock trades before expiry are unrelated)
       const searchEnd = new Date(expiryDate);
       searchEnd.setDate(searchEnd.getDate() + 5);
 
-      const potentialAssignment = await prisma.importedTrade.findFirst({
+      // Find stock trades that match assignment criteria
+      const potentialAssignments = await prisma.importedTrade.findMany({
         where: {
           symbol: option.underlying,
           secType: "STK",
@@ -613,12 +636,27 @@ class ImportService {
         },
       });
 
-      if (potentialAssignment && option.strike) {
-        // Check if trade price is close to strike (within 2%)
-        const priceDiff =
-          Math.abs(potentialAssignment.tradePrice - option.strike) /
-          option.strike;
-        if (priceDiff < 0.02) {
+      if (potentialAssignments.length > 0 && option.strike) {
+        // Expected quantity for assignment: 100 shares per option contract
+        const optionContracts = Math.abs(option.quantity);
+        const expectedShares = optionContracts * 100;
+
+        // Find a matching stock trade with correct price AND quantity
+        const matchingAssignment = potentialAssignments.find((trade) => {
+          // Check if trade price is close to strike (within 2%)
+          const priceDiff =
+            Math.abs(trade.tradePrice - option.strike!) / option.strike!;
+          if (priceDiff >= 0.02) return false;
+
+          // Check if trade quantity matches expected shares (within 10% tolerance for partial fills)
+          const tradeShares = Math.abs(trade.quantity);
+          const quantityDiff = Math.abs(tradeShares - expectedShares) / expectedShares;
+          if (quantityDiff >= 0.1) return false;
+
+          return true;
+        });
+
+        if (matchingAssignment) {
           await prisma.importedTrade.update({
             where: { id: option.id },
             data: {
@@ -632,6 +670,39 @@ class ImportService {
     }
 
     return detected;
+  }
+
+  /**
+   * Recalculate assignments for all expired options.
+   * This clears any incorrect assignment flags and re-detects based on current data.
+   * Use this to fix false positives from earlier detection runs.
+   */
+  async recalculateAssignments(): Promise<{ cleared: number; detected: number }> {
+    // Get today's date at midnight for expiry comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Clear wasAssigned for all expired options that were marked as assigned
+    // This allows re-detection with the improved algorithm
+    const clearResult = await prisma.importedTrade.updateMany({
+      where: {
+        secType: "OPT",
+        wasAssigned: true,
+        expiry: { lt: today },
+      },
+      data: {
+        wasAssigned: false,
+        assignmentDate: null,
+      },
+    });
+
+    // Re-run detection with improved algorithm
+    const detected = await this.detectAssignments();
+
+    return {
+      cleared: clearResult.count,
+      detected,
+    };
   }
 
   /**
