@@ -252,6 +252,41 @@ export function TaxesPage() {
                   <div className="space-y-4">
                     <div>
                       <h4 className="font-medium mb-2">
+                        Total Taxable Income
+                      </h4>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span>§10 Securities (non-exempt):</span>
+                          <span>{formatCzk(summary.securities.profit)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>§10 Derivatives:</span>
+                          <span>{formatCzk(summary.derivatives.profit)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>§8 Dividends (gross):</span>
+                          <span>{formatCzk(summary.dividends.gross)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>§8 Interest:</span>
+                          <span>{formatCzk(summary.interest.total)}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold border-t pt-1 mt-2">
+                          <span>Total:</span>
+                          <span>
+                            {formatCzk(
+                              summary.securities.profit +
+                                summary.derivatives.profit +
+                                summary.dividends.gross +
+                                summary.interest.total
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-medium mb-2">
                         Foreign Tax Credit by Country
                       </h4>
                       <div className="space-y-1">
