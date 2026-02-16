@@ -80,98 +80,62 @@ class TaxCalculationService {
 
   /**
    * Get stock trades with CZK conversion for tax reporting
+   *
+   * Uses proper FIFO (First In, First Out) matching:
+   * 1. Get all BUY trades for each symbol with their CZK exchange rates
+   * 2. Process all SELL trades chronologically to consume lots in FIFO order
+   * 3. Calculate CZK cost basis from actual consumed lots (each with its own exchange rate)
+   *
+   * Example: If you bought 100 shares on Jan 1 2020 and 100 on Jun 1 2020,
+   * then sold 100 on Jan 1 2021, the 2021 sell consumes the Jan 2020 lot.
+   * A subsequent sell in 2025 would use the Jun 2020 lot's cost basis and rate.
    */
   async getStockTrades(year: number): Promise<{
     trades: TaxStockTrade[];
     totals: { income: number; expenses: number; profit: number };
   }> {
-    const startDate = new Date(Date.UTC(year, 0, 1));
-    const endDate = new Date(Date.UTC(year, 11, 31));
+    const yearStart = new Date(Date.UTC(year, 0, 1));
+    const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
 
-    // Get all stock sells in the year
-    const sells = await prisma.importedTrade.findMany({
+    // Get all unique symbols that had sells in this year
+    const sellsThisYear = await prisma.importedTrade.findMany({
       where: {
         secType: "STK",
         buySell: "SELL",
         tradeDate: {
-          gte: startDate,
-          lte: endDate,
+          gte: yearStart,
+          lte: yearEnd,
         },
       },
-      orderBy: { tradeDate: "asc" },
+      select: { symbol: true },
+      distinct: ["symbol"],
     });
 
+    const symbols = sellsThisYear.map((s) => s.symbol);
     const trades: TaxStockTrade[] = [];
     let totalIncome = 0;
     let totalExpenses = 0;
 
-    for (const sell of sells) {
-      // Find matching buy
-      const buy = await prisma.importedTrade.findFirst({
-        where: {
-          symbol: sell.symbol,
-          secType: "STK",
-          buySell: "BUY",
-          tradeDate: { lt: sell.tradeDate },
-        },
-        orderBy: { tradeDate: "asc" },
-      });
-
-      const closeRate = await cnbExchangeRateService.getRate(
-        sell.tradeDate,
-        sell.currency || "USD"
+    // Process each symbol separately to maintain proper FIFO ordering
+    for (const symbol of symbols) {
+      const symbolTrades = await this.processSymbolFifo(
+        symbol,
+        yearStart,
+        yearEnd
       );
 
-      let openRate: number | null = null;
-      let holdingDays: number | null = null;
-      let costBasisCzk: number | null = null;
+      for (const trade of symbolTrades) {
+        trades.push(trade);
 
-      if (buy) {
-        openRate = await cnbExchangeRateService.getRate(
-          buy.tradeDate,
-          buy.currency || "USD"
-        );
-        holdingDays = Math.floor(
-          (sell.tradeDate.getTime() - buy.tradeDate.getTime()) /
-            (1000 * 60 * 60 * 24)
-        );
-        if (openRate) {
-          costBasisCzk = Math.abs(sell.costBasis || 0) * openRate;
+        if (!trade.isExempt && trade.status === "complete") {
+          totalIncome += trade.proceedsCzk;
+          totalExpenses += trade.costBasisCzk || 0;
         }
       }
-
-      const proceedsUsd = sell.proceeds || 0;
-      const costBasisUsd = Math.abs(sell.costBasis || 0);
-      const proceedsCzk = closeRate ? proceedsUsd * closeRate : 0;
-      const isExempt = holdingDays !== null && holdingDays >= 3 * 365;
-
-      const trade: TaxStockTrade = {
-        id: sell.id,
-        symbol: sell.symbol,
-        quantity: Math.abs(sell.quantity),
-        dateOpened: buy?.tradeDate.toISOString().split("T")[0] || null,
-        dateClosed: sell.tradeDate.toISOString().split("T")[0],
-        holdingDays,
-        isExempt,
-        proceedsUsd,
-        costBasisUsd,
-        pnlUsd: proceedsUsd - costBasisUsd,
-        rateOpen: openRate,
-        rateClosed: closeRate || 0,
-        proceedsCzk,
-        costBasisCzk,
-        pnlCzk: costBasisCzk !== null ? proceedsCzk - costBasisCzk : null,
-        status: buy ? "complete" : "missing_buy",
-        currency: sell.currency || "USD",
-      };
-
-      trades.push(trade);
-
-      if (!isExempt && trade.status === "complete") {
-        totalIncome += proceedsCzk;
-        totalExpenses += costBasisCzk || 0;
-      }
     }
+
+    // Sort all trades by date
+    trades.sort((a, b) => a.dateClosed.localeCompare(b.dateClosed));
 
     return {
       trades,
@@ -181,6 +145,231 @@ class TaxCalculationService {
         profit: totalIncome - totalExpenses,
       },
     };
+  }
+
+  /**
+   * Process FIFO matching for a single symbol
+   * Returns TaxStockTrade records for sells within the target year
+   */
+  private async processSymbolFifo(
+    symbol: string,
+    yearStart: Date,
+    yearEnd: Date
+  ): Promise<TaxStockTrade[]> {
+    // Get all buys for this symbol (ever) - these are our lots
+    const buys = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "STK",
+        buySell: "BUY",
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // Get all sells up to and including the target year
+    // We need to process ALL sells chronologically to properly consume lots
+    const sells = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "STK",
+        buySell: "SELL",
+        tradeDate: { lte: yearEnd },
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // Build buy lots with their CZK exchange rates
+    interface BuyLot {
+      id: string;
+      tradeDate: Date;
+      originalQty: number;
+      remainingQty: number;
+      pricePerShare: number;
+      commission: number;
+      exchangeRate: number;
+      currency: string;
+    }
+
+    const lots: BuyLot[] = [];
+    for (const buy of buys) {
+      const qty = Math.abs(buy.quantity);
+      const rate = await cnbExchangeRateService.getRate(
+        buy.tradeDate,
+        buy.currency || "USD"
+      );
+      lots.push({
+        id: buy.id,
+        tradeDate: buy.tradeDate,
+        originalQty: qty,
+        remainingQty: qty,
+        pricePerShare: buy.tradePrice,
+        commission: buy.commission,
+        exchangeRate: rate || 0,
+        currency: buy.currency || "USD",
+      });
+    }
+
+    const result: TaxStockTrade[] = [];
+    const THREE_YEARS_DAYS = 3 * 365;
+
+    // Process each sell in chronological order (FIFO)
+    for (const sell of sells) {
+      const sellQty = Math.abs(sell.quantity);
+      let qtyRemaining = sellQty;
+
+      // Track consumed lots separately by exemption status
+      // This allows partial exemption when a sale spans lots with different holding periods
+      interface ConsumedPortion {
+        qty: number;
+        costBasisUsd: number;
+        costBasisCzk: number;
+        buyDate: Date;
+        holdingDays: number;
+      }
+
+      const exemptPortions: ConsumedPortion[] = [];
+      const taxablePortions: ConsumedPortion[] = [];
+      let missingQty = 0;
+
+      // Consume from oldest lots first (FIFO)
+      for (const lot of lots) {
+        if (qtyRemaining <= 0) break;
+        if (lot.remainingQty <= 0) continue;
+
+        const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
+
+        // Calculate proportional cost basis for this portion
+        // Cost = (qty × price) + (commission × proportion of original lot)
+        const proportionOfLot = qtyToConsume / lot.originalQty;
+        const lotCostUsd =
+          qtyToConsume * lot.pricePerShare + lot.commission * proportionOfLot;
+        const lotCostCzk = lotCostUsd * lot.exchangeRate;
+
+        // Calculate holding period for this specific lot
+        const holdingDays = Math.floor(
+          (sell.tradeDate.getTime() - lot.tradeDate.getTime()) /
+            (1000 * 60 * 60 * 24)
+        );
+
+        const portion: ConsumedPortion = {
+          qty: qtyToConsume,
+          costBasisUsd: lotCostUsd,
+          costBasisCzk: lotCostCzk,
+          buyDate: lot.tradeDate,
+          holdingDays,
+        };
+
+        // Separate into exempt (3+ years) and taxable portions
+        if (holdingDays >= THREE_YEARS_DAYS) {
+          exemptPortions.push(portion);
+        } else {
+          taxablePortions.push(portion);
+        }
+
+        // Consume from this lot
+        lot.remainingQty -= qtyToConsume;
+        qtyRemaining -= qtyToConsume;
+      }
+
+      // Track any quantity without matching buys
+      if (qtyRemaining > 0) {
+        missingQty = qtyRemaining;
+      }
+
+      // Only output trades within the target year
+      const isInYear = sell.tradeDate >= yearStart && sell.tradeDate <= yearEnd;
+      if (!isInYear) continue;
+
+      const closeRate = await cnbExchangeRateService.getRate(
+        sell.tradeDate,
+        sell.currency || "USD"
+      );
+
+      const totalProceedsUsd = sell.proceeds || 0;
+
+      // Helper to create a TaxStockTrade from portions
+      const createTrade = (
+        portions: ConsumedPortion[],
+        isExempt: boolean,
+        idSuffix: string
+      ): TaxStockTrade | null => {
+        if (portions.length === 0) return null;
+
+        const totalQty = portions.reduce((sum, p) => sum + p.qty, 0);
+        const costBasisUsd = portions.reduce((sum, p) => sum + p.costBasisUsd, 0);
+        const costBasisCzk = portions.reduce((sum, p) => sum + p.costBasisCzk, 0);
+
+        // Allocate proceeds proportionally by quantity
+        const proceedsProportion = totalQty / sellQty;
+        const proceedsUsd = totalProceedsUsd * proceedsProportion;
+        const proceedsCzk = closeRate ? proceedsUsd * closeRate : 0;
+
+        // Use earliest buy date for display (oldest lot consumed)
+        const earliestBuyDate = portions.reduce(
+          (earliest, p) => (p.buyDate < earliest ? p.buyDate : earliest),
+          portions[0].buyDate
+        );
+
+        // Use the minimum holding days for conservative display
+        const minHoldingDays = Math.min(...portions.map((p) => p.holdingDays));
+
+        return {
+          id: `${sell.id}${idSuffix}`,
+          symbol: sell.symbol,
+          quantity: totalQty,
+          dateOpened: earliestBuyDate.toISOString().split("T")[0],
+          dateClosed: sell.tradeDate.toISOString().split("T")[0],
+          holdingDays: minHoldingDays,
+          isExempt,
+          proceedsUsd,
+          costBasisUsd,
+          pnlUsd: proceedsUsd - costBasisUsd,
+          rateOpen: null, // No single rate when FIFO may consume multiple lots
+          rateClosed: closeRate || 0,
+          proceedsCzk,
+          costBasisCzk,
+          pnlCzk: proceedsCzk - costBasisCzk,
+          status: "complete",
+          currency: sell.currency || "USD",
+        };
+      };
+
+      // Create separate records for exempt and taxable portions
+      const exemptTrade = createTrade(exemptPortions, true, "-exempt");
+      const taxableTrade = createTrade(taxablePortions, false, "-taxable");
+
+      if (exemptTrade) result.push(exemptTrade);
+      if (taxableTrade) result.push(taxableTrade);
+
+      // If there's missing quantity (no matching buys), create a missing_buy record
+      if (missingQty > 0) {
+        const proceedsProportion = missingQty / sellQty;
+        const proceedsUsd = totalProceedsUsd * proceedsProportion;
+        const proceedsCzk = closeRate ? proceedsUsd * closeRate : 0;
+
+        result.push({
+          id: `${sell.id}-missing`,
+          symbol: sell.symbol,
+          quantity: missingQty,
+          dateOpened: null,
+          dateClosed: sell.tradeDate.toISOString().split("T")[0],
+          holdingDays: null,
+          isExempt: false,
+          proceedsUsd,
+          costBasisUsd: 0,
+          pnlUsd: proceedsUsd,
+          rateOpen: null,
+          rateClosed: closeRate || 0,
+          proceedsCzk,
+          costBasisCzk: null,
+          pnlCzk: null,
+          status: "missing_buy",
+          currency: sell.currency || "USD",
+        });
+      }
+    }
+
+    return result;
   }
 
   /**
