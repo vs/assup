@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getApiBase } from "@/lib/apiConfig";
 
 export type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected";
 
@@ -7,8 +8,6 @@ export interface SSEMessage {
   data: unknown;
   timestamp: string;
 }
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 // Singleton SSE connection manager
 class SSEManager {
@@ -48,7 +47,7 @@ class SSEManager {
     }
 
     try {
-      const eventSource = new EventSource(`${API_BASE}/api/updates/stream`);
+      const eventSource = new EventSource(`${getApiBase()}/api/updates/stream`);
       this.eventSource = eventSource;
 
       eventSource.onopen = () => {
