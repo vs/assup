@@ -1,20 +1,23 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Assup",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.assup.desktop",
   "build": {
-    "frontendDist": "../frontend/dist",
-    "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run --prefix ../frontend dev",
-    "beforeBuildCommand": "npm run build:frontend"
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build:frontend",
+    "frontendDist": "../frontend/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Assup",
-        "width": 800,
-        "height": 600,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
         "resizable": true,
         "fullscreen": false
       }
