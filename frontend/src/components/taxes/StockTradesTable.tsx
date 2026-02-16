@@ -18,7 +18,7 @@ interface Props {
 
 export function StockTradesTable({ year }: Props) {
   const [trades, setTrades] = useState<TaxStockTrade[]>([]);
-  const [totals, setTotals] = useState({ income: 0, expenses: 0, profit: 0 });
+  const [totals, setTotals] = useState({ income: 0, expenses: 0, profit: 0, profitUsd: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +28,11 @@ export function StockTradesTable({ year }: Props) {
         setLoading(true);
         const data = await taxesApi.stockTrades(year);
         setTrades(data.trades);
-        setTotals(data.totals);
+        // Calculate USD total from trades (only non-exempt, complete trades)
+        const profitUsd = data.trades
+          .filter((t) => !t.isExempt && t.status === "complete")
+          .reduce((sum, t) => sum + t.pnlUsd, 0);
+        setTotals({ ...data.totals, profitUsd });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
@@ -79,7 +83,7 @@ export function StockTradesTable({ year }: Props) {
         <CardTitle className="flex justify-between">
           <span>Stock Trades (§10 D - Cenné papíry)</span>
           <span className="text-sm font-normal">
-            {trades.length} trades | Profit: {formatCzk(totals.profit)}
+            {trades.length} trades | Profit: {formatCzk(totals.profit)} ({formatUsd(totals.profitUsd)})
           </span>
         </CardTitle>
       </CardHeader>
@@ -142,7 +146,10 @@ export function StockTradesTable({ year }: Props) {
                         : "text-red-600"
                     }`}
                   >
-                    {formatCzk(trade.pnlCzk)}
+                    <div>{formatCzk(trade.pnlCzk)}</div>
+                    <div className="text-xs text-muted-foreground font-normal">
+                      {formatUsd(trade.pnlUsd)}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {trade.status === "complete" ? (

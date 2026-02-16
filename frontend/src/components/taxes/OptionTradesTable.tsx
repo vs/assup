@@ -19,7 +19,7 @@ interface Props {
 
 export function OptionTradesTable({ year }: Props) {
   const [trades, setTrades] = useState<TaxOptionTrade[]>([]);
-  const [totals, setTotals] = useState({ income: 0, expenses: 0, profit: 0 });
+  const [totals, setTotals] = useState({ income: 0, expenses: 0, profit: 0, profitUsd: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +29,11 @@ export function OptionTradesTable({ year }: Props) {
         setLoading(true);
         const data = await taxesApi.optionTrades(year);
         setTrades(data.trades);
-        setTotals(data.totals);
+        // Calculate USD total from trades (only complete trades)
+        const profitUsd = data.trades
+          .filter((t) => t.status === "complete")
+          .reduce((sum, t) => sum + t.pnlUsd, 0);
+        setTotals({ ...data.totals, profitUsd });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
@@ -89,7 +93,7 @@ export function OptionTradesTable({ year }: Props) {
         <CardTitle className="flex justify-between">
           <span>Option Trades (§10 F - Deriváty)</span>
           <span className="text-sm font-normal">
-            {trades.length} trades | Profit: {formatCzk(totals.profit)}
+            {trades.length} trades | Profit: {formatCzk(totals.profit)} ({formatUsd(totals.profitUsd)})
           </span>
         </CardTitle>
       </CardHeader>
@@ -144,7 +148,10 @@ export function OptionTradesTable({ year }: Props) {
                       trade.pnlCzk >= 0 ? "text-green-600" : "text-red-600"
                     }`}
                   >
-                    {formatCzk(trade.pnlCzk)}
+                    <div>{formatCzk(trade.pnlCzk)}</div>
+                    <div className="text-xs text-muted-foreground font-normal">
+                      {formatUsd(trade.pnlUsd)}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {trade.status === "complete" ? (
