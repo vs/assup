@@ -1,8 +1,19 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { Navigation } from "./Navigation";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { useSSEConnection } from "@/hooks/useSSE";
+import { setDockBadge, isTauri } from "@/lib/tauriIntegration";
 
 export function Layout() {
+  const { connected } = useSSEConnection();
+
+  useEffect(() => {
+    if (isTauri()) {
+      setDockBadge(connected);
+    }
+  }, [connected]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40">

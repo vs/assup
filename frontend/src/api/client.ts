@@ -2,7 +2,7 @@
  * Base API client with error handling
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
+import { getApiBase } from "@/lib/apiConfig";
 
 export interface ApiError {
   message: string;
@@ -29,7 +29,7 @@ export function isApiError(error: unknown): error is ApiError & Error {
  * Make a typed API request with error handling
  */
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
