@@ -378,6 +378,135 @@ class TaxCalculationService {
     return result;
   }
 
+  // ============ Option FIFO Helpers ============
+
+  private static readonly STRIKE_TOLERANCE_PERCENT = 0.02;
+  private static readonly STRIKE_TOLERANCE_ABS = 1.0;
+
+  /**
+   * Find option opens for a symbol, including relaxed matching for corporate actions
+   */
+  private async findOptionOpens(symbol: string, sampleClose?: { conId: number | null; underlying: string | null; expiry: Date | null; right: string | null; strike: number | null }) {
+    let opens = await prisma.importedTrade.findMany({
+      where: { symbol, secType: "OPT", openClose: "O" },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    if (opens.length > 0 || !sampleClose) return opens;
+
+    // Try conId match
+    if (sampleClose.conId) {
+      opens = await prisma.importedTrade.findMany({
+        where: { conId: sampleClose.conId, secType: "OPT", openClose: "O" },
+        orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+      });
+      if (opens.length > 0) return opens;
+    }
+
+    // Try relaxed match by underlying/expiry/right with strike tolerance
+    if (sampleClose.underlying && sampleClose.expiry && sampleClose.right) {
+      const potentialOpens = await prisma.importedTrade.findMany({
+        where: {
+          underlying: sampleClose.underlying,
+          expiry: sampleClose.expiry,
+          right: sampleClose.right,
+          secType: "OPT",
+          openClose: "O",
+        },
+        orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+      });
+
+      for (const candidate of potentialOpens) {
+        if (candidate.strike && sampleClose.strike) {
+          const strikeDiff = Math.abs(candidate.strike - sampleClose.strike);
+          const percentDiff = sampleClose.strike > 0 ? strikeDiff / sampleClose.strike : 0;
+          if (strikeDiff <= TaxCalculationService.STRIKE_TOLERANCE_ABS ||
+              percentDiff <= TaxCalculationService.STRIKE_TOLERANCE_PERCENT) {
+            opens.push(candidate);
+          }
+        }
+      }
+    }
+
+    return opens;
+  }
+
+  /**
+   * Build option lot info with exchange rates
+   */
+  private async buildOptionLots(opens: Array<{ id: string; tradeDate: Date; quantity: number; proceeds: number | null; currency: string | null; buySell: string }>) {
+    const lots: Array<{
+      id: string;
+      lotRef: string;
+      tradeDate: Date;
+      originalQty: number;
+      remainingQty: number;
+      premiumPerContract: number;
+      totalPremium: number;
+      exchangeRate: number;
+      currency: string;
+      isShort: boolean;
+      action: string;
+    }> = [];
+
+    for (let i = 0; i < opens.length; i++) {
+      const open = opens[i];
+      const qty = Math.abs(open.quantity);
+      const rate = await cnbExchangeRateService.getRate(open.tradeDate, open.currency || "USD");
+      const totalPremium = Math.abs(open.proceeds || 0);
+
+      lots.push({
+        id: open.id,
+        lotRef: `lot-${i + 1}`,
+        tradeDate: open.tradeDate,
+        originalQty: qty,
+        remainingQty: qty,
+        premiumPerContract: qty > 0 ? totalPremium / qty : 0,
+        totalPremium,
+        exchangeRate: rate || 0,
+        currency: open.currency || "USD",
+        isShort: open.buySell === "SELL",
+        action: open.buySell === "SELL" ? "SELL to open" : "BUY to open",
+      });
+    }
+
+    return lots;
+  }
+
+  /**
+   * Determine option close type
+   */
+  private determineCloseType(close: { wasAssigned: boolean | null; proceeds: number | null; costBasis: number | null }): "closed" | "expired" | "assigned" {
+    if (close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0)) {
+      return "assigned";
+    }
+    if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
+      return "expired";
+    }
+    return "closed";
+  }
+
+  /**
+   * Determine option close action label
+   */
+  private determineCloseAction(buySell: string, closeType: "closed" | "expired" | "assigned"): string {
+    if (closeType === "assigned") return "Assigned";
+    if (closeType === "expired") return "Expired";
+    return buySell === "BUY" ? "BUY to close" : "SELL to close";
+  }
+
+  /**
+   * Build option description from trade data
+   */
+  private buildOptionDescription(trade: { underlying: string | null; symbol: string; strike: number | null; right: string | null; expiry: Date | null }): string {
+    const strike = trade.strike || 0;
+    const right = trade.right || "";
+    const expiry = trade.expiry ? trade.expiry.toISOString().split("T")[0] : "";
+    return `${trade.underlying || trade.symbol} ${strike} ${right} ${expiry}`;
+  }
+
+  // ============ End Option FIFO Helpers ============
+
   /**
    * Get option trades with CZK conversion for tax reporting
    * Uses FIFO matching and converts each trade using its own date's exchange rate
@@ -389,203 +518,68 @@ class TaxCalculationService {
     const startDate = new Date(Date.UTC(year, 0, 1));
     const endDate = new Date(Date.UTC(year, 11, 31));
 
-    // Get all option closes in the year
-    const closes = await prisma.importedTrade.findMany({
-      where: {
-        secType: "OPT",
-        openClose: "C",
-        tradeDate: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      orderBy: { tradeDate: "asc" },
+    // Get all unique symbols with closes in the year
+    const closesInYear = await prisma.importedTrade.findMany({
+      where: { secType: "OPT", openClose: "C", tradeDate: { gte: startDate, lte: endDate } },
+      select: { symbol: true },
+      distinct: ["symbol"],
     });
-
-    // Group closes by symbol to process FIFO per contract
-    const closesBySymbol = new Map<string, typeof closes>();
-    for (const close of closes) {
-      const existing = closesBySymbol.get(close.symbol) || [];
-      existing.push(close);
-      closesBySymbol.set(close.symbol, existing);
-    }
 
     const trades: TaxOptionTrade[] = [];
     let totalIncome = 0;
     let totalExpenses = 0;
 
-    const STRIKE_TOLERANCE_PERCENT = 0.02;
-    const STRIKE_TOLERANCE_ABS = 1.0;
-
-    // Process each symbol separately for proper FIFO tracking
-    for (const [symbol, symbolCloses] of closesBySymbol) {
-      // Get all opens for this symbol (including before the year for FIFO)
-      let opens = await prisma.importedTrade.findMany({
-        where: {
-          symbol,
-          secType: "OPT",
-          openClose: "O",
-        },
-        orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    for (const { symbol } of closesInYear) {
+      // Get sample close for relaxed matching
+      const sampleClose = await prisma.importedTrade.findFirst({
+        where: { symbol, secType: "OPT", openClose: "C" },
       });
 
-      // Try relaxed matching if no opens found
-      if (opens.length === 0 && symbolCloses.length > 0) {
-        const sampleClose = symbolCloses[0];
+      const opens = await this.findOptionOpens(symbol, sampleClose || undefined);
+      const lots = await this.buildOptionLots(opens);
 
-        if (sampleClose.conId) {
-          opens = await prisma.importedTrade.findMany({
-            where: {
-              conId: sampleClose.conId,
-              secType: "OPT",
-              openClose: "O",
-            },
-            orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
-          });
-        }
-
-        if (opens.length === 0 && sampleClose.underlying && sampleClose.expiry && sampleClose.right) {
-          const potentialOpens = await prisma.importedTrade.findMany({
-            where: {
-              underlying: sampleClose.underlying,
-              expiry: sampleClose.expiry,
-              right: sampleClose.right,
-              secType: "OPT",
-              openClose: "O",
-            },
-            orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
-          });
-
-          for (const candidate of potentialOpens) {
-            if (candidate.strike && sampleClose.strike) {
-              const strikeDiff = Math.abs(candidate.strike - sampleClose.strike);
-              const percentDiff = sampleClose.strike > 0 ? strikeDiff / sampleClose.strike : 0;
-              if (strikeDiff <= STRIKE_TOLERANCE_ABS || percentDiff <= STRIKE_TOLERANCE_PERCENT) {
-                opens.push(candidate);
-              }
-            }
-          }
-        }
-      }
-
-      // Build lot tracking with exchange rates
-      interface LotInfo {
-        id: string;
-        tradeDate: Date;
-        originalQty: number;
-        remainingQty: number;
-        premiumPerContract: number;
-        totalPremium: number;
-        exchangeRate: number;
-        currency: string;
-        isShort: boolean; // SELL to open = short
-      }
-
-      const lots: LotInfo[] = [];
-      for (const open of opens) {
-        const qty = Math.abs(open.quantity);
-        const rate = await cnbExchangeRateService.getRate(
-          open.tradeDate,
-          open.currency || "USD"
-        );
-        const totalPremium = Math.abs(open.proceeds || 0);
-        const premiumPerContract = qty > 0 ? totalPremium / qty : 0;
-
-        lots.push({
-          id: open.id,
-          tradeDate: open.tradeDate,
-          originalQty: qty,
-          remainingQty: qty,
-          premiumPerContract,
-          totalPremium,
-          exchangeRate: rate || 0,
-          currency: open.currency || "USD",
-          isShort: open.buySell === "SELL",
-        });
-      }
-
-      // Get all closes for this symbol to process in order (including before year for FIFO state)
+      // Get ALL closes to process FIFO correctly (including pre-year)
       const allCloses = await prisma.importedTrade.findMany({
-        where: {
-          symbol,
-          secType: "OPT",
-          openClose: "C",
-        },
+        where: { symbol, secType: "OPT", openClose: "C" },
         orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
       });
 
-      // Process all closes to maintain FIFO state
       for (const close of allCloses) {
         const closeQty = Math.abs(close.quantity);
-        const closeRate = await cnbExchangeRateService.getRate(
-          close.tradeDate,
-          close.currency || "USD"
-        );
-        const closePremium = Math.abs(close.proceeds || 0);
-        const closePremiumPerContract = closeQty > 0 ? closePremium / closeQty : 0;
+        const closeRate = await cnbExchangeRateService.getRate(close.tradeDate, close.currency || "USD");
+        const closePremiumPerContract = closeQty > 0 ? Math.abs(close.proceeds || 0) / closeQty : 0;
+        const closeType = this.determineCloseType(close);
 
-        // Determine close type
-        let closeType: "closed" | "expired" | "assigned" = "closed";
-        const isAssigned = close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0);
-        if (isAssigned) {
-          closeType = "assigned";
-        } else if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
-          closeType = "expired";
-        }
-
-        // FIFO matching - consume from oldest lots
+        // FIFO matching
         let qtyRemaining = closeQty;
-        let incomeUsd = 0;
-        let expenseUsd = 0;
-        let incomeCzk = 0;
-        let expenseCzk = 0;
+        let incomeUsd = 0, expenseUsd = 0, incomeCzk = 0, expenseCzk = 0;
         let hasMatchingOpen = false;
 
         for (const lot of lots) {
-          if (qtyRemaining <= 0) break;
-          if (lot.remainingQty <= 0) continue;
-          if (lot.tradeDate > close.tradeDate) continue; // Can't close before opening
+          if (qtyRemaining <= 0 || lot.remainingQty <= 0 || lot.tradeDate > close.tradeDate) continue;
 
           hasMatchingOpen = true;
           const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
-          const proportionOfClose = qtyToConsume / closeQty;
 
-          // Calculate premiums for this lot portion
           const openPremiumUsd = lot.premiumPerContract * qtyToConsume;
           const openPremiumCzk = openPremiumUsd * lot.exchangeRate;
-          const closePremiumUsdPortion = closePremiumPerContract * qtyToConsume;
-          const closePremiumCzkPortion = closePremiumUsdPortion * (closeRate || 0);
+          const closePremiumUsd = closePremiumPerContract * qtyToConsume;
+          const closePremiumCzk = closePremiumUsd * (closeRate || 0);
 
           // Czech tax: Income = money received, Expense = money paid
-          // Short position (SELL to open): received premium at open, pay to close
-          // Long position (BUY to open): pay premium at open, receive at close
           if (lot.isShort) {
-            // Short: received at open (income), paid at close (expense)
-            if (closeType === "assigned" || closeType === "expired") {
-              // Assigned/expired: only the open premium counts
-              incomeUsd += openPremiumUsd;
-              incomeCzk += openPremiumCzk;
-            } else {
-              incomeUsd += openPremiumUsd;
-              incomeCzk += openPremiumCzk;
-              expenseUsd += closePremiumUsdPortion;
-              expenseCzk += closePremiumCzkPortion;
+            incomeUsd += openPremiumUsd;
+            incomeCzk += openPremiumCzk;
+            if (closeType === "closed") {
+              expenseUsd += closePremiumUsd;
+              expenseCzk += closePremiumCzk;
             }
           } else {
-            // Long: paid at open (expense), received at close (income)
-            if (closeType === "expired") {
-              // Expired worthless: only the expense counts
-              expenseUsd += openPremiumUsd;
-              expenseCzk += openPremiumCzk;
-            } else if (closeType === "assigned") {
-              // Assigned: premium paid is expense (stock transaction separate)
-              expenseUsd += openPremiumUsd;
-              expenseCzk += openPremiumCzk;
-            } else {
-              expenseUsd += openPremiumUsd;
-              expenseCzk += openPremiumCzk;
-              incomeUsd += closePremiumUsdPortion;
-              incomeCzk += closePremiumCzkPortion;
+            expenseUsd += openPremiumUsd;
+            expenseCzk += openPremiumCzk;
+            if (closeType === "closed") {
+              incomeUsd += closePremiumUsd;
+              incomeCzk += closePremiumCzk;
             }
           }
 
@@ -593,39 +587,27 @@ class TaxCalculationService {
           qtyRemaining -= qtyToConsume;
         }
 
-        // Only add to trades list if this close is in the target year
-        const closeDate = close.tradeDate;
-        if (closeDate >= startDate && closeDate <= endDate) {
-          const pnlUsd = incomeUsd - expenseUsd;
-          const pnlCzk = incomeCzk - expenseCzk;
-
-          const strike = close.strike || 0;
-          const right = close.right || "";
-          const expiry = close.expiry
-            ? close.expiry.toISOString().split("T")[0]
-            : "";
-          const description = `${close.underlying || close.symbol} ${strike} ${right} ${expiry}`;
-
+        // Only add to results if this close is in the target year
+        if (close.tradeDate >= startDate && close.tradeDate <= endDate) {
           const trade: TaxOptionTrade = {
             id: close.id,
             symbol: close.symbol,
-            description,
+            description: this.buildOptionDescription(close),
             quantity: closeQty,
             closeType,
             dateClosed: close.tradeDate.toISOString().split("T")[0],
             proceedsUsd: incomeUsd,
             costBasisUsd: expenseUsd,
-            pnlUsd,
+            pnlUsd: incomeUsd - expenseUsd,
             rate: closeRate || 0,
             proceedsCzk: incomeCzk,
             costBasisCzk: expenseCzk,
-            pnlCzk,
+            pnlCzk: incomeCzk - expenseCzk,
             status: hasMatchingOpen ? "complete" : "missing_open",
             currency: close.currency || "USD",
           };
 
           trades.push(trade);
-
           if (trade.status === "complete") {
             totalIncome += incomeCzk;
             totalExpenses += expenseCzk;
@@ -634,17 +616,8 @@ class TaxCalculationService {
       }
     }
 
-    // Sort trades by date
     trades.sort((a, b) => a.dateClosed.localeCompare(b.dateClosed));
-
-    return {
-      trades,
-      totals: {
-        income: totalIncome,
-        expenses: totalExpenses,
-        profit: totalIncome - totalExpenses,
-      },
-    };
+    return { trades, totals: { income: totalIncome, expenses: totalExpenses, profit: totalIncome - totalExpenses } };
   }
 
   /**
@@ -1104,159 +1077,45 @@ class TaxCalculationService {
    * @param symbol - The option symbol to trace
    */
   async getOptionLotTrace(symbol: string): Promise<OptionLotTraceResponse> {
-    const STRIKE_TOLERANCE_PERCENT = 0.02;
-    const STRIKE_TOLERANCE_ABS = 1.0;
-
-    // Get all opens for this option symbol
-    const opens = await prisma.importedTrade.findMany({
-      where: {
-        symbol,
-        secType: "OPT",
-        openClose: "O",
-      },
+    // Get closes for this option symbol
+    const closes = await prisma.importedTrade.findMany({
+      where: { symbol, secType: "OPT", openClose: "C" },
       orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
     });
 
-    // Get all closes for this option symbol
-    let closes = await prisma.importedTrade.findMany({
-      where: {
-        symbol,
-        secType: "OPT",
-        openClose: "C",
-      },
-      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
-    });
+    // Find opens using helper (includes relaxed matching for corporate actions)
+    const sampleClose = closes[0];
+    const opens = await this.findOptionOpens(symbol, sampleClose || undefined);
 
-    // If we have closes but no opens with exact symbol match, try to find opens
-    // using relaxed matching (for corporate action adjusted strikes)
-    if (closes.length > 0 && opens.length === 0) {
-      const sampleClose = closes[0];
-
-      // Try conId match first
-      if (sampleClose.conId) {
-        const conIdOpens = await prisma.importedTrade.findMany({
-          where: {
-            conId: sampleClose.conId,
-            secType: "OPT",
-            openClose: "O",
-          },
-          orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
-        });
-        opens.push(...conIdOpens);
-      }
-
-      // Try relaxed match by underlying/expiry/right with strike tolerance
-      if (opens.length === 0 && sampleClose.underlying && sampleClose.expiry && sampleClose.right) {
-        const potentialOpens = await prisma.importedTrade.findMany({
-          where: {
-            underlying: sampleClose.underlying,
-            expiry: sampleClose.expiry,
-            right: sampleClose.right,
-            secType: "OPT",
-            openClose: "O",
-          },
-          orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
-        });
-
-        for (const candidate of potentialOpens) {
-          if (candidate.strike && sampleClose.strike) {
-            const strikeDiff = Math.abs(candidate.strike - sampleClose.strike);
-            const percentDiff = sampleClose.strike > 0 ? strikeDiff / sampleClose.strike : 0;
-            if (strikeDiff <= STRIKE_TOLERANCE_ABS || percentDiff <= STRIKE_TOLERANCE_PERCENT) {
-              opens.push(candidate);
-            }
-          }
-        }
-      }
-    }
-
-    // Build lot tracking structure
-    interface LotInfo {
-      id: string;
-      lotRef: string;
-      tradeDate: Date;
-      originalQty: number;
-      remainingQty: number;
-      premiumPerContract: number;
-      totalPremium: number;
-      exchangeRate: number;
-      currency: string;
-      action: string;
-    }
-
-    const lots: LotInfo[] = [];
-    const entries: OptionLotTraceEntry[] = [];
+    // Build lots using helper
+    const lots = await this.buildOptionLots(opens);
 
     // Build description from first trade
     const sampleTrade = opens[0] || closes[0];
-    const strike = sampleTrade?.strike || 0;
-    const right = sampleTrade?.right || "";
-    const expiry = sampleTrade?.expiry
-      ? sampleTrade.expiry.toISOString().split("T")[0]
-      : "";
-    const description = `${sampleTrade?.underlying || symbol} ${strike} ${right} ${expiry}`;
+    const description = sampleTrade ? this.buildOptionDescription(sampleTrade) : symbol;
 
-    // Process opens first to create lots
-    for (let i = 0; i < opens.length; i++) {
-      const open = opens[i];
-      const qty = Math.abs(open.quantity);
-      const rate = await cnbExchangeRateService.getRate(
-        open.tradeDate,
-        open.currency || "USD"
-      );
-      const totalPremium = open.proceeds || 0;
-      const premiumPerContract = qty > 0 ? totalPremium / qty : 0;
-      const action = open.buySell === "SELL" ? "SELL to open" : "BUY to open";
-
-      const lotInfo: LotInfo = {
-        id: open.id,
-        lotRef: `lot-${i + 1}`,
-        tradeDate: open.tradeDate,
-        originalQty: qty,
-        remainingQty: qty,
-        premiumPerContract,
-        totalPremium,
-        exchangeRate: rate || 0,
-        currency: open.currency || "USD",
-        action,
-      };
-
-      lots.push(lotInfo);
-    }
+    const entries: OptionLotTraceEntry[] = [];
 
     // Combine opens and closes into chronological order for processing
-    interface TradeEvent {
-      type: "open" | "close";
-      date: Date;
-      openIndex?: number;
-      close?: (typeof closes)[0];
-    }
+    type TradeEvent =
+      | { type: "open"; date: Date; openIndex: number }
+      | { type: "close"; date: Date; close: (typeof closes)[0] };
 
     const events: TradeEvent[] = [
-      ...opens.map((_, i) => ({
-        type: "open" as const,
-        date: opens[i].tradeDate,
-        openIndex: i,
-      })),
-      ...closes.map((close) => ({
-        type: "close" as const,
-        date: close.tradeDate,
-        close,
-      })),
+      ...opens.map((open, i) => ({ type: "open" as const, date: open.tradeDate, openIndex: i })),
+      ...closes.map((close) => ({ type: "close" as const, date: close.tradeDate, close })),
     ];
 
     // Sort by date, then opens before closes on same date
     events.sort((a, b) => {
       const dateDiff = a.date.getTime() - b.date.getTime();
       if (dateDiff !== 0) return dateDiff;
-      if (a.type === "open" && b.type === "close") return -1;
-      if (a.type === "close" && b.type === "open") return 1;
-      return 0;
+      return a.type === "open" && b.type === "close" ? -1 : a.type === "close" && b.type === "open" ? 1 : 0;
     });
 
     // Process events chronologically
     for (const event of events) {
-      if (event.type === "open" && event.openIndex !== undefined) {
+      if (event.type === "open") {
         const lot = lots[event.openIndex];
         entries.push({
           type: "open",
@@ -1272,45 +1131,23 @@ class TaxCalculationService {
           currency: lot.currency,
           remainingQty: lot.remainingQty, // Will be updated later
         });
-      } else if (event.type === "close" && event.close) {
+      } else {
         const close = event.close;
         const closeQty = Math.abs(close.quantity);
         let qtyRemaining = closeQty;
 
-        const closeRate = await cnbExchangeRateService.getRate(
-          close.tradeDate,
-          close.currency || "USD"
-        );
+        const closeRate = await cnbExchangeRateService.getRate(close.tradeDate, close.currency || "USD");
         const closeProceeds = close.proceeds || 0;
         const closePremiumPerContract = closeQty > 0 ? closeProceeds / closeQty : 0;
 
-        // Determine close type
-        let closeType: "closed" | "expired" | "assigned" = "closed";
-        const isAssigned = close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0);
-        if (isAssigned) {
-          closeType = "assigned";
-        } else if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
-          closeType = "expired";
-        }
-
-        // Determine close action
-        let closeAction = "Close";
-        if (closeType === "assigned") {
-          closeAction = "Assigned";
-        } else if (closeType === "expired") {
-          closeAction = "Expired";
-        } else if (close.buySell === "BUY") {
-          closeAction = "BUY to close";
-        } else {
-          closeAction = "SELL to close";
-        }
+        const closeType = this.determineCloseType(close);
+        const closeAction = this.determineCloseAction(close.buySell, closeType);
 
         const consumedLots: OptionConsumedLot[] = [];
 
         // Consume from oldest lots (FIFO)
         for (const lot of lots) {
-          if (qtyRemaining <= 0) break;
-          if (lot.remainingQty <= 0) continue;
+          if (qtyRemaining <= 0 || lot.remainingQty <= 0) continue;
 
           const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
 
@@ -1323,26 +1160,12 @@ class TaxCalculationService {
           const closePremiumUsd = Math.abs(closeProceeds) * proportionOfClose;
           const closePremiumCzk = closePremiumUsd * (closeRate || 0);
 
-          // Calculate P&L based on position type
-          // SELL to open (short): profit = premium received - premium paid to close
-          // BUY to open (long): profit = premium received at close - premium paid to open
-          let pnlUsd: number;
-          let pnlCzk: number;
-          if (lot.action === "SELL to open") {
-            // Short position: received premium when opening, paid when closing
-            pnlUsd = openPremiumUsd - closePremiumUsd;
-            pnlCzk = openPremiumCzk - closePremiumCzk;
-          } else {
-            // Long position: paid premium when opening, received when closing
-            pnlUsd = closePremiumUsd - openPremiumUsd;
-            pnlCzk = closePremiumCzk - openPremiumCzk;
-          }
+          // P&L: short positions = received - paid, long positions = received - paid
+          const isShort = lot.isShort;
+          const pnlUsd = isShort ? openPremiumUsd - closePremiumUsd : closePremiumUsd - openPremiumUsd;
+          const pnlCzk = isShort ? openPremiumCzk - closePremiumCzk : closePremiumCzk - openPremiumCzk;
 
-          // Holding period
-          const holdingDays = Math.floor(
-            (close.tradeDate.getTime() - lot.tradeDate.getTime()) /
-              (1000 * 60 * 60 * 24)
-          );
+          const holdingDays = Math.floor((close.tradeDate.getTime() - lot.tradeDate.getTime()) / (1000 * 60 * 60 * 24));
 
           consumedLots.push({
             lotRef: lot.lotRef,
@@ -1382,21 +1205,13 @@ class TaxCalculationService {
     for (const entry of entries) {
       if (entry.type === "open") {
         const lot = lots.find((l) => l.lotRef === entry.lotRef);
-        if (lot) {
-          entry.remainingQty = lot.remainingQty;
-        }
+        if (lot) entry.remainingQty = lot.remainingQty;
       }
     }
 
-    // Calculate current position
     const currentPosition = lots.reduce((sum, lot) => sum + lot.remainingQty, 0);
 
-    return {
-      symbol,
-      description,
-      entries,
-      currentPosition,
-    };
+    return { symbol, description, entries, currentPosition };
   }
 }
 
