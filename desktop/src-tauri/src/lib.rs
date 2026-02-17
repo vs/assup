@@ -1,19 +1,43 @@
 mod discovery;
 
+use tauri::Manager;
+use discovery::discover_backend;
+
+#[tauri::command]
+async fn get_backend_url() -> Option<String> {
+    discover_backend().await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
-    .plugin(tauri_plugin_window_state::Builder::new().build())
-    .setup(|app| {
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
-      Ok(())
-    })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![get_backend_url])
+        .setup(|app| {
+            if cfg!(debug_assertions) {
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .build(),
+                )?;
+            }
+
+            let window = app.get_webview_window("main").unwrap();
+
+            // Spawn async task to discover backend and inject URL
+            let window_clone = window.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(url) = discover_backend().await {
+                    let script = format!(
+                        "window.__ASSUP_API_URL__ = '{}';",
+                        url
+                    );
+                    let _ = window_clone.eval(&script);
+                }
+            });
+
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
