@@ -1,18 +1,23 @@
 mod discovery;
 
 use tauri::Manager;
-use discovery::discover_backend;
+use discovery::{discover_backend, check_connection};
 
 #[tauri::command]
 async fn get_backend_url() -> Option<String> {
     discover_backend().await
 }
 
+#[tauri::command]
+async fn check_backend_connection(url: String) -> bool {
+    check_connection(&url).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![get_backend_url])
+        .invoke_handler(tauri::generate_handler![get_backend_url, check_backend_connection])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

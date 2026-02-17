@@ -28,3 +28,16 @@ pub async fn discover_backend() -> Option<String> {
     }
     None
 }
+
+pub async fn check_connection(url: &str) -> bool {
+    let health_url = format!("{}/api/health", url);
+    match reqwest::Client::new()
+        .get(&health_url)
+        .timeout(TIMEOUT)
+        .send()
+        .await
+    {
+        Ok(response) => response.status().is_success(),
+        Err(_) => false,
+    }
+}
