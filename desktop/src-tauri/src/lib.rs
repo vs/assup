@@ -1,7 +1,9 @@
 mod discovery;
+mod menu;
 
 use tauri::Manager;
 use discovery::{discover_backend, check_connection};
+use menu::{create_menu, handle_menu_event};
 
 #[tauri::command]
 async fn get_backend_url() -> Option<String> {
@@ -27,6 +29,10 @@ pub fn run() {
                 )?;
             }
 
+            // Set up menu
+            let menu = create_menu(app.handle())?;
+            app.set_menu(menu)?;
+
             let window = app.get_webview_window("main").unwrap();
 
             // Spawn async task to discover backend and inject URL
@@ -42,6 +48,9 @@ pub fn run() {
             });
 
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            handle_menu_event(app, event.id().0.as_str());
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
