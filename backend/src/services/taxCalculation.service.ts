@@ -13,6 +13,9 @@ import type {
   TaxInterest,
   DividendsByCountry,
   MissingTradeRecord,
+  LotTraceResponse,
+  LotTraceEntry,
+  ConsumedLot,
 } from "@assup/shared";
 
 class TaxCalculationService {
@@ -829,6 +832,216 @@ class TaxCalculationService {
       AU: "Australia",
     };
     return countryMap[code] || code;
+  }
+
+  /**
+   * Get FIFO lot trace for a symbol showing how buys are consumed by sells
+   */
+  async getLotTrace(symbol: string): Promise<LotTraceResponse> {
+    const THREE_YEARS_DAYS = 3 * 365;
+
+    // Get all buys for this symbol
+    const buys = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "STK",
+        buySell: "BUY",
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // Get all sells for this symbol
+    const sells = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "STK",
+        buySell: "SELL",
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // Build lot tracking structure
+    interface LotInfo {
+      id: string;
+      lotRef: string;
+      tradeDate: Date;
+      originalQty: number;
+      remainingQty: number;
+      pricePerShare: number;
+      commission: number;
+      exchangeRate: number;
+      currency: string;
+      costBasisUsd: number;
+      costBasisCzk: number;
+    }
+
+    const lots: LotInfo[] = [];
+    const entries: LotTraceEntry[] = [];
+
+    // Process buys first to create lots
+    for (let i = 0; i < buys.length; i++) {
+      const buy = buys[i];
+      const qty = Math.abs(buy.quantity);
+      const rate = await cnbExchangeRateService.getRate(
+        buy.tradeDate,
+        buy.currency || "USD"
+      );
+      const costBasisUsd = qty * buy.tradePrice + buy.commission;
+      const costBasisCzk = costBasisUsd * (rate || 0);
+
+      const lotInfo: LotInfo = {
+        id: buy.id,
+        lotRef: `lot-${i + 1}`,
+        tradeDate: buy.tradeDate,
+        originalQty: qty,
+        remainingQty: qty,
+        pricePerShare: buy.tradePrice,
+        commission: buy.commission,
+        exchangeRate: rate || 0,
+        currency: buy.currency || "USD",
+        costBasisUsd,
+        costBasisCzk,
+      };
+
+      lots.push(lotInfo);
+    }
+
+    // Combine buys and sells into chronological order for processing
+    interface TradeEvent {
+      type: "buy" | "sell";
+      date: Date;
+      buyIndex?: number;
+      sell?: (typeof sells)[0];
+    }
+
+    const events: TradeEvent[] = [
+      ...buys.map((_, i) => ({
+        type: "buy" as const,
+        date: buys[i].tradeDate,
+        buyIndex: i,
+      })),
+      ...sells.map((sell) => ({
+        type: "sell" as const,
+        date: sell.tradeDate,
+        sell,
+      })),
+    ];
+
+    // Sort by date, then buys before sells on same date
+    events.sort((a, b) => {
+      const dateDiff = a.date.getTime() - b.date.getTime();
+      if (dateDiff !== 0) return dateDiff;
+      // Buys come before sells on the same date
+      if (a.type === "buy" && b.type === "sell") return -1;
+      if (a.type === "sell" && b.type === "buy") return 1;
+      return 0;
+    });
+
+    // Process events chronologically
+    for (const event of events) {
+      if (event.type === "buy" && event.buyIndex !== undefined) {
+        const lot = lots[event.buyIndex];
+        entries.push({
+          type: "buy",
+          id: lot.id,
+          lotRef: lot.lotRef,
+          tradeDate: lot.tradeDate.toISOString().split("T")[0],
+          quantity: lot.originalQty,
+          pricePerShare: lot.pricePerShare,
+          exchangeRate: lot.exchangeRate,
+          currency: lot.currency,
+          costBasisUsd: lot.costBasisUsd,
+          costBasisCzk: lot.costBasisCzk,
+          remainingQty: lot.remainingQty, // Will be updated later
+        });
+      } else if (event.type === "sell" && event.sell) {
+        const sell = event.sell;
+        const sellQty = Math.abs(sell.quantity);
+        let qtyRemaining = sellQty;
+
+        const closeRate = await cnbExchangeRateService.getRate(
+          sell.tradeDate,
+          sell.currency || "USD"
+        );
+        const proceedsUsd = sell.proceeds || 0;
+        const proceedsCzk = proceedsUsd * (closeRate || 0);
+
+        const consumedLots: ConsumedLot[] = [];
+
+        // Consume from oldest lots (FIFO)
+        for (const lot of lots) {
+          if (qtyRemaining <= 0) break;
+          if (lot.remainingQty <= 0) continue;
+
+          const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
+
+          // Calculate proportional cost basis
+          const proportionOfLot = qtyToConsume / lot.originalQty;
+          const lotCostUsd =
+            qtyToConsume * lot.pricePerShare +
+            lot.commission * proportionOfLot;
+          const lotCostCzk = lotCostUsd * lot.exchangeRate;
+
+          // Calculate proceeds proportion for this lot
+          const proceedsProportion = qtyToConsume / sellQty;
+          const lotProceedsUsd = proceedsUsd * proceedsProportion;
+          const lotProceedsCzk = proceedsCzk * proceedsProportion;
+
+          // Holding period
+          const holdingDays = Math.floor(
+            (sell.tradeDate.getTime() - lot.tradeDate.getTime()) /
+              (1000 * 60 * 60 * 24)
+          );
+
+          consumedLots.push({
+            lotRef: lot.lotRef,
+            quantity: qtyToConsume,
+            costBasisUsd: lotCostUsd,
+            costBasisCzk: lotCostCzk,
+            pnlUsd: lotProceedsUsd - lotCostUsd,
+            pnlCzk: lotProceedsCzk - lotCostCzk,
+            holdingDays,
+            isExempt: holdingDays >= THREE_YEARS_DAYS,
+          });
+
+          lot.remainingQty -= qtyToConsume;
+          qtyRemaining -= qtyToConsume;
+        }
+
+        entries.push({
+          type: "sell",
+          id: sell.id,
+          lotRef: "", // Sells don't have a lotRef
+          tradeDate: sell.tradeDate.toISOString().split("T")[0],
+          quantity: sellQty,
+          pricePerShare: sell.tradePrice,
+          exchangeRate: closeRate || 0,
+          currency: sell.currency || "USD",
+          proceedsUsd,
+          proceedsCzk,
+          consumedLots,
+        });
+      }
+    }
+
+    // Update remainingQty on buy entries to reflect final state
+    for (const entry of entries) {
+      if (entry.type === "buy") {
+        const lot = lots.find((l) => l.lotRef === entry.lotRef);
+        if (lot) {
+          entry.remainingQty = lot.remainingQty;
+        }
+      }
+    }
+
+    // Calculate current position
+    const currentPosition = lots.reduce((sum, lot) => sum + lot.remainingQty, 0);
+
+    return {
+      symbol,
+      entries,
+      currentPosition,
+    };
   }
 }
 

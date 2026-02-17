@@ -84,6 +84,19 @@ router.get(
 );
 
 /**
+ * GET /api/taxes/lot-trace/:symbol
+ * Get FIFO lot trace for a symbol
+ */
+router.get(
+  "/lot-trace/:symbol",
+  asyncHandler(async (req, res) => {
+    const { symbol } = req.params;
+    const result = await taxCalculationService.getLotTrace(symbol);
+    res.json(result);
+  })
+);
+
+/**
  * GET /api/taxes/export/:year
  * Download XLSX export
  */

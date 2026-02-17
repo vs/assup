@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { taxesApi } from "@/api/taxes";
 import type { TaxStockTrade } from "@assup/shared";
+import { LotTraceModal } from "./LotTraceModal";
 
 interface Props {
   year: number;
@@ -21,6 +22,7 @@ export function StockTradesTable({ year }: Props) {
   const [totals, setTotals] = useState({ income: 0, expenses: 0, profit: 0, profitUsd: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -107,13 +109,14 @@ export function StockTradesTable({ year }: Props) {
               {trades.map((trade) => (
                 <TableRow
                   key={trade.id}
-                  className={
+                  className={`cursor-pointer hover:bg-muted/50 ${
                     trade.status === "missing_buy"
                       ? "bg-yellow-50 dark:bg-yellow-950/20"
                       : trade.isExempt
                         ? "bg-gray-50 dark:bg-gray-900/20"
-                        : undefined
-                  }
+                        : ""
+                  }`}
+                  onClick={() => setSelectedSymbol(trade.symbol)}
                 >
                   <TableCell>{trade.dateClosed}</TableCell>
                   <TableCell className="font-medium">{trade.symbol}</TableCell>
@@ -174,6 +177,11 @@ export function StockTradesTable({ year }: Props) {
           </Table>
         </div>
       </CardContent>
+
+      <LotTraceModal
+        symbol={selectedSymbol}
+        onClose={() => setSelectedSymbol(null)}
+      />
     </Card>
   );
 }

@@ -9,6 +9,7 @@ import type {
   TaxOptionTradesResponse,
   TaxDividendsResponse,
   TaxInterestResponse,
+  LotTraceResponse,
 } from "@assup/shared";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
@@ -28,6 +29,11 @@ export const taxesApi = {
 
   interest: (year: number) =>
     request<TaxInterestResponse>(`/api/taxes/interest/${year}`),
+
+  lotTrace: (symbol: string) =>
+    request<LotTraceResponse>(
+      `/api/taxes/lot-trace/${encodeURIComponent(symbol)}`
+    ),
 
   export: (year: number) => {
     // Direct download - opens in new tab/downloads file

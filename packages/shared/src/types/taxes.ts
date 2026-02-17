@@ -162,3 +162,40 @@ export interface TaxInterestResponse {
   interest: TaxInterest[];
   total: number;
 }
+
+// Lot Trace Types (FIFO visualization)
+export interface LotTraceResponse {
+  symbol: string;
+  entries: LotTraceEntry[];
+  currentPosition: number;
+}
+
+export interface LotTraceEntry {
+  type: "buy" | "sell";
+  id: string;
+  lotRef: string;
+  tradeDate: string;
+  quantity: number;
+  pricePerShare: number;
+  exchangeRate: number;
+  currency: string;
+  // BUY fields
+  costBasisUsd?: number;
+  costBasisCzk?: number;
+  remainingQty?: number;
+  // SELL fields
+  proceedsUsd?: number;
+  proceedsCzk?: number;
+  consumedLots?: ConsumedLot[];
+}
+
+export interface ConsumedLot {
+  lotRef: string;
+  quantity: number;
+  costBasisUsd: number;
+  costBasisCzk: number;
+  pnlUsd: number;
+  pnlCzk: number;
+  holdingDays: number;
+  isExempt: boolean;
+}
