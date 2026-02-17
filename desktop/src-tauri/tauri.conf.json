@@ -9,10 +9,10 @@
     }
   },
   "build": {
-    "beforeDevCommand": "npm run --prefix ../frontend dev",
+    "beforeDevCommand": "npm run --prefix ../../frontend dev",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build:frontend",
-    "frontendDist": "../frontend/dist"
+    "frontendDist": "../../frontend/dist"
   },
   "app": {
     "withGlobalTauri": true,
