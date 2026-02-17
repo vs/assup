@@ -16,6 +16,9 @@ import type {
   LotTraceResponse,
   LotTraceEntry,
   ConsumedLot,
+  OptionLotTraceResponse,
+  OptionLotTraceEntry,
+  OptionConsumedLot,
 } from "@assup/shared";
 
 class TaxCalculationService {
@@ -377,6 +380,7 @@ class TaxCalculationService {
 
   /**
    * Get option trades with CZK conversion for tax reporting
+   * Uses FIFO matching and converts each trade using its own date's exchange rate
    */
   async getOptionTrades(year: number): Promise<{
     trades: TaxOptionTrade[];
@@ -398,189 +402,240 @@ class TaxCalculationService {
       orderBy: { tradeDate: "asc" },
     });
 
+    // Group closes by symbol to process FIFO per contract
+    const closesBySymbol = new Map<string, typeof closes>();
+    for (const close of closes) {
+      const existing = closesBySymbol.get(close.symbol) || [];
+      existing.push(close);
+      closesBySymbol.set(close.symbol, existing);
+    }
+
     const trades: TaxOptionTrade[] = [];
     let totalIncome = 0;
     let totalExpenses = 0;
 
-    // Strike tolerance for matching contracts adjusted by corporate actions
-    const STRIKE_TOLERANCE_PERCENT = 0.02; // 2% tolerance
-    const STRIKE_TOLERANCE_ABS = 1.0; // Max $1 absolute difference
+    const STRIKE_TOLERANCE_PERCENT = 0.02;
+    const STRIKE_TOLERANCE_ABS = 1.0;
 
-    for (const close of closes) {
-      // Find matching open using multiple strategies:
-      // 1. Exact symbol match (fastest, works for most cases)
-      // 2. conId match (most reliable, survives strike adjustments)
-      // 3. Relaxed match by underlying/expiry/right with strike tolerance
-
-      let open = await prisma.importedTrade.findFirst({
+    // Process each symbol separately for proper FIFO tracking
+    for (const [symbol, symbolCloses] of closesBySymbol) {
+      // Get all opens for this symbol (including before the year for FIFO)
+      let opens = await prisma.importedTrade.findMany({
         where: {
-          symbol: close.symbol,
+          symbol,
           secType: "OPT",
           openClose: "O",
-          tradeDate: { lte: close.tradeDate },
         },
-        orderBy: { tradeDate: "asc" },
+        orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
       });
 
-      // If no exact match and we have conId, try matching by conId
-      if (!open && close.conId) {
-        open = await prisma.importedTrade.findFirst({
-          where: {
-            conId: close.conId,
-            secType: "OPT",
-            openClose: "O",
-            tradeDate: { lte: close.tradeDate },
-          },
-          orderBy: { tradeDate: "asc" },
-        });
-      }
+      // Try relaxed matching if no opens found
+      if (opens.length === 0 && symbolCloses.length > 0) {
+        const sampleClose = symbolCloses[0];
 
-      // If still no match, try relaxed matching by underlying/expiry/right with strike tolerance
-      // This handles cases where strike was adjusted due to corporate actions (e.g., special dividends)
-      if (!open && close.underlying && close.expiry && close.right) {
-        const potentialOpens = await prisma.importedTrade.findMany({
-          where: {
-            underlying: close.underlying,
-            expiry: close.expiry,
-            right: close.right,
-            secType: "OPT",
-            openClose: "O",
-            tradeDate: { lte: close.tradeDate },
-          },
-          orderBy: { tradeDate: "asc" },
-        });
+        if (sampleClose.conId) {
+          opens = await prisma.importedTrade.findMany({
+            where: {
+              conId: sampleClose.conId,
+              secType: "OPT",
+              openClose: "O",
+            },
+            orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+          });
+        }
 
-        // Find one with strike within tolerance
-        for (const candidate of potentialOpens) {
-          if (candidate.strike && close.strike) {
-            const strikeDiff = Math.abs(candidate.strike - close.strike);
-            const percentDiff =
-              close.strike > 0 ? strikeDiff / close.strike : 0;
+        if (opens.length === 0 && sampleClose.underlying && sampleClose.expiry && sampleClose.right) {
+          const potentialOpens = await prisma.importedTrade.findMany({
+            where: {
+              underlying: sampleClose.underlying,
+              expiry: sampleClose.expiry,
+              right: sampleClose.right,
+              secType: "OPT",
+              openClose: "O",
+            },
+            orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+          });
 
-            if (
-              strikeDiff <= STRIKE_TOLERANCE_ABS ||
-              percentDiff <= STRIKE_TOLERANCE_PERCENT
-            ) {
-              open = candidate;
-              break;
+          for (const candidate of potentialOpens) {
+            if (candidate.strike && sampleClose.strike) {
+              const strikeDiff = Math.abs(candidate.strike - sampleClose.strike);
+              const percentDiff = sampleClose.strike > 0 ? strikeDiff / sampleClose.strike : 0;
+              if (strikeDiff <= STRIKE_TOLERANCE_ABS || percentDiff <= STRIKE_TOLERANCE_PERCENT) {
+                opens.push(candidate);
+              }
             }
           }
         }
       }
 
-      const rate = await cnbExchangeRateService.getRate(
-        close.tradeDate,
-        close.currency || "USD"
-      );
-
-      // Determine close type first to handle assigned options correctly
-      let closeType: "closed" | "expired" | "assigned" = "closed";
-      const isAssigned = close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0);
-      if (isAssigned) {
-        closeType = "assigned";
-      } else if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
-        closeType = "expired";
+      // Build lot tracking with exchange rates
+      interface LotInfo {
+        id: string;
+        tradeDate: Date;
+        originalQty: number;
+        remainingQty: number;
+        premiumPerContract: number;
+        totalPremium: number;
+        exchangeRate: number;
+        currency: string;
+        isShort: boolean; // SELL to open = short
       }
 
-      // Czech tax reporting for derivatives (§10 F):
-      // - Income = money received (premiums from selling options)
-      // - Expense = money paid (premiums to buy options)
-      //
-      // IBKR FLEX data semantics for close trades:
-      // - "BUY to close" (closing short options): proceeds < 0 (paid), costBasis > 0 (received earlier)
-      // - "SELL to close" (closing long options): proceeds > 0 (received), costBasis < 0 (paid earlier)
-      // - Assigned options: proceeds = 0, costBasis > 0 (premium received, stock deal is separate)
-      // - Expired options: proceeds = 0, costBasis = 0 (worthless)
-      let incomeUsd: number;
-      let expenseUsd: number;
-      let pnlUsd: number;
+      const lots: LotInfo[] = [];
+      for (const open of opens) {
+        const qty = Math.abs(open.quantity);
+        const rate = await cnbExchangeRateService.getRate(
+          open.tradeDate,
+          open.currency || "USD"
+        );
+        const totalPremium = Math.abs(open.proceeds || 0);
+        const premiumPerContract = qty > 0 ? totalPremium / qty : 0;
 
-      if (isAssigned && open) {
-        // Assigned option: premium received is income, no expense for the option itself
-        // (the stock transaction is handled separately in securities section)
-        incomeUsd = Math.abs(open.proceeds);
-        expenseUsd = 0;
-        pnlUsd = incomeUsd;
-      } else if (closeType === "expired") {
-        // Expired worthless: no income or expense from close itself
-        // We need to check the original position to determine if we sold or bought
-        if (open) {
-          // If we sold the option (received premium), that's income with no expense
-          if (open.proceeds < 0) {
-            // Sold to open: received premium (proceeds is negative for sold)
-            incomeUsd = Math.abs(open.proceeds);
-            expenseUsd = 0;
+        lots.push({
+          id: open.id,
+          tradeDate: open.tradeDate,
+          originalQty: qty,
+          remainingQty: qty,
+          premiumPerContract,
+          totalPremium,
+          exchangeRate: rate || 0,
+          currency: open.currency || "USD",
+          isShort: open.buySell === "SELL",
+        });
+      }
+
+      // Get all closes for this symbol to process in order (including before year for FIFO state)
+      const allCloses = await prisma.importedTrade.findMany({
+        where: {
+          symbol,
+          secType: "OPT",
+          openClose: "C",
+        },
+        orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+      });
+
+      // Process all closes to maintain FIFO state
+      for (const close of allCloses) {
+        const closeQty = Math.abs(close.quantity);
+        const closeRate = await cnbExchangeRateService.getRate(
+          close.tradeDate,
+          close.currency || "USD"
+        );
+        const closePremium = Math.abs(close.proceeds || 0);
+        const closePremiumPerContract = closeQty > 0 ? closePremium / closeQty : 0;
+
+        // Determine close type
+        let closeType: "closed" | "expired" | "assigned" = "closed";
+        const isAssigned = close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0);
+        if (isAssigned) {
+          closeType = "assigned";
+        } else if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
+          closeType = "expired";
+        }
+
+        // FIFO matching - consume from oldest lots
+        let qtyRemaining = closeQty;
+        let incomeUsd = 0;
+        let expenseUsd = 0;
+        let incomeCzk = 0;
+        let expenseCzk = 0;
+        let hasMatchingOpen = false;
+
+        for (const lot of lots) {
+          if (qtyRemaining <= 0) break;
+          if (lot.remainingQty <= 0) continue;
+          if (lot.tradeDate > close.tradeDate) continue; // Can't close before opening
+
+          hasMatchingOpen = true;
+          const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
+          const proportionOfClose = qtyToConsume / closeQty;
+
+          // Calculate premiums for this lot portion
+          const openPremiumUsd = lot.premiumPerContract * qtyToConsume;
+          const openPremiumCzk = openPremiumUsd * lot.exchangeRate;
+          const closePremiumUsdPortion = closePremiumPerContract * qtyToConsume;
+          const closePremiumCzkPortion = closePremiumUsdPortion * (closeRate || 0);
+
+          // Czech tax: Income = money received, Expense = money paid
+          // Short position (SELL to open): received premium at open, pay to close
+          // Long position (BUY to open): pay premium at open, receive at close
+          if (lot.isShort) {
+            // Short: received at open (income), paid at close (expense)
+            if (closeType === "assigned" || closeType === "expired") {
+              // Assigned/expired: only the open premium counts
+              incomeUsd += openPremiumUsd;
+              incomeCzk += openPremiumCzk;
+            } else {
+              incomeUsd += openPremiumUsd;
+              incomeCzk += openPremiumCzk;
+              expenseUsd += closePremiumUsdPortion;
+              expenseCzk += closePremiumCzkPortion;
+            }
           } else {
-            // Bought to open: paid premium (now worthless)
-            incomeUsd = 0;
-            expenseUsd = open.proceeds;
+            // Long: paid at open (expense), received at close (income)
+            if (closeType === "expired") {
+              // Expired worthless: only the expense counts
+              expenseUsd += openPremiumUsd;
+              expenseCzk += openPremiumCzk;
+            } else if (closeType === "assigned") {
+              // Assigned: premium paid is expense (stock transaction separate)
+              expenseUsd += openPremiumUsd;
+              expenseCzk += openPremiumCzk;
+            } else {
+              expenseUsd += openPremiumUsd;
+              expenseCzk += openPremiumCzk;
+              incomeUsd += closePremiumUsdPortion;
+              incomeCzk += closePremiumCzkPortion;
+            }
           }
-          pnlUsd = incomeUsd - expenseUsd;
-        } else {
-          incomeUsd = 0;
-          expenseUsd = 0;
-          pnlUsd = 0;
+
+          lot.remainingQty -= qtyToConsume;
+          qtyRemaining -= qtyToConsume;
         }
-      } else {
-        // Regular close trade
-        // For BUY to close: proceeds < 0 (expense), costBasis > 0 (income from original sale)
-        // For SELL to close: proceeds > 0 (income), costBasis < 0 (expense from original purchase)
-        const closeProceeds = close.proceeds || 0;
-        const closeCostBasis = close.costBasis || 0;
 
-        if (closeProceeds <= 0 && closeCostBasis >= 0) {
-          // BUY to close a short position
-          incomeUsd = closeCostBasis;  // Premium received when opening short
-          expenseUsd = Math.abs(closeProceeds);  // Paid to close
-        } else if (closeProceeds >= 0 && closeCostBasis <= 0) {
-          // SELL to close a long position
-          incomeUsd = closeProceeds;  // Received when closing
-          expenseUsd = Math.abs(closeCostBasis);  // Paid when opening
-        } else {
-          // Unusual case, fall back to realized P&L if available
-          incomeUsd = Math.max(0, closeProceeds, closeCostBasis);
-          expenseUsd = Math.abs(Math.min(0, closeProceeds, closeCostBasis));
+        // Only add to trades list if this close is in the target year
+        const closeDate = close.tradeDate;
+        if (closeDate >= startDate && closeDate <= endDate) {
+          const pnlUsd = incomeUsd - expenseUsd;
+          const pnlCzk = incomeCzk - expenseCzk;
+
+          const strike = close.strike || 0;
+          const right = close.right || "";
+          const expiry = close.expiry
+            ? close.expiry.toISOString().split("T")[0]
+            : "";
+          const description = `${close.underlying || close.symbol} ${strike} ${right} ${expiry}`;
+
+          const trade: TaxOptionTrade = {
+            id: close.id,
+            symbol: close.symbol,
+            description,
+            quantity: closeQty,
+            closeType,
+            dateClosed: close.tradeDate.toISOString().split("T")[0],
+            proceedsUsd: incomeUsd,
+            costBasisUsd: expenseUsd,
+            pnlUsd,
+            rate: closeRate || 0,
+            proceedsCzk: incomeCzk,
+            costBasisCzk: expenseCzk,
+            pnlCzk,
+            status: hasMatchingOpen ? "complete" : "missing_open",
+            currency: close.currency || "USD",
+          };
+
+          trades.push(trade);
+
+          if (trade.status === "complete") {
+            totalIncome += incomeCzk;
+            totalExpenses += expenseCzk;
+          }
         }
-        pnlUsd = close.realizedPnl ?? (incomeUsd - expenseUsd);
-      }
-
-      const incomeCzk = rate ? incomeUsd * rate : 0;
-      const expenseCzk = rate ? expenseUsd * rate : 0;
-      const pnlCzk = rate ? pnlUsd * rate : 0;
-
-      // Build description
-      const strike = close.strike || 0;
-      const right = close.right || "";
-      const expiry = close.expiry
-        ? close.expiry.toISOString().split("T")[0]
-        : "";
-      const description = `${close.underlying || close.symbol} ${strike} ${right} ${expiry}`;
-
-      const trade: TaxOptionTrade = {
-        id: close.id,
-        symbol: close.symbol,
-        description,
-        quantity: Math.abs(close.quantity),
-        closeType,
-        dateClosed: close.tradeDate.toISOString().split("T")[0],
-        proceedsUsd: incomeUsd,
-        costBasisUsd: expenseUsd,
-        pnlUsd,
-        rate: rate || 0,
-        proceedsCzk: incomeCzk,
-        costBasisCzk: expenseCzk,
-        pnlCzk,
-        status: open ? "complete" : "missing_open",
-        currency: close.currency || "USD",
-      };
-
-      trades.push(trade);
-
-      if (trade.status === "complete") {
-        totalIncome += incomeCzk;
-        totalExpenses += expenseCzk;
       }
     }
+
+    // Sort trades by date
+    trades.sort((a, b) => a.dateClosed.localeCompare(b.dateClosed));
 
     return {
       trades,
@@ -1039,6 +1094,306 @@ class TaxCalculationService {
 
     return {
       symbol,
+      entries,
+      currentPosition,
+    };
+  }
+
+  /**
+   * Get FIFO lot trace for an option contract
+   * @param symbol - The option symbol to trace
+   */
+  async getOptionLotTrace(symbol: string): Promise<OptionLotTraceResponse> {
+    const STRIKE_TOLERANCE_PERCENT = 0.02;
+    const STRIKE_TOLERANCE_ABS = 1.0;
+
+    // Get all opens for this option symbol
+    const opens = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "OPT",
+        openClose: "O",
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // Get all closes for this option symbol
+    let closes = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "OPT",
+        openClose: "C",
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // If we have closes but no opens with exact symbol match, try to find opens
+    // using relaxed matching (for corporate action adjusted strikes)
+    if (closes.length > 0 && opens.length === 0) {
+      const sampleClose = closes[0];
+
+      // Try conId match first
+      if (sampleClose.conId) {
+        const conIdOpens = await prisma.importedTrade.findMany({
+          where: {
+            conId: sampleClose.conId,
+            secType: "OPT",
+            openClose: "O",
+          },
+          orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+        });
+        opens.push(...conIdOpens);
+      }
+
+      // Try relaxed match by underlying/expiry/right with strike tolerance
+      if (opens.length === 0 && sampleClose.underlying && sampleClose.expiry && sampleClose.right) {
+        const potentialOpens = await prisma.importedTrade.findMany({
+          where: {
+            underlying: sampleClose.underlying,
+            expiry: sampleClose.expiry,
+            right: sampleClose.right,
+            secType: "OPT",
+            openClose: "O",
+          },
+          orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+        });
+
+        for (const candidate of potentialOpens) {
+          if (candidate.strike && sampleClose.strike) {
+            const strikeDiff = Math.abs(candidate.strike - sampleClose.strike);
+            const percentDiff = sampleClose.strike > 0 ? strikeDiff / sampleClose.strike : 0;
+            if (strikeDiff <= STRIKE_TOLERANCE_ABS || percentDiff <= STRIKE_TOLERANCE_PERCENT) {
+              opens.push(candidate);
+            }
+          }
+        }
+      }
+    }
+
+    // Build lot tracking structure
+    interface LotInfo {
+      id: string;
+      lotRef: string;
+      tradeDate: Date;
+      originalQty: number;
+      remainingQty: number;
+      premiumPerContract: number;
+      totalPremium: number;
+      exchangeRate: number;
+      currency: string;
+      action: string;
+    }
+
+    const lots: LotInfo[] = [];
+    const entries: OptionLotTraceEntry[] = [];
+
+    // Build description from first trade
+    const sampleTrade = opens[0] || closes[0];
+    const strike = sampleTrade?.strike || 0;
+    const right = sampleTrade?.right || "";
+    const expiry = sampleTrade?.expiry
+      ? sampleTrade.expiry.toISOString().split("T")[0]
+      : "";
+    const description = `${sampleTrade?.underlying || symbol} ${strike} ${right} ${expiry}`;
+
+    // Process opens first to create lots
+    for (let i = 0; i < opens.length; i++) {
+      const open = opens[i];
+      const qty = Math.abs(open.quantity);
+      const rate = await cnbExchangeRateService.getRate(
+        open.tradeDate,
+        open.currency || "USD"
+      );
+      const totalPremium = open.proceeds || 0;
+      const premiumPerContract = qty > 0 ? totalPremium / qty : 0;
+      const action = open.buySell === "SELL" ? "SELL to open" : "BUY to open";
+
+      const lotInfo: LotInfo = {
+        id: open.id,
+        lotRef: `lot-${i + 1}`,
+        tradeDate: open.tradeDate,
+        originalQty: qty,
+        remainingQty: qty,
+        premiumPerContract,
+        totalPremium,
+        exchangeRate: rate || 0,
+        currency: open.currency || "USD",
+        action,
+      };
+
+      lots.push(lotInfo);
+    }
+
+    // Combine opens and closes into chronological order for processing
+    interface TradeEvent {
+      type: "open" | "close";
+      date: Date;
+      openIndex?: number;
+      close?: (typeof closes)[0];
+    }
+
+    const events: TradeEvent[] = [
+      ...opens.map((_, i) => ({
+        type: "open" as const,
+        date: opens[i].tradeDate,
+        openIndex: i,
+      })),
+      ...closes.map((close) => ({
+        type: "close" as const,
+        date: close.tradeDate,
+        close,
+      })),
+    ];
+
+    // Sort by date, then opens before closes on same date
+    events.sort((a, b) => {
+      const dateDiff = a.date.getTime() - b.date.getTime();
+      if (dateDiff !== 0) return dateDiff;
+      if (a.type === "open" && b.type === "close") return -1;
+      if (a.type === "close" && b.type === "open") return 1;
+      return 0;
+    });
+
+    // Process events chronologically
+    for (const event of events) {
+      if (event.type === "open" && event.openIndex !== undefined) {
+        const lot = lots[event.openIndex];
+        entries.push({
+          type: "open",
+          id: lot.id,
+          lotRef: lot.lotRef,
+          tradeDate: lot.tradeDate.toISOString().split("T")[0],
+          quantity: lot.originalQty,
+          action: lot.action,
+          premiumPerContract: lot.premiumPerContract,
+          totalPremium: lot.totalPremium,
+          exchangeRate: lot.exchangeRate,
+          totalPremiumCzk: lot.totalPremium * lot.exchangeRate,
+          currency: lot.currency,
+          remainingQty: lot.remainingQty, // Will be updated later
+        });
+      } else if (event.type === "close" && event.close) {
+        const close = event.close;
+        const closeQty = Math.abs(close.quantity);
+        let qtyRemaining = closeQty;
+
+        const closeRate = await cnbExchangeRateService.getRate(
+          close.tradeDate,
+          close.currency || "USD"
+        );
+        const closeProceeds = close.proceeds || 0;
+        const closePremiumPerContract = closeQty > 0 ? closeProceeds / closeQty : 0;
+
+        // Determine close type
+        let closeType: "closed" | "expired" | "assigned" = "closed";
+        const isAssigned = close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0);
+        if (isAssigned) {
+          closeType = "assigned";
+        } else if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
+          closeType = "expired";
+        }
+
+        // Determine close action
+        let closeAction = "Close";
+        if (closeType === "assigned") {
+          closeAction = "Assigned";
+        } else if (closeType === "expired") {
+          closeAction = "Expired";
+        } else if (close.buySell === "BUY") {
+          closeAction = "BUY to close";
+        } else {
+          closeAction = "SELL to close";
+        }
+
+        const consumedLots: OptionConsumedLot[] = [];
+
+        // Consume from oldest lots (FIFO)
+        for (const lot of lots) {
+          if (qtyRemaining <= 0) break;
+          if (lot.remainingQty <= 0) continue;
+
+          const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
+
+          // Calculate proportional premiums
+          const proportionOfLot = qtyToConsume / lot.originalQty;
+          const openPremiumUsd = Math.abs(lot.totalPremium) * proportionOfLot;
+          const openPremiumCzk = openPremiumUsd * lot.exchangeRate;
+
+          const proportionOfClose = qtyToConsume / closeQty;
+          const closePremiumUsd = Math.abs(closeProceeds) * proportionOfClose;
+          const closePremiumCzk = closePremiumUsd * (closeRate || 0);
+
+          // Calculate P&L based on position type
+          // SELL to open (short): profit = premium received - premium paid to close
+          // BUY to open (long): profit = premium received at close - premium paid to open
+          let pnlUsd: number;
+          let pnlCzk: number;
+          if (lot.action === "SELL to open") {
+            // Short position: received premium when opening, paid when closing
+            pnlUsd = openPremiumUsd - closePremiumUsd;
+            pnlCzk = openPremiumCzk - closePremiumCzk;
+          } else {
+            // Long position: paid premium when opening, received when closing
+            pnlUsd = closePremiumUsd - openPremiumUsd;
+            pnlCzk = closePremiumCzk - openPremiumCzk;
+          }
+
+          // Holding period
+          const holdingDays = Math.floor(
+            (close.tradeDate.getTime() - lot.tradeDate.getTime()) /
+              (1000 * 60 * 60 * 24)
+          );
+
+          consumedLots.push({
+            lotRef: lot.lotRef,
+            quantity: qtyToConsume,
+            openPremiumUsd,
+            openPremiumCzk,
+            closePremiumUsd,
+            closePremiumCzk,
+            pnlUsd,
+            pnlCzk,
+            holdingDays,
+          });
+
+          lot.remainingQty -= qtyToConsume;
+          qtyRemaining -= qtyToConsume;
+        }
+
+        entries.push({
+          type: "close",
+          id: close.id,
+          lotRef: "",
+          tradeDate: close.tradeDate.toISOString().split("T")[0],
+          quantity: closeQty,
+          action: closeAction,
+          premiumPerContract: closePremiumPerContract,
+          totalPremium: closeProceeds,
+          exchangeRate: closeRate || 0,
+          totalPremiumCzk: closeProceeds * (closeRate || 0),
+          currency: close.currency || "USD",
+          closeType,
+          consumedLots,
+        });
+      }
+    }
+
+    // Update remainingQty on open entries to reflect final state
+    for (const entry of entries) {
+      if (entry.type === "open") {
+        const lot = lots.find((l) => l.lotRef === entry.lotRef);
+        if (lot) {
+          entry.remainingQty = lot.remainingQty;
+        }
+      }
+    }
+
+    // Calculate current position
+    const currentPosition = lots.reduce((sum, lot) => sum + lot.remainingQty, 0);
+
+    return {
+      symbol,
+      description,
       entries,
       currentPosition,
     };

@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { taxesApi } from "@/api/taxes";
 import type { TaxOptionTrade } from "@assup/shared";
+import { OptionLotTraceModal } from "./OptionLotTraceModal";
 
 interface Props {
   year: number;
@@ -22,6 +23,7 @@ export function OptionTradesTable({ year }: Props) {
   const [totals, setTotals] = useState({ income: 0, expenses: 0, profit: 0, profitUsd: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -116,11 +118,12 @@ export function OptionTradesTable({ year }: Props) {
               {trades.map((trade) => (
                 <TableRow
                   key={trade.id}
-                  className={
+                  className={`cursor-pointer hover:bg-muted/50 ${
                     trade.status === "missing_open"
                       ? "bg-yellow-50 dark:bg-yellow-950/20"
-                      : undefined
-                  }
+                      : ""
+                  }`}
+                  onClick={() => setSelectedSymbol(trade.symbol)}
                 >
                   <TableCell>{trade.dateClosed}</TableCell>
                   <TableCell>
@@ -176,6 +179,11 @@ export function OptionTradesTable({ year }: Props) {
           </Table>
         </div>
       </CardContent>
+
+      <OptionLotTraceModal
+        symbol={selectedSymbol}
+        onClose={() => setSelectedSymbol(null)}
+      />
     </Card>
   );
 }

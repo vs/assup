@@ -199,3 +199,42 @@ export interface ConsumedLot {
   holdingDays: number;
   isExempt: boolean;
 }
+
+// Option Lot Trace Types (FIFO visualization for options)
+export interface OptionLotTraceResponse {
+  symbol: string;
+  description: string;
+  entries: OptionLotTraceEntry[];
+  currentPosition: number;
+}
+
+export interface OptionLotTraceEntry {
+  type: "open" | "close";
+  id: string;
+  lotRef: string;
+  tradeDate: string;
+  quantity: number;
+  action: string; // "SELL to open", "BUY to close", etc.
+  premiumPerContract: number;
+  totalPremium: number;
+  exchangeRate: number;
+  totalPremiumCzk: number;
+  currency: string;
+  // OPEN fields
+  remainingQty?: number;
+  // CLOSE fields
+  closeType?: "closed" | "expired" | "assigned";
+  consumedLots?: OptionConsumedLot[];
+}
+
+export interface OptionConsumedLot {
+  lotRef: string;
+  quantity: number;
+  openPremiumUsd: number;
+  openPremiumCzk: number;
+  closePremiumUsd: number;
+  closePremiumCzk: number;
+  pnlUsd: number;
+  pnlCzk: number;
+  holdingDays: number;
+}

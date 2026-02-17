@@ -97,6 +97,19 @@ router.get(
 );
 
 /**
+ * GET /api/taxes/option-lot-trace/:symbol
+ * Get FIFO lot trace for an option contract
+ */
+router.get(
+  "/option-lot-trace/:symbol",
+  asyncHandler(async (req, res) => {
+    const { symbol } = req.params;
+    const result = await taxCalculationService.getOptionLotTrace(symbol);
+    res.json(result);
+  })
+);
+
+/**
  * GET /api/taxes/export/:year
  * Download XLSX export
  */
