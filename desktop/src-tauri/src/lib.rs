@@ -2,6 +2,7 @@ mod discovery;
 mod menu;
 
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use discovery::{discover_backend, check_connection};
 use menu::{create_menu, handle_menu_event};
 
@@ -19,6 +20,7 @@ async fn check_backend_connection(url: String) -> bool {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![get_backend_url, check_backend_connection])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -34,16 +36,28 @@ pub fn run() {
             app.set_menu(menu)?;
 
             let window = app.get_webview_window("main").unwrap();
+            let app_handle = app.handle().clone();
 
             // Spawn async task to discover backend and inject URL
             let window_clone = window.clone();
             tauri::async_runtime::spawn(async move {
-                if let Some(url) = discover_backend().await {
-                    let script = format!(
-                        "window.__ASSUP_API_URL__ = '{}';",
-                        url
-                    );
-                    let _ = window_clone.eval(&script);
+                match discover_backend().await {
+                    Some(url) => {
+                        let script = format!(
+                            "window.__ASSUP_API_URL__ = '{}';",
+                            url
+                        );
+                        let _ = window_clone.eval(&script);
+                    }
+                    None => {
+                        // Show dialog when backend not found
+                        app_handle.dialog()
+                            .message("Could not find Assup backend on ports 3001 or 3000.\n\nPlease start the backend server and restart the app.")
+                            .kind(MessageDialogKind::Error)
+                            .title("Backend Not Found")
+                            .buttons(MessageDialogButtons::Ok)
+                            .show(|_| {});
+                    }
                 }
             });
 
