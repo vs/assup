@@ -226,176 +226,78 @@ class ImportService {
   /**
    * Parse CSV format (Activity Statement export)
    */
+  /**
+   * Detect if a line is a trades section header
+   */
+  private isTradesHeader(line: string): boolean {
+    const hasAssetCategory = line.includes('"Asset Category"') || line.includes('"AssetClass"');
+    const hasTradePrice = line.includes('"Trade Price"') || line.includes('"TradePrice"');
+    const hasTradeId = line.includes('"TradeID"') || line.includes('"Trade ID"');
+    return hasTradeId && (hasAssetCategory || hasTradePrice);
+  }
+
+  /**
+   * Detect if a line is a cash transactions section header
+   */
+  private isCashHeader(line: string): boolean {
+    const hasType = line.includes('"Type"') || line.includes('"type"');
+    const hasAmount = line.includes('"Amount"') || line.includes('"amount"');
+    const hasAssetCategory = line.includes('"Asset Category"') || line.includes('"AssetClass"');
+    const hasTradePrice = line.includes('"Trade Price"') || line.includes('"TradePrice"');
+    return hasType && hasAmount && !hasAssetCategory && !hasTradePrice;
+  }
+
   private parseCSV(content: string): ParsedFlexData {
     // IBKR FLEX reports can have multiple sections with different headers
-    // Find the cash transactions section by looking for a header line that:
-    // - Contains "Type" and "Amount" columns (cash-specific)
-    // - Does NOT contain trade-specific columns
+    // We need to find ALL trades sections and ALL cash sections, not just the first of each
     const lines = content.split("\n");
-    let cashSectionIndex = -1;
 
     console.log(`[Import] CSV has ${lines.length} lines`);
     console.log(`[Import] First line: ${lines[0]?.substring(0, 100)}...`);
 
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      // Look for a header line that contains cash-specific columns
-      const hasType = line.includes('"Type"') || line.includes('"type"');
-      const hasAmount = line.includes('"Amount"') || line.includes('"amount"');
-      const hasAssetCategory = line.includes('"Asset Category"') || line.includes('"AssetClass"');
-      const hasTradePrice = line.includes('"Trade Price"') || line.includes('"TradePrice"');
+    // Identify all section boundaries
+    interface Section {
+      type: "trades" | "cash";
+      startLine: number;
+      headerLine: string;
+    }
 
-      if (hasType && hasAmount && !hasAssetCategory && !hasTradePrice) {
-        console.log(`[Import] Found cash section header at line ${i}: ${line.substring(0, 100)}...`);
-        cashSectionIndex = i;
-        break;
+    const sections: Section[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (this.isTradesHeader(line)) {
+        sections.push({ type: "trades", startLine: i, headerLine: line });
+        console.log(`[Import] Found trades header at line ${i}`);
+      } else if (this.isCashHeader(line)) {
+        sections.push({ type: "cash", startLine: i, headerLine: line });
+        console.log(`[Import] Found cash header at line ${i}`);
       }
     }
 
-    let tradesSection = content;
-    let cashSection: string | null = null;
-
-    if (cashSectionIndex > 0) {
-      tradesSection = lines.slice(0, cashSectionIndex).join("\n");
-      cashSection = lines.slice(cashSectionIndex).join("\n");
-      console.log(`[Import] Split: ${cashSectionIndex} lines for trades, ${lines.length - cashSectionIndex} lines for cash`);
-    } else {
-      console.log(`[Import] WARNING: No cash section found in CSV`);
-    }
+    console.log(`[Import] Found ${sections.length} sections: ${sections.map(s => `${s.type}@${s.startLine}`).join(", ")}`);
 
     const trades: FlexTrade[] = [];
     const cashTransactions: FlexCashTransaction[] = [];
 
-    // Parse trades section
-    if (tradesSection) {
-      const tradeRecords = parseCSV(tradesSection, {
-        columns: true,
-        skip_empty_lines: true,
-        relax_column_count: true,
-      }) as Record<string, string>[];
+    // Process each section
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      const nextSection = sections[i + 1];
+      const endLine = nextSection ? nextSection.startLine : lines.length;
 
-      console.log(`[Import] Trades section: ${tradeRecords.length} records`);
-      if (tradeRecords.length > 0) {
-        console.log(`[Import] Trade columns:`, Object.keys(tradeRecords[0]));
-      }
+      // Extract section content (header + data)
+      const sectionLines = lines.slice(section.startLine, endLine);
+      const sectionContent = sectionLines.join("\n");
 
-      // Validate required columns exist
-      if (tradeRecords.length > 0) {
-        const columns = Object.keys(tradeRecords[0]);
-        const hasQuantity = columns.some(c =>
-          c === "Quantity"
-        );
-        const hasTradeDate = columns.some(c =>
-          c === "Trade Date" || c === "TradeDate" || c === "Date/Time"
-        );
-
-        if (!hasQuantity) {
-          throw new Error(
-            `CSV import failed: Missing required 'Quantity' column. ` +
-            `Available columns: ${columns.join(", ")}. ` +
-            `Please reconfigure your FLEX Query to include the Quantity field.`
-          );
-        }
-
-        if (!hasTradeDate) {
-          throw new Error(
-            `CSV import failed: Missing required trade date column (expected 'Trade Date', 'TradeDate', or 'Date/Time'). ` +
-            `Available columns: ${columns.join(", ")}. ` +
-            `Please reconfigure your FLEX Query to include the TradeDate field.`
-          );
-        }
-      }
-
-      let csvTradeSeq = 0;
-      for (const record of tradeRecords) {
-        const assetCategory = record["Asset Category"] || record["AssetClass"];
-        const buySell = record["Buy/Sell"] || record["Code"];
-        const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
-        const quantity = record["Quantity"];
-        const tradePrice = record["T. Price"] || record["Trade Price"] || record["TradePrice"];
-
-        // Skip intermediate header rows (quantity and price must be valid numbers)
-        if (quantity && isNaN(parseFloat(quantity))) {
-          console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${quantity}`);
-          continue;
-        }
-        if (tradePrice && isNaN(parseFloat(tradePrice))) {
-          console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${tradePrice}`);
-          continue;
-        }
-
-        const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
-
-        if (assetCategory && (buySell || quantity)) {
-          trades.push({
-            tradeID:
-              record["TradeID"] ||
-              record["Trade ID"] ||
-              record["Transaction ID"] ||
-              `${tradeDate}-${record["Symbol"]}-${quantity}-${tradePrice}-${++csvTradeSeq}`,
-            symbol: record["Symbol"],
-            description: record["Description"],
-            conid: record["Conid"],
-            assetCategory,
-            strike: record["Strike"],
-            expiry: record["Expiry"],
-            putCall: record["Put/Call"],
-            underlyingSymbol: record["Underlying Symbol"] || record["UnderlyingSymbol"],
-            multiplier: record["Multiplier"],
-            tradeDate,
-            quantity,
-            tradePrice: record["T. Price"] || record["Trade Price"] || record["TradePrice"],
-            proceeds: record["Proceeds"],
-            ibCommission: record["Comm/Fee"] || record["Commission"] || record["IBCommission"],
-            buySell: inferredBuySell,
-            openCloseIndicator: record["Open/Close"] || record["Open/CloseIndicator"],
-            costBasis: record["Basis"] || record["Cost Basis"] || record["CostBasis"],
-            fifoPnlRealized: record["Realized P/L"] || record["FIFO P/L Realized"] || record["FifoPnlRealized"] || record["MTM P/L"],
-          });
-        }
-      }
-    }
-
-    // Parse cash transactions section (if found)
-    if (cashSection) {
-      const cashRecords = parseCSV(cashSection, {
-        columns: true,
-        skip_empty_lines: true,
-        relax_column_count: true,
-      }) as Record<string, string>[];
-
-      console.log(`[Import] Cash section: ${cashRecords.length} records`);
-      if (cashRecords.length > 0) {
-        console.log(`[Import] Cash columns:`, Object.keys(cashRecords[0]));
-        console.log(`[Import] First cash record:`, cashRecords[0]);
-      }
-
-      for (const record of cashRecords) {
-        const txType = record["Type"];
-        const txAmount = record["Amount"];
-        const txDate = record["Date/Time"] || record["DateTime"] || record["Date"];
-        const txCurrency = record["CurrencyPrimary"] || record["Currency"];
-        const txId = record["Transaction ID"] || record["TransactionID"] || record["transactionID"];
-
-        // Skip intermediate header rows (amount must be a valid number)
-        if (txAmount && isNaN(parseFloat(txAmount))) {
-          console.log(`[Import] Skipping intermediate header row: ${txType} - ${txAmount}`);
-          continue;
-        }
-
-        if (txType && txAmount) {
-          console.log(`[Import] Found cash transaction: ${txType} - ${txAmount} on ${txDate}`);
-          cashTransactions.push({
-            transactionID: txId || `${txDate}-${txType}-${txAmount}`,
-            symbol: record["Symbol"],
-            description: record["Description"] || "",
-            conid: record["Conid"],
-            dateTime: txDate,
-            amount: txAmount,
-            currency: txCurrency,
-            type: txType,
-          });
-        }
+      if (section.type === "trades") {
+        const sectionTrades = this.parseTradesSection(sectionContent, trades.length);
+        console.log(`[Import] Trades section ${i} (lines ${section.startLine}-${endLine}): ${sectionTrades.length} trades`);
+        trades.push(...sectionTrades);
+      } else {
+        const sectionCash = this.parseCashSection(sectionContent);
+        console.log(`[Import] Cash section ${i} (lines ${section.startLine}-${endLine}): ${sectionCash.length} transactions`);
+        cashTransactions.push(...sectionCash);
       }
     }
 
@@ -417,6 +319,139 @@ class ImportService {
     console.log(`[Import] Period: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
     return { trades, cashTransactions, periodStart, periodEnd };
+  }
+
+  /**
+   * Parse a single trades section from CSV content
+   */
+  private parseTradesSection(sectionContent: string, seqOffset: number): FlexTrade[] {
+    const trades: FlexTrade[] = [];
+
+    const tradeRecords = parseCSV(sectionContent, {
+      columns: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+    }) as Record<string, string>[];
+
+    if (tradeRecords.length === 0) {
+      return trades;
+    }
+
+    // Validate required columns exist
+    const columns = Object.keys(tradeRecords[0]);
+    const hasQuantity = columns.some(c => c === "Quantity");
+    const hasTradeDate = columns.some(c =>
+      c === "Trade Date" || c === "TradeDate" || c === "Date/Time"
+    );
+
+    if (!hasQuantity) {
+      throw new Error(
+        `CSV import failed: Missing required 'Quantity' column. ` +
+        `Available columns: ${columns.join(", ")}. ` +
+        `Please reconfigure your FLEX Query to include the Quantity field.`
+      );
+    }
+
+    if (!hasTradeDate) {
+      throw new Error(
+        `CSV import failed: Missing required trade date column (expected 'Trade Date', 'TradeDate', or 'Date/Time'). ` +
+        `Available columns: ${columns.join(", ")}. ` +
+        `Please reconfigure your FLEX Query to include the TradeDate field.`
+      );
+    }
+
+    let csvTradeSeq = seqOffset;
+    for (const record of tradeRecords) {
+      const assetCategory = record["Asset Category"] || record["AssetClass"];
+      const buySell = record["Buy/Sell"] || record["Code"];
+      const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
+      const quantity = record["Quantity"];
+      const tradePrice = record["T. Price"] || record["Trade Price"] || record["TradePrice"];
+
+      // Skip intermediate header rows (quantity and price must be valid numbers)
+      if (quantity && isNaN(parseFloat(quantity))) {
+        console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${quantity}`);
+        continue;
+      }
+      if (tradePrice && isNaN(parseFloat(tradePrice))) {
+        console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${tradePrice}`);
+        continue;
+      }
+
+      const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
+
+      if (assetCategory && (buySell || quantity)) {
+        trades.push({
+          tradeID:
+            record["TradeID"] ||
+            record["Trade ID"] ||
+            record["Transaction ID"] ||
+            `${tradeDate}-${record["Symbol"]}-${quantity}-${tradePrice}-${++csvTradeSeq}`,
+          symbol: record["Symbol"],
+          description: record["Description"],
+          conid: record["Conid"],
+          assetCategory,
+          strike: record["Strike"],
+          expiry: record["Expiry"],
+          putCall: record["Put/Call"],
+          underlyingSymbol: record["Underlying Symbol"] || record["UnderlyingSymbol"],
+          multiplier: record["Multiplier"],
+          tradeDate,
+          quantity,
+          tradePrice: record["T. Price"] || record["Trade Price"] || record["TradePrice"],
+          proceeds: record["Proceeds"],
+          ibCommission: record["Comm/Fee"] || record["Commission"] || record["IBCommission"],
+          buySell: inferredBuySell,
+          openCloseIndicator: record["Open/Close"] || record["Open/CloseIndicator"],
+          costBasis: record["Basis"] || record["Cost Basis"] || record["CostBasis"],
+          fifoPnlRealized: record["Realized P/L"] || record["FIFO P/L Realized"] || record["FifoPnlRealized"] || record["MTM P/L"],
+        });
+      }
+    }
+
+    return trades;
+  }
+
+  /**
+   * Parse a single cash transactions section from CSV content
+   */
+  private parseCashSection(sectionContent: string): FlexCashTransaction[] {
+    const cashTransactions: FlexCashTransaction[] = [];
+
+    const cashRecords = parseCSV(sectionContent, {
+      columns: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+    }) as Record<string, string>[];
+
+    for (const record of cashRecords) {
+      const txType = record["Type"];
+      const txAmount = record["Amount"];
+      const txDate = record["Date/Time"] || record["DateTime"] || record["Date"];
+      const txCurrency = record["CurrencyPrimary"] || record["Currency"];
+      const txId = record["Transaction ID"] || record["TransactionID"] || record["transactionID"];
+
+      // Skip intermediate header rows (amount must be a valid number)
+      if (txAmount && isNaN(parseFloat(txAmount))) {
+        console.log(`[Import] Skipping intermediate header row: ${txType} - ${txAmount}`);
+        continue;
+      }
+
+      if (txType && txAmount) {
+        cashTransactions.push({
+          transactionID: txId || `${txDate}-${txType}-${txAmount}`,
+          symbol: record["Symbol"],
+          description: record["Description"] || "",
+          conid: record["Conid"],
+          dateTime: txDate,
+          amount: txAmount,
+          currency: txCurrency,
+          type: txType,
+        });
+      }
+    }
+
+    return cashTransactions;
   }
 
   /**
