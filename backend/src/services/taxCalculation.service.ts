@@ -16,6 +16,7 @@ import type {
   LotTraceResponse,
   LotTraceEntry,
   ConsumedLot,
+  AffectedLot,
   OptionLotTraceResponse,
   OptionLotTraceEntry,
   OptionConsumedLot,
@@ -903,6 +904,7 @@ class TaxCalculationService {
 
   /**
    * Get FIFO lot trace for a symbol showing how buys are consumed by sells
+   * Corporate actions (splits, ticker changes) are shown as separate entries
    */
   async getLotTrace(symbol: string): Promise<LotTraceResponse> {
     const THREE_YEARS_DAYS = 3 * 365;
@@ -942,127 +944,189 @@ class TaxCalculationService {
       }
     }
 
-    // Get stock splits for this symbol (forward splits and stock dividends)
-    const splits = await prisma.corporateAction.findMany({
+    // Get corporate actions for this symbol (splits, stock dividends, ticker changes)
+    const corporateActions = await prisma.corporateAction.findMany({
       where: {
         symbol,
-        actionType: { in: ["FS", "SD"] }, // Forward split or stock dividend
-        splitRatio: { not: null },
+        actionType: { in: ["FS", "RS", "SD", "TC"] },
       },
       orderBy: { exDate: "asc" },
     });
 
-    // Build lot tracking structure
+    // Build lot tracking structure (with original quantities, splits applied dynamically)
     interface LotInfo {
       id: string;
       lotRef: string;
       tradeDate: Date;
-      originalQty: number;
+      originalQty: number; // Current quantity (updated by splits)
       remainingQty: number;
-      pricePerShare: number;
+      pricePerShare: number; // Current price per share (updated by splits)
       commission: number;
       exchangeRate: number;
       currency: string;
-      costBasisUsd: number;
-      costBasisCzk: number;
-      splitMultiplier: number;
+      costBasisUsd: number; // Never changes
+      costBasisCzk: number; // Never changes
     }
 
     const lots: LotInfo[] = [];
     const entries: LotTraceEntry[] = [];
 
-    // Process buys first to create lots
-    for (let i = 0; i < buys.length; i++) {
-      const buy = buys[i];
-      const qty = Math.abs(buy.quantity);
+    // Pre-fetch exchange rates for buys
+    const buyRates = new Map<string, number>();
+    for (const buy of buys) {
       const rate = await cnbExchangeRateService.getRate(
         buy.tradeDate,
         buy.currency || "USD"
       );
-      // Use IBKR proceeds (actual cash flow) + commission for cost basis
-      // This handles bonds correctly where tradePrice is a percentage of face value
-      const costBasisUsd = Math.abs(buy.proceeds || 0) + buy.commission;
-      const costBasisCzk = costBasisUsd * (rate || 0);
-
-      // Calculate cumulative split multiplier for this lot
-      // Only count splits that occurred AFTER the buy date
-      let splitMultiplier = 1;
-      for (const split of splits) {
-        if (split.exDate > buy.tradeDate && split.splitRatio) {
-          splitMultiplier *= split.splitRatio;
-        }
-      }
-
-      // Apply split multiplier to quantity (cost basis stays the same)
-      const adjustedQty = qty * splitMultiplier;
-
-      const lotInfo: LotInfo = {
-        id: buy.id,
-        lotRef: `lot-${i + 1}`,
-        tradeDate: buy.tradeDate,
-        originalQty: adjustedQty,
-        remainingQty: adjustedQty,
-        pricePerShare: buy.tradePrice / splitMultiplier, // Adjust price per share for display
-        commission: buy.commission,
-        exchangeRate: rate || 0,
-        currency: buy.currency || "USD",
-        costBasisUsd,
-        costBasisCzk,
-        splitMultiplier,
-      };
-
-      lots.push(lotInfo);
+      buyRates.set(buy.id, rate || 0);
     }
 
-    // Combine buys, sells, and splits into chronological order for processing
+    // Combine buys, sells, and corporate actions into chronological order
     interface TradeEvent {
-      type: "buy" | "sell" | "split";
+      type: "buy" | "sell" | "corporate_action";
       date: Date;
-      buyIndex?: number;
+      buy?: (typeof buys)[0];
       sell?: (typeof sells)[0];
-      split?: (typeof splits)[0];
+      corporateAction?: (typeof corporateActions)[0];
     }
 
     const events: TradeEvent[] = [
-      ...buys.map((_, i) => ({
+      ...buys.map((buy) => ({
         type: "buy" as const,
-        date: buys[i].tradeDate,
-        buyIndex: i,
+        date: buy.tradeDate,
+        buy,
       })),
       ...sells.map((sell) => ({
         type: "sell" as const,
         date: sell.tradeDate,
         sell,
       })),
+      ...corporateActions.map((ca) => ({
+        type: "corporate_action" as const,
+        date: ca.exDate,
+        corporateAction: ca,
+      })),
     ];
 
-    // Sort by date, then buys before sells on same date
+    // Sort by date, then: buys -> corporate actions -> sells
     events.sort((a, b) => {
       const dateDiff = a.date.getTime() - b.date.getTime();
       if (dateDiff !== 0) return dateDiff;
-      // Buys come before sells on the same date
-      if (a.type === "buy" && b.type === "sell") return -1;
-      if (a.type === "sell" && b.type === "buy") return 1;
-      return 0;
+      const typeOrder = { buy: 0, corporate_action: 1, sell: 2 };
+      return typeOrder[a.type] - typeOrder[b.type];
     });
 
     // Process events chronologically
+    let lotIndex = 0;
     for (const event of events) {
-      if (event.type === "buy" && event.buyIndex !== undefined) {
-        const lot = lots[event.buyIndex];
+      if (event.type === "buy" && event.buy) {
+        const buy = event.buy;
+        const qty = Math.abs(buy.quantity);
+        const rate = buyRates.get(buy.id) || 0;
+        const costBasisUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+        const costBasisCzk = costBasisUsd * rate;
+
+        const lotInfo: LotInfo = {
+          id: buy.id,
+          lotRef: `lot-${++lotIndex}`,
+          tradeDate: buy.tradeDate,
+          originalQty: qty,
+          remainingQty: qty,
+          pricePerShare: buy.tradePrice,
+          commission: buy.commission,
+          exchangeRate: rate,
+          currency: buy.currency || "USD",
+          costBasisUsd,
+          costBasisCzk,
+        };
+
+        lots.push(lotInfo);
+
         entries.push({
           type: "buy",
-          id: lot.id,
-          lotRef: lot.lotRef,
-          tradeDate: lot.tradeDate.toISOString().split("T")[0],
-          quantity: lot.originalQty,
-          pricePerShare: lot.pricePerShare,
-          exchangeRate: lot.exchangeRate,
-          currency: lot.currency,
-          costBasisUsd: lot.costBasisUsd,
-          costBasisCzk: lot.costBasisCzk,
-          remainingQty: lot.remainingQty, // Will be updated later
+          id: lotInfo.id,
+          lotRef: lotInfo.lotRef,
+          tradeDate: lotInfo.tradeDate.toISOString().split("T")[0],
+          quantity: lotInfo.originalQty,
+          pricePerShare: lotInfo.pricePerShare,
+          exchangeRate: lotInfo.exchangeRate,
+          currency: lotInfo.currency,
+          costBasisUsd: lotInfo.costBasisUsd,
+          costBasisCzk: lotInfo.costBasisCzk,
+          remainingQty: lotInfo.remainingQty,
         });
+
+      } else if (event.type === "corporate_action" && event.corporateAction) {
+        const ca = event.corporateAction;
+        const splitRatio = ca.splitRatio || 1;
+
+        // Only process splits (FS, RS, SD) that have a ratio
+        if ((ca.actionType === "FS" || ca.actionType === "RS" || ca.actionType === "SD") && splitRatio !== 1) {
+          // Find lots that existed before this split and have remaining shares
+          const affectedLots: { lotRef: string; quantityBefore: number; quantityAfter: number }[] = [];
+
+          for (const lot of lots) {
+            if (lot.tradeDate < ca.exDate && lot.remainingQty > 0) {
+              const qtyBefore = lot.originalQty;
+              const remainingBefore = lot.remainingQty;
+
+              // Apply split to this lot
+              lot.originalQty *= splitRatio;
+              lot.remainingQty *= splitRatio;
+              lot.pricePerShare /= splitRatio;
+
+              affectedLots.push({
+                lotRef: lot.lotRef,
+                quantityBefore: qtyBefore,
+                quantityAfter: lot.originalQty,
+              });
+
+              // Update the buy entry's quantity display
+              const buyEntry = entries.find(e => e.type === "buy" && e.lotRef === lot.lotRef);
+              if (buyEntry) {
+                buyEntry.quantity = lot.originalQty;
+                buyEntry.pricePerShare = lot.pricePerShare;
+                buyEntry.remainingQty = lot.remainingQty;
+              }
+            }
+          }
+
+          // Only add entry if there were affected lots
+          if (affectedLots.length > 0) {
+            const totalQtyBefore = affectedLots.reduce((sum, l) => sum + l.quantityBefore, 0);
+            const totalQtyAfter = affectedLots.reduce((sum, l) => sum + l.quantityAfter, 0);
+
+            entries.push({
+              type: "corporate_action",
+              id: ca.id,
+              lotRef: "",
+              tradeDate: ca.exDate.toISOString().split("T")[0],
+              quantity: totalQtyAfter - totalQtyBefore, // Net shares added
+              pricePerShare: 0,
+              exchangeRate: 0,
+              currency: "USD",
+              actionType: ca.actionType,
+              actionDescription: ca.description || `${splitRatio}:1 split`,
+              splitRatio,
+              affectedLots,
+            });
+          }
+        } else if (ca.actionType === "TC") {
+          // Ticker change - just show informational entry
+          entries.push({
+            type: "corporate_action",
+            id: ca.id,
+            lotRef: "",
+            tradeDate: ca.exDate.toISOString().split("T")[0],
+            quantity: 0,
+            pricePerShare: 0,
+            exchangeRate: 0,
+            currency: "USD",
+            actionType: ca.actionType,
+            actionDescription: ca.description || "Ticker change",
+          });
+        }
+
       } else if (event.type === "sell" && event.sell) {
         const sell = event.sell;
         const sellQty = Math.abs(sell.quantity);
@@ -1118,7 +1182,7 @@ class TaxCalculationService {
         entries.push({
           type: "sell",
           id: sell.id,
-          lotRef: "", // Sells don't have a lotRef
+          lotRef: "",
           tradeDate: sell.tradeDate.toISOString().split("T")[0],
           quantity: sellQty,
           pricePerShare: sell.tradePrice,

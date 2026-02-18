@@ -11,6 +11,7 @@ import { Loader2, Check } from "lucide-react";
 import { taxesApi } from "@/api/taxes";
 import type { LotTraceResponse, LotTraceEntry, ConsumedLot } from "@assup/shared";
 import { cn, formatCurrency, formatHoldingPeriod, scrollToAndHighlight } from "@/lib/utils";
+import { ArrowRight, Split, RefreshCw } from "lucide-react";
 
 interface LotTraceModalProps {
   symbol: string | null;
@@ -112,6 +113,52 @@ function EntryRow({ entry }: { entry: LotTraceEntry }) {
     );
   }
 
+  if (entry.type === "corporate_action") {
+    const actionLabel = getActionLabel(entry.actionType);
+    const isSplit = entry.actionType === "FS" || entry.actionType === "RS" || entry.actionType === "SD";
+
+    return (
+      <div className="border-l-4 border-purple-400 pl-4 py-2 bg-purple-50/50">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="bg-purple-100 text-purple-700">
+            {isSplit ? <Split className="h-3 w-3 mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+            {actionLabel}
+          </Badge>
+          <span className="text-muted-foreground">{entry.tradeDate}</span>
+          {entry.splitRatio && (
+            <span className="font-medium text-purple-700">
+              {entry.splitRatio}:1 split
+            </span>
+          )}
+        </div>
+        {entry.actionDescription && (
+          <div className="mt-1 text-sm text-muted-foreground ml-1">
+            {entry.actionDescription}
+          </div>
+        )}
+        {entry.affectedLots && entry.affectedLots.length > 0 && (
+          <div className="mt-2 ml-4 space-y-1">
+            {entry.affectedLots.map((affected, idx) => (
+              <div key={affected.lotRef} className="text-sm flex items-center gap-2">
+                <span className="text-muted-foreground">{idx === entry.affectedLots!.length - 1 ? "└─" : "├─"}</span>
+                <button
+                  onClick={() => scrollToAndHighlight(affected.lotRef)}
+                  className="text-blue-600 hover:underline font-mono"
+                >
+                  #{affected.lotRef}
+                </button>
+                <span className="text-muted-foreground">{affected.quantityBefore}</span>
+                <ArrowRight className="h-3 w-3 text-purple-500" />
+                <span className="font-medium text-purple-700">{affected.quantityAfter}</span>
+                <span className="text-muted-foreground">shares</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="border-l-4 border-gray-300 pl-4 py-2">
       <div className="flex items-baseline gap-2 flex-wrap">
@@ -139,6 +186,17 @@ function EntryRow({ entry }: { entry: LotTraceEntry }) {
       )}
     </div>
   );
+}
+
+function getActionLabel(actionType?: string): string {
+  switch (actionType) {
+    case "FS": return "SPLIT";
+    case "RS": return "REVERSE SPLIT";
+    case "SD": return "STOCK DIVIDEND";
+    case "TC": return "TICKER CHANGE";
+    case "SO": return "SPIN-OFF";
+    default: return "CORPORATE ACTION";
+  }
 }
 
 function ConsumedLotRow({ lot, isLast }: { lot: ConsumedLot; isLast: boolean }) {

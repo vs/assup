@@ -171,7 +171,7 @@ export interface LotTraceResponse {
 }
 
 export interface LotTraceEntry {
-  type: "buy" | "sell";
+  type: "buy" | "sell" | "corporate_action";
   id: string;
   lotRef: string;
   tradeDate: string;
@@ -187,6 +187,17 @@ export interface LotTraceEntry {
   proceedsUsd?: number;
   proceedsCzk?: number;
   consumedLots?: ConsumedLot[];
+  // CORPORATE_ACTION fields
+  actionType?: string; // FS, RS, SD, TC, SO
+  actionDescription?: string; // e.g., "SPLIT 10 FOR 1"
+  splitRatio?: number; // e.g., 10 for 10:1 split
+  affectedLots?: AffectedLot[]; // which lots were adjusted
+}
+
+export interface AffectedLot {
+  lotRef: string;
+  quantityBefore: number;
+  quantityAfter: number;
 }
 
 export interface ConsumedLot {
