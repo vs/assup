@@ -9,25 +9,15 @@ declare global {
   }
 }
 
-export function getApiBaseUrl(): string {
-  // Tauri injects this global after auto-discovery
+export function getApiBase(): string {
+  // Always check window global first (Tauri injects this asynchronously)
+  // Don't cache to avoid race condition with Tauri's async discovery
   if (typeof window !== 'undefined' && window.__ASSUP_API_URL__) {
     return window.__ASSUP_API_URL__;
   }
-  // Fall back to Vite env var or default
   return import.meta.env.VITE_API_URL || 'http://localhost:3000';
 }
 
-let cachedBaseUrl: string | null = null;
-
-export function getApiBase(): string {
-  if (cachedBaseUrl === null) {
-    cachedBaseUrl = getApiBaseUrl();
-  }
-  return cachedBaseUrl;
-}
-
 export function setApiBase(url: string): void {
-  cachedBaseUrl = url;
   window.__ASSUP_API_URL__ = url;
 }
