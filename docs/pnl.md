@@ -3,7 +3,9 @@
 This document describes how Assup calculates cost basis, profit/loss, and related values for stocks and options. There are two main contexts where these calculations appear:
 
 1. **Profit Page** - Monthly profit tracking for portfolio performance
-2. **Taxes Page** - Annual tax reporting with FIFO lot matching and CZK conversion
+2. **Taxes Page** - Annual tax reporting with FIFO lot matching and CZK conversion for Czech taxes
+
+> **Important:** The Profit Page and Taxes Page use different calculation methods, particularly for option assignments. This is intentional—the Profit Page follows IBKR's US-style accounting for performance tracking, while the Taxes Page follows Czech tax law (ZDP) requirements.
 
 ## Table of Contents
 
@@ -14,8 +16,12 @@ This document describes how Assup calculates cost basis, profit/loss, and relate
   - [Assignment Detection and Handling](#assignment-detection-and-handling)
   - [Cash Transactions](#cash-transactions)
 - [Taxes Page Calculations](#taxes-page-calculations)
+  - [Czech Tax Compliance Notes](#czech-tax-compliance-notes)
+  - [Income Basket Separation](#income-basket-separation)
   - [Stock Trades with FIFO](#stock-trades-with-fifo)
   - [Option Trades with FIFO](#option-trades-with-fifo)
+  - [Assigned Options and Stock Basis](#assigned-options-and-stock-basis)
+  - [Tax Exemptions](#tax-exemptions)
   - [Corporate Actions](#corporate-actions)
   - [Dividend Taxation](#dividend-taxation)
   - [Currency Conversion](#currency-conversion)
@@ -155,7 +161,28 @@ All amounts are converted to USD using CNB exchange rates when needed.
 
 ## Taxes Page Calculations
 
-The Taxes page provides detailed lot-level tracking for Czech tax reporting, with separate USD and CZK columns.
+The Taxes page provides detailed lot-level tracking for Czech tax reporting, with separate USD and CZK columns. This section follows Czech Income Tax Act (ZDP) requirements.
+
+### Czech Tax Compliance Notes
+
+> **Critical:** The Taxes Page calculations differ from the Profit Page in several important ways to comply with Czech tax law. Using IBKR's US-style values directly for Czech taxes can lead to **double taxation** or **accidental tax evasion**.
+
+Key differences from US/IBKR accounting:
+- Option premiums are always taxed as derivative income (never merged into stock basis)
+- Securities and derivatives are separate "baskets" that cannot offset each other
+- The 3-year holding exemption applies only to securities, never to derivatives
+- Currency conversion uses CNB daily rates (§ 38 ZDP)
+
+### Income Basket Separation
+
+Czech tax practice requires separating income types within § 10 (Other Income):
+
+| Basket | Includes | Notes |
+|--------|----------|-------|
+| **Securities** | Stocks, ETFs | Eligible for 3-year and 100k CZK exemptions |
+| **Derivatives** | Options, futures | Never eligible for time-based exemptions |
+
+**Important:** Losses from one basket generally cannot offset profits from another. For example, option losses cannot reduce tax owed on stock profits. The Taxes Page export separates these categories—do not net them together without consulting a tax advisor.
 
 ### Stock Trades with FIFO
 
@@ -175,7 +202,7 @@ The Taxes page provides detailed lot-level tracking for Czech tax reporting, wit
 
 ```
 holdingDays = (sellDate - buyDate) / (1000 × 60 × 60 × 24)
-exempt = holdingDays >= (3 × 365)  // 3-year exemption in Czech tax law
+exempt = holdingDays >= (3 × 365)  // 3-year Time Test (§ 4 odst. 1 písm. w ZDP)
 ```
 
 #### Exempt vs. Taxable Splitting
@@ -183,6 +210,8 @@ exempt = holdingDays >= (3 × 365)  // 3-year exemption in Czech tax law
 When a single sell consumes lots with different holding periods:
 - **Exempt portion** (3+ years): Separate record with `-exempt` suffix
 - **Taxable portion** (<3 years): Separate record with `-taxable` suffix
+
+> **Note:** The 3-year exemption only applies to securities (stocks/ETFs). Option income is NEVER exempt regardless of holding period.
 
 ### Option Trades with FIFO
 
@@ -217,6 +246,81 @@ expense = premium paid (from open)
 income = proceeds from close (if closed, else 0)
 ```
 
+### Assigned Options and Stock Basis
+
+> **Critical: Avoiding Double Taxation**
+>
+> IBKR's FLEX reports use US tax rules which **adjust** the stock cost basis by the option premium:
+> - PUT assignment: IBKR reduces stock cost basis by premium received
+> - CALL assignment: IBKR increases stock sale proceeds by premium received
+>
+> If Assup reports the premium as taxable option income (correct for Czech taxes) AND uses IBKR's adjusted stock basis, the premium would be **taxed twice**.
+
+#### The Problem (Example)
+
+```
+You sell a PUT for $100 premium, strike $50. You are assigned.
+Later you sell the stock for $51.
+
+WRONG approach (using IBKR values):
+  Option income: $100 (premium)
+  Stock cost basis: $4,900 (IBKR adjusts: $5,000 - $100)
+  Stock proceeds: $5,100
+  Stock profit: $5,100 - $4,900 = $200
+  Total taxable: $100 + $200 = $300  ← DOUBLE TAXATION!
+
+CORRECT approach (for Czech taxes):
+  Option income: $100 (premium) - reported as derivative
+  Stock cost basis: $5,000 (Strike × Quantity - actual cash paid)
+  Stock proceeds: $5,100
+  Stock profit: $5,100 - $5,000 = $100
+  Total taxable: $100 (derivative) + $100 (security) = $200  ← CORRECT
+```
+
+#### Taxes Page Assignment Handling
+
+For the Taxes Page, Assup uses **unadjusted values** for assigned stock trades:
+
+| Value | Calculation | Rationale |
+|-------|-------------|-----------|
+| **Stock Cost Basis** | Strike × Quantity | Actual cash paid for shares |
+| **Stock Sale Proceeds** | Sale Price × Quantity | Actual cash received |
+| **Option Premium** | Reported separately | Taxed as derivative income |
+
+This ensures the option premium is taxed exactly once, as derivative income.
+
+#### Time Test Trap
+
+> **Warning:** Never merge option premium into stock basis to "hide" it in a 3-year exempt stock sale. Option income **never** qualifies for the time test exemption. Doing so constitutes tax evasion.
+
+### Tax Exemptions
+
+Czech tax law provides two exemptions for securities (§ 4 odst. 1 písm. w ZDP):
+
+#### 1. Time Test (3-Year Holding Period)
+
+Securities held for 3+ years are exempt from taxation:
+```
+exempt = holdingDays >= (3 × 365)
+```
+
+**Applies to:** Stocks, ETFs
+**Does NOT apply to:** Options, futures, or any derivatives
+
+#### 2. Value Test (100,000 CZK Threshold)
+
+If total **gross proceeds** (příjmy) from all securities sold in the tax year are below 100,000 CZK, all security income is exempt regardless of holding period or profit.
+
+```
+totalGrossProceeds = sum of all stock sale proceeds in CZK
+exempt = totalGrossProceeds < 100,000
+```
+
+**Important:** This is gross proceeds (total sale value), not profit. The Taxes Page export includes total gross proceeds to help identify if this exemption applies.
+
+**Applies to:** Securities only (stocks, ETFs)
+**Does NOT apply to:** Derivatives (options)
+
 ### Corporate Actions
 
 #### Stock Splits
@@ -246,15 +350,30 @@ Handled in lot tracing:
 3. Pair with withholding tax transactions
 4. Convert to CZK using transaction date rate
 
-#### Output Fields
+#### Output Fields (Required for Czech Tax Return)
 
-| Field | Description |
-|-------|-------------|
-| `grossUsd` | Dividend amount before withholding |
-| `withholdingTaxUsd` | Tax withheld (stored negative, displayed positive) |
-| `netUsd` | `grossUsd - withholdingTaxUsd` |
-| `grossCzk` | Gross converted at transaction date rate |
-| `country` | Source country from ISIN |
+The following fields are required for the Czech tax return (Příloha č. 3 or separate sheet):
+
+| Field | Description | Tax Form Use |
+|-------|-------------|--------------|
+| `grossUsd` | Dividend amount before withholding | Include in § 8 tax base |
+| `grossCzk` | Gross converted at payment date rate | CZK value for tax base |
+| `withholdingTaxUsd` | Tax withheld at source | Used for foreign tax credit |
+| `withholdingTaxCzk` | Withholding in CZK | Credit calculation |
+| `country` | Source country from ISIN | Determines treaty limits |
+
+> **Important:** Do not use "net dividend" for tax reporting. Czech tax returns require:
+> 1. **Gross dividend** (hrubá dividenda) - the full amount before any withholding
+> 2. **Tax paid abroad** (daň zaplacená v zahraničí) - for credit calculation
+> 3. **Source country** - to apply correct treaty limit (typically 15% for US/CZ treaty)
+
+#### Foreign Tax Credit Limit
+
+The credit for foreign withholding tax is limited by the applicable tax treaty:
+- **US dividends:** Max 15% credit (US/CZ treaty)
+- **Other countries:** Check specific treaty
+
+If the foreign withholding exceeds the treaty limit, only the treaty limit can be credited.
 
 ### Currency Conversion
 
@@ -282,15 +401,20 @@ Where `rateCzkPerUsd` is the CZK/USD rate on the relevant date.
 
 | Aspect | Profit Page | Taxes Page |
 |--------|-------------|------------|
-| **Purpose** | Performance tracking | Tax reporting |
+| **Purpose** | Performance tracking | Czech tax reporting (ZDP) |
 | **Currency** | USD only | USD + CZK columns |
-| **Exchange Rates** | Single conversion | Separate open/close rates |
+| **Exchange Rates** | Single conversion | Separate open/close rates (CNB daily) |
 | **Holding Period** | Not tracked | 3-year exemption tracked |
-| **Stock P&L** | IBKR `realizedPnl` | IBKR `realizedPnl` |
+| **Value Test** | Not tracked | 100k CZK exemption tracked |
+| **Stock P&L** | IBKR `realizedPnl` | Manual FIFO (unadjusted basis) |
 | **Option P&L** | Manual FIFO | Manual FIFO |
+| **Assignment Handling** | Premium merged into stock | Premium separate (derivative income) |
+| **Assigned Stock Basis** | IBKR adjusted basis | Strike × Quantity (actual cash) |
+| **Income Separation** | Combined total | Securities vs. Derivatives split |
 | **Grouping** | By month | By symbol + year |
 | **Corporate Actions** | Not displayed | Shown in lot trace |
 | **Missing Data** | Shows $0 profit | Blocks export, flagged |
+| **Dividend Reporting** | Net amount | Gross + withholding separate |
 
 ---
 
