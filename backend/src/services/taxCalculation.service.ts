@@ -190,8 +190,7 @@ class TaxCalculationService {
       tradeDate: Date;
       originalQty: number;
       remainingQty: number;
-      pricePerShare: number;
-      commission: number;
+      totalCostUsd: number; // Total cost including commission (from IBKR proceeds)
       exchangeRate: number;
       currency: string;
     }
@@ -203,13 +202,15 @@ class TaxCalculationService {
         buy.tradeDate,
         buy.currency || "USD"
       );
+      // Use IBKR proceeds (actual cash flow) + commission for cost basis
+      // This handles bonds correctly where tradePrice is a percentage of face value
+      const totalCostUsd = Math.abs(buy.proceeds || 0) + buy.commission;
       lots.push({
         id: buy.id,
         tradeDate: buy.tradeDate,
         originalQty: qty,
         remainingQty: qty,
-        pricePerShare: buy.tradePrice,
-        commission: buy.commission,
+        totalCostUsd,
         exchangeRate: rate || 0,
         currency: buy.currency || "USD",
       });
@@ -245,10 +246,8 @@ class TaxCalculationService {
         const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
 
         // Calculate proportional cost basis for this portion
-        // Cost = (qty × price) + (commission × proportion of original lot)
         const proportionOfLot = qtyToConsume / lot.originalQty;
-        const lotCostUsd =
-          qtyToConsume * lot.pricePerShare + lot.commission * proportionOfLot;
+        const lotCostUsd = lot.totalCostUsd * proportionOfLot;
         const lotCostCzk = lotCostUsd * lot.exchangeRate;
 
         // Calculate holding period for this specific lot
@@ -914,7 +913,9 @@ class TaxCalculationService {
         buy.tradeDate,
         buy.currency || "USD"
       );
-      const costBasisUsd = qty * buy.tradePrice + buy.commission;
+      // Use IBKR proceeds (actual cash flow) + commission for cost basis
+      // This handles bonds correctly where tradePrice is a percentage of face value
+      const costBasisUsd = Math.abs(buy.proceeds || 0) + buy.commission;
       const costBasisCzk = costBasisUsd * (rate || 0);
 
       const lotInfo: LotInfo = {
@@ -1003,12 +1004,10 @@ class TaxCalculationService {
 
           const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
 
-          // Calculate proportional cost basis
+          // Calculate proportional cost basis from the lot's total cost
           const proportionOfLot = qtyToConsume / lot.originalQty;
-          const lotCostUsd =
-            qtyToConsume * lot.pricePerShare +
-            lot.commission * proportionOfLot;
-          const lotCostCzk = lotCostUsd * lot.exchangeRate;
+          const lotCostUsd = lot.costBasisUsd * proportionOfLot;
+          const lotCostCzk = lot.costBasisCzk * proportionOfLot;
 
           // Calculate proceeds proportion for this lot
           const proceedsProportion = qtyToConsume / sellQty;
