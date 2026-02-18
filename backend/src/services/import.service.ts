@@ -101,6 +101,7 @@ class ImportService {
           dividendsImported: 0,
           interestImported: 0,
           otherCashImported: 0,
+          corporateActionsImported: 0,
           assignmentsDetected: 0,
         },
       };
@@ -397,9 +398,37 @@ class ImportService {
       return trades;
     }
 
-    // Validate required columns exist
+    // Filter out rows that look like intermediate headers (from other sections)
+    // These have non-numeric Quantity or TradePrice values
+    const validRecords = tradeRecords.filter(record => {
+      const quantity = record["Quantity"];
+      const tradePrice = record["T. Price"] || record["Trade Price"] || record["TradePrice"];
+
+      // Skip if quantity looks like a header value (non-numeric or missing)
+      if (quantity && isNaN(parseFloat(quantity))) {
+        console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${quantity}`);
+        return false;
+      }
+      // Skip if trade price looks like a header value
+      if (tradePrice && isNaN(parseFloat(tradePrice))) {
+        console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${tradePrice}`);
+        return false;
+      }
+      return true;
+    });
+
+    // If no valid data rows, return empty (section only had headers)
+    if (validRecords.length === 0) {
+      console.log(`[Import] Trades section has no valid data rows (only headers)`);
+      return trades;
+    }
+
+    // Validate required columns exist using a record with all columns
+    // Use the header's columns (from csv-parse) rather than a data row's keys
     const columns = Object.keys(tradeRecords[0]);
-    const hasQuantity = columns.some(c => c === "Quantity");
+    // Also check that Quantity column exists and has valid data in at least one record
+    const hasQuantity = columns.some(c => c === "Quantity") ||
+      validRecords.some(r => r["Quantity"] !== undefined);
     const hasTradeDate = columns.some(c =>
       c === "Trade Date" || c === "TradeDate" || c === "Date/Time"
     );
@@ -421,22 +450,12 @@ class ImportService {
     }
 
     let csvTradeSeq = seqOffset;
-    for (const record of tradeRecords) {
+    for (const record of validRecords) {
       const assetCategory = record["Asset Category"] || record["AssetClass"];
       const buySell = record["Buy/Sell"] || record["Code"];
       const tradeDate = record["Trade Date"] || record["TradeDate"] || record["Date/Time"];
       const quantity = record["Quantity"];
       const tradePrice = record["T. Price"] || record["Trade Price"] || record["TradePrice"];
-
-      // Skip intermediate header rows (quantity and price must be valid numbers)
-      if (quantity && isNaN(parseFloat(quantity))) {
-        console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${quantity}`);
-        continue;
-      }
-      if (tradePrice && isNaN(parseFloat(tradePrice))) {
-        console.log(`[Import] Skipping intermediate header row in trades: ${record["Symbol"]} - ${tradePrice}`);
-        continue;
-      }
 
       const inferredBuySell = buySell || (quantity && parseFloat(quantity) > 0 ? "BUY" : "SELL");
 
