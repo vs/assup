@@ -3,11 +3,7 @@
   "productName": "Assup",
   "version": "0.1.0",
   "identifier": "com.assup.desktop",
-  "plugins": {
-    "window-state": {
-      "stateFlags": ["all"]
-    }
-  },
+  "plugins": {},
   "build": {
     "beforeDevCommand": "npm run --prefix ../../frontend dev",
     "devUrl": "http://localhost:5173",
