@@ -23,6 +23,8 @@ import type {
 } from "@assup/shared";
 
 class TaxCalculationService {
+  private static readonly VALUE_TEST_THRESHOLD = 100_000;
+
   /**
    * Get complete tax summary for a year
    */
@@ -80,6 +82,13 @@ class TaxCalculationService {
         total: interest.total,
         count: interest.interest.length,
       },
+      valueTest: {
+        grossProceedsCzk: stockTrades.grossProceedsCzk,
+        thresholdCzk: TaxCalculationService.VALUE_TEST_THRESHOLD,
+        isExempt:
+          stockTrades.grossProceedsCzk <
+          TaxCalculationService.VALUE_TEST_THRESHOLD,
+      },
       missingRecords,
       canExport: missingRecords.length === 0,
     };
@@ -100,6 +109,7 @@ class TaxCalculationService {
   async getStockTrades(year: number): Promise<{
     trades: TaxStockTrade[];
     totals: { income: number; expenses: number; profit: number };
+    grossProceedsCzk: number;
   }> {
     const yearStart = new Date(Date.UTC(year, 0, 1));
     const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
@@ -144,6 +154,11 @@ class TaxCalculationService {
     // Sort all trades by date
     trades.sort((a, b) => a.dateClosed.localeCompare(b.dateClosed));
 
+    // Calculate gross proceeds for Value Test (all complete trades, including 3yr exempt)
+    const grossProceedsCzk = trades
+      .filter((t) => t.status === "complete")
+      .reduce((sum, t) => sum + t.proceedsCzk, 0);
+
     return {
       trades,
       totals: {
@@ -151,6 +166,7 @@ class TaxCalculationService {
         expenses: totalExpenses,
         profit: totalIncome - totalExpenses,
       },
+      grossProceedsCzk,
     };
   }
 
@@ -220,6 +236,7 @@ class TaxCalculationService {
       exchangeRate: number;
       currency: string;
       splitMultiplier: number; // Cumulative split multiplier applied to this lot
+      wasFromAssignment: boolean; // True if this buy came from PUT assignment
     }
 
     const lots: BuyLot[] = [];
@@ -229,9 +246,27 @@ class TaxCalculationService {
         buy.tradeDate,
         buy.currency || "USD"
       );
-      // Use IBKR proceeds (actual cash flow) + commission for cost basis
-      // This handles bonds correctly where tradePrice is a percentage of face value
-      const totalCostUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+
+      // Check if this BUY came from a PUT assignment
+      const assignedStrike = await this.findAssignedPutStrike(
+        symbol,
+        buy.tradeDate,
+        buy.quantity
+      );
+
+      let totalCostUsd: number;
+      let wasFromAssignment = false;
+
+      if (assignedStrike !== null) {
+        // Assigned stock: use Strike × Quantity (actual cash paid)
+        // NOT IBKR's adjusted basis which has premium subtracted
+        totalCostUsd = assignedStrike * qty + buy.commission;
+        wasFromAssignment = true;
+      } else {
+        // Normal purchase: use IBKR proceeds + commission for cost basis
+        // This handles bonds correctly where tradePrice is a percentage of face value
+        totalCostUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+      }
 
       // Calculate cumulative split multiplier for this lot
       // Only count splits that occurred AFTER the buy date
@@ -254,6 +289,7 @@ class TaxCalculationService {
         exchangeRate: rate || 0,
         currency: buy.currency || "USD",
         splitMultiplier,
+        wasFromAssignment,
       });
     }
 
@@ -273,6 +309,7 @@ class TaxCalculationService {
         costBasisCzk: number;
         buyDate: Date;
         holdingDays: number;
+        wasFromAssignment: boolean;
       }
 
       const exemptPortions: ConsumedPortion[] = [];
@@ -303,6 +340,7 @@ class TaxCalculationService {
           costBasisCzk: lotCostCzk,
           buyDate: lot.tradeDate,
           holdingDays,
+          wasFromAssignment: lot.wasFromAssignment,
         };
 
         // Separate into exempt (3+ years) and taxable portions
@@ -359,6 +397,9 @@ class TaxCalculationService {
         // Use the minimum holding days for conservative display
         const minHoldingDays = Math.min(...portions.map((p) => p.holdingDays));
 
+        // Mark as from assignment if any consumed lot was from assignment
+        const wasFromAssignment = portions.some((p) => p.wasFromAssignment);
+
         return {
           id: `${sell.id}${idSuffix}`,
           symbol: sell.symbol,
@@ -377,6 +418,7 @@ class TaxCalculationService {
           pnlCzk: proceedsCzk - costBasisCzk,
           status: "complete",
           currency: sell.currency || "USD",
+          wasFromAssignment: wasFromAssignment || undefined,
         };
       };
 
@@ -416,6 +458,42 @@ class TaxCalculationService {
     }
 
     return result;
+  }
+
+  /**
+   * Find assigned PUT option that resulted in a stock BUY trade
+   * Returns strike price if found, null otherwise
+   */
+  private async findAssignedPutStrike(
+    symbol: string,
+    buyDate: Date,
+    quantity: number
+  ): Promise<number | null> {
+    // Search window: assignment date can be 0-2 days before stock buy settles
+    const searchStart = new Date(buyDate);
+    searchStart.setDate(searchStart.getDate() - 2);
+
+    const assignedPut = await prisma.importedTrade.findFirst({
+      where: {
+        underlying: symbol,
+        secType: "OPT",
+        right: "P",
+        wasAssigned: true,
+        assignmentDate: { gte: searchStart, lte: buyDate },
+      },
+      select: { strike: true, quantity: true, multiplier: true },
+    });
+
+    if (!assignedPut?.strike) return null;
+
+    // Verify quantity matches (within 10% tolerance for partial assignments)
+    const expectedShares =
+      Math.abs(assignedPut.quantity) * (assignedPut.multiplier || 100);
+    const actualShares = Math.abs(quantity);
+    if (Math.abs(expectedShares - actualShares) / expectedShares > 0.1)
+      return null;
+
+    return assignedPut.strike;
   }
 
   // ============ Option FIFO Helpers ============
@@ -1044,7 +1122,22 @@ class TaxCalculationService {
         const buy = event.buy;
         const qty = Math.abs(buy.quantity);
         const rate = buyRates.get(buy.id) || 0;
-        const costBasisUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+
+        // Check if this BUY came from a PUT assignment
+        const assignedStrike = await this.findAssignedPutStrike(
+          symbol,
+          buy.tradeDate,
+          buy.quantity
+        );
+
+        let costBasisUsd: number;
+        if (assignedStrike !== null) {
+          // Assigned stock: use Strike × Quantity (actual cash paid)
+          costBasisUsd = assignedStrike * qty + buy.commission;
+        } else {
+          // Normal purchase: use IBKR proceeds + commission
+          costBasisUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+        }
         const costBasisCzk = costBasisUsd * rate;
 
         const lotInfo: LotInfo = {
@@ -1053,7 +1146,7 @@ class TaxCalculationService {
           tradeDate: buy.tradeDate,
           originalQty: qty,
           remainingQty: qty,
-          pricePerShare: buy.tradePrice,
+          pricePerShare: assignedStrike !== null ? assignedStrike : buy.tradePrice,
           commission: buy.commission,
           exchangeRate: rate,
           currency: buy.currency || "USD",

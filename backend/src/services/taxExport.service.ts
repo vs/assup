@@ -11,6 +11,7 @@ import type {
   TaxStockTrade,
   TaxOptionTrade,
   TaxDividend,
+  TaxInterest,
   DividendsByCountry,
 } from "@assup/shared";
 
@@ -30,6 +31,7 @@ class TaxExportService {
     const stockTrades = await taxCalculationService.getStockTrades(year);
     const optionTrades = await taxCalculationService.getOptionTrades(year);
     const dividends = await taxCalculationService.getDividends(year);
+    const interest = await taxCalculationService.getInterest(year);
     const rates = await cnbExchangeRateService.getRatesForYear(year);
 
     const workbook = new ExcelJS.Workbook();
@@ -48,7 +50,10 @@ class TaxExportService {
     // Sheet 4: Dividends
     this.addDividendsSheet(workbook, dividends.dividends, dividends.byCountry, dividends.totals);
 
-    // Sheet 5: Exchange Rates
+    // Sheet 5: Interest
+    this.addInterestSheet(workbook, interest.interest, interest.total);
+
+    // Sheet 6: Exchange Rates
     this.addExchangeRatesSheet(workbook, rates);
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -96,6 +101,19 @@ class TaxExportService {
     for (const country of summary.dividends.byCountry) {
       sheet.addRow([`  ${country.country}:`, country.withholdingTax, "CZK"]);
     }
+    sheet.addRow([]);
+
+    sheet.addRow(["§8 - Úroky (Interest)"]);
+    sheet.addRow(["Celkem (Total):", summary.interest.total, "CZK"]);
+    sheet.addRow([]);
+
+    sheet.addRow(["Value Test (100k CZK Threshold)"]);
+    sheet.addRow(["Gross Proceeds:", summary.valueTest.grossProceedsCzk, "CZK"]);
+    sheet.addRow(["Threshold:", summary.valueTest.thresholdCzk, "CZK"]);
+    sheet.addRow([
+      "Status:",
+      summary.valueTest.isExempt ? "EXEMPT" : "NOT EXEMPT",
+    ]);
 
     // Format numbers
     sheet.getColumn(2).numFmt = "#,##0.00";
@@ -293,6 +311,53 @@ class TaxExportService {
         div.netCzk,
       ]);
     }
+
+    sheet.columns.forEach((column) => {
+      column.width = 15;
+    });
+  }
+
+  private addInterestSheet(
+    workbook: ExcelJS.Workbook,
+    interest: TaxInterest[],
+    total: number
+  ): void {
+    const sheet = workbook.addWorksheet("Interest");
+
+    // Header
+    sheet.addRow([
+      "Date",
+      "Description",
+      "Amount (USD)",
+      "Currency",
+      "Rate",
+      "Amount (CZK)",
+    ]);
+
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFE0E0E0" },
+    };
+
+    // Data rows
+    for (const item of interest) {
+      sheet.addRow([
+        item.date,
+        item.description,
+        item.amountUsd,
+        item.currency,
+        item.rate,
+        item.amountCzk,
+      ]);
+    }
+
+    // Total row
+    sheet.addRow([]);
+    const totalRow = sheet.addRow(["Total", "", "", "", "", total]);
+    totalRow.font = { bold: true };
 
     sheet.columns.forEach((column) => {
       column.width = 15;

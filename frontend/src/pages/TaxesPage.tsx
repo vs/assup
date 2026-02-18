@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ExternalLink, Download, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -147,6 +148,32 @@ export function TaxesPage() {
                     >
                       {formatCzk(summary.securities.profit)}
                     </span>
+                  </div>
+                </div>
+                {/* Value Test Indicator */}
+                <div className="mt-3 pt-3 border-t">
+                  <div className="text-xs text-muted-foreground mb-1">
+                    Value Test (100k CZK)
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">
+                      Gross: {formatCzk(summary.valueTest.grossProceedsCzk)}
+                    </span>
+                    {summary.valueTest.isExempt ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-green-50 text-green-700 border-green-200"
+                      >
+                        Exempt
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="bg-gray-50 text-gray-600"
+                      >
+                        Above threshold
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardContent>

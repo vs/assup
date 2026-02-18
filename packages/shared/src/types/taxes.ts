@@ -41,6 +41,11 @@ export interface TaxSummary {
     total: number;
     count: number;
   };
+  valueTest: {
+    grossProceedsCzk: number; // Total gross proceeds from all security sales
+    thresholdCzk: number; // 100,000 (constant)
+    isExempt: boolean; // grossProceedsCzk < thresholdCzk
+  };
   missingRecords: MissingTradeRecord[];
   canExport: boolean;
 }
@@ -81,6 +86,7 @@ export interface TaxStockTrade {
   pnlCzk: number | null;
   status: "complete" | "missing_buy";
   currency: string;
+  wasFromAssignment?: boolean; // True if cost basis uses strike price from PUT assignment
 }
 
 // Option Trade for Tax Reporting
