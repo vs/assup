@@ -2,17 +2,12 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { isTauri, invokeBackendDiscovery } from './lib/tauriIntegration'
-import { setApiBase } from './lib/apiConfig'
+import { initApiBase } from './lib/apiConfig'
 
 async function init() {
-  // When running in Tauri, discover the backend URL before rendering
-  if (isTauri()) {
-    const backendUrl = await invokeBackendDiscovery();
-    if (backendUrl) {
-      setApiBase(backendUrl);
-    }
-  }
+  // Discover backend before rendering (tries ports 3001, 3000)
+  const backendUrl = await initApiBase();
+  console.log('[Init] Using backend:', backendUrl);
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
