@@ -627,6 +627,26 @@ class TaxCalculationService {
           qtyRemaining -= qtyToConsume;
         }
 
+        // If no matching open but IBKR provides realizedPnl and costBasis, populate USD values
+        // for informational purposes. However, we CANNOT calculate accurate CZK values because
+        // Czech tax law requires using the exchange rate from the OPEN date for income, and we
+        // don't know when the open trade happened. The trade must remain "missing_open".
+        if (!hasMatchingOpen && close.realizedPnl !== null && close.costBasis !== null) {
+          // IBKR's costBasis = premium from opening trade
+          // IBKR's proceeds = cash flow from closing trade (negative for BUY, positive for SELL)
+          // For BUY to close (was short): Income = costBasis (premium received), Expense = |proceeds|
+          // For SELL to close (was long): Income = proceeds (received), Expense = costBasis (paid)
+          const isClosingShort = close.buySell === "BUY";
+          if (isClosingShort) {
+            incomeUsd = close.costBasis;
+            expenseUsd = Math.abs(close.proceeds || 0);
+          } else {
+            incomeUsd = Math.abs(close.proceeds || 0);
+            expenseUsd = close.costBasis;
+          }
+          // CZK values stay at 0 - we can't calculate them without the open date's exchange rate
+        }
+
         // Only add to results if this close is in the target year
         if (close.tradeDate >= startDate && close.tradeDate <= endDate) {
           const trade: TaxOptionTrade = {
@@ -958,14 +978,15 @@ class TaxCalculationService {
       id: string;
       lotRef: string;
       tradeDate: Date;
-      originalQty: number; // Current quantity (updated by splits)
-      remainingQty: number;
+      originalQty: number; // Current quantity (updated by splits for FIFO tracking)
+      remainingQty: number; // Current remaining (updated by splits and sells)
       pricePerShare: number; // Current price per share (updated by splits)
       commission: number;
       exchangeRate: number;
       currency: string;
       costBasisUsd: number; // Never changes
       costBasisCzk: number; // Never changes
+      splitMultiplier: number; // Cumulative split ratio (e.g., 10 for 10:1 split)
     }
 
     const lots: LotInfo[] = [];
@@ -1038,6 +1059,7 @@ class TaxCalculationService {
           currency: buy.currency || "USD",
           costBasisUsd,
           costBasisCzk,
+          splitMultiplier: 1,
         };
 
         lots.push(lotInfo);
@@ -1068,12 +1090,12 @@ class TaxCalculationService {
           for (const lot of lots) {
             if (lot.tradeDate < ca.exDate && lot.remainingQty > 0) {
               const qtyBefore = lot.originalQty;
-              const remainingBefore = lot.remainingQty;
 
-              // Apply split to this lot
+              // Apply split to this lot (for FIFO tracking)
               lot.originalQty *= splitRatio;
               lot.remainingQty *= splitRatio;
               lot.pricePerShare /= splitRatio;
+              lot.splitMultiplier *= splitRatio;
 
               affectedLots.push({
                 lotRef: lot.lotRef,
@@ -1081,13 +1103,8 @@ class TaxCalculationService {
                 quantityAfter: lot.originalQty,
               });
 
-              // Update the buy entry's quantity display
-              const buyEntry = entries.find(e => e.type === "buy" && e.lotRef === lot.lotRef);
-              if (buyEntry) {
-                buyEntry.quantity = lot.originalQty;
-                buyEntry.pricePerShare = lot.pricePerShare;
-                buyEntry.remainingQty = lot.remainingQty;
-              }
+              // Note: Buy entry is NOT updated - it stays in original terms
+              // The split is shown as a separate corporate action entry
             }
           }
 
@@ -1195,12 +1212,13 @@ class TaxCalculationService {
       }
     }
 
-    // Update remainingQty on buy entries to reflect final state
+    // Update remainingQty on buy entries to reflect final state (in original terms)
     for (const entry of entries) {
       if (entry.type === "buy") {
         const lot = lots.find((l) => l.lotRef === entry.lotRef);
         if (lot) {
-          entry.remainingQty = lot.remainingQty;
+          // Convert remaining quantity back to original terms (before splits)
+          entry.remainingQty = lot.remainingQty / lot.splitMultiplier;
         }
       }
     }

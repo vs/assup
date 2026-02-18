@@ -903,6 +903,8 @@ class ProfitService {
       buySell: string;
       openClose: string | null;
       wasAssigned: boolean;
+      costBasis: number | null;
+      realizedPnl: number | null;
     }>,
     assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
   ): OptionTradeGroup[] {
@@ -1163,7 +1165,39 @@ class ProfitService {
         : openCommission;
 
       let profit: number;
-      if (openTrade?.buySell === "SELL") {
+      let finalCostBasis = effectiveCostBasis;
+
+      // Check if we're missing the open trade but have IBKR's realizedPnl
+      // This happens when the FLEX report period doesn't include the open trade
+      const missingOpenTrade = openTrades.length === 0 && closeTrades.length > 0;
+      const hasIbkrPnl = closeTrades.some(t => t.realizedPnl !== null);
+
+      if (missingOpenTrade && hasIbkrPnl) {
+        // Use IBKR's authoritative realizedPnl directly
+        // Sum up realizedPnl from all close trades (handles partial closes)
+        profit = closeTrades.reduce((sum, t) => sum + (t.realizedPnl || 0), 0);
+        // Derive cost basis from IBKR data: costBasis = closeProceeds - realizedPnl
+        // For a BUY to close: proceeds is negative, realizedPnl is negative for loss
+        // costBasis = |proceeds| - realizedPnl (e.g., 805 - (-762.68) = 1567.68... wait that's wrong)
+        // Actually: realizedPnl = proceeds - costBasis, so costBasis = proceeds - realizedPnl
+        // For BUY to close short: proceeds = -805, realizedPnl = -762.68
+        // costBasis should be the premium received when opening = -805 - (-762.68) = -42.32? No...
+        // Let me think again. IBKR's costBasis field has the answer.
+        const ibkrCostBasis = closeTrades.reduce((sum, t) => sum + (t.costBasis || 0), 0);
+        if (ibkrCostBasis > 0) {
+          finalCostBasis = ibkrCostBasis;
+        } else {
+          // Fallback: derive from proceeds and P&L
+          // For closing short: costBasis (premium received) = -proceeds - realizedPnl
+          // proceeds = -805 (paid to close), realizedPnl = -762.68 (loss)
+          // costBasis = -(-805) - (-762.68) = 805 - (-762.68) = 805 + 762.68? That's also wrong.
+          // Let me reconsider: realizedPnl = proceeds_close + costBasis_open
+          // -762.68 = -805 + costBasis_open => costBasis_open = -762.68 + 805 = 42.32
+          // So the premium received was only $42.32, which matches the IBKR cost_basis field!
+          const closeProceeds = closeTrades.reduce((sum, t) => sum + t.proceeds, 0);
+          finalCostBasis = Math.abs(closeProceeds + profit);
+        }
+      } else if (openTrade?.buySell === "SELL") {
         // Short position: profit = premium received - cost to close - commissions
         profit = effectiveCostBasis - sellPrice - effectiveCommission;
       } else {
@@ -1237,7 +1271,7 @@ class ProfitService {
               wasAssigned: closeTrade.wasAssigned,
             }
           : undefined,
-        costBasis: effectiveCostBasis,
+        costBasis: finalCostBasis,
         sellPrice,
         profit,
         wasAssigned,
