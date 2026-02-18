@@ -23,6 +23,7 @@ export interface ImportResult {
     dividendsImported: number;
     interestImported: number;
     otherCashImported: number;
+    corporateActionsImported: number;
     assignmentsDetected: number;
   };
 }

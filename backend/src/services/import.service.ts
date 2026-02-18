@@ -42,9 +42,22 @@ interface FlexCashTransaction {
   type: string;
 }
 
+interface FlexCorporateAction {
+  actionID: string;
+  symbol: string;
+  description?: string;
+  conid?: string;
+  type: string; // FS (forward split), RS (reverse split), SD (stock dividend), TC (ticker change)
+  exDate: string;
+  payDate?: string;
+  quantity: string;
+  value?: string;
+}
+
 interface ParsedFlexData {
   trades: FlexTrade[];
   cashTransactions: FlexCashTransaction[];
+  corporateActions: FlexCorporateAction[];
   periodStart: Date;
   periodEnd: Date;
 }
@@ -107,7 +120,7 @@ class ImportService {
         filename,
         periodStart: parsed.periodStart,
         periodEnd: parsed.periodEnd,
-        recordCount: parsed.trades.length + parsed.cashTransactions.length,
+        recordCount: parsed.trades.length + parsed.cashTransactions.length + parsed.corporateActions.length,
         fileHash,
       },
     });
@@ -125,6 +138,14 @@ class ImportService {
     );
     console.log(`[Import] Cash import complete: ${cashStats.dividends} dividends, ${cashStats.interest} interest`);
 
+    // Import corporate actions (with deduplication)
+    console.log(`[Import] Importing ${parsed.corporateActions.length} corporate actions...`);
+    const caStats = await this.importCorporateActions(
+      batch.id,
+      parsed.corporateActions
+    );
+    console.log(`[Import] Corporate actions import complete: ${caStats.imported} imported, ${caStats.skipped} skipped`);
+
     // Detect assignments
     console.log(`[Import] Detecting assignments...`);
     const assignmentsDetected = await this.detectAssignments();
@@ -141,6 +162,7 @@ class ImportService {
         dividendsImported: cashStats.dividends,
         interestImported: cashStats.interest,
         otherCashImported: cashStats.other,
+        corporateActionsImported: caStats.imported,
         assignmentsDetected,
       },
     };
@@ -205,10 +227,28 @@ class ImportService {
       type: c.type,
     }));
 
+    // Extract corporate actions
+    const caSection = statement.CorporateActions || {};
+    const rawCA = caSection.CorporateAction || [];
+    const corporateActions: FlexCorporateAction[] = (
+      Array.isArray(rawCA) ? rawCA : rawCA ? [rawCA] : []
+    ).map((ca: Record<string, string>) => ({
+      actionID: ca.actionID || `${ca.exDate || ca.dateTime}-${ca.symbol}-${ca.type}`,
+      symbol: ca.symbol,
+      description: ca.description,
+      conid: ca.conid,
+      type: ca.type,
+      exDate: ca.exDate || ca.dateTime || ca.reportDate,
+      payDate: ca.payDate,
+      quantity: ca.quantity,
+      value: ca.value,
+    }));
+
     // Determine period from data
     const allDates = [
       ...trades.map((t) => this.parseDate(t.tradeDate)),
       ...cashTransactions.map((c) => this.parseDate(c.dateTime)),
+      ...corporateActions.map((ca) => this.parseDate(ca.exDate)),
     ].filter((d) => d !== null) as Date[];
 
     const periodStart =
@@ -220,7 +260,7 @@ class ImportService {
         ? new Date(Math.max(...allDates.map((d) => d.getTime())))
         : new Date();
 
-    return { trades, cashTransactions, periodStart, periodEnd };
+    return { trades, cashTransactions, corporateActions, periodStart, periodEnd };
   }
 
   /**
@@ -247,6 +287,17 @@ class ImportService {
     return hasType && hasAmount && !hasAssetCategory && !hasTradePrice;
   }
 
+  /**
+   * Detect if a line is a corporate actions section header
+   */
+  private isCorporateActionsHeader(line: string): boolean {
+    // Corporate actions have ActionID/Action ID and Type columns, plus a date field
+    const hasActionId = line.includes('"ActionID"') || line.includes('"Action ID"');
+    const hasDate = line.includes('"ExDate"') || line.includes('"Ex-Date"') || line.includes('"Date/Time"') || line.includes('"DateTime"');
+    const hasType = line.includes('"Type"');
+    return hasActionId && hasDate && hasType;
+  }
+
   private parseCSV(content: string): ParsedFlexData {
     // IBKR FLEX reports can have multiple sections with different headers
     // We need to find ALL trades sections and ALL cash sections, not just the first of each
@@ -257,7 +308,7 @@ class ImportService {
 
     // Identify all section boundaries
     interface Section {
-      type: "trades" | "cash";
+      type: "trades" | "cash" | "corporateActions";
       startLine: number;
       headerLine: string;
     }
@@ -269,6 +320,9 @@ class ImportService {
       if (this.isTradesHeader(line)) {
         sections.push({ type: "trades", startLine: i, headerLine: line });
         console.log(`[Import] Found trades header at line ${i}`);
+      } else if (this.isCorporateActionsHeader(line)) {
+        sections.push({ type: "corporateActions", startLine: i, headerLine: line });
+        console.log(`[Import] Found corporate actions header at line ${i}`);
       } else if (this.isCashHeader(line)) {
         sections.push({ type: "cash", startLine: i, headerLine: line });
         console.log(`[Import] Found cash header at line ${i}`);
@@ -279,6 +333,7 @@ class ImportService {
 
     const trades: FlexTrade[] = [];
     const cashTransactions: FlexCashTransaction[] = [];
+    const corporateActions: FlexCorporateAction[] = [];
 
     // Process each section
     for (let i = 0; i < sections.length; i++) {
@@ -294,6 +349,10 @@ class ImportService {
         const sectionTrades = this.parseTradesSection(sectionContent, trades.length);
         console.log(`[Import] Trades section ${i} (lines ${section.startLine}-${endLine}): ${sectionTrades.length} trades`);
         trades.push(...sectionTrades);
+      } else if (section.type === "corporateActions") {
+        const sectionCA = this.parseCorporateActionsSection(sectionContent);
+        console.log(`[Import] Corporate actions section ${i} (lines ${section.startLine}-${endLine}): ${sectionCA.length} actions`);
+        corporateActions.push(...sectionCA);
       } else {
         const sectionCash = this.parseCashSection(sectionContent);
         console.log(`[Import] Cash section ${i} (lines ${section.startLine}-${endLine}): ${sectionCash.length} transactions`);
@@ -304,6 +363,7 @@ class ImportService {
     const allDates = [
       ...trades.map((t) => this.parseDate(t.tradeDate)),
       ...cashTransactions.map((c) => this.parseDate(c.dateTime)),
+      ...corporateActions.map((ca) => this.parseDate(ca.exDate)),
     ].filter((d) => d !== null) as Date[];
 
     const periodStart =
@@ -315,10 +375,10 @@ class ImportService {
         ? new Date(Math.max(...allDates.map((d) => d.getTime())))
         : new Date();
 
-    console.log(`[Import] Parsed ${trades.length} trades, ${cashTransactions.length} cash transactions`);
+    console.log(`[Import] Parsed ${trades.length} trades, ${cashTransactions.length} cash transactions, ${corporateActions.length} corporate actions`);
     console.log(`[Import] Period: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
-    return { trades, cashTransactions, periodStart, periodEnd };
+    return { trades, cashTransactions, corporateActions, periodStart, periodEnd };
   }
 
   /**
@@ -452,6 +512,48 @@ class ImportService {
     }
 
     return cashTransactions;
+  }
+
+  /**
+   * Parse a single corporate actions section from CSV content
+   */
+  private parseCorporateActionsSection(sectionContent: string): FlexCorporateAction[] {
+    const corporateActions: FlexCorporateAction[] = [];
+
+    const records = parseCSV(sectionContent, {
+      columns: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+    }) as Record<string, string>[];
+
+    for (const record of records) {
+      const actionType = record["Type"];
+      const exDate = record["ExDate"] || record["Ex-Date"] || record["Ex Date"] || record["Date/Time"] || record["DateTime"];
+      const actionId = record["ActionID"] || record["Action ID"];
+      const quantity = record["Quantity"];
+
+      // Skip intermediate header rows
+      if (quantity && isNaN(parseFloat(quantity))) {
+        console.log(`[Import] Skipping intermediate header row in corporate actions: ${record["Symbol"]} - ${quantity}`);
+        continue;
+      }
+
+      if (actionType && exDate && actionId) {
+        corporateActions.push({
+          actionID: actionId,
+          symbol: record["Symbol"],
+          description: record["Description"],
+          conid: record["Conid"],
+          type: actionType,
+          exDate,
+          payDate: record["PayDate"] || record["Pay Date"],
+          quantity: quantity || "0",
+          value: record["Value"] || record["Proceeds"] || "0",
+        });
+      }
+    }
+
+    return corporateActions;
   }
 
   /**
@@ -605,6 +707,82 @@ class ImportService {
     }
 
     return { dividends, interest, other };
+  }
+
+  /**
+   * Import corporate actions with deduplication
+   */
+  private async importCorporateActions(
+    batchId: string,
+    actions: FlexCorporateAction[]
+  ): Promise<{ imported: number; skipped: number }> {
+    let imported = 0;
+    let skipped = 0;
+
+    for (const action of actions) {
+      // Check for existing action
+      const existing = await prisma.corporateAction.findUnique({
+        where: { actionId: action.actionID },
+      });
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      // Parse and validate ex-date
+      const exDate = this.parseDate(action.exDate);
+      if (!exDate) {
+        throw new Error(
+          `Import failed: Invalid ex-date format '${action.exDate}' for corporate action ${action.actionID} (${action.symbol}). ` +
+          `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+        );
+      }
+
+      const payDate = action.payDate ? this.parseDate(action.payDate) : null;
+      const quantity = parseFloat(action.quantity || "0");
+      const value = parseFloat(action.value || "0");
+
+      // Calculate split ratio from description or quantity
+      // For forward splits, description often contains "SPLIT 10 FOR 1" or similar
+      // Quantity shows net shares received (e.g., +90 for 10:1 split on 10 shares)
+      let splitRatio: number | null = null;
+      if (action.type === "FS" || action.type === "RS" || action.type === "SD") {
+        // Try to parse ratio from description
+        const ratioMatch = action.description?.match(/(\d+)\s*(?:FOR|:)\s*(\d+)/i);
+        if (ratioMatch) {
+          const newShares = parseInt(ratioMatch[1], 10);
+          const oldShares = parseInt(ratioMatch[2], 10);
+          if (action.type === "RS") {
+            // Reverse split: 1 for 10 means ratio = 0.1
+            splitRatio = oldShares / newShares;
+          } else {
+            // Forward split: 10 for 1 means ratio = 10
+            splitRatio = newShares / oldShares;
+          }
+        }
+      }
+
+      await prisma.corporateAction.create({
+        data: {
+          importBatchId: batchId,
+          actionId: action.actionID,
+          symbol: action.symbol,
+          description: action.description,
+          conId: action.conid ? parseInt(action.conid, 10) : null,
+          actionType: action.type,
+          exDate,
+          payDate,
+          quantity,
+          value,
+          splitRatio,
+        },
+      });
+
+      imported++;
+    }
+
+    return { imported, skipped };
   }
 
   /**

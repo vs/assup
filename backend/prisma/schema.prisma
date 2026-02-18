@@ -169,6 +169,7 @@ model ImportBatch {
   // Relations
   trades           ImportedTrade[]
   cashTransactions CashTransaction[]
+  corporateActions CorporateAction[]
 
   @@map("import_batches")
 }
@@ -280,4 +281,39 @@ model WheelSuggestionDismissal {
   dismissedAt DateTime @default(now()) @map("dismissed_at") @db.Timestamptz
 
   @@map("wheel_suggestion_dismissals")
+}
+
+// Corporate Actions - stock splits, mergers, spinoffs from FLEX Query
+model CorporateAction {
+  id            String   @id @default(uuid()) @db.Uuid
+  importBatchId String   @map("import_batch_id") @db.Uuid
+  actionId      String   @unique @map("action_id") @db.VarChar(100)
+
+  // Security info
+  symbol      String  @db.VarChar(50)
+  description String? @db.Text
+  conId       Int?    @map("con_id")
+
+  // Action details
+  actionType String   @map("action_type") @db.VarChar(20) // FS (forward split), RS (reverse split), SD (stock dividend), TC (ticker change), etc.
+  exDate     DateTime @map("ex_date") @db.Date
+  payDate    DateTime? @map("pay_date") @db.Date
+
+  // For splits: quantity received (e.g., +90 for 10:1 split on 10 shares)
+  // For ticker changes: 0
+  quantity   Float    @db.DoublePrecision
+  value      Float    @default(0) @db.DoublePrecision
+
+  // Computed ratio for splits (e.g., 10 for 10:1 split)
+  // Calculated as: (original_shares + quantity) / original_shares
+  // Or can be parsed from description
+  splitRatio Float?   @map("split_ratio") @db.DoublePrecision
+
+  // Relations
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([symbol])
+  @@index([exDate])
+  @@index([actionType])
+  @@map("corporate_actions")
 }

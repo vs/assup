@@ -162,16 +162,6 @@ class TaxCalculationService {
     yearStart: Date,
     yearEnd: Date
   ): Promise<TaxStockTrade[]> {
-    // Get all buys for this symbol (ever) - these are our lots
-    const buys = await prisma.importedTrade.findMany({
-      where: {
-        symbol,
-        secType: "STK",
-        buySell: "BUY",
-      },
-      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
-    });
-
     // Get all sells up to and including the target year
     // We need to process ALL sells chronologically to properly consume lots
     const sells = await prisma.importedTrade.findMany({
@@ -184,6 +174,41 @@ class TaxCalculationService {
       orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
     });
 
+    // Get all buys for this symbol (ever) - these are our lots
+    let buys = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "STK",
+        buySell: "BUY",
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // If no buys found by symbol, try conId fallback (handles ticker changes like ZOK -> QZEU)
+    if (buys.length === 0 && sells.length > 0) {
+      const sampleSell = sells[0];
+      if (sampleSell.conId) {
+        buys = await prisma.importedTrade.findMany({
+          where: {
+            conId: sampleSell.conId,
+            secType: "STK",
+            buySell: "BUY",
+          },
+          orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+        });
+      }
+    }
+
+    // Get stock splits for this symbol (forward splits and stock dividends)
+    const splits = await prisma.corporateAction.findMany({
+      where: {
+        symbol,
+        actionType: { in: ["FS", "SD"] }, // Forward split or stock dividend
+        splitRatio: { not: null },
+      },
+      orderBy: { exDate: "asc" },
+    });
+
     // Build buy lots with their CZK exchange rates
     interface BuyLot {
       id: string;
@@ -193,6 +218,7 @@ class TaxCalculationService {
       totalCostUsd: number; // Total cost including commission (from IBKR proceeds)
       exchangeRate: number;
       currency: string;
+      splitMultiplier: number; // Cumulative split multiplier applied to this lot
     }
 
     const lots: BuyLot[] = [];
@@ -205,14 +231,28 @@ class TaxCalculationService {
       // Use IBKR proceeds (actual cash flow) + commission for cost basis
       // This handles bonds correctly where tradePrice is a percentage of face value
       const totalCostUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+
+      // Calculate cumulative split multiplier for this lot
+      // Only count splits that occurred AFTER the buy date
+      let splitMultiplier = 1;
+      for (const split of splits) {
+        if (split.exDate > buy.tradeDate && split.splitRatio) {
+          splitMultiplier *= split.splitRatio;
+        }
+      }
+
+      // Apply split multiplier to quantity (cost basis stays the same)
+      const adjustedQty = qty * splitMultiplier;
+
       lots.push({
         id: buy.id,
         tradeDate: buy.tradeDate,
-        originalQty: qty,
-        remainingQty: qty,
+        originalQty: adjustedQty,
+        remainingQty: adjustedQty,
         totalCostUsd,
         exchangeRate: rate || 0,
         currency: buy.currency || "USD",
+        splitMultiplier,
       });
     }
 
@@ -867,16 +907,6 @@ class TaxCalculationService {
   async getLotTrace(symbol: string): Promise<LotTraceResponse> {
     const THREE_YEARS_DAYS = 3 * 365;
 
-    // Get all buys for this symbol
-    const buys = await prisma.importedTrade.findMany({
-      where: {
-        symbol,
-        secType: "STK",
-        buySell: "BUY",
-      },
-      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
-    });
-
     // Get all sells for this symbol
     const sells = await prisma.importedTrade.findMany({
       where: {
@@ -885,6 +915,41 @@ class TaxCalculationService {
         buySell: "SELL",
       },
       orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // Get all buys for this symbol
+    let buys = await prisma.importedTrade.findMany({
+      where: {
+        symbol,
+        secType: "STK",
+        buySell: "BUY",
+      },
+      orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+    });
+
+    // If no buys found by symbol, try conId fallback (handles ticker changes like ZOK -> QZEU)
+    if (buys.length === 0 && sells.length > 0) {
+      const sampleSell = sells[0];
+      if (sampleSell.conId) {
+        buys = await prisma.importedTrade.findMany({
+          where: {
+            conId: sampleSell.conId,
+            secType: "STK",
+            buySell: "BUY",
+          },
+          orderBy: [{ tradeDate: "asc" }, { id: "asc" }],
+        });
+      }
+    }
+
+    // Get stock splits for this symbol (forward splits and stock dividends)
+    const splits = await prisma.corporateAction.findMany({
+      where: {
+        symbol,
+        actionType: { in: ["FS", "SD"] }, // Forward split or stock dividend
+        splitRatio: { not: null },
+      },
+      orderBy: { exDate: "asc" },
     });
 
     // Build lot tracking structure
@@ -900,6 +965,7 @@ class TaxCalculationService {
       currency: string;
       costBasisUsd: number;
       costBasisCzk: number;
+      splitMultiplier: number;
     }
 
     const lots: LotInfo[] = [];
@@ -918,29 +984,43 @@ class TaxCalculationService {
       const costBasisUsd = Math.abs(buy.proceeds || 0) + buy.commission;
       const costBasisCzk = costBasisUsd * (rate || 0);
 
+      // Calculate cumulative split multiplier for this lot
+      // Only count splits that occurred AFTER the buy date
+      let splitMultiplier = 1;
+      for (const split of splits) {
+        if (split.exDate > buy.tradeDate && split.splitRatio) {
+          splitMultiplier *= split.splitRatio;
+        }
+      }
+
+      // Apply split multiplier to quantity (cost basis stays the same)
+      const adjustedQty = qty * splitMultiplier;
+
       const lotInfo: LotInfo = {
         id: buy.id,
         lotRef: `lot-${i + 1}`,
         tradeDate: buy.tradeDate,
-        originalQty: qty,
-        remainingQty: qty,
-        pricePerShare: buy.tradePrice,
+        originalQty: adjustedQty,
+        remainingQty: adjustedQty,
+        pricePerShare: buy.tradePrice / splitMultiplier, // Adjust price per share for display
         commission: buy.commission,
         exchangeRate: rate || 0,
         currency: buy.currency || "USD",
         costBasisUsd,
         costBasisCzk,
+        splitMultiplier,
       };
 
       lots.push(lotInfo);
     }
 
-    // Combine buys and sells into chronological order for processing
+    // Combine buys, sells, and splits into chronological order for processing
     interface TradeEvent {
-      type: "buy" | "sell";
+      type: "buy" | "sell" | "split";
       date: Date;
       buyIndex?: number;
       sell?: (typeof sells)[0];
+      split?: (typeof splits)[0];
     }
 
     const events: TradeEvent[] = [

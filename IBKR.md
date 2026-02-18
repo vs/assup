@@ -76,6 +76,37 @@ Select these fields in your FLEX query (exact names as shown in IBKR):
 
 **Automatically filtered out:** Deposits, Withdrawals, Transfers, Forex conversions
 
+#### Corporate Actions Section
+
+Corporate actions are essential for accurate FIFO lot tracking. Without them, stock splits will cause position mismatches (e.g., you bought 10 shares, but now hold 100 after a 10:1 split).
+
+Select these fields in your FLEX query:
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| ActionID | Yes | Unique identifier for deduplication |
+| Symbol | Yes | Security symbol |
+| Description | Yes | Contains split ratio (e.g., "SPLIT 10 FOR 1") |
+| Conid | No | IBKR contract ID |
+| Type | Yes | Action type code (see below) |
+| Date/Time | Yes | Effective date of the action |
+| Quantity | Yes | Shares received/removed |
+| Value | No | Cash value (usually 0 for splits) |
+
+**Action Types:**
+| Code | Description |
+|------|-------------|
+| FS | Forward Split (e.g., 10:1 - you get more shares) |
+| RS | Reverse Split (e.g., 1:10 - shares consolidated) |
+| SD | Stock Dividend (shares issued as dividend) |
+| TC | Ticker/Symbol Change |
+| SO | Spin-Off |
+
+**Example:** For a 10:1 stock split on 10 shares:
+- Type: `FS`
+- Quantity: `90` (new shares received)
+- Description: `SPLIT 10 FOR 1`
+
 ### Output Settings
 
 | Setting | Value |
@@ -113,6 +144,28 @@ The same imported data is used by both Profit and Taxes pages.
 - Withholding tax is matched to dividends for foreign tax credit calculations
 - Source country is extracted from ISIN in the description (e.g., "US" from "USZ363198954")
 
+**Corporate Actions:**
+- Stock splits multiply lot quantities while preserving total cost basis
+- Split ratio is parsed from description (e.g., "SPLIT 10 FOR 1" → ratio 10)
+- Only splits occurring AFTER the buy date affect that lot
+- Ticker changes are handled via conId matching (same contract, different symbol)
+
 **Currency Conversion (Taxes):**
 - Non-CZK amounts are converted using CNB exchange rates for the trade date
 - Both USD and EUR rates are fetched automatically
+
+### Troubleshooting
+
+**"Missing buy" errors in Taxes page:**
+1. **Ticker changed:** The stock may have changed symbols (e.g., ZOK → QZEU). Ensure both the old and new ticker trades are imported. The system uses conId to match trades across ticker changes.
+2. **Stock split not imported:** If you bought 10 shares but sold 100, import corporate actions to record the split.
+3. **Buy predates your FLEX reports:** Download FLEX reports going back to when you first bought the position.
+
+**Position mismatch in Lot Trace:**
+- If calculated position differs from actual (e.g., 10 vs 100 shares), you likely need to import a stock split corporate action.
+- Re-run your FLEX query with the Corporate Actions section enabled.
+
+**Assignment not detected:**
+- Assignments are detected by matching stock trades near option expiry at strike price
+- Ensure both option and stock trades are in the imported data
+- Stock trade must occur within 5 days of option expiry
