@@ -478,69 +478,218 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
         ))}
       </div>
 
-      {/* Trade Timeline (for current/last cycle) */}
+      {/* Contract Lifecycles (for current/last cycle) */}
       {recentCycles.length > 0 && (
-        <div>
-          <h4 className="font-medium mb-2">
-            Recent Trades (Cycle {recentCycles[recentCycles.length - 1].cycleNumber})
-          </h4>
-          <div className="space-y-2">
-            {recentCycles[recentCycles.length - 1].trades.map((trade, index, trades) => {
-              const isFirst = index === 0;
-              const isLast = index === trades.length - 1 &&
-                recentCycles[recentCycles.length - 1].status !== "in_progress";
+        <ContractLifecycleView cycle={recentCycles[recentCycles.length - 1]} />
+      )}
+    </div>
+  );
+}
 
-              return (
-                <div
-                  key={trade.id}
-                  className={`flex items-center justify-between p-2 rounded ${
-                    trade.isWheelTrade ? "bg-muted" : "bg-muted/50 opacity-75"
+// Types for grouped contract view
+interface ContractLifecycle {
+  id: string;
+  type: "PUT" | "CALL" | "SHARES";
+  strike: number | null;
+  expiry: string | null;
+  openDate: string;
+  closeDate: string | null;
+  outcome: "expired" | "bought_back" | "assigned" | "called_away" | "sold" | "open";
+  openPremium: number;
+  closePremium: number;
+  netPnL: number;
+  costBasisAfter: number;
+  quantity: number;
+}
+
+function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]): ContractLifecycle[] {
+  const contracts: ContractLifecycle[] = [];
+  const usedTradeIds = new Set<string>();
+
+  // Process option sells first (SOLD_PUT, SOLD_CALL)
+  for (const trade of trades) {
+    if (usedTradeIds.has(trade.id)) continue;
+
+    if (trade.type === "SOLD_PUT" || trade.type === "SOLD_CALL") {
+      const isPut = trade.type === "SOLD_PUT";
+      usedTradeIds.add(trade.id);
+
+      // Find matching close trade (same strike and expiry)
+      const closeTrade = trades.find((t) => {
+        if (usedTradeIds.has(t.id)) return false;
+        if (t.strike !== trade.strike || t.expiry !== trade.expiry) return false;
+
+        if (isPut) {
+          return t.type === "BOUGHT_PUT" || t.type === "EXPIRED" || t.type === "ASSIGNED";
+        } else {
+          return t.type === "BOUGHT_CALL" || t.type === "EXPIRED" || t.type === "CALLED_AWAY";
+        }
+      });
+
+      let outcome: ContractLifecycle["outcome"] = "open";
+      let closePremium = 0;
+      let closeDate: string | null = null;
+      let costBasisAfter = trade.runningCostBasis;
+
+      if (closeTrade) {
+        usedTradeIds.add(closeTrade.id);
+        closeDate = closeTrade.tradeDate;
+        closePremium = closeTrade.premium;
+        costBasisAfter = closeTrade.runningCostBasis;
+
+        if (closeTrade.type === "BOUGHT_PUT" || closeTrade.type === "BOUGHT_CALL") {
+          outcome = "bought_back";
+        } else if (closeTrade.type === "EXPIRED") {
+          outcome = "expired";
+        } else if (closeTrade.type === "ASSIGNED") {
+          outcome = "assigned";
+        } else if (closeTrade.type === "CALLED_AWAY") {
+          outcome = "called_away";
+        }
+      }
+
+      contracts.push({
+        id: trade.id,
+        type: isPut ? "PUT" : "CALL",
+        strike: trade.strike,
+        expiry: trade.expiry,
+        openDate: trade.tradeDate,
+        closeDate,
+        outcome,
+        openPremium: trade.premium,
+        closePremium,
+        netPnL: trade.premium + closePremium,
+        costBasisAfter,
+        quantity: trade.quantity,
+      });
+    }
+  }
+
+  // Process stock trades (BOUGHT_SHARES, SOLD_SHARES)
+  for (const trade of trades) {
+    if (usedTradeIds.has(trade.id)) continue;
+
+    if (trade.type === "BOUGHT_SHARES") {
+      usedTradeIds.add(trade.id);
+      contracts.push({
+        id: trade.id,
+        type: "SHARES",
+        strike: null,
+        expiry: null,
+        openDate: trade.tradeDate,
+        closeDate: null,
+        outcome: "open",
+        openPremium: trade.premium, // negative for purchase
+        closePremium: 0,
+        netPnL: trade.premium,
+        costBasisAfter: trade.runningCostBasis,
+        quantity: trade.quantity,
+      });
+    } else if (trade.type === "SOLD_SHARES") {
+      usedTradeIds.add(trade.id);
+      contracts.push({
+        id: trade.id,
+        type: "SHARES",
+        strike: null,
+        expiry: null,
+        openDate: trade.tradeDate,
+        closeDate: trade.tradeDate,
+        outcome: "sold",
+        openPremium: 0,
+        closePremium: trade.premium,
+        netPnL: trade.premium,
+        costBasisAfter: trade.runningCostBasis,
+        quantity: trade.quantity,
+      });
+    }
+  }
+
+  // Sort by open date
+  return contracts.sort((a, b) => a.openDate.localeCompare(b.openDate));
+}
+
+function ContractLifecycleView({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
+  const contracts = groupTradesIntoContracts(cycle.trades);
+
+  const outcomeLabels: Record<ContractLifecycle["outcome"], string> = {
+    expired: "Expired",
+    bought_back: "Bought Back",
+    assigned: "Assigned",
+    called_away: "Called Away",
+    sold: "Sold",
+    open: "Open",
+  };
+
+  const outcomeColors: Record<ContractLifecycle["outcome"], string> = {
+    expired: "bg-green-100 text-green-800",
+    bought_back: "bg-yellow-100 text-yellow-800",
+    assigned: "bg-blue-100 text-blue-800",
+    called_away: "bg-purple-100 text-purple-800",
+    sold: "bg-gray-100 text-gray-800",
+    open: "bg-blue-100 text-blue-800",
+  };
+
+  return (
+    <div>
+      <h4 className="font-medium mb-2">
+        Contracts (Cycle {cycle.cycleNumber})
+      </h4>
+      <div className="space-y-2">
+        {contracts.map((contract) => (
+          <div
+            key={contract.id}
+            className="flex items-center justify-between p-3 rounded bg-muted"
+          >
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="w-14 justify-center">
+                {contract.type}
+              </Badge>
+              {contract.type !== "SHARES" ? (
+                <span className="text-sm font-medium">
+                  ${contract.strike} {contract.expiry}
+                </span>
+              ) : (
+                <span className="text-sm font-medium">
+                  {contract.quantity} shares
+                </span>
+              )}
+              <span className="text-sm text-muted-foreground">
+                {contract.openDate}
+                {contract.closeDate && contract.closeDate !== contract.openDate && (
+                  <> → {contract.closeDate}</>
+                )}
+              </span>
+              <Badge className={outcomeColors[contract.outcome]}>
+                {outcomeLabels[contract.outcome]}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground">P&L</div>
+                <span
+                  className={`font-mono font-medium ${
+                    contract.netPnL >= 0 ? "text-green-600" : "text-red-600"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    {/* Cycle boundary marker */}
-                    <div className="w-3 flex justify-center">
-                      {isFirst && (
-                        <span className="w-2 h-2 rounded-full bg-green-500" title="Cycle start" />
-                      )}
-                      {isLast && !isFirst && (
-                        <span className="w-2 h-2 rounded-full bg-red-500" title="Cycle end" />
-                      )}
-                    </div>
-                    <span className="text-sm text-muted-foreground w-24">
-                      {trade.tradeDate}
-                    </span>
-                    <Badge variant="outline">{trade.type.replace(/_/g, " ")}</Badge>
-                    {trade.strike && (
-                      <span className="text-sm">
-                        ${trade.strike} {trade.expiry}
-                      </span>
-                    )}
-                    {!trade.isWheelTrade && (
-                      <Badge variant="secondary" className="text-xs">
-                        non-wheel
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span
-                      className={`font-mono ${
-                        trade.premium >= 0 ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {trade.premium >= 0 ? "+" : ""}
-                      {formatCurrency(trade.premium)}
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      CB: ${trade.runningCostBasis.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                  {contract.netPnL >= 0 ? "+" : ""}
+                  {formatCurrency(contract.netPnL)}
+                </span>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground">Cost Basis</div>
+                <span className="font-mono text-sm">
+                  ${contract.costBasisAfter.toFixed(2)}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        ))}
+        {contracts.length === 0 && (
+          <div className="text-center text-muted-foreground py-4">
+            No contracts in this cycle
+          </div>
+        )}
+      </div>
     </div>
   );
 }
