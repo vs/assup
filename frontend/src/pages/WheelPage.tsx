@@ -399,11 +399,17 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
     return <div className="py-4 text-center text-muted-foreground">No data</div>;
   }
 
+  // Filter cycles to show only those started within the last year
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const oneYearAgoStr = oneYearAgo.toISOString().split("T")[0];
+  const recentCycles = detail.cycles.filter((cycle) => cycle.startDate >= oneYearAgoStr);
+
   return (
     <div className="space-y-4">
       {/* Cycle Summary Cards */}
       <div className="flex gap-4 overflow-x-auto pb-2">
-        {detail.cycles.map((cycle) => (
+        {recentCycles.map((cycle) => (
           <Card
             key={cycle.cycleNumber}
             className={`min-w-[220px] ${
@@ -473,16 +479,16 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       </div>
 
       {/* Trade Timeline (for current/last cycle) */}
-      {detail.cycles.length > 0 && (
+      {recentCycles.length > 0 && (
         <div>
           <h4 className="font-medium mb-2">
-            Recent Trades (Cycle {detail.cycles[detail.cycles.length - 1].cycleNumber})
+            Recent Trades (Cycle {recentCycles[recentCycles.length - 1].cycleNumber})
           </h4>
           <div className="space-y-2">
-            {detail.cycles[detail.cycles.length - 1].trades.map((trade, index, trades) => {
+            {recentCycles[recentCycles.length - 1].trades.map((trade, index, trades) => {
               const isFirst = index === 0;
               const isLast = index === trades.length - 1 &&
-                detail.cycles[detail.cycles.length - 1].status !== "in_progress";
+                recentCycles[recentCycles.length - 1].status !== "in_progress";
 
               return (
                 <div
