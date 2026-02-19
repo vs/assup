@@ -479,44 +479,59 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
             Recent Trades (Cycle {detail.cycles[detail.cycles.length - 1].cycleNumber})
           </h4>
           <div className="space-y-2">
-            {detail.cycles[detail.cycles.length - 1].trades.map((trade) => (
-              <div
-                key={trade.id}
-                className={`flex items-center justify-between p-2 rounded ${
-                  trade.isWheelTrade ? "bg-muted" : "bg-muted/50 opacity-75"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground w-24">
-                    {trade.tradeDate}
-                  </span>
-                  <Badge variant="outline">{trade.type.replace("_", " ")}</Badge>
-                  {trade.strike && (
-                    <span className="text-sm">
-                      ${trade.strike} {trade.expiry}
+            {detail.cycles[detail.cycles.length - 1].trades.map((trade, index, trades) => {
+              const isFirst = index === 0;
+              const isLast = index === trades.length - 1 &&
+                detail.cycles[detail.cycles.length - 1].status !== "in_progress";
+
+              return (
+                <div
+                  key={trade.id}
+                  className={`flex items-center justify-between p-2 rounded ${
+                    trade.isWheelTrade ? "bg-muted" : "bg-muted/50 opacity-75"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    {/* Cycle boundary marker */}
+                    <div className="w-3 flex justify-center">
+                      {isFirst && (
+                        <span className="w-2 h-2 rounded-full bg-green-500" title="Cycle start" />
+                      )}
+                      {isLast && !isFirst && (
+                        <span className="w-2 h-2 rounded-full bg-red-500" title="Cycle end" />
+                      )}
+                    </div>
+                    <span className="text-sm text-muted-foreground w-24">
+                      {trade.tradeDate}
                     </span>
-                  )}
-                  {!trade.isWheelTrade && (
-                    <Badge variant="secondary" className="text-xs">
-                      non-wheel
-                    </Badge>
-                  )}
+                    <Badge variant="outline">{trade.type.replace(/_/g, " ")}</Badge>
+                    {trade.strike && (
+                      <span className="text-sm">
+                        ${trade.strike} {trade.expiry}
+                      </span>
+                    )}
+                    {!trade.isWheelTrade && (
+                      <Badge variant="secondary" className="text-xs">
+                        non-wheel
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span
+                      className={`font-mono ${
+                        trade.premium >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {trade.premium >= 0 ? "+" : ""}
+                      {formatCurrency(trade.premium)}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      CB: ${trade.runningCostBasis.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span
-                    className={`font-mono ${
-                      trade.premium >= 0 ? "text-green-600" : "text-red-600"
-                    }`}
-                  >
-                    {trade.premium >= 0 ? "+" : ""}
-                    {formatCurrency(trade.premium)}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    CB: ${trade.runningCostBasis.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
