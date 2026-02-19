@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api";
+import { getApiBase } from "@/lib/apiConfig";
 import type { ScanJob, ScanJobCreateInput } from "@assup/shared";
 
 interface ScanJobEvent {
@@ -59,7 +60,7 @@ export function useScanJobs() {
 
   // Handle SSE events
   useEffect(() => {
-    const eventSource = new EventSource("/api/updates/stream");
+    const eventSource = new EventSource(`${getApiBase()}/api/updates/stream`);
 
     eventSource.onmessage = (event) => {
       try {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { getApiBase } from "@/lib/apiConfig";
 
 export interface ConnectionStatus {
   connected: boolean;
@@ -21,7 +22,7 @@ export function useConnectionStatus() {
   const [sseError, setSseError] = useState<string | null>(null);
 
   const connect = useCallback(() => {
-    const eventSource = new EventSource("/api/connection/status");
+    const eventSource = new EventSource(`${getApiBase()}/api/connection/status`);
 
     eventSource.onmessage = (event) => {
       try {
