@@ -5,7 +5,7 @@ import type {
   WheelTickerSummary,
   WheelSuggestion,
 } from "@assup/shared";
-import { formatCurrency } from "@assup/shared";
+import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -480,7 +480,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
 
       {/* Contract Lifecycles (for current/last cycle) */}
       {recentCycles.length > 0 && (
-        <ContractLifecycleView cycle={recentCycles[recentCycles.length - 1]} />
+        <ContractLifecycleView cycle={recentCycles[recentCycles.length - 1]} symbol={symbol} />
       )}
     </div>
   );
@@ -608,7 +608,7 @@ function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]):
   return contracts.sort((a, b) => a.openDate.localeCompare(b.openDate));
 }
 
-function ContractLifecycleView({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
+function ContractLifecycleView({ cycle, symbol }: { cycle: import("@assup/shared").WheelCycle; symbol: string }) {
   const contracts = groupTradesIntoContracts(cycle.trades);
 
   const outcomeLabels: Record<ContractLifecycle["outcome"], string> = {
@@ -629,6 +629,25 @@ function ContractLifecycleView({ cycle }: { cycle: import("@assup/shared").Wheel
     open: "bg-blue-100 text-blue-800",
   };
 
+  // Format contract name like "TLT Jan30'26 89 CALL"
+  const formatContractName = (contract: ContractLifecycle): string => {
+    if (contract.type === "SHARES") {
+      return `${contract.quantity} shares`;
+    }
+    if (contract.strike && contract.expiry) {
+      // Convert YYYY-MM-DD to YYYYMMDD for formatDisplayName
+      const expiryYYYYMMDD = contract.expiry.replace(/-/g, "");
+      return formatDisplayName({
+        symbol,
+        secType: "OPT",
+        strike: contract.strike,
+        right: contract.type === "PUT" ? "P" : "C",
+        lastTradeDateOrContractMonth: expiryYYYYMMDD,
+      });
+    }
+    return symbol;
+  };
+
   return (
     <div>
       <h4 className="font-medium mb-2">
@@ -641,18 +660,9 @@ function ContractLifecycleView({ cycle }: { cycle: import("@assup/shared").Wheel
             className="flex items-center justify-between p-3 rounded bg-muted"
           >
             <div className="flex items-center gap-3">
-              <Badge variant="outline" className="w-14 justify-center">
-                {contract.type}
-              </Badge>
-              {contract.type !== "SHARES" ? (
-                <span className="text-sm font-medium">
-                  ${contract.strike} {contract.expiry}
-                </span>
-              ) : (
-                <span className="text-sm font-medium">
-                  {contract.quantity} shares
-                </span>
-              )}
+              <span className="text-sm font-medium">
+                {formatContractName(contract)}
+              </span>
               <span className="text-sm text-muted-foreground">
                 {contract.openDate}
                 {contract.closeDate && contract.closeDate !== contract.openDate && (
