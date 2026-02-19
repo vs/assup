@@ -207,6 +207,7 @@ export const wheelService = {
 
   /**
    * Reconstruct wheel cycles from trade history
+   * A cycle = any period where position (shares + options) is non-zero
    */
   async reconstructCycles(symbol: string, startDate: Date | null): Promise<WheelCycle[]> {
     // Get all trades for this underlying
@@ -229,8 +230,9 @@ export const wheelService = {
     const cycles: WheelCycle[] = [];
     let currentCycle: WheelCycle | null = null;
     let sharePosition = 0;
-    let runningCostBasis = 0;
+    let optionPosition = 0; // positive = short options (sold contracts)
     let cycleNumber = 0;
+    let runningCostBasis = 0;
 
     for (const trade of trades) {
       const isOption = trade.secType === "OPT";
@@ -240,75 +242,114 @@ export const wheelService = {
       const isPut = trade.right === "P";
       const isCall = trade.right === "C";
 
+      const prevTotalPosition = sharePosition + optionPosition * 100;
+
+      // Determine trade type and update positions
       let tradeType: WheelTrade["type"] | null = null;
       let isWheelTrade = true;
 
       if (isOption && isSell && isPut) {
-        // Sold PUT - starts or continues a cycle
         tradeType = "SOLD_PUT";
-        if (!currentCycle) {
-          cycleNumber++;
-          currentCycle = {
-            cycleNumber,
-            startDate: trade.tradeDate.toISOString().split("T")[0],
-            endDate: null,
-            status: "in_progress",
-            totalPremium: 0,
-            shareQuantity: 0,
-            entryStrike: trade.strike || 0,
-            exitPrice: null,
-            roc: 0,
-            annualizedRoc: 0,
-            durationDays: 0,
-            trades: [],
-          };
-        }
+        optionPosition += Math.abs(trade.quantity);
       } else if (isOption && isBuy && isPut) {
-        // Bought PUT - buyback or protective put
         tradeType = "BOUGHT_PUT";
-        isWheelTrade = trade.proceeds < 0; // buyback has negative proceeds (paying)
+        optionPosition -= Math.abs(trade.quantity);
+        isWheelTrade = trade.proceeds < 0; // buyback
       } else if (isOption && isSell && isCall) {
-        // Sold CALL - covered call
         tradeType = "SOLD_CALL";
+        optionPosition += Math.abs(trade.quantity);
       } else if (isOption && isBuy && isCall) {
-        // Bought CALL - buyback
         tradeType = "BOUGHT_CALL";
-        isWheelTrade = trade.proceeds < 0;
+        optionPosition -= Math.abs(trade.quantity);
+        isWheelTrade = trade.proceeds < 0; // buyback
       } else if (isStock && isBuy && trade.wasAssigned) {
-        // Assignment from put
         tradeType = "ASSIGNED";
-        sharePosition += trade.quantity;
-        if (currentCycle) {
-          currentCycle.shareQuantity = sharePosition;
-        }
-      } else if (isStock && isSell) {
-        // Sold shares - could be called away or manual sell
-        tradeType = trade.wasAssigned ? "CALLED_AWAY" : "SOLD_SHARES";
+        sharePosition += Math.abs(trade.quantity);
+        // Assignment closes the put position
+        optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity) / 100);
+      } else if (isStock && isBuy && !trade.wasAssigned) {
+        tradeType = "BOUGHT_SHARES";
+        sharePosition += Math.abs(trade.quantity);
+      } else if (isStock && isSell && trade.wasAssigned) {
+        tradeType = "CALLED_AWAY";
         sharePosition -= Math.abs(trade.quantity);
-
-        if (currentCycle && sharePosition <= 0) {
-          // Cycle complete
-          currentCycle.endDate = trade.tradeDate.toISOString().split("T")[0];
-          currentCycle.status = trade.wasAssigned ? "called_away" : "sold_shares";
-          currentCycle.exitPrice = trade.proceeds / Math.abs(trade.quantity);
-        }
+        // Called away closes the call position
+        optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity) / 100);
+      } else if (isStock && isSell && !trade.wasAssigned) {
+        tradeType = "SOLD_SHARES";
+        sharePosition -= Math.abs(trade.quantity);
       }
 
+      // Handle option expiration (position closed but no BUY trade - synthetic)
+      if (isOption && trade.proceeds === 0 && isBuy) {
+        tradeType = "EXPIRED";
+      }
+
+      const newTotalPosition = sharePosition + optionPosition * 100;
+      const dateStr = trade.tradeDate.toISOString().split("T")[0];
+
+      // Cycle starts: position went from 0 to non-zero
+      if (prevTotalPosition === 0 && newTotalPosition !== 0) {
+        cycleNumber++;
+        let entryType: WheelCycle["entryType"];
+        let entryDescription: string;
+
+        if (tradeType === "SOLD_PUT") {
+          entryType = "sold_put";
+          entryDescription = `Sold PUT $${trade.strike}`;
+        } else if (tradeType === "ASSIGNED") {
+          entryType = "assigned";
+          const price = trade.strike || Math.abs(trade.proceeds / trade.quantity);
+          entryDescription = `Assigned ${Math.abs(trade.quantity)} @ $${price.toFixed(2)}`;
+        } else if (tradeType === "BOUGHT_SHARES") {
+          entryType = "bought_shares";
+          const price = Math.abs(trade.proceeds / trade.quantity);
+          entryDescription = `Bought ${Math.abs(trade.quantity)} @ $${price.toFixed(2)}`;
+        } else {
+          entryType = "sold_put";
+          entryDescription = "Unknown entry";
+        }
+
+        currentCycle = {
+          cycleNumber,
+          startDate: dateStr,
+          endDate: null,
+          status: "in_progress",
+          totalPremium: 0,
+          shareQuantity: 0,
+          entryStrike: trade.strike || 0,
+          exitPrice: null,
+          roc: 0,
+          annualizedRoc: 0,
+          durationDays: 0,
+          trades: [],
+          entryType,
+          entryDescription,
+          exitType: "in_progress",
+          exitDescription: null,
+        };
+
+        runningCostBasis = trade.strike || Math.abs(trade.proceeds / Math.abs(trade.quantity));
+      }
+
+      // Add trade to current cycle
       if (tradeType && currentCycle) {
-        // Calculate premium (positive = received, negative = paid)
         const premium = trade.proceeds - trade.commission;
 
         // Update running cost basis
         if (tradeType === "ASSIGNED" && trade.strike) {
           runningCostBasis = trade.strike;
+        } else if (tradeType === "BOUGHT_SHARES") {
+          runningCostBasis = Math.abs(trade.proceeds / trade.quantity);
         }
-        if (isWheelTrade) {
-          runningCostBasis -= premium / (currentCycle.shareQuantity || 100);
+        if (isWheelTrade && isOption) {
+          const shareEquiv = currentCycle.shareQuantity || 100;
+          runningCostBasis -= premium / shareEquiv;
         }
 
         const wheelTrade: WheelTrade = {
           id: trade.id,
-          tradeDate: trade.tradeDate.toISOString().split("T")[0],
+          tradeDate: dateStr,
           type: tradeType,
           strike: trade.strike,
           expiry: trade.expiry?.toISOString().split("T")[0] ?? null,
@@ -320,34 +361,61 @@ export const wheelService = {
         };
 
         currentCycle.trades.push(wheelTrade);
+        currentCycle.shareQuantity = sharePosition;
+
         if (isWheelTrade) {
           currentCycle.totalPremium += premium;
         }
+      }
 
-        // If cycle completed, calculate metrics and push
-        if (currentCycle.status !== "in_progress") {
-          const startMs = new Date(currentCycle.startDate).getTime();
-          const endMs = new Date(currentCycle.endDate!).getTime();
-          currentCycle.durationDays = Math.ceil((endMs - startMs) / (1000 * 60 * 60 * 24));
+      // Cycle ends: position went from non-zero to 0
+      if (prevTotalPosition !== 0 && newTotalPosition === 0 && currentCycle) {
+        currentCycle.endDate = dateStr;
 
-          // ROC = total profit / capital at risk
-          const capitalAtRisk = currentCycle.entryStrike * 100;
-          const totalProfit = currentCycle.totalPremium +
-            (currentCycle.exitPrice ? (currentCycle.exitPrice - currentCycle.entryStrike) * 100 : 0);
-
-          currentCycle.roc = capitalAtRisk > 0 ? (totalProfit / capitalAtRisk) * 100 : 0;
-          currentCycle.annualizedRoc = currentCycle.durationDays > 0
-            ? currentCycle.roc * (365 / currentCycle.durationDays)
-            : 0;
-
-          cycles.push(currentCycle);
-          currentCycle = null;
-          runningCostBasis = 0;
+        if (tradeType === "CALLED_AWAY") {
+          currentCycle.status = "called_away";
+          currentCycle.exitType = "called_away";
+          const exitPrice = trade.proceeds / Math.abs(trade.quantity);
+          currentCycle.exitPrice = exitPrice;
+          currentCycle.exitDescription = `Called away @ $${exitPrice.toFixed(2)}`;
+        } else if (tradeType === "SOLD_SHARES") {
+          currentCycle.status = "sold_shares";
+          currentCycle.exitType = "sold_shares";
+          const exitPrice = trade.proceeds / Math.abs(trade.quantity);
+          currentCycle.exitPrice = exitPrice;
+          currentCycle.exitDescription = `Sold @ $${exitPrice.toFixed(2)}`;
+        } else if (tradeType === "EXPIRED" || (isOption && trade.proceeds === 0)) {
+          currentCycle.status = "expired_worthless";
+          currentCycle.exitType = isPut ? "put_expired" : "cc_expired";
+          currentCycle.exitDescription = isPut ? "PUT expired worthless" : "CC expired worthless";
+        } else if (tradeType === "BOUGHT_PUT" || tradeType === "BOUGHT_CALL") {
+          // Closed option position (buyback to close, not roll)
+          currentCycle.status = "expired_worthless"; // reuse status
+          currentCycle.exitType = isPut ? "put_expired" : "cc_expired";
+          currentCycle.exitDescription = isPut ? "PUT closed" : "CC closed";
         }
+
+        // Calculate metrics
+        const startMs = new Date(currentCycle.startDate).getTime();
+        const endMs = new Date(currentCycle.endDate).getTime();
+        currentCycle.durationDays = Math.ceil((endMs - startMs) / (1000 * 60 * 60 * 24));
+
+        const capitalAtRisk = currentCycle.entryStrike * 100;
+        const totalProfit = currentCycle.totalPremium +
+          (currentCycle.exitPrice ? (currentCycle.exitPrice - currentCycle.entryStrike) * (currentCycle.shareQuantity || 100) : 0);
+
+        currentCycle.roc = capitalAtRisk > 0 ? (totalProfit / capitalAtRisk) * 100 : 0;
+        currentCycle.annualizedRoc = currentCycle.durationDays > 0
+          ? currentCycle.roc * (365 / currentCycle.durationDays)
+          : 0;
+
+        cycles.push(currentCycle);
+        currentCycle = null;
+        runningCostBasis = 0;
       }
     }
 
-    // Add in-progress cycle if exists
+    // Add in-progress cycle
     if (currentCycle) {
       const startMs = new Date(currentCycle.startDate).getTime();
       currentCycle.durationDays = Math.ceil((Date.now() - startMs) / (1000 * 60 * 60 * 24));
@@ -404,6 +472,7 @@ export const wheelService = {
           totalPremium: 0,
           lastTradeDate: trade.tradeDate.toISOString().split("T")[0],
           firstTradeDate: trade.tradeDate.toISOString().split("T")[0],
+          hasActivePosition: false, // Will be updated in Task 4
         });
       }
 
