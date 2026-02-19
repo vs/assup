@@ -227,6 +227,61 @@ export const wheelService = {
       orderBy: { tradeDate: "asc" },
     }) as RawTrade[];
 
+    // Query assigned options to detect stock assignments
+    // (wasAssigned is set on option trades, not stock trades)
+    const assignedOptions = await prisma.importedTrade.findMany({
+      where: {
+        underlying: symbol,
+        secType: "OPT",
+        wasAssigned: true,
+      },
+    });
+
+    // Build lookup maps for assigned PUTs and CALLs
+    // Key: "YYYY-MM-DD:strike" -> true
+    const assignedPuts = new Map<string, boolean>();
+    const assignedCalls = new Map<string, boolean>();
+    for (const opt of assignedOptions) {
+      if (!opt.expiry || !opt.strike) continue;
+      const key = `${opt.expiry.toISOString().split("T")[0]}:${opt.strike}`;
+      if (opt.right === "P") {
+        assignedPuts.set(key, true);
+      } else if (opt.right === "C") {
+        assignedCalls.set(key, true);
+      }
+    }
+
+    // Helper to find matching assigned option for a stock trade
+    // Returns { strike, expiry } if assignment found, null otherwise
+    const findAssignedOption = (trade: RawTrade, type: "PUT" | "CALL"): { strike: number; expiry: string } | null => {
+      // Check the old wasAssigned field first (for backward compat with test data)
+      if (trade.wasAssigned && trade.strike) {
+        return { strike: trade.strike, expiry: trade.expiry?.toISOString().split("T")[0] || trade.tradeDate.toISOString().split("T")[0] };
+      }
+
+      // Check against assigned options lookup
+      const tradeDate = trade.tradeDate.toISOString().split("T")[0];
+      const tradePrice = Math.abs(trade.proceeds / trade.quantity);
+
+      // Look for matching assigned option (date within 5 days, price within 2% of strike)
+      const map = type === "PUT" ? assignedPuts : assignedCalls;
+      for (const [key] of map) {
+        const [expiry, strikeStr] = key.split(":");
+        const strike = parseFloat(strikeStr);
+
+        // Check date proximity (assignment can happen around expiry)
+        const expiryDate = new Date(expiry);
+        const tradeDateObj = new Date(tradeDate);
+        const daysDiff = Math.abs((tradeDateObj.getTime() - expiryDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysDiff > 5) continue;
+
+        // Check price proximity (within 2% of strike)
+        const priceDiff = Math.abs(tradePrice - strike) / strike;
+        if (priceDiff < 0.02) return { strike, expiry };
+      }
+      return null;
+    };
+
     const cycles: WheelCycle[] = [];
     let currentCycle: WheelCycle | null = null;
     let sharePosition = 0;
@@ -247,6 +302,7 @@ export const wheelService = {
       // Determine trade type and update positions
       let tradeType: WheelTrade["type"] | null = null;
       let isWheelTrade = true;
+      let assignedOptionInfo: { strike: number; expiry: string } | null = null;
 
       if (isOption && isSell && isPut) {
         tradeType = "SOLD_PUT";
@@ -262,20 +318,20 @@ export const wheelService = {
         tradeType = "BOUGHT_CALL";
         optionPosition -= Math.abs(trade.quantity);
         isWheelTrade = trade.proceeds < 0; // buyback
-      } else if (isStock && isBuy && trade.wasAssigned) {
+      } else if (isStock && isBuy && (assignedOptionInfo = findAssignedOption(trade, "PUT"))) {
         tradeType = "ASSIGNED";
         sharePosition += Math.abs(trade.quantity);
         // Assignment closes the put position
         optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity) / 100);
-      } else if (isStock && isBuy && !trade.wasAssigned) {
+      } else if (isStock && isBuy) {
         tradeType = "BOUGHT_SHARES";
         sharePosition += Math.abs(trade.quantity);
-      } else if (isStock && isSell && trade.wasAssigned) {
+      } else if (isStock && isSell && (assignedOptionInfo = findAssignedOption(trade, "CALL"))) {
         tradeType = "CALLED_AWAY";
         sharePosition -= Math.abs(trade.quantity);
         // Called away closes the call position
         optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity) / 100);
-      } else if (isStock && isSell && !trade.wasAssigned) {
+      } else if (isStock && isSell) {
         tradeType = "SOLD_SHARES";
         sharePosition -= Math.abs(trade.quantity);
       }
@@ -347,12 +403,16 @@ export const wheelService = {
           runningCostBasis -= premium / shareEquiv;
         }
 
+        // For ASSIGNED/CALLED_AWAY trades, use strike/expiry from the matching option
+        const tradeStrike = assignedOptionInfo?.strike ?? trade.strike;
+        const tradeExpiry = assignedOptionInfo?.expiry ?? trade.expiry?.toISOString().split("T")[0] ?? null;
+
         const wheelTrade: WheelTrade = {
           id: trade.id,
           tradeDate: dateStr,
           type: tradeType,
-          strike: trade.strike,
-          expiry: trade.expiry?.toISOString().split("T")[0] ?? null,
+          strike: tradeStrike,
+          expiry: tradeExpiry,
           quantity: Math.abs(trade.quantity),
           premium,
           commission: trade.commission,
