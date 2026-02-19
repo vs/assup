@@ -21,7 +21,9 @@ export interface WheelTrade {
     | "BOUGHT_PUT"
     | "BOUGHT_CALL"
     | "CALLED_AWAY"
-    | "SOLD_SHARES";
+    | "SOLD_SHARES"
+    | "BOUGHT_SHARES"
+    | "EXPIRED";
   strike: number | null;
   expiry: string | null;
   quantity: number;
@@ -31,20 +33,25 @@ export interface WheelTrade {
   runningCostBasis: number; // cost basis per share after this trade
 }
 
-// A complete wheel cycle (CSP -> assignment -> covered calls -> exit)
+// A complete wheel cycle (any period with non-zero position)
 export interface WheelCycle {
   cycleNumber: number;
   startDate: string;
   endDate: string | null;
-  status: "in_progress" | "called_away" | "sold_shares";
+  status: "in_progress" | "called_away" | "sold_shares" | "expired_worthless";
   totalPremium: number;
   shareQuantity: number;
-  entryStrike: number; // first CSP strike
+  entryStrike: number; // first CSP strike or buy price
   exitPrice: number | null; // price when called away or sold
   roc: number; // return on capital %
   annualizedRoc: number;
   durationDays: number;
   trades: WheelTrade[];
+  // New fields for clarity
+  entryType: "sold_put" | "bought_shares" | "assigned";
+  entryDescription: string; // "Sold PUT $145" or "Bought 100 @ $148"
+  exitType: "called_away" | "sold_shares" | "put_expired" | "cc_expired" | "in_progress";
+  exitDescription: string | null; // "Called away @ $150" or null if in progress
 }
 
 // Summary view of a ticker in the wheel tracker list
@@ -82,6 +89,7 @@ export interface WheelSuggestion {
   totalPremium: number;
   lastTradeDate: string;
   firstTradeDate: string;
+  hasActivePosition: boolean;
 }
 
 // Aggregate metrics across all tracked wheels
