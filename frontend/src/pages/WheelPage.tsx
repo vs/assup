@@ -124,42 +124,56 @@ export function WheelPage() {
                     Suggestions
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80">
-                  {suggestions.slice(0, 5).map((s) => (
-                    <DropdownMenuItem
-                      key={s.symbol}
-                      className="flex justify-between items-center"
-                    >
-                      <div>
-                        <span className="font-medium">{s.symbol}</span>
-                        <span className="text-xs text-muted-foreground ml-2">
-                          {s.putCount}P / {s.callCount}C
-                        </span>
+                <DropdownMenuContent align="end" className="w-96 max-h-80 overflow-y-auto">
+                  {suggestions.map((s, index) => {
+                    // Check if this is the first non-active item after active items
+                    const showDivider = index > 0 &&
+                      suggestions[index - 1].hasActivePosition &&
+                      !s.hasActivePosition;
+
+                    return (
+                      <div key={s.symbol}>
+                        {showDivider && (
+                          <div className="border-t border-border my-1" />
+                        )}
+                        <DropdownMenuItem className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            {s.hasActivePosition && (
+                              <span className="w-2 h-2 rounded-full bg-green-500" />
+                            )}
+                            <span className={`font-medium ${!s.hasActivePosition ? "ml-4" : ""}`}>
+                              {s.symbol}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {s.putCount}P / {s.callCount}C
+                            </span>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleAddSuggestion(s.symbol);
+                              }}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleDismissSuggestion(s.symbol);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </DropdownMenuItem>
                       </div>
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleAddSuggestion(s.symbol);
-                          }}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleDismissSuggestion(s.symbol);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
+                    );
+                  })}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
