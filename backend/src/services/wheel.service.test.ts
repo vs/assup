@@ -36,6 +36,7 @@ interface CycleResult {
   exitDescription: string | null;
   totalPremium: number;
   tradeCount: number;
+  hasOptionTrades: boolean;
 }
 
 function reconstructCyclesFromTrades(trades: TestTrade[]): CycleResult[] {
@@ -166,6 +167,7 @@ function reconstructCyclesFromTrades(trades: TestTrade[]): CycleResult[] {
         exitDescription: null,
         totalPremium: 0,
         tradeCount: 0,
+        hasOptionTrades: false,
       };
     }
 
@@ -175,6 +177,7 @@ function reconstructCyclesFromTrades(trades: TestTrade[]): CycleResult[] {
         currentCycle.tradeCount++;
         if (trade.secType === "OPT") {
           currentCycle.totalPremium += trade.proceeds - trade.commission;
+          currentCycle.hasOptionTrades = true;
         }
       }
     }
@@ -203,7 +206,10 @@ function reconstructCyclesFromTrades(trades: TestTrade[]): CycleResult[] {
         currentCycle.exitDescription = isPut ? "PUT expired worthless" : "CC expired worthless";
       }
 
-      cycles.push(currentCycle);
+      // Only count completed cycles that had option trades
+      if (currentCycle.hasOptionTrades) {
+        cycles.push(currentCycle);
+      }
       currentCycle = null;
     }
   }
@@ -525,6 +531,79 @@ describe("Wheel Cycle Reconstruction", () => {
       expect(cycles).toHaveLength(1);
       expect(cycles[0].status).toBe("in_progress");
       expect(cycles[0].tradeCount).toBe(3);
+    });
+
+    it("should NOT count completed cycle without option trades", () => {
+      const trades: TestTrade[] = [
+        // Buy shares directly
+        {
+          id: "1",
+          tradeDate: new Date("2024-01-15"),
+          symbol: "AAPL",
+          underlying: null,
+          secType: "STK",
+          strike: null,
+          expiry: null,
+          right: null,
+          quantity: 100,
+          proceeds: -14800,
+          commission: 1,
+          buySell: "BUY",
+          wasAssigned: false,
+          multiplier: 1,
+        },
+        // Sell shares (no options were ever traded)
+        {
+          id: "2",
+          tradeDate: new Date("2024-01-20"),
+          symbol: "AAPL",
+          underlying: null,
+          secType: "STK",
+          strike: null,
+          expiry: null,
+          right: null,
+          quantity: -100,
+          proceeds: 15000,
+          commission: 1,
+          buySell: "SELL",
+          wasAssigned: false,
+          multiplier: 1,
+        },
+      ];
+
+      const cycles = reconstructCyclesFromTrades(trades);
+
+      // No cycles should be recorded since no options were traded
+      expect(cycles).toHaveLength(0);
+    });
+
+    it("should still count in-progress cycle without option trades", () => {
+      const trades: TestTrade[] = [
+        // Buy shares directly - cycle in progress
+        {
+          id: "1",
+          tradeDate: new Date("2024-01-15"),
+          symbol: "AAPL",
+          underlying: null,
+          secType: "STK",
+          strike: null,
+          expiry: null,
+          right: null,
+          quantity: 100,
+          proceeds: -14800,
+          commission: 1,
+          buySell: "BUY",
+          wasAssigned: false,
+          multiplier: 1,
+        },
+      ];
+
+      const cycles = reconstructCyclesFromTrades(trades);
+
+      // In-progress cycles are allowed without option trades
+      expect(cycles).toHaveLength(1);
+      expect(cycles[0].status).toBe("in_progress");
+      expect(cycles[0].hasOptionTrades).toBe(false);
     });
 
     it("should handle buying shares and selling covered calls", () => {

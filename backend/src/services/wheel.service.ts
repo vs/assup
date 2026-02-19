@@ -409,7 +409,12 @@ export const wheelService = {
           ? currentCycle.roc * (365 / currentCycle.durationDays)
           : 0;
 
-        cycles.push(currentCycle);
+        // Only count completed cycles that had option trades
+        const optionTradeTypes = ["SOLD_PUT", "BOUGHT_PUT", "SOLD_CALL", "BOUGHT_CALL", "EXPIRED"];
+        const hasOptionTrades = currentCycle.trades.some((t) => optionTradeTypes.includes(t.type));
+        if (hasOptionTrades) {
+          cycles.push(currentCycle);
+        }
         currentCycle = null;
         runningCostBasis = 0;
       }
