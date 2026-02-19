@@ -406,7 +406,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
         {detail.cycles.map((cycle) => (
           <Card
             key={cycle.cycleNumber}
-            className={`min-w-[200px] ${
+            className={`min-w-[220px] ${
               cycle.status === "in_progress" ? "border-primary" : ""
             }`}
           >
@@ -418,12 +418,34 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
                     ? "In Progress"
                     : cycle.status === "called_away"
                     ? "Called Away"
+                    : cycle.status === "expired_worthless"
+                    ? "Expired"
                     : "Sold"}
                 </Badge>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {cycle.startDate}
-                {cycle.endDate && ` → ${cycle.endDate}`}
+              {/* Entry/Exit info */}
+              <div className="text-xs space-y-1 mb-2">
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-muted-foreground">
+                    {cycle.entryDescription} ({cycle.startDate})
+                  </span>
+                </div>
+                {cycle.exitDescription ? (
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <span className="text-muted-foreground">
+                      {cycle.exitDescription} ({cycle.endDate})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    <span className="text-muted-foreground">
+                      Running...
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                 <div>
