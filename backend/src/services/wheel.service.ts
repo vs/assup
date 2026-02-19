@@ -441,6 +441,24 @@ export const wheelService = {
     });
     const dismissedSymbols = new Set(dismissed.map((d) => d.symbol));
 
+    // Check IBKR positions to identify which symbols have active positions
+    const activePositionSymbols = new Set<string>();
+    try {
+      if (ibkrService.isConnected()) {
+        const positions = await ibkrService.getPositions();
+        for (const pos of positions) {
+          if (pos.pos !== 0) {
+            const symbol = pos.contract.symbol;
+            if (symbol) {
+              activePositionSymbols.add(symbol);
+            }
+          }
+        }
+      }
+    } catch {
+      // If positions fetch fails, continue without active position info
+    }
+
     // Find symbols with sold options
     const optionTrades = await prisma.importedTrade.findMany({
       where: {
@@ -472,7 +490,7 @@ export const wheelService = {
           totalPremium: 0,
           lastTradeDate: trade.tradeDate.toISOString().split("T")[0],
           firstTradeDate: trade.tradeDate.toISOString().split("T")[0],
-          hasActivePosition: false, // Will be updated in Task 4
+          hasActivePosition: activePositionSymbols.has(symbol),
         });
       }
 
@@ -485,10 +503,12 @@ export const wheelService = {
       if (dateStr < stats.firstTradeDate) stats.firstTradeDate = dateStr;
     }
 
-    // Sort by last trade date (most recent first)
-    return Array.from(symbolStats.values()).sort(
-      (a, b) => b.lastTradeDate.localeCompare(a.lastTradeDate)
-    );
+    // Sort: Active positions first, then by lastTradeDate descending
+    return Array.from(symbolStats.values()).sort((a, b) => {
+      if (a.hasActivePosition && !b.hasActivePosition) return -1;
+      if (!a.hasActivePosition && b.hasActivePosition) return 1;
+      return b.lastTradeDate.localeCompare(a.lastTradeDate);
+    });
   },
 
   /**
