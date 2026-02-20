@@ -5,6 +5,7 @@
 
 import { Router } from "express";
 import { SecType } from "@stoqey/ib";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
@@ -19,6 +20,13 @@ import {
   scannerCriteriaSchema,
 } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
+import { isIgnorablePositionError } from "../utils/index.js";
+
+/**
+ * US Market hours in Eastern Time (minutes from midnight)
+ */
+const US_MARKET_OPEN_MINUTES = 9 * 60 + 30;  // 9:30 AM ET
+const US_MARKET_CLOSE_MINUTES = 16 * 60;      // 4:00 PM ET
 
 const router = Router();
 
@@ -160,8 +168,7 @@ router.post(
           }
         });
       } catch (err: unknown) {
-        const error = err as { message?: string; code?: string };
-        if (!error.message?.includes("does not support positions") && error.code !== "timeout") {
+        if (!isIgnorablePositionError(err)) {
           throw err;
         }
       }
@@ -193,15 +200,13 @@ router.post(
     }
 
     // Get asset class assignments for these symbols
-    const assignmentWhere: any = {
+    const assignmentWhere: Prisma.SecurityAssignmentWhereInput = {
       symbol: { in: uniqueSymbols },
       secType: "STK",
+      ...(criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0
+        ? { assetClassId: { in: criteria.targetAssetClasses } }
+        : {}),
     };
-
-    // Filter by target asset classes if specified
-    if (criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0) {
-      assignmentWhere.assetClassId = { in: criteria.targetAssetClasses };
-    }
 
     const assignments = await prisma.securityAssignment.findMany({
       where: assignmentWhere,
@@ -322,11 +327,7 @@ async function scanOptionsForSymbols(
     // Weekend check (0 = Sunday, 6 = Saturday)
     if (day === 0 || day === 6) return false;
 
-    // Market hours: 9:30 AM (570 min) to 4:00 PM (960 min) ET
-    const marketOpen = 9 * 60 + 30;  // 9:30 AM
-    const marketClose = 16 * 60;      // 4:00 PM
-
-    return timeInMinutes >= marketOpen && timeInMinutes < marketClose;
+    return timeInMinutes >= US_MARKET_OPEN_MINUTES && timeInMinutes < US_MARKET_CLOSE_MINUTES;
   };
 
   // Use Live data during market hours, Frozen (last close) outside market hours
@@ -688,8 +689,7 @@ async function getUnderinvestedClasses() {
     try {
       rawPositions = await ibkrService.getPositions();
     } catch (err: unknown) {
-      const error = err as { message?: string; code?: string };
-      if (!error.message?.includes("does not support positions") && error.code !== "timeout") {
+      if (!isIgnorablePositionError(err)) {
         throw err;
       }
     }
