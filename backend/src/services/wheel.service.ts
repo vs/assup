@@ -323,17 +323,21 @@ export const wheelService = {
         sharePosition += Math.abs(trade.quantity);
         // Assignment closes the put position
         optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity) / 100);
+        isWheelTrade = false; // Stock trades don't contribute to premium
       } else if (isStock && isBuy) {
         tradeType = "BOUGHT_SHARES";
         sharePosition += Math.abs(trade.quantity);
+        isWheelTrade = false; // Stock trades don't contribute to premium
       } else if (isStock && isSell && (assignedOptionInfo = findAssignedOption(trade, "CALL"))) {
         tradeType = "CALLED_AWAY";
         sharePosition -= Math.abs(trade.quantity);
         // Called away closes the call position
         optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity) / 100);
+        isWheelTrade = false; // Stock trades don't contribute to premium
       } else if (isStock && isSell) {
         tradeType = "SOLD_SHARES";
         sharePosition -= Math.abs(trade.quantity);
+        isWheelTrade = false; // Stock trades don't contribute to premium
       }
 
       // Handle option expiration (position closed but no BUY trade - synthetic)
