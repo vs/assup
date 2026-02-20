@@ -12,6 +12,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -42,6 +52,7 @@ export function WatchlistsPage() {
   const [formData, setFormData] = useState({ name: "", symbol: "" });
   const [saving, setSaving] = useState(false);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Sparklines
   const symbols = useMemo(
@@ -137,11 +148,11 @@ export function WatchlistsPage() {
 
   async function handleDeleteWatchlist() {
     if (!selectedWatchlist) return;
-    if (!confirm(`Delete "${selectedWatchlist.name}"?`)) return;
 
     try {
       await api.watchlists.delete(selectedWatchlist.id);
       setSelectedWatchlist(null);
+      setDeleteDialogOpen(false);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
@@ -243,7 +254,7 @@ export function WatchlistsPage() {
                   <Button variant="ghost" size="icon" onClick={openEditDialog}>
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={handleDeleteWatchlist}>
+                  <Button variant="ghost" size="icon" onClick={() => setDeleteDialogOpen(true)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -406,6 +417,27 @@ export function WatchlistsPage() {
         open={!!chartSymbol}
         onClose={() => setChartSymbol(null)}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Watchlist</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{selectedWatchlist?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteWatchlist}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
