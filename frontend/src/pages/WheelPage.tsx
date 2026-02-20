@@ -500,6 +500,12 @@ interface ContractLifecycle {
   netPnL: number;
   costBasisAfter: number;
   quantity: number;
+  // For assigned/called_away: info about the stock transaction
+  stockTransaction?: {
+    action: "bought" | "sold";
+    shares: number;
+    price: number;
+  };
 }
 
 function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]): ContractLifecycle[] {
@@ -531,20 +537,37 @@ function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]):
       let closeDate: string | null = null;
       let costBasisAfter = trade.runningCostBasis;
 
+      let stockTransaction: ContractLifecycle["stockTransaction"];
+
       if (closeTrade) {
         usedTradeIds.add(closeTrade.id);
         closeDate = closeTrade.tradeDate;
-        closePremium = closeTrade.premium;
         costBasisAfter = closeTrade.runningCostBasis;
 
         if (closeTrade.type === "BOUGHT_PUT" || closeTrade.type === "BOUGHT_CALL") {
           outcome = "bought_back";
+          closePremium = closeTrade.premium; // Buyback cost counts as P&L
         } else if (closeTrade.type === "EXPIRED") {
           outcome = "expired";
+          // closePremium stays 0 - full premium kept
         } else if (closeTrade.type === "ASSIGNED") {
           outcome = "assigned";
+          // Stock purchase is NOT P&L - it's acquiring an asset
+          // closePremium stays 0 - option premium is the only P&L
+          stockTransaction = {
+            action: "bought",
+            shares: closeTrade.quantity,
+            price: trade.strike || 0,
+          };
         } else if (closeTrade.type === "CALLED_AWAY") {
           outcome = "called_away";
+          // Stock sale is NOT option P&L - it's disposing an asset
+          // closePremium stays 0 - option premium is the only P&L
+          stockTransaction = {
+            action: "sold",
+            shares: closeTrade.quantity,
+            price: trade.strike || 0,
+          };
         }
       }
 
@@ -561,6 +584,7 @@ function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]):
         netPnL: trade.premium + closePremium,
         costBasisAfter,
         quantity: trade.quantity,
+        stockTransaction,
       });
     }
   }
@@ -675,7 +699,7 @@ function ContractLifecycleView({ cycle, symbol }: { cycle: import("@assup/shared
             </div>
             <div className="flex items-center gap-6">
               <div className="text-right">
-                <div className="text-xs text-muted-foreground">P&L</div>
+                <div className="text-xs text-muted-foreground">Premium</div>
                 <span
                   className={`font-mono font-medium ${
                     contract.netPnL >= 0 ? "text-green-600" : "text-red-600"
@@ -685,12 +709,23 @@ function ContractLifecycleView({ cycle, symbol }: { cycle: import("@assup/shared
                   {formatCurrency(contract.netPnL)}
                 </span>
               </div>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground">Cost Basis</div>
-                <span className="font-mono text-sm">
-                  ${contract.costBasisAfter.toFixed(2)}
-                </span>
-              </div>
+              {contract.stockTransaction ? (
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">
+                    {contract.stockTransaction.action === "bought" ? "Bought" : "Sold"}
+                  </div>
+                  <span className="font-mono text-sm">
+                    {contract.stockTransaction.shares} @ ${contract.stockTransaction.price.toFixed(0)}
+                  </span>
+                </div>
+              ) : (
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Cost Basis</div>
+                  <span className="font-mono text-sm">
+                    ${contract.costBasisAfter.toFixed(2)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ))}
