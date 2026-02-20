@@ -44,8 +44,13 @@ export function useScanJobs() {
   // Create a new job
   const createJob = useCallback(async (input: ScanJobCreateInput): Promise<ScanJob> => {
     const job = await api.scanner.jobs.create(input);
-    // Optimistically add to list (will be updated via SSE)
-    setJobs((prev) => [job, ...prev]);
+    // Add to list, avoiding duplicates (SSE "created" event may have already added it)
+    setJobs((prev) => {
+      if (prev.some((j) => j.id === job.id)) {
+        return prev;
+      }
+      return [job, ...prev];
+    });
     return job;
   }, []);
 
