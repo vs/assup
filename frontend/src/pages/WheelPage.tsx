@@ -648,6 +648,33 @@ function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]):
     }
   }
 
+  // Process ASSIGNED trades as share acquisitions (already used as close trade for PUT,
+  // but should also appear as shares held)
+  for (const trade of trades) {
+    if (trade.type === "ASSIGNED") {
+      // Find if there's a subsequent SOLD_SHARES or CALLED_AWAY for these shares
+      const closeTrade = trades.find((t) => {
+        if (t.tradeDate <= trade.tradeDate) return false;
+        return t.type === "SOLD_SHARES" || t.type === "CALLED_AWAY";
+      });
+
+      contracts.push({
+        id: `${trade.id}-shares`,
+        type: "SHARES",
+        strike: trade.strike,
+        expiry: null,
+        openDate: trade.tradeDate,
+        closeDate: closeTrade?.tradeDate || null,
+        outcome: closeTrade ? (closeTrade.type === "CALLED_AWAY" ? "called_away" : "sold") : "open",
+        openPremium: 0, // Cost shown via strike price, not as negative premium
+        closePremium: closeTrade?.premium || 0,
+        netPnL: closeTrade?.premium || 0,
+        costBasisAfter: trade.runningCostBasis,
+        quantity: trade.quantity,
+      });
+    }
+  }
+
   // Sort by open date
   return contracts.sort((a, b) => a.openDate.localeCompare(b.openDate));
 }
