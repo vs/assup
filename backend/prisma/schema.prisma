@@ -171,6 +171,7 @@ model ImportBatch {
   cashTransactions CashTransaction[]
   corporateActions CorporateAction[]
 
+  @@index([fileHash])
   @@map("import_batches")
 }
 
