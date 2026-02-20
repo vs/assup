@@ -399,11 +399,14 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
     return <div className="py-4 text-center text-muted-foreground">No data</div>;
   }
 
-  // Filter cycles to show only those started within the last year
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  const oneYearAgoStr = oneYearAgo.toISOString().split("T")[0];
-  const recentCycles = detail.cycles.filter((cycle) => cycle.startDate >= oneYearAgoStr);
+  // Filter cycles: always show in-progress, plus completed cycles from last 2 years
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+  const twoYearsAgoStr = twoYearsAgo.toISOString().split("T")[0];
+  const recentCycles = detail.cycles.filter(
+    (cycle) => cycle.status === "in_progress" || cycle.startDate >= twoYearsAgoStr
+  );
+  const hasOlderCycles = detail.cycles.length > recentCycles.length;
 
   return (
     <div className="space-y-4">
@@ -481,6 +484,23 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       {/* Contract Lifecycles (for current/last cycle) */}
       {recentCycles.length > 0 && (
         <ContractLifecycleView cycle={recentCycles[recentCycles.length - 1]} symbol={symbol} />
+      )}
+
+      {/* Messages for empty/filtered states */}
+      {recentCycles.length === 0 && detail.cycles.length === 0 && (
+        <div className="text-center text-muted-foreground py-4">
+          No wheel cycles found. Sell a PUT or buy shares to start tracking.
+        </div>
+      )}
+      {recentCycles.length === 0 && hasOlderCycles && (
+        <div className="text-center text-muted-foreground py-4">
+          {detail.cycles.length} older cycle{detail.cycles.length !== 1 ? "s" : ""} not shown (started before {twoYearsAgoStr}).
+        </div>
+      )}
+      {hasOlderCycles && recentCycles.length > 0 && (
+        <div className="text-center text-xs text-muted-foreground py-2">
+          + {detail.cycles.length - recentCycles.length} older cycle{detail.cycles.length - recentCycles.length !== 1 ? "s" : ""} not shown
+        </div>
       )}
     </div>
   );
