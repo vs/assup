@@ -115,13 +115,8 @@ router.get(
       throw new IBKRConnectionError();
     }
 
-    let rawOrders: IBOpenOrder[] = [];
-    try {
-      rawOrders = await ibkrService.getAllOpenOrders();
-    } catch (err) {
-      console.error("Error fetching orders:", err);
-      rawOrders = [];
-    }
+    // Fetch orders - let errors propagate to error handler (fail fast)
+    const rawOrders = await ibkrService.getAllOpenOrders();
 
     const assignmentMap = await assignmentService.getAssignmentMap();
 
