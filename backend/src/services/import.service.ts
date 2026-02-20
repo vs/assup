@@ -576,26 +576,36 @@ class ImportService {
   }
 
   /**
-   * Import trades with deduplication
+   * Import trades with deduplication using batch operations for better performance
    */
   private async importTrades(
     batchId: string,
     trades: FlexTrade[]
   ): Promise<{ imported: number; skipped: number }> {
-    let imported = 0;
-    let skipped = 0;
+    if (trades.length === 0) {
+      return { imported: 0, skipped: 0 };
+    }
 
-    for (const trade of trades) {
-      // Check for existing trade
-      const existing = await prisma.importedTrade.findUnique({
-        where: { tradeId: trade.tradeID },
-      });
+    // Batch lookup: find all existing trade IDs in one query
+    const existingTradeIds = new Set(
+      (
+        await prisma.importedTrade.findMany({
+          where: { tradeId: { in: trades.map((t) => t.tradeID) } },
+          select: { tradeId: true },
+        })
+      ).map((t) => t.tradeId)
+    );
 
-      if (existing) {
-        skipped++;
-        continue;
-      }
+    // Filter to only new trades
+    const newTrades = trades.filter((t) => !existingTradeIds.has(t.tradeID));
+    const skipped = existingTradeIds.size;
 
+    if (newTrades.length === 0) {
+      return { imported: 0, skipped };
+    }
+
+    // Validate and transform all trades first (fail fast before any inserts)
+    const validatedData = newTrades.map((trade) => {
       // Map asset category to secType
       const secType = this.mapAssetCategory(trade.assetCategory);
 
@@ -607,7 +617,7 @@ class ImportService {
       if (!tradeDate) {
         throw new Error(
           `Import failed: Invalid trade date format '${trade.tradeDate}' for trade ${trade.tradeID} (${trade.symbol}). ` +
-          `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+            `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
         );
       }
 
@@ -627,57 +637,96 @@ class ImportService {
         );
       }
 
-      await prisma.importedTrade.create({
-        data: {
-          importBatchId: batchId,
-          tradeId: trade.tradeID,
-          symbol: trade.symbol,
-          description: trade.description,
-          conId: trade.conid ? parseInt(trade.conid, 10) : null,
-          secType,
-          strike: trade.strike ? parseFloat(trade.strike) : null,
-          expiry,
-          right: trade.putCall?.charAt(0).toUpperCase() as "C" | "P" | undefined,
-          underlying: trade.underlyingSymbol || (secType === "OPT" ? trade.symbol.split(" ")[0] : null),
-          multiplier: trade.multiplier ? parseInt(trade.multiplier, 10) : 100,
-          tradeDate,
-          quantity,
-          tradePrice,
-          proceeds: parseFloat(trade.proceeds),
-          commission: trade.ibCommission
-            ? Math.abs(parseFloat(trade.ibCommission))
-            : 0,
-          buySell: trade.buySell.toUpperCase(),
-          openClose: trade.openCloseIndicator?.toUpperCase(),
-          costBasis: trade.costBasis ? parseFloat(trade.costBasis) : null,
-          realizedPnl: trade.fifoPnlRealized ? parseFloat(trade.fifoPnlRealized) : null,
-        },
-      });
+      // Parse and validate commission
+      const commission = trade.ibCommission
+        ? parseFloat(trade.ibCommission)
+        : 0;
+      if (trade.ibCommission && isNaN(commission)) {
+        throw new Error(
+          `Import failed: Invalid commission value '${trade.ibCommission}' for trade ${trade.tradeID} (${trade.symbol}).`
+        );
+      }
 
-      imported++;
-    }
+      return {
+        importBatchId: batchId,
+        tradeId: trade.tradeID,
+        symbol: trade.symbol,
+        description: trade.description,
+        conId: trade.conid ? parseInt(trade.conid, 10) : null,
+        secType,
+        strike: trade.strike ? parseFloat(trade.strike) : null,
+        expiry,
+        right: (trade.putCall?.charAt(0).toUpperCase() as "C" | "P") || null,
+        underlying:
+          trade.underlyingSymbol ||
+          (secType === "OPT" ? trade.symbol.split(" ")[0] : null),
+        multiplier: trade.multiplier ? parseInt(trade.multiplier, 10) : 100,
+        tradeDate,
+        quantity,
+        tradePrice,
+        proceeds: parseFloat(trade.proceeds),
+        commission: Math.abs(commission),
+        buySell: trade.buySell.toUpperCase(),
+        openClose: trade.openCloseIndicator?.toUpperCase() || null,
+        costBasis: trade.costBasis ? parseFloat(trade.costBasis) : null,
+        realizedPnl: trade.fifoPnlRealized
+          ? parseFloat(trade.fifoPnlRealized)
+          : null,
+      };
+    });
 
-    return { imported, skipped };
+    // Batch insert all validated trades
+    await prisma.importedTrade.createMany({
+      data: validatedData,
+      skipDuplicates: true,
+    });
+
+    return { imported: newTrades.length, skipped };
   }
 
   /**
-   * Import cash transactions with deduplication
+   * Import cash transactions with deduplication using batch operations
    */
   private async importCashTransactions(
     batchId: string,
     transactions: FlexCashTransaction[]
   ): Promise<{ dividends: number; interest: number; other: number }> {
+    if (transactions.length === 0) {
+      return { dividends: 0, interest: 0, other: 0 };
+    }
+
+    // Batch lookup: find all existing transaction IDs in one query
+    const existingIds = new Set(
+      (
+        await prisma.cashTransaction.findMany({
+          where: {
+            transactionId: { in: transactions.map((t) => t.transactionID) },
+          },
+          select: { transactionId: true },
+        })
+      ).map((t) => t.transactionId)
+    );
+
+    // Filter and transform transactions
+    const validatedData: Array<{
+      importBatchId: string;
+      transactionId: string;
+      symbol: string | null;
+      description: string;
+      conId: number | null;
+      transactionDate: Date;
+      amount: number;
+      currency: string;
+      type: string;
+    }> = [];
+
     let dividends = 0;
     let interest = 0;
     let other = 0;
 
     for (const tx of transactions) {
-      // Check for existing transaction
-      const existing = await prisma.cashTransaction.findUnique({
-        where: { transactionId: tx.transactionID },
-      });
-
-      if (existing) {
+      // Skip existing transactions
+      if (existingIds.has(tx.transactionID)) {
         continue;
       }
 
@@ -694,7 +743,7 @@ class ImportService {
       if (!transactionDate) {
         throw new Error(
           `Import failed: Invalid transaction date format '${tx.dateTime}' for transaction ${tx.transactionID} (${tx.type}). ` +
-          `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+            `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
         );
       }
 
@@ -706,23 +755,29 @@ class ImportService {
         );
       }
 
-      await prisma.cashTransaction.create({
-        data: {
-          importBatchId: batchId,
-          transactionId: tx.transactionID,
-          symbol: tx.symbol || null,
-          description: tx.description,
-          conId: tx.conid ? parseInt(tx.conid, 10) : null,
-          transactionDate,
-          amount,
-          currency: tx.currency || "USD",
-          type,
-        },
+      validatedData.push({
+        importBatchId: batchId,
+        transactionId: tx.transactionID,
+        symbol: tx.symbol || null,
+        description: tx.description,
+        conId: tx.conid ? parseInt(tx.conid, 10) : null,
+        transactionDate,
+        amount,
+        currency: tx.currency || "USD",
+        type,
       });
 
       if (type === "DIVIDEND") dividends++;
       else if (type === "INTEREST") interest++;
       else other++;
+    }
+
+    // Batch insert all validated transactions
+    if (validatedData.length > 0) {
+      await prisma.cashTransaction.createMany({
+        data: validatedData,
+        skipDuplicates: true,
+      });
     }
 
     return { dividends, interest, other };
