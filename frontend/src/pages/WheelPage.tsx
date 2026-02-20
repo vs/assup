@@ -382,6 +382,7 @@ function WheelTickerCard({
 function WheelTickerDetail({ symbol }: { symbol: string }) {
   const [detail, setDetail] = useState<import("@assup/shared").WheelTickerDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedCycleNumber, setSelectedCycleNumber] = useState<number | null>(null);
 
   useEffect(() => {
     api.wheel
@@ -408,6 +409,10 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   );
   const hasOlderCycles = detail.cycles.length > recentCycles.length;
 
+  // Default to the last cycle if none selected
+  const selectedCycle = recentCycles.find((c) => c.cycleNumber === selectedCycleNumber)
+    || recentCycles[recentCycles.length - 1];
+
   return (
     <div className="space-y-4">
       {/* Cycle Summary Cards */}
@@ -415,9 +420,14 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
         {recentCycles.map((cycle) => (
           <Card
             key={cycle.cycleNumber}
-            className={`min-w-[220px] ${
+            className={`min-w-[220px] cursor-pointer transition-all ${
               cycle.status === "in_progress" ? "border-primary" : ""
+            } ${
+              selectedCycle?.cycleNumber === cycle.cycleNumber
+                ? "ring-2 ring-primary ring-offset-2"
+                : "hover:bg-muted/50"
             }`}
+            onClick={() => setSelectedCycleNumber(cycle.cycleNumber)}
           >
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-2">
@@ -481,9 +491,9 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
         ))}
       </div>
 
-      {/* Contract Lifecycles (for current/last cycle) */}
-      {recentCycles.length > 0 && (
-        <ContractLifecycleView cycle={recentCycles[recentCycles.length - 1]} symbol={symbol} />
+      {/* Contract Lifecycles (for selected cycle) */}
+      {selectedCycle && (
+        <ContractLifecycleView cycle={selectedCycle} symbol={symbol} />
       )}
 
       {/* Messages for empty/filtered states */}
