@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { ibkrService } from "./services/ibkr.js";
 import { sseService } from "./services/sse.js";
 import { prisma } from "./db/index.js";
@@ -25,7 +26,47 @@ import { scanJobService } from "./services/scanJob.service.js";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Configure CORS with allowed origins for security
+// In production, set FRONTEND_URL environment variable to the actual frontend URL
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:8080",
+  "http://localhost:8081", // Live trading frontend
+  "http://localhost:5173", // Vite dev server
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, Postman, etc.)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    credentials: true,
+  })
+);
+
+// Rate limiting for general API requests
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // limit each IP to 1000 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Stricter rate limiting for order placement to prevent accidental mass orders
+const orderLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // limit each IP to 10 order placements per minute
+  message: { error: "Too many order requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use(generalLimiter as any);
 app.use(express.json());
 
 // API Routes
@@ -34,6 +75,9 @@ app.use("/api/allocation-profiles", allocationProfilesRouter);
 app.use("/api/positions", positionsRouter);
 app.use("/api/security-assignments", securityAssignmentsRouter);
 app.use("/api/watchlists", watchlistsRouter);
+// Apply stricter rate limiting for order placement endpoint
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use("/api/orders/place", orderLimiter as any);
 app.use("/api/orders", ordersRouter);
 app.use("/api/scanner/jobs", scannerJobsRouter);
 app.use("/api/scanner", scannerRouter);
