@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api";
-import { getApiBase } from "@/lib/apiConfig";
+import { sseManager, useSSEConnection } from "./useSSE";
 import type { ScanJob, ScanJobCreateInput } from "@assup/shared";
 
 interface ScanJobEvent {
@@ -23,6 +23,9 @@ export function useScanJobs() {
   const [jobs, setJobs] = useState<ScanJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Subscribe to SSE connection to ensure connection is active
+  useSSEConnection();
 
   // Load initial jobs
   const loadJobs = useCallback(async () => {
@@ -58,73 +61,64 @@ export function useScanJobs() {
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
   }, []);
 
-  // Handle SSE events
+  // Handle SSE events via singleton manager
   useEffect(() => {
-    const eventSource = new EventSource(`${getApiBase()}/api/updates/stream`);
+    const removeListener = sseManager.addListener("scanner_job", (rawData) => {
+      const data = rawData as ScanJobEvent;
 
-    eventSource.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.type !== "scanner_job") return;
+      switch (data.type) {
+        case "created":
+          if (data.job) {
+            setJobs((prev) => {
+              // Avoid duplicates if optimistic add already happened
+              if (prev.some((j) => j.id === data.job!.id)) {
+                return prev;
+              }
+              return [data.job!, ...prev];
+            });
+          }
+          break;
 
-        const data = message.data as ScanJobEvent;
+        case "progress":
+          if (data.jobId) {
+            setJobs((prev) =>
+              prev.map((j) =>
+                j.id === data.jobId
+                  ? {
+                      ...j,
+                      scannedSymbols: data.scannedSymbols ?? j.scannedSymbols,
+                      totalSymbols: data.totalSymbols ?? j.totalSymbols,
+                      opportunityCount: data.opportunityCount ?? j.opportunityCount,
+                    }
+                  : j
+              )
+            );
+          }
+          break;
 
-        switch (data.type) {
-          case "created":
-            if (data.job) {
-              setJobs((prev) => {
-                // Avoid duplicates if optimistic add already happened
-                if (prev.some((j) => j.id === data.job!.id)) {
-                  return prev;
-                }
-                return [data.job!, ...prev];
-              });
-            }
-            break;
+        case "completed":
+        case "cancelled":
+          if (data.job) {
+            setJobs((prev) => prev.map((j) => (j.id === data.job!.id ? data.job! : j)));
+          }
+          break;
 
-          case "progress":
-            if (data.jobId) {
-              setJobs((prev) =>
-                prev.map((j) =>
-                  j.id === data.jobId
-                    ? {
-                        ...j,
-                        scannedSymbols: data.scannedSymbols ?? j.scannedSymbols,
-                        totalSymbols: data.totalSymbols ?? j.totalSymbols,
-                        opportunityCount: data.opportunityCount ?? j.opportunityCount,
-                      }
-                    : j
-                )
-              );
-            }
-            break;
-
-          case "completed":
-          case "cancelled":
-            if (data.job) {
-              setJobs((prev) => prev.map((j) => (j.id === data.job!.id ? data.job! : j)));
-            }
-            break;
-
-          case "failed":
-            if (data.jobId) {
-              setJobs((prev) =>
-                prev.map((j) =>
-                  j.id === data.jobId
-                    ? { ...j, status: "failed" as const, errorMessage: data.error || "Unknown error" }
-                    : j
-                )
-              );
-            }
-            break;
-        }
-      } catch (err) {
-        console.error("Failed to parse SSE message:", err);
+        case "failed":
+          if (data.jobId) {
+            setJobs((prev) =>
+              prev.map((j) =>
+                j.id === data.jobId
+                  ? { ...j, status: "failed" as const, errorMessage: data.error || "Unknown error" }
+                  : j
+              )
+            );
+          }
+          break;
       }
-    };
+    });
 
     return () => {
-      eventSource.close();
+      removeListener();
     };
   }, []);
 

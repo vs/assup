@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { getApiBase } from "@/lib/apiConfig";
+import { useState, useEffect } from "react";
+import { useSSEConnection } from "./useSSE";
 
 export interface ConnectionStatus {
   connected: boolean;
@@ -17,39 +17,26 @@ const initialStatus: ConnectionStatus = {
   error: null,
 };
 
+// Import the singleton manager for adding listeners
+import { sseManager } from "./useSSE";
+
 export function useConnectionStatus() {
   const [status, setStatus] = useState<ConnectionStatus>(initialStatus);
-  const [sseError, setSseError] = useState<string | null>(null);
-
-  const connect = useCallback(() => {
-    const eventSource = new EventSource(`${getApiBase()}/api/connection/status`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as ConnectionStatus;
-        setStatus(data);
-        setSseError(null);
-      } catch (err) {
-        console.error("Failed to parse SSE message:", err);
-      }
-    };
-
-    eventSource.onerror = () => {
-      setSseError("Lost connection to server. Reconnecting...");
-      eventSource.close();
-      // Reconnect after 3 seconds
-      setTimeout(connect, 3000);
-    };
-
-    return eventSource;
-  }, []);
+  const { connected: sseConnected } = useSSEConnection();
 
   useEffect(() => {
-    const eventSource = connect();
-    return () => {
-      eventSource.close();
-    };
-  }, [connect]);
+    // Listen for connection status updates via the singleton SSE manager
+    const removeListener = sseManager.addListener("connection", (data) => {
+      setStatus(data as ConnectionStatus);
+    });
 
-  return { status, sseError };
+    return () => {
+      removeListener();
+    };
+  }, []);
+
+  return {
+    status,
+    sseError: sseConnected ? null : "Lost connection to server. Reconnecting...",
+  };
 }

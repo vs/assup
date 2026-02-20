@@ -141,8 +141,9 @@ app.get("/api/updates/stream", (req: Request, res: Response) => {
   // Register client
   const clientId = sseService.addClient(res);
 
-  // Send initial connection message
+  // Send initial connection message with current IBKR status
   res.write(`data: ${JSON.stringify({ type: "connected", clientId })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: "connection", data: ibkrService.getStatus() })}\n\n`);
 
   // Send keepalive every 30 seconds
   const keepalive = setInterval(() => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getApiBase } from "@/lib/apiConfig";
 
-export type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected";
+export type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job";
 
 export interface SSEMessage {
   type: SSEEventType;
@@ -149,8 +149,8 @@ class SSEManager {
   }
 }
 
-// Global singleton instance
-const sseManager = new SSEManager();
+// Global singleton instance - exported for direct use by other hooks
+export const sseManager = new SSEManager();
 
 // Hook to use the SSE connection status
 export function useSSEConnection() {
