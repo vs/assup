@@ -309,14 +309,14 @@ export const wheelService = {
         optionPosition += Math.abs(trade.quantity);
       } else if (isOption && isBuy && isPut) {
         tradeType = "BOUGHT_PUT";
-        optionPosition -= Math.abs(trade.quantity);
+        optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity));
         isWheelTrade = trade.proceeds < 0; // buyback
       } else if (isOption && isSell && isCall) {
         tradeType = "SOLD_CALL";
         optionPosition += Math.abs(trade.quantity);
       } else if (isOption && isBuy && isCall) {
         tradeType = "BOUGHT_CALL";
-        optionPosition -= Math.abs(trade.quantity);
+        optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity));
         isWheelTrade = trade.proceeds < 0; // buyback
       } else if (isStock && isBuy && (assignedOptionInfo = findAssignedOption(trade, "PUT"))) {
         tradeType = "ASSIGNED";
