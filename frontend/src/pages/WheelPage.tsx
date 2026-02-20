@@ -416,7 +416,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-4">
       {/* Cycle Summary Cards */}
-      <div className="flex gap-4 overflow-x-auto pb-2">
+      <div className="flex gap-4 overflow-x-auto p-1">
         {recentCycles.map((cycle) => (
           <Card
             key={cycle.cycleNumber}
