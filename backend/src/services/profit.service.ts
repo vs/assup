@@ -7,7 +7,6 @@ import { ibkrService } from "./ibkr.js";
 import { cnbExchangeRateService } from "./cnbExchangeRate.service.js";
 import { formatDisplayName } from "@assup/shared";
 import type { ImportedTrade } from "@prisma/client";
-import type { ExecutionDetail, CommissionReport } from "@stoqey/ib";
 import type {
   MonthSummary,
   MonthDetail,
@@ -1372,211 +1371,60 @@ class ProfitService {
   }
 
   /**
-   * Fetch today's option executions from TWS and convert to ImportedTrade-like objects
+   * Fetch today's option executions from TWS
    */
   async getTodayExecutions(): Promise<ImportedTrade[]> {
-    if (!ibkrService.isConnected()) {
-      return [];
-    }
-
-    try {
-      const { executions, commissions } = await ibkrService.getExecutions();
-      return this.convertExecutionsToTrades(executions, commissions, "OPT");
-    } catch (err) {
-      console.error("Failed to fetch today's executions:", err);
-      return [];
-    }
+    return ibkrService.getTodayTrades("OPT");
   }
 
   /**
    * Fetch today's stock executions from TWS and calculate realizedPnl from cost basis
    */
   async getTodayStockExecutions(): Promise<ImportedTrade[]> {
-    if (!ibkrService.isConnected()) {
+    const stockTrades = await ibkrService.getTodayTrades("STK");
+    if (stockTrades.length === 0) {
       return [];
     }
 
-    try {
-      const { executions, commissions } = await ibkrService.getExecutions();
-      const stockTrades = this.convertExecutionsToTrades(executions, commissions, "STK");
-
-      // For SELL trades, we need to calculate realizedPnl from cost basis
-      // Look up cost basis from existing BUY trades in the database
-      const sellTrades = stockTrades.filter((t) => t.buySell === "SELL");
-      if (sellTrades.length === 0) {
-        return stockTrades;
-      }
-
-      const symbols = [...new Set(sellTrades.map((t) => t.symbol))];
-      const buyTrades = await prisma.importedTrade.findMany({
-        where: {
-          symbol: { in: symbols },
-          secType: "STK",
-          buySell: "BUY",
-        },
-        orderBy: { tradeDate: "asc" },
-      });
-
-      // Build cost basis per symbol using FIFO
-      const costBasisMap = new Map<string, { totalQty: number; totalCost: number }>();
-      for (const buy of buyTrades) {
-        const existing = costBasisMap.get(buy.symbol) || { totalQty: 0, totalCost: 0 };
-        existing.totalQty += Math.abs(buy.quantity);
-        existing.totalCost += Math.abs(buy.quantity) * buy.tradePrice + buy.commission;
-        costBasisMap.set(buy.symbol, existing);
-      }
-
-      // Calculate realizedPnl for each sell trade
-      for (const sell of sellTrades) {
-        const costInfo = costBasisMap.get(sell.symbol);
-        if (costInfo && costInfo.totalQty > 0) {
-          const avgCostPerShare = costInfo.totalCost / costInfo.totalQty;
-          const sellQty = Math.abs(sell.quantity);
-          const costBasis = avgCostPerShare * sellQty;
-          const sellProceeds = sellQty * sell.tradePrice - sell.commission;
-          sell.costBasis = costBasis;
-          sell.realizedPnl = sellProceeds - costBasis;
-        }
-      }
-
+    // For SELL trades, calculate realizedPnl from cost basis
+    const sellTrades = stockTrades.filter((t) => t.buySell === "SELL");
+    if (sellTrades.length === 0) {
       return stockTrades;
-    } catch (err) {
-      console.error("Failed to fetch today's stock executions:", err);
-      return [];
-    }
-  }
-
-  /**
-   * Convert TWS ExecutionDetail objects to ImportedTrade-like objects
-   * for use with the existing groupOptionTrades logic
-   */
-  private convertExecutionsToTrades(
-    executions: ExecutionDetail[],
-    commissions: Map<string, CommissionReport>,
-    secTypeFilter: "OPT" | "STK" = "OPT"
-  ): ImportedTrade[] {
-    const trades: ImportedTrade[] = [];
-
-    // Group executions by execId prefix (same order fills get merged)
-    // execId format: "0000e0d5.67576f4f.01.01" - the last part is the fill number
-    const groupedByOrder = new Map<string, ExecutionDetail[]>();
-
-    for (const exec of executions) {
-      // Filter by security type
-      if (exec.contract.secType !== secTypeFilter) continue;
-
-      // Group by order (everything except last part of execId)
-      const execId = exec.execution.execId || "";
-      const orderKey = execId.split(".").slice(0, -1).join(".") || execId;
-
-      if (!groupedByOrder.has(orderKey)) {
-        groupedByOrder.set(orderKey, []);
-      }
-      groupedByOrder.get(orderKey)!.push(exec);
     }
 
-    // Convert grouped executions to trades
-    for (const [, orderExecs] of groupedByOrder) {
-      if (orderExecs.length === 0) continue;
+    const symbols = [...new Set(sellTrades.map((t) => t.symbol))];
+    const buyTrades = await prisma.importedTrade.findMany({
+      where: {
+        symbol: { in: symbols },
+        secType: "STK",
+        buySell: "BUY",
+      },
+      orderBy: { tradeDate: "asc" },
+    });
 
-      const first = orderExecs[0];
-      const contract = first.contract;
-      const exec = first.execution;
-
-      // Aggregate quantity and calculate average price for partial fills
-      let totalShares = 0;
-      let totalValue = 0;
-      let totalCommission = 0;
-
-      for (const e of orderExecs) {
-        const shares = e.execution.shares || 0;
-        const price = e.execution.price || 0;
-        totalShares += shares;
-        totalValue += shares * price;
-        // Get commission from commissions map
-        const execId = e.execution.execId || "";
-        const commissionReport = commissions.get(execId);
-        totalCommission += commissionReport?.commission || 0;
-      }
-
-      const avgPrice = totalShares > 0 ? totalValue / totalShares : 0;
-      const quantity = totalShares; // In contracts (for options) or shares (for stocks)
-
-      // Determine buy/sell and open/close
-      const side = exec.side || ""; // "BOT" or "SLD"
-      const isBuy = side === "BOT";
-
-      // Parse execution time (format: "YYYYMMDD HH:MM:SS timezone")
-      const execTime = exec.time || "";
-      let tradeDate = new Date();
-      if (execTime) {
-        const match = execTime.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-        if (match) {
-          tradeDate = new Date(
-            parseInt(match[1]),
-            parseInt(match[2]) - 1,
-            parseInt(match[3]),
-            parseInt(match[4]),
-            parseInt(match[5]),
-            parseInt(match[6])
-          );
-        }
-      }
-
-      // Parse expiry from contract (only for options)
-      const expiryStr = contract.lastTradeDateOrContractMonth || "";
-      const expiry = secTypeFilter === "OPT" ? this.parseContractExpiry(expiryStr) : null;
-
-      // Calculate proceeds (positive for selling, negative for buying)
-      // Options have a multiplier of 100, stocks have multiplier of 1
-      const multiplier = secTypeFilter === "OPT"
-        ? (contract.multiplier ? parseInt(String(contract.multiplier)) : 100)
-        : 1;
-      const proceeds = isBuy
-        ? -(quantity * avgPrice * multiplier)
-        : (quantity * avgPrice * multiplier);
-
-      // Create a synthetic ImportedTrade
-      // Use negative IDs to distinguish from database records
-      const syntheticId = `tws-${exec.execId || Date.now()}`;
-
-      const trade: ImportedTrade = {
-        id: syntheticId,
-        importBatchId: "tws-live",
-        tradeId: exec.execId || syntheticId,
-        symbol: secTypeFilter === "OPT"
-          ? (contract.localSymbol || contract.symbol || "")
-          : (contract.symbol || ""),
-        description: null,
-        conId: contract.conId || null,
-        secType: secTypeFilter,
-        strike: secTypeFilter === "OPT" ? (contract.strike || null) : null,
-        expiry,
-        right: secTypeFilter === "OPT"
-          ? ((contract.right?.charAt(0).toUpperCase() || null) as "C" | "P" | null)
-          : null,
-        underlying: secTypeFilter === "OPT" ? (contract.symbol || null) : null,
-        multiplier: secTypeFilter === "OPT"
-          ? (contract.multiplier ? parseInt(String(contract.multiplier)) : 100)
-          : 1,
-        tradeDate,
-        quantity: isBuy ? quantity : -quantity, // Negative for sells
-        tradePrice: avgPrice,
-        proceeds,
-        commission: totalCommission,
-        buySell: isBuy ? "BUY" : "SELL",
-        openClose: null, // TWS doesn't provide this directly, will infer in grouping
-        costBasis: null,
-        realizedPnl: null,
-        wasAssigned: false,
-        assignmentDate: null,
-        currency: contract.currency || "USD",
-      };
-
-      trades.push(trade);
+    // Build cost basis per symbol using FIFO
+    const costBasisMap = new Map<string, { totalQty: number; totalCost: number }>();
+    for (const buy of buyTrades) {
+      const existing = costBasisMap.get(buy.symbol) || { totalQty: 0, totalCost: 0 };
+      existing.totalQty += Math.abs(buy.quantity);
+      existing.totalCost += Math.abs(buy.quantity) * buy.tradePrice + buy.commission;
+      costBasisMap.set(buy.symbol, existing);
     }
 
-    return trades;
+    // Calculate realizedPnl for each sell trade
+    for (const sell of sellTrades) {
+      const costInfo = costBasisMap.get(sell.symbol);
+      if (costInfo && costInfo.totalQty > 0) {
+        const avgCostPerShare = costInfo.totalCost / costInfo.totalQty;
+        const sellQty = Math.abs(sell.quantity);
+        const costBasis = avgCostPerShare * sellQty;
+        const sellProceeds = sellQty * sell.tradePrice - sell.commission;
+        sell.costBasis = costBasis;
+        sell.realizedPnl = sellProceeds - costBasis;
+      }
+    }
+
+    return stockTrades;
   }
 }
 
