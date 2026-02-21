@@ -27,6 +27,7 @@ import type { WheelMatchedTrade } from "@assup/shared";
 
 interface RawTrade {
   id: string;
+  tradeId?: string;
   tradeDate: Date;
   symbol: string;
   underlying: string | null;
@@ -35,11 +36,15 @@ interface RawTrade {
   expiry: Date | null;
   right: string | null;
   quantity: number;
+  tradePrice: number;
   proceeds: number;
   commission: number;
   buySell: string;
+  openClose: string | null;
   wasAssigned: boolean;
   multiplier: number;
+  costBasis: number | null;
+  realizedPnl: number | null;
 }
 
 // Cached IBKR data to avoid redundant API calls
