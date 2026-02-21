@@ -3,7 +3,7 @@
  * Used by both profit.service.ts and wheel.service.ts
  */
 
-import type { OptionTradeGroup, StockTradeGroup, OptionTradeDetail, StockTradeDetail } from "@assup/shared";
+import { formatDisplayName, type OptionTradeGroup, type StockTradeGroup, type OptionTradeDetail, type StockTradeDetail, type WheelMatchedTrade } from "@assup/shared";
 
 // Input trade type for option grouping
 export interface OptionTradeInput {
@@ -499,4 +499,118 @@ export function groupStockTrades(
   }
 
   return result;
+}
+
+/**
+ * Convert an OptionTradeGroup to WheelMatchedTrade for display
+ */
+export function optionGroupToWheelMatchedTrade(
+  group: OptionTradeGroup,
+  symbol: string
+): WheelMatchedTrade {
+  const { openTrade, closeTrade, wasAssigned, expiredWorthless, profit } = group;
+
+  // Determine status
+  let status: WheelMatchedTrade["status"];
+  if (!closeTrade && !expiredWorthless && !wasAssigned) {
+    status = "open";
+  } else if (wasAssigned) {
+    status = "assigned";
+  } else if (expiredWorthless) {
+    status = "expired";
+  } else {
+    status = "closed";
+  }
+
+  // Build display name
+  const displayName = formatDisplayName({
+    symbol,
+    secType: "OPT",
+    strike: group.strike,
+    right: group.right,
+    lastTradeDateOrContractMonth: group.expiry.replace(/-/g, ""),
+  });
+
+  // Determine open action
+  const openAction = openTrade
+    ? openTrade.buySell === "SELL"
+      ? `Sold ${group.right === "P" ? "PUT" : "CALL"}`
+      : `Bought ${group.right === "P" ? "PUT" : "CALL"}`
+    : null;
+
+  // Determine close action
+  let closeAction: string | null = null;
+  if (closeTrade) {
+    if (wasAssigned) {
+      closeAction = group.right === "P" ? "Assigned" : "Called away";
+    } else if (expiredWorthless) {
+      closeAction = "Expired worthless";
+    } else {
+      closeAction = closeTrade.buySell === "BUY" ? "Bought back" : "Sold";
+    }
+  } else if (expiredWorthless) {
+    closeAction = "Expired worthless";
+  }
+
+  return {
+    id: openTrade?.id || closeTrade?.id || `opt-${group.underlying}-${group.strike}-${group.expiry}`,
+    type: "OPTION",
+    displayName,
+    status,
+    netPnL: status === "open" ? null : profit,
+    openLeg: openTrade
+      ? {
+          date: openTrade.tradeDate,
+          action: openAction!,
+          price: openTrade.tradePrice,
+          quantity: openTrade.quantity,
+          total: openTrade.proceeds,
+        }
+      : null,
+    closeLeg: closeTrade || expiredWorthless
+      ? {
+          date: closeTrade?.tradeDate || group.expiry,
+          action: closeAction!,
+          price: closeTrade?.tradePrice || 0,
+          quantity: closeTrade?.quantity || openTrade?.quantity || 0,
+          total: closeTrade?.proceeds || 0,
+        }
+      : null,
+  };
+}
+
+/**
+ * Convert a StockTradeGroup to WheelMatchedTrade for display
+ */
+export function stockGroupToWheelMatchedTrade(
+  group: StockTradeGroup
+): WheelMatchedTrade {
+  const { buyTrade, sellTrade, profit, quantity, symbol, costBasis } = group;
+
+  // Derive buy price from cost basis
+  const buyPrice = costBasis / quantity;
+
+  return {
+    id: sellTrade?.id || buyTrade?.id || `stk-${symbol}-${Date.now()}`,
+    type: "STOCK",
+    displayName: `${quantity} ${symbol}`,
+    status: sellTrade ? "closed" : "open",
+    netPnL: sellTrade ? profit : null,
+    openLeg: {
+      date: buyTrade?.tradeDate || "Unknown",
+      action: `Bought ${quantity} shares`,
+      price: buyPrice,
+      quantity,
+      total: -costBasis, // Negative = cash outflow
+    },
+    closeLeg: sellTrade
+      ? {
+          date: sellTrade.tradeDate,
+          action: `Sold ${quantity} shares`,
+          price: sellTrade.tradePrice,
+          quantity: sellTrade.quantity,
+          total: group.sellProceeds,
+        }
+      : null,
+  };
 }
