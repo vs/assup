@@ -311,7 +311,10 @@ function WheelTickerCard({
   const isProfitable = ticker.currentPrice && ticker.currentPrice > ticker.adjustedCostBasis;
 
   return (
-    <Card className={`${isProfitable ? "border-l-4 border-l-green-500" : ""}`}>
+    <Card
+      className={`${isProfitable ? "border-l-4 border-l-green-500" : ""}`}
+      title={isProfitable ? "Price above cost basis" : undefined}
+    >
       <CardHeader
         className="cursor-pointer hover:bg-muted/50"
         onClick={onToggle}
