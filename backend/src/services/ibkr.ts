@@ -18,6 +18,7 @@ import {
   OrderType,
   TimeInForce,
 } from "@stoqey/ib";
+import type { ImportedTrade } from "@prisma/client";
 import { Subscription } from "rxjs";
 
 export interface ConnectionStatus {
@@ -822,6 +823,164 @@ class IBKRService {
 
     // After timeout, assume order is ok if we didn't see rejection
     console.log(`Order ${orderId} confirmation timeout - assuming submitted`);
+  }
+
+  /**
+   * Parse expiry from IBKR contract format (YYYYMMDD) to Date
+   */
+  private parseContractExpiry(expiryStr: string): Date | null {
+    if (!expiryStr || expiryStr.length < 8) return null;
+    const year = parseInt(expiryStr.slice(0, 4));
+    const month = parseInt(expiryStr.slice(4, 6)) - 1;
+    const day = parseInt(expiryStr.slice(6, 8));
+    const date = new Date(year, month, day);
+    return isNaN(date.getTime()) ? null : date;
+  }
+
+  /**
+   * Convert TWS ExecutionDetail objects to ImportedTrade-like objects
+   */
+  private convertExecutionsToTrades(
+    executions: ExecutionDetail[],
+    commissions: Map<string, CommissionReport>,
+    secTypeFilter?: "OPT" | "STK"
+  ): ImportedTrade[] {
+    const trades: ImportedTrade[] = [];
+
+    // Group executions by order (same order fills get merged)
+    // execId format: "0000e0d5.67576f4f.01.01" - last part is fill number
+    const groupedByOrder = new Map<string, ExecutionDetail[]>();
+
+    for (const exec of executions) {
+      // Filter by security type if specified
+      if (secTypeFilter && exec.contract.secType !== secTypeFilter) continue;
+      if (!secTypeFilter && exec.contract.secType !== "OPT" && exec.contract.secType !== "STK") continue;
+
+      const execId = exec.execution.execId || "";
+      const orderKey = execId.split(".").slice(0, -1).join(".") || execId;
+
+      if (!groupedByOrder.has(orderKey)) {
+        groupedByOrder.set(orderKey, []);
+      }
+      groupedByOrder.get(orderKey)!.push(exec);
+    }
+
+    // Convert grouped executions to trades
+    for (const [, orderExecs] of groupedByOrder) {
+      if (orderExecs.length === 0) continue;
+
+      const first = orderExecs[0];
+      const contract = first.contract;
+      const exec = first.execution;
+      const isOption = contract.secType === "OPT";
+
+      // Aggregate quantity and calculate average price for partial fills
+      let totalShares = 0;
+      let totalValue = 0;
+      let totalCommission = 0;
+
+      for (const e of orderExecs) {
+        const shares = e.execution.shares || 0;
+        const price = e.execution.price || 0;
+        totalShares += shares;
+        totalValue += shares * price;
+        const execId = e.execution.execId || "";
+        const commissionReport = commissions.get(execId);
+        totalCommission += commissionReport?.commission || 0;
+      }
+
+      const avgPrice = totalShares > 0 ? totalValue / totalShares : 0;
+      const quantity = totalShares;
+
+      // Determine buy/sell
+      const side = exec.side || "";
+      const isBuy = side === "BOT";
+
+      // Parse execution time (format: "YYYYMMDD HH:MM:SS timezone")
+      const execTime = exec.time || "";
+      let tradeDate = new Date();
+      if (execTime) {
+        const match = execTime.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+        if (match) {
+          tradeDate = new Date(
+            parseInt(match[1]),
+            parseInt(match[2]) - 1,
+            parseInt(match[3]),
+            parseInt(match[4]),
+            parseInt(match[5]),
+            parseInt(match[6])
+          );
+        }
+      }
+
+      // Parse expiry from contract (only for options)
+      const expiryStr = contract.lastTradeDateOrContractMonth || "";
+      const expiry = isOption ? this.parseContractExpiry(expiryStr) : null;
+
+      // Calculate proceeds (positive for selling, negative for buying)
+      const multiplier = isOption
+        ? (contract.multiplier ? parseInt(String(contract.multiplier)) : 100)
+        : 1;
+      const proceeds = isBuy
+        ? -(quantity * avgPrice * multiplier)
+        : (quantity * avgPrice * multiplier);
+
+      // Create synthetic ImportedTrade with tws- prefix
+      const syntheticId = `tws-${exec.execId || Date.now()}`;
+
+      const trade: ImportedTrade = {
+        id: syntheticId,
+        importBatchId: "tws-live",
+        tradeId: exec.execId || syntheticId,
+        symbol: isOption
+          ? (contract.localSymbol || contract.symbol || "")
+          : (contract.symbol || ""),
+        description: null,
+        conId: contract.conId || null,
+        secType: contract.secType as string,
+        strike: isOption ? (contract.strike || null) : null,
+        expiry,
+        right: isOption
+          ? ((contract.right?.charAt(0).toUpperCase() || null) as "C" | "P" | null)
+          : null,
+        underlying: isOption ? (contract.symbol || null) : null,
+        multiplier,
+        tradeDate,
+        quantity: isBuy ? quantity : -quantity,
+        tradePrice: avgPrice,
+        proceeds,
+        commission: totalCommission,
+        buySell: isBuy ? "BUY" : "SELL",
+        openClose: null,
+        costBasis: null,
+        realizedPnl: null,
+        wasAssigned: false,
+        assignmentDate: null,
+        currency: contract.currency || "USD",
+      };
+
+      trades.push(trade);
+    }
+
+    return trades;
+  }
+
+  /**
+   * Fetch today's executions from TWS and convert to ImportedTrade objects
+   * @param secTypeFilter Optional filter: "OPT" for options only, "STK" for stocks only
+   */
+  async getTodayTrades(secTypeFilter?: "OPT" | "STK"): Promise<ImportedTrade[]> {
+    if (!this.isConnected()) {
+      return [];
+    }
+
+    try {
+      const { executions, commissions } = await this.getExecutions();
+      return this.convertExecutionsToTrades(executions, commissions, secTypeFilter);
+    } catch (err) {
+      console.error("Failed to fetch today's trades:", err);
+      return [];
+    }
   }
 
   async disconnect() {
