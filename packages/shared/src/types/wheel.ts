@@ -33,6 +33,34 @@ export interface WheelTrade {
   runningCostBasis: number; // cost basis per share after this trade
 }
 
+// Matched trade with open/close legs for display
+export interface WheelMatchedTrade {
+  id: string;
+  type: "OPTION" | "STOCK";
+
+  // Summary (for collapsed row)
+  displayName: string;        // "TLT Jan30'26 89 PUT" or "100 AAPL"
+  status: "open" | "closed" | "expired" | "assigned" | "called_away";
+  netPnL: number | null;      // null if still open
+
+  // Legs (for expanded view)
+  openLeg: {
+    date: string;
+    action: string;           // "Sold PUT", "Bought 100 shares"
+    price: number;            // per-share/contract price
+    quantity: number;
+    total: number;            // gross amount
+  } | null;
+
+  closeLeg: {
+    date: string;
+    action: string;           // "Bought back", "Sold", "Expired", "Assigned"
+    price: number | null;     // null if expired worthless
+    quantity: number;
+    total: number;
+  } | null;
+}
+
 // A complete wheel cycle (any period with non-zero position)
 export interface WheelCycle {
   cycleNumber: number;
@@ -46,7 +74,7 @@ export interface WheelCycle {
   roc: number; // return on capital %
   annualizedRoc: number;
   durationDays: number;
-  trades: WheelTrade[];
+  trades: WheelMatchedTrade[];
   // New fields for clarity
   entryType: "sold_put" | "bought_shares" | "assigned";
   entryDescription: string; // "Sold PUT $145" or "Bought 100 @ $148"
