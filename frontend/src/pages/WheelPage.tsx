@@ -213,7 +213,7 @@ export function WheelPage() {
 
       {/* Aggregate Metrics */}
       {data && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <MetricCard
             label="Capital Deployed"
             value={formatCurrency(data.metrics.capitalDeployed)}
@@ -227,15 +227,6 @@ export function WheelPage() {
             label="Unrealized P&L"
             value={(data.metrics.totalUnrealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalUnrealizedPnL)}
             className={data.metrics.totalUnrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
-          />
-          <MetricCard
-            label="Total P&L"
-            value={
-              (data.metrics.totalPnL >= 0 ? "+" : "") +
-              formatCurrency(data.metrics.totalPnL) +
-              (data.metrics.totalPnLPercent !== null ? ` (${data.metrics.totalPnLPercent.toFixed(1)}%)` : "")
-            }
-            className={data.metrics.totalPnL >= 0 ? "text-green-600" : "text-red-600"}
           />
           <MetricCard
             label="Yield"
@@ -373,15 +364,6 @@ function WheelTickerCard({
                 {ticker.unrealizedPnL >= 0 ? "+" : ""}{formatCurrency(ticker.unrealizedPnL)}
                 {ticker.unrealizedPnLPercent !== null && (
                   <span className="text-xs ml-1">({ticker.unrealizedPnLPercent.toFixed(1)}%)</span>
-                )}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm text-muted-foreground">Total P&L</div>
-              <div className={`font-semibold ${ticker.totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {ticker.totalPnL >= 0 ? "+" : ""}{formatCurrency(ticker.totalPnL)}
-                {ticker.totalPnLPercent !== null && (
-                  <span className="text-xs ml-1">({ticker.totalPnLPercent.toFixed(1)}%)</span>
                 )}
               </div>
             </div>
@@ -542,7 +524,6 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
 // Display cycle P&L metrics from the cycle's pre-calculated fields
 function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
   const isCompleted = cycle.status !== "in_progress";
-  const totalPnL = cycle.realizedPnL + (cycle.unrealizedPnL ?? 0);
 
   if (isCompleted) {
     // Completed cycles: show just P&L with percentage
@@ -570,10 +551,10 @@ function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCy
     );
   }
 
-  // In-progress cycles: show Realized | Unrealized | Total
+  // In-progress cycles: show Realized | Unrealized
   return (
     <div className="mt-2 space-y-2 text-sm">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <div>
           <div className="text-muted-foreground">Realized</div>
           <div className={`font-medium ${cycle.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
@@ -584,15 +565,6 @@ function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCy
           <div className="text-muted-foreground">Unrealized</div>
           <div className={`font-medium ${(cycle.unrealizedPnL ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
             {(cycle.unrealizedPnL ?? 0) >= 0 ? "+" : ""}{formatCurrency(cycle.unrealizedPnL ?? 0)}
-          </div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">Total</div>
-          <div className={`font-medium ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {totalPnL >= 0 ? "+" : ""}{formatCurrency(totalPnL)}
-            {cycle.pnlPercent !== null && (
-              <span className="text-xs ml-1">({cycle.pnlPercent.toFixed(1)}%)</span>
-            )}
           </div>
         </div>
       </div>
