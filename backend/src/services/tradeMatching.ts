@@ -446,3 +446,57 @@ export function groupOptionTrades(
 
   return result;
 }
+
+/**
+ * Group stock trades for display - uses IBKR's realizedPnl directly
+ * Returns only sell trades (realized P&L)
+ */
+export function groupStockTrades(
+  trades: StockTradeInput[],
+  assignmentMap?: AssetClassMap
+): StockTradeGroup[] {
+  const result: StockTradeGroup[] = [];
+
+  // Only process sell trades - they have the realized P&L from IBKR
+  const sells = trades.filter((t) => t.buySell === "SELL");
+
+  for (const sell of sells) {
+    // Skip sells without realized P&L data
+    if (sell.realizedPnl === null) continue;
+
+    const assetClass = assignmentMap?.get(sell.symbol);
+    const quantity = Math.abs(sell.quantity);
+    const sellProceeds = quantity * sell.tradePrice - sell.commission;
+
+    // Use IBKR's cost basis if available, otherwise derive from proceeds and P&L
+    const costBasis = sell.costBasis !== null
+      ? sell.costBasis
+      : sellProceeds - sell.realizedPnl;
+
+    const sellDetail: StockTradeDetail = {
+      id: sell.id,
+      symbol: sell.symbol,
+      tradeDate: sell.tradeDate.toISOString().split("T")[0],
+      quantity,
+      tradePrice: sell.tradePrice,
+      proceeds: quantity * sell.tradePrice,
+      commission: sell.commission,
+      buySell: sell.buySell,
+    };
+
+    result.push({
+      symbol: sell.symbol,
+      buyTrade: undefined,
+      sellTrade: sellDetail,
+      costBasis,
+      sellProceeds,
+      profit: sell.realizedPnl,
+      quantity,
+      assetClassId: assetClass?.assetClassId,
+      assetClassName: assetClass?.assetClassName,
+      assetClassColor: assetClass?.assetClassColor,
+    });
+  }
+
+  return result;
+}

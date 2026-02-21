@@ -6,7 +6,7 @@ import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
 import { cnbExchangeRateService } from "./cnbExchangeRate.service.js";
 import { formatDisplayName } from "@assup/shared";
-import { groupOptionTrades, hasExpiryPassed, type OptionTradeInput, type AssetClassMap } from "./tradeMatching.js";
+import { groupOptionTrades, groupStockTrades, hasExpiryPassed, type OptionTradeInput, type StockTradeInput, type AssetClassMap } from "./tradeMatching.js";
 import type { ImportedTrade } from "@prisma/client";
 import type {
   MonthSummary,
@@ -15,7 +15,6 @@ import type {
   MonthlyProfitResponse,
   OptionTradeGroup,
   StockTradeGroup,
-  StockTradeDetail,
   CashTransaction,
   CurrentOptionPosition,
 } from "@assup/shared";
@@ -883,66 +882,10 @@ class ProfitService {
    * Returns only sell trades (realized P&L)
    */
   private groupStockTrades(
-    trades: Array<{
-      id: string;
-      tradeId: string;
-      symbol: string;
-      tradeDate: Date;
-      quantity: number;
-      tradePrice: number;
-      proceeds: number;
-      commission: number;
-      buySell: string;
-      openClose: string | null;
-      costBasis: number | null;
-      realizedPnl: number | null;
-    }>,
-    assignmentMap?: Map<string, { assetClassId: string; assetClassName: string; assetClassColor: string }>
+    trades: StockTradeInput[],
+    assignmentMap?: AssetClassMap
   ): StockTradeGroup[] {
-    const result: StockTradeGroup[] = [];
-
-    // Only process sell trades - they have the realized P&L from IBKR
-    const sells = trades.filter((t) => t.buySell === "SELL");
-
-    for (const sell of sells) {
-      // Skip sells without realized P&L data
-      if (sell.realizedPnl === null) continue;
-
-      const assetClass = assignmentMap?.get(sell.symbol);
-      const quantity = Math.abs(sell.quantity);
-      const sellProceeds = quantity * sell.tradePrice - sell.commission;
-
-      // Use IBKR's cost basis if available, otherwise derive from proceeds and P&L
-      const costBasis = sell.costBasis !== null
-        ? sell.costBasis
-        : sellProceeds - sell.realizedPnl;
-
-      const sellDetail: StockTradeDetail = {
-        id: sell.id,
-        symbol: sell.symbol,
-        tradeDate: sell.tradeDate.toISOString().split("T")[0],
-        quantity,
-        tradePrice: sell.tradePrice,
-        proceeds: quantity * sell.tradePrice,
-        commission: sell.commission,
-        buySell: sell.buySell,
-      };
-
-      result.push({
-        symbol: sell.symbol,
-        buyTrade: undefined, // Not tracking individual buys
-        sellTrade: sellDetail,
-        costBasis,
-        sellProceeds,
-        profit: sell.realizedPnl,
-        quantity,
-        assetClassId: assetClass?.assetClassId,
-        assetClassName: assetClass?.assetClassName,
-        assetClassColor: assetClass?.assetClassColor,
-      });
-    }
-
-    return result;
+    return groupStockTrades(trades, assignmentMap);
   }
 
   /**
