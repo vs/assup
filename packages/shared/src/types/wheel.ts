@@ -80,6 +80,11 @@ export interface WheelCycle {
   entryDescription: string; // "Sold PUT $145" or "Bought 100 @ $148"
   exitType: "called_away" | "sold_shares" | "put_expired" | "cc_expired" | "in_progress";
   exitDescription: string | null; // "Called away @ $150" or null if in progress
+  // P&L fields
+  realizedPnL: number;
+  unrealizedPnL: number | null; // null if cycle complete
+  capitalDeployed: number;
+  pnlPercent: number | null;
 }
 
 // Summary view of a ticker in the wheel tracker list
@@ -102,6 +107,14 @@ export interface WheelTickerSummary {
     premium?: number;
     unrealizedPnl?: number;
   } | null;
+  // P&L fields
+  realizedPnL: number;
+  unrealizedPnL: number;
+  totalPnL: number;
+  capitalDeployed: number;
+  realizedPnLPercent: number | null;
+  unrealizedPnLPercent: number | null;
+  totalPnLPercent: number | null;
 }
 
 // Detailed view of a ticker including all cycles
@@ -129,6 +142,11 @@ export interface WheelAggregateMetrics {
   trackedCount: number;
   activeWheels: number;
   completedCycles: number;
+  // P&L fields
+  totalRealizedPnL: number;
+  totalUnrealizedPnL: number;
+  totalPnL: number;
+  totalPnLPercent: number | null;
 }
 
 // Response for wheel tracker list endpoint
