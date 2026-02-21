@@ -341,15 +341,16 @@ function WheelTickerCard({
             )}
             <div className="text-right">
               <div className="text-sm text-muted-foreground">Cost Basis</div>
-              <div className="font-semibold">
-                ${ticker.adjustedCostBasis.toFixed(2)}
-                {ticker.percentBelowMarket !== null && (
-                  <span className="text-xs text-green-600 ml-1">
-                    ({ticker.percentBelowMarket.toFixed(1)}% below)
-                  </span>
-                )}
-              </div>
+              <div className="font-semibold">${ticker.adjustedCostBasis.toFixed(2)}</div>
             </div>
+            {ticker.percentBelowMarket !== null && (
+              <div className="text-right">
+                <div className="text-sm text-muted-foreground">vs Market</div>
+                <div className={`font-semibold ${ticker.percentBelowMarket >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {ticker.percentBelowMarket >= 0 ? "-" : "+"}{Math.abs(ticker.percentBelowMarket).toFixed(1)}%
+                </div>
+              </div>
+            )}
             <div className="text-right">
               <div className="text-sm text-muted-foreground">Realized</div>
               <div className={`font-semibold ${ticker.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
