@@ -17,7 +17,7 @@ import type {
 } from "@assup/shared";
 import {
   groupOptionTrades,
-  groupStockTrades,
+  groupStockTradesForWheel,
   optionGroupToWheelMatchedTrade,
   stockGroupToWheelMatchedTrade,
   type OptionTradeInput,
@@ -292,7 +292,7 @@ export const wheelService = {
 
     // Use shared grouping logic
     const optionGroups = groupOptionTrades(optionTrades);
-    const stockGroups = groupStockTrades(stockTrades);
+    const stockGroups = groupStockTradesForWheel(stockTrades);
 
     // Convert to WheelMatchedTrade format
     const result: WheelMatchedTrade[] = [
@@ -349,10 +349,17 @@ export const wheelService = {
            !existingTradeIds.has((t as unknown as { tradeId?: string }).tradeId!)
     );
 
-    // Merge and sort by date
-    const trades = [...dbTrades, ...newExecutions].sort(
-      (a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
-    );
+    // Merge and sort by date, with STK trades before OPT trades on the same day
+    // This ensures assignments are processed correctly: stock delivery happens before option close
+    const trades = [...dbTrades, ...newExecutions].sort((a, b) => {
+      const dateA = new Date(a.tradeDate).getTime();
+      const dateB = new Date(b.tradeDate).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      // Same day: STK before OPT (assignment stock delivery before option close)
+      if (a.secType === "STK" && b.secType === "OPT") return -1;
+      if (a.secType === "OPT" && b.secType === "STK") return 1;
+      return 0;
+    });
 
     // Query assigned options to detect stock assignments
     // (wasAssigned is set on option trades, not stock trades)
@@ -467,9 +474,22 @@ export const wheelService = {
         isWheelTrade = false; // Stock trades don't contribute to premium
       }
 
-      // Handle option expiration (position closed but no BUY trade - synthetic)
+      // Handle option expiration or assignment close
       if (isOption && trade.proceeds === 0 && isBuy) {
-        tradeType = "EXPIRED";
+        // Check if this is an assignment close (the option was assigned, not expired)
+        const expiryStr = trade.expiry?.toISOString().split("T")[0];
+        const optionKey = expiryStr && trade.strike ? `${expiryStr}:${trade.strike}` : null;
+        const isAssignmentClose = optionKey && (
+          (isPut && assignedPuts.has(optionKey)) ||
+          (isCall && assignedCalls.has(optionKey))
+        );
+
+        if (isAssignmentClose) {
+          // Skip this trade entirely - the ASSIGNED/CALLED_AWAY trade already handles it
+          tradeType = null;
+        } else {
+          tradeType = "EXPIRED";
+        }
       }
 
       const newTotalPosition = sharePosition + optionPosition * 100;

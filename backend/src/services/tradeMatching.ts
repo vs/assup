@@ -450,6 +450,8 @@ export function groupOptionTrades(
 /**
  * Group stock trades for display - uses IBKR's realizedPnl directly
  * Returns only sell trades (realized P&L)
+ *
+ * NOTE: This is for the profit page. For wheel page, use groupStockTradesForWheel()
  */
 export function groupStockTrades(
   trades: StockTradeInput[],
@@ -496,6 +498,133 @@ export function groupStockTrades(
       assetClassName: assetClass?.assetClassName,
       assetClassColor: assetClass?.assetClassColor,
     });
+  }
+
+  return result;
+}
+
+/**
+ * Group stock trades for wheel display - matches BUY and SELL trades using FIFO
+ * Unlike groupStockTrades(), this tracks buy trades so we can show acquisition dates
+ */
+export function groupStockTradesForWheel(
+  trades: StockTradeInput[]
+): StockTradeGroup[] {
+  const result: StockTradeGroup[] = [];
+
+  // Separate buys and sells, sorted by date
+  const buys = trades
+    .filter((t) => t.buySell === "BUY")
+    .sort((a, b) => a.tradeDate.getTime() - b.tradeDate.getTime());
+  const sells = trades
+    .filter((t) => t.buySell === "SELL")
+    .sort((a, b) => a.tradeDate.getTime() - b.tradeDate.getTime());
+
+  // Track remaining quantity for each buy lot (FIFO matching)
+  const buyLots = buys.map((buy) => ({
+    trade: buy,
+    remainingQty: Math.abs(buy.quantity),
+  }));
+
+  // Match each sell against buy lots using FIFO
+  for (const sell of sells) {
+    let sellQtyRemaining = Math.abs(sell.quantity);
+    let matchedCostBasis = 0;
+    let matchedBuyTrade: StockTradeInput | undefined;
+    let matchedBuyQty = 0;
+    let matchedBuyPrice = 0;
+
+    for (const lot of buyLots) {
+      if (sellQtyRemaining <= 0) break;
+      if (lot.remainingQty <= 0) continue;
+
+      const matchQty = Math.min(sellQtyRemaining, lot.remainingQty);
+      const lotCostPerShare = lot.trade.tradePrice;
+      matchedCostBasis += matchQty * lotCostPerShare;
+
+      // Track the first matching buy trade for display
+      if (!matchedBuyTrade) {
+        matchedBuyTrade = lot.trade;
+      }
+      matchedBuyQty += matchQty;
+      matchedBuyPrice = (matchedBuyPrice * (matchedBuyQty - matchQty) + lotCostPerShare * matchQty) / matchedBuyQty;
+
+      lot.remainingQty -= matchQty;
+      sellQtyRemaining -= matchQty;
+    }
+
+    const quantity = Math.abs(sell.quantity);
+    const sellProceeds = quantity * sell.tradePrice - sell.commission;
+
+    // Use IBKR's realizedPnl if available, otherwise calculate from matched cost basis
+    const profit = sell.realizedPnl !== null
+      ? sell.realizedPnl
+      : sellProceeds - matchedCostBasis;
+
+    // Use IBKR's cost basis if available, otherwise use FIFO-calculated
+    const costBasis = sell.costBasis !== null
+      ? sell.costBasis
+      : matchedCostBasis;
+
+    const buyDetail: StockTradeDetail | undefined = matchedBuyTrade
+      ? {
+          id: matchedBuyTrade.id,
+          symbol: matchedBuyTrade.symbol,
+          tradeDate: matchedBuyTrade.tradeDate.toISOString().split("T")[0],
+          quantity: matchedBuyQty,
+          tradePrice: matchedBuyPrice,
+          proceeds: -matchedCostBasis,
+          commission: matchedBuyTrade.commission,
+          buySell: matchedBuyTrade.buySell,
+        }
+      : undefined;
+
+    const sellDetail: StockTradeDetail = {
+      id: sell.id,
+      symbol: sell.symbol,
+      tradeDate: sell.tradeDate.toISOString().split("T")[0],
+      quantity,
+      tradePrice: sell.tradePrice,
+      proceeds: quantity * sell.tradePrice,
+      commission: sell.commission,
+      buySell: sell.buySell,
+    };
+
+    result.push({
+      symbol: sell.symbol,
+      buyTrade: buyDetail,
+      sellTrade: sellDetail,
+      costBasis,
+      sellProceeds,
+      profit,
+      quantity,
+    });
+  }
+
+  // Add any remaining open buy positions (not yet sold)
+  for (const lot of buyLots) {
+    if (lot.remainingQty > 0) {
+      const buyDetail: StockTradeDetail = {
+        id: lot.trade.id,
+        symbol: lot.trade.symbol,
+        tradeDate: lot.trade.tradeDate.toISOString().split("T")[0],
+        quantity: lot.remainingQty,
+        tradePrice: lot.trade.tradePrice,
+        proceeds: -lot.remainingQty * lot.trade.tradePrice,
+        commission: lot.trade.commission,
+        buySell: lot.trade.buySell,
+      };
+
+      result.push({
+        symbol: lot.trade.symbol,
+        buyTrade: buyDetail,
+        sellTrade: undefined,
+        costBasis: lot.remainingQty * lot.trade.tradePrice,
+        sellProceeds: 0,
+        profit: 0,
+        quantity: lot.remainingQty,
+      });
+    }
   }
 
   return result;
