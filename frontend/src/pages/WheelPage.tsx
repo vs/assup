@@ -218,12 +218,12 @@ export function WheelPage() {
             value={formatCurrency(data.metrics.capitalDeployed)}
           />
           <MetricCard
-            label="Total Premiums"
-            value={formatCurrency(data.metrics.totalPremiums)}
-            className="text-green-600"
+            label="Total P&L"
+            value={(data.metrics.totalPremiums >= 0 ? "+" : "") + formatCurrency(data.metrics.totalPremiums)}
+            className={data.metrics.totalPremiums >= 0 ? "text-green-600" : "text-red-600"}
           />
           <MetricCard
-            label="Premium Yield"
+            label="Yield"
             value={`${data.metrics.premiumYieldAnnualized.toFixed(1)}%`}
           />
           <MetricCard
@@ -344,9 +344,9 @@ function WheelTickerCard({
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm text-muted-foreground">Premiums</div>
-              <div className="font-semibold text-green-600">
-                {formatCurrency(ticker.totalPremiums)}
+              <div className="text-sm text-muted-foreground">P&L</div>
+              <div className={`font-semibold ${ticker.totalPremiums >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {ticker.totalPremiums >= 0 ? "+" : ""}{formatCurrency(ticker.totalPremiums)}
               </div>
             </div>
             <div className="text-right">
@@ -419,7 +419,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-4">
       {/* Cycle Summary Cards */}
-      <div className="flex gap-4 overflow-x-auto p-1">
+      <div className="flex gap-4 overflow-x-auto p-2">
         {recentCycles.map((cycle) => (
           <Card
             key={cycle.cycleNumber}
@@ -469,23 +469,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
                   </div>
                 )}
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <div className="text-muted-foreground">Premium</div>
-                  <div className="text-green-600 font-medium">
-                    {formatCurrency(cycle.totalPremium)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">ROC</div>
-                  <div className="font-medium">
-                    {cycle.roc.toFixed(1)}%
-                    <span className="text-xs text-muted-foreground ml-1">
-                      ({cycle.annualizedRoc.toFixed(0)}% ann.)
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <CycleSummaryMetrics cycle={cycle} />
               <div className="text-xs text-muted-foreground mt-2">
                 {cycle.durationDays} days • {cycle.trades.length} trades
               </div>
@@ -515,6 +499,81 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
           + {detail.cycles.length - recentCycles.length} older cycle{detail.cycles.length - recentCycles.length !== 1 ? "s" : ""} not shown
         </div>
       )}
+    </div>
+  );
+}
+
+// Compute cycle-level cash flow and P&L from trades
+function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
+  // Calculate totals from trades
+  let totalCashFlow = 0;
+  let totalPnL = 0;
+
+  for (const trade of cycle.trades) {
+    switch (trade.type) {
+      case "SOLD_PUT":
+      case "SOLD_CALL":
+        // Premium received
+        totalCashFlow += trade.premium;
+        totalPnL += trade.premium;
+        break;
+      case "BOUGHT_PUT":
+      case "BOUGHT_CALL":
+        // Cost to buy back (negative premium)
+        totalCashFlow += trade.premium;
+        totalPnL += trade.premium;
+        break;
+      case "EXPIRED":
+        // No cash flow, no P&L impact (premium already counted when sold)
+        break;
+      case "ASSIGNED":
+        // Cash outflow to buy shares at strike
+        if (trade.strike) {
+          totalCashFlow -= trade.strike * trade.quantity;
+        }
+        // Not P&L - acquiring an asset
+        break;
+      case "CALLED_AWAY":
+        // Cash inflow from selling shares at strike
+        if (trade.strike) {
+          totalCashFlow += trade.strike * trade.quantity;
+        }
+        // Stock P&L would require cost basis tracking
+        break;
+      case "BOUGHT_SHARES":
+        // Cash outflow
+        totalCashFlow += trade.premium; // negative value
+        break;
+      case "SOLD_SHARES":
+        // Cash inflow
+        totalCashFlow += trade.premium; // positive value
+        break;
+    }
+  }
+
+  return (
+    <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
+      <div>
+        <div className="text-muted-foreground">Cash Flow</div>
+        <div className={`font-medium ${totalCashFlow >= 0 ? "text-green-600" : "text-red-600"}`}>
+          {totalCashFlow >= 0 ? "+" : ""}{formatCurrency(totalCashFlow)}
+        </div>
+      </div>
+      <div>
+        <div className="text-muted-foreground">P&L</div>
+        <div className={`font-medium ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+          {totalPnL >= 0 ? "+" : ""}{formatCurrency(totalPnL)}
+        </div>
+      </div>
+      <div>
+        <div className="text-muted-foreground">ROC</div>
+        <div className="font-medium">
+          {cycle.roc.toFixed(1)}%
+          <span className="text-xs text-muted-foreground ml-1">
+            ({cycle.annualizedRoc.toFixed(0)}% ann.)
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -695,15 +754,6 @@ function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]):
 function ContractLifecycleView({ cycle, symbol }: { cycle: import("@assup/shared").WheelCycle; symbol: string }) {
   const contracts = groupTradesIntoContracts(cycle.trades);
 
-  const outcomeLabels: Record<ContractLifecycle["outcome"], string> = {
-    expired: "Expired",
-    bought_back: "Bought Back",
-    assigned: "Assigned",
-    called_away: "Called Away",
-    sold: "Sold",
-    open: "Open",
-  };
-
   const outcomeColors: Record<ContractLifecycle["outcome"], string> = {
     expired: "bg-green-100 text-green-800",
     bought_back: "bg-yellow-100 text-yellow-800",
@@ -713,13 +763,9 @@ function ContractLifecycleView({ cycle, symbol }: { cycle: import("@assup/shared
     open: "bg-blue-100 text-blue-800",
   };
 
-  // Format contract name like "TLT Jan30'26 89 CALL"
+  // Format contract name like "TLT Jan30'26 89 PUT"
   const formatContractName = (contract: ContractLifecycle): string => {
-    if (contract.type === "SHARES") {
-      return `${contract.quantity} shares`;
-    }
     if (contract.strike && contract.expiry) {
-      // Convert YYYY-MM-DD to YYYYMMDD for formatDisplayName
       const expiryYYYYMMDD = contract.expiry.replace(/-/g, "");
       return formatDisplayName({
         symbol,
@@ -732,66 +778,151 @@ function ContractLifecycleView({ cycle, symbol }: { cycle: import("@assup/shared
     return symbol;
   };
 
+  // Get action descriptor based on contract type and outcome
+  const getActionDescriptor = (contract: ContractLifecycle): string => {
+    if (contract.type === "PUT" || contract.type === "CALL") {
+      const optionType = contract.type === "PUT" ? "PUT" : "CALL";
+      switch (contract.outcome) {
+        case "open":
+          return `Sold ${optionType}`;
+        case "expired":
+          return `Sold ${optionType} → expired`;
+        case "bought_back":
+          return `Sold ${optionType} → bought back`;
+        case "assigned":
+          return `Sold PUT → assigned`;
+        case "called_away":
+          return `Sold CALL → called away`;
+        default:
+          return `Sold ${optionType}`;
+      }
+    }
+    // SHARES type
+    if (contract.outcome === "open") {
+      if (contract.strike) {
+        return `Acquired ${contract.quantity} shares @ $${contract.strike.toFixed(0)}`;
+      }
+      return `Bought ${contract.quantity} shares`;
+    }
+    if (contract.outcome === "called_away") {
+      return `Sold ${contract.quantity} shares @ $${contract.strike?.toFixed(0) || "?"}`;
+    }
+    if (contract.outcome === "sold") {
+      return `Sold ${contract.quantity} shares`;
+    }
+    return `${contract.quantity} shares`;
+  };
+
+  // Calculate cash flow for the contract
+  const getCashFlow = (contract: ContractLifecycle): number => {
+    if (contract.type === "PUT" || contract.type === "CALL") {
+      // Options: premium received minus cost to close
+      return contract.openPremium + contract.closePremium;
+    }
+    // Shares: openPremium is negative for purchases, closePremium is positive for sales
+    if (contract.outcome === "open" && contract.strike) {
+      // Shares acquired via assignment - cash outflow
+      return -(contract.strike * contract.quantity);
+    }
+    if (contract.outcome === "called_away" && contract.strike) {
+      // Shares sold via call assignment - cash inflow
+      return contract.strike * contract.quantity;
+    }
+    // Direct share trades
+    return contract.openPremium + contract.closePremium;
+  };
+
+  // Calculate P&L for the contract (null if not applicable/realized)
+  const getPnL = (contract: ContractLifecycle): number | null => {
+    if (contract.type === "PUT" || contract.type === "CALL") {
+      // Options: net premium is the P&L
+      return contract.netPnL;
+    }
+    // Shares: P&L only realized when sold
+    if (contract.outcome === "open") {
+      return null; // Unrealized
+    }
+    // For shares sold, we'd need cost basis to calculate P&L
+    // Return null for now - could be enhanced if we track per-share cost basis
+    return null;
+  };
+
   return (
     <div>
       <h4 className="font-medium mb-2">
-        Contracts (Cycle {cycle.cycleNumber})
+        Trades (Cycle {cycle.cycleNumber})
       </h4>
       <div className="space-y-2">
-        {contracts.map((contract) => (
-          <div
-            key={contract.id}
-            className="flex items-center justify-between p-3 rounded bg-muted"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">
-                {formatContractName(contract)}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {contract.openDate}
-                {contract.closeDate && contract.closeDate !== contract.openDate && (
-                  <> → {contract.closeDate}</>
-                )}
-              </span>
-              <Badge className={outcomeColors[contract.outcome]}>
-                {outcomeLabels[contract.outcome]}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground">Premium</div>
-                <span
-                  className={`font-mono font-medium ${
-                    contract.netPnL >= 0 ? "text-green-600" : "text-red-600"
-                  }`}
-                >
-                  {contract.netPnL >= 0 ? "+" : ""}
-                  {formatCurrency(contract.netPnL)}
+        {contracts.map((contract) => {
+          const cashFlow = getCashFlow(contract);
+          const pnl = getPnL(contract);
+          const isOption = contract.type === "PUT" || contract.type === "CALL";
+
+          return (
+            <div
+              key={contract.id}
+              className="flex items-center justify-between p-3 rounded bg-muted"
+            >
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-3">
+                  {isOption && (
+                    <span className="text-sm font-medium">
+                      {formatContractName(contract)}
+                    </span>
+                  )}
+                  <span className="text-sm text-muted-foreground">
+                    {getActionDescriptor(contract)}
+                  </span>
+                  <Badge className={outcomeColors[contract.outcome]}>
+                    {contract.outcome === "open" ? "Open" :
+                     contract.outcome === "expired" ? "Expired" :
+                     contract.outcome === "bought_back" ? "Closed" :
+                     contract.outcome === "assigned" ? "Assigned" :
+                     contract.outcome === "called_away" ? "Called" :
+                     "Sold"}
+                  </Badge>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {contract.openDate}
+                  {contract.closeDate && contract.closeDate !== contract.openDate && (
+                    <> → {contract.closeDate}</>
+                  )}
                 </span>
               </div>
-              {contract.stockTransaction ? (
-                <div className="text-right">
-                  <div className="text-xs text-muted-foreground">
-                    {contract.stockTransaction.action === "bought" ? "Bought" : "Sold"}
-                  </div>
-                  <span className="font-mono text-sm">
-                    {contract.stockTransaction.shares} @ ${contract.stockTransaction.price.toFixed(0)}
+              <div className="flex items-center gap-6">
+                <div className="text-right min-w-[80px]">
+                  <div className="text-xs text-muted-foreground">Cash Flow</div>
+                  <span
+                    className={`font-mono font-medium ${
+                      cashFlow >= 0 ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
+                    {cashFlow >= 0 ? "+" : ""}
+                    {formatCurrency(cashFlow)}
                   </span>
                 </div>
-              ) : (
-                <div className="text-right">
-                  <div className="text-xs text-muted-foreground">Cost Basis</div>
-                  <span className="font-mono text-sm">
-                    ${contract.costBasisAfter.toFixed(2)}
-                  </span>
+                <div className="text-right min-w-[80px]">
+                  <div className="text-xs text-muted-foreground">P&L</div>
+                  {pnl !== null ? (
+                    <span
+                      className={`font-mono font-medium ${
+                        pnl >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {pnl >= 0 ? "+" : ""}
+                      {formatCurrency(pnl)}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-muted-foreground">—</span>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {contracts.length === 0 && (
           <div className="text-center text-muted-foreground py-4">
-            No contracts in this cycle
+            No trades in this cycle
           </div>
         )}
       </div>
