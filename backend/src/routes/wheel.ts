@@ -16,10 +16,9 @@ const router = Router();
 router.get(
   "/",
   asyncHandler(async (_req, res) => {
-    const [tickers, metrics] = await Promise.all([
-      wheelService.getTrackedTickers(),
-      wheelService.getAggregateMetrics(),
-    ]);
+    // Fetch tickers once, then compute metrics from the same data
+    const tickers = await wheelService.getTrackedTickers();
+    const metrics = wheelService.getAggregateMetricsFromSummaries(tickers);
     res.json({ tickers, metrics });
   })
 );

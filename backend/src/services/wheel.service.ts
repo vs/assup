@@ -33,20 +33,91 @@ interface RawTrade {
   multiplier: number;
 }
 
+// Cached IBKR data to avoid redundant API calls
+interface CachedIBKRData {
+  positions: Array<{
+    account: string;
+    contract: { secType?: string; symbol?: string; right?: string; strike?: number; lastTradeDateOrContractMonth?: string };
+    pos: number;
+    avgCost: number;
+    marketPrice?: number;
+    marketValue?: number;
+  }>;
+  todayTrades: RawTrade[];
+  marketPrices: Map<string, number>;
+}
+
 export const wheelService = {
+  /**
+   * Fetch all IBKR data needed for wheel calculations in one batch
+   */
+  async fetchIBKRData(symbols: string[]): Promise<CachedIBKRData> {
+    const result: CachedIBKRData = {
+      positions: [],
+      todayTrades: [],
+      marketPrices: new Map(),
+    };
+
+    if (!ibkrService.isConnected()) {
+      return result;
+    }
+
+    try {
+      // Fetch positions and today's trades in parallel
+      const [positions, todayTrades] = await Promise.all([
+        ibkrService.getPositions().catch(() => []),
+        ibkrService.getTodayTrades().catch(() => []),
+      ]);
+
+      result.positions = positions;
+      result.todayTrades = todayTrades as unknown as RawTrade[];
+
+      // Fetch market prices for all symbols in parallel
+      if (symbols.length > 0) {
+        const pricePromises = symbols.map(async (symbol) => {
+          try {
+            const contract = {
+              symbol,
+              secType: SecType.STK,
+              exchange: "SMART",
+              currency: "USD",
+            };
+            const data = await ibkrService.getMarketData(contract);
+            const price = data?.last ?? data?.close;
+            if (price != null) {
+              result.marketPrices.set(symbol, price);
+            }
+          } catch {
+            // Skip symbols that fail to fetch
+          }
+        });
+        await Promise.all(pricePromises);
+      }
+    } catch (err) {
+      console.error("Failed to fetch IBKR data:", err);
+    }
+
+    return result;
+  },
+
   /**
    * Get all tracked tickers with summary data
    */
-  async getTrackedTickers(): Promise<WheelTickerSummary[]> {
+  async getTrackedTickers(cachedData?: CachedIBKRData): Promise<WheelTickerSummary[]> {
     const trackers = await prisma.wheelTracker.findMany({
       orderBy: { createdAt: "desc" },
     });
 
-    const summaries: WheelTickerSummary[] = [];
-    for (const tracker of trackers) {
-      const summary = await this.getTickerSummary(tracker.symbol, tracker.startDate);
-      summaries.push(summary);
-    }
+    // Fetch IBKR data once if not provided
+    const symbols = trackers.map(t => t.symbol);
+    const ibkrData = cachedData ?? await this.fetchIBKRData(symbols);
+
+    // Process all tickers in parallel
+    const summaries = await Promise.all(
+      trackers.map(tracker =>
+        this.getTickerSummary(tracker.symbol, tracker.startDate, ibkrData)
+      )
+    );
 
     // Sort: active positions first, then by most recent activity
     return summaries.sort((a, b) => {
@@ -66,40 +137,43 @@ export const wheelService = {
 
     if (!tracker) return null;
 
-    const summary = await this.getTickerSummary(symbol, tracker.startDate);
-    const cycles = await this.reconstructCycles(symbol, tracker.startDate);
+    // Fetch IBKR data once
+    const ibkrData = await this.fetchIBKRData([symbol]);
+
+    // Get cycles first, then pass to summary to avoid duplicate reconstruction
+    const cycles = await this.reconstructCycles(symbol, tracker.startDate, ibkrData.todayTrades);
+    const summary = await this.getTickerSummaryWithCycles(symbol, tracker.startDate, cycles, ibkrData);
 
     return { ...summary, cycles };
   },
 
   /**
    * Get ticker summary with current state and metrics
+   * Uses cached IBKR data to avoid redundant API calls
    */
-  async getTickerSummary(symbol: string, startDate: Date | null): Promise<WheelTickerSummary> {
-    const cycles = await this.reconstructCycles(symbol, startDate);
+  async getTickerSummary(symbol: string, startDate: Date | null, cachedData?: CachedIBKRData): Promise<WheelTickerSummary> {
+    const todayTrades = cachedData?.todayTrades ?? [];
+    const cycles = await this.reconstructCycles(symbol, startDate, todayTrades);
+    return this.getTickerSummaryWithCycles(symbol, startDate, cycles, cachedData);
+  },
+
+  /**
+   * Get ticker summary with pre-computed cycles (avoids duplicate cycle reconstruction)
+   */
+  async getTickerSummaryWithCycles(
+    symbol: string,
+    startDate: Date | null,
+    cycles: WheelCycle[],
+    cachedData?: CachedIBKRData
+  ): Promise<WheelTickerSummary> {
     const completedCycles = cycles.filter((c) => c.status !== "in_progress");
     const currentCycle = cycles.find((c) => c.status === "in_progress");
 
     // Calculate totals
     const totalPremiums = cycles.reduce((sum, c) => sum + c.totalPremium, 0);
 
-    // Determine current phase from IBKR positions
-    let positions: Array<{
-      account: string;
-      contract: { secType?: string; symbol?: string; right?: string; strike?: number; lastTradeDateOrContractMonth?: string };
-      pos: number;
-      avgCost: number;
-      marketPrice?: number;
-      marketValue?: number;
-    }> = [];
-
-    try {
-      if (ibkrService.isConnected()) {
-        positions = await ibkrService.getPositions();
-      }
-    } catch {
-      // If positions fetch fails, continue with empty positions
-    }
+    // Use cached positions or empty array
+    const positions = cachedData?.positions ?? [];
 
     const optionPos = positions.find(
       (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos !== 0
@@ -169,22 +243,8 @@ export const wheelService = {
       }
     }
 
-    // Get current price from market data
-    let currentPrice: number | null = null;
-    try {
-      if (ibkrService.isConnected()) {
-        const stockContract = {
-          symbol,
-          secType: SecType.STK,
-          exchange: "SMART",
-          currency: "USD",
-        };
-        const marketData = await ibkrService.getMarketData(stockContract);
-        currentPrice = marketData?.last ?? marketData?.close ?? null;
-      }
-    } catch {
-      // If market data fetch fails, continue with null price
-    }
+    // Get current price from cached market data
+    const currentPrice = cachedData?.marketPrices.get(symbol) ?? null;
 
     const breakEven = adjustedCostBasis;
     const percentBelowMarket = currentPrice && adjustedCostBasis > 0
@@ -206,22 +266,20 @@ export const wheelService = {
   },
 
   /**
-   * Fetch today's executions for a specific symbol from TWS
+   * Filter cached today's trades for a specific symbol
    */
-  async getTodayExecutionsForSymbol(symbol: string): Promise<RawTrade[]> {
-    const allTrades = await ibkrService.getTodayTrades();
-
-    // Filter to trades matching this symbol (underlying for options, symbol for stocks)
+  filterTodayTradesForSymbol(allTrades: RawTrade[], symbol: string): RawTrade[] {
     return allTrades.filter(t =>
       t.underlying === symbol || t.symbol === symbol
-    ) as unknown as RawTrade[];
+    );
   },
 
   /**
    * Reconstruct wheel cycles from trade history
    * A cycle = any period where position (shares + options) is non-zero
+   * @param cachedTodayTrades - Pre-fetched today's trades to avoid redundant API calls
    */
-  async reconstructCycles(symbol: string, startDate: Date | null): Promise<WheelCycle[]> {
+  async reconstructCycles(symbol: string, startDate: Date | null, cachedTodayTrades?: RawTrade[]): Promise<WheelCycle[]> {
     // Get all trades for this underlying
     const whereClause: Record<string, unknown> = {
       OR: [
@@ -239,8 +297,14 @@ export const wheelService = {
       orderBy: { tradeDate: "asc" },
     }) as RawTrade[];
 
-    // Fetch today's executions from TWS and merge with database trades
-    const todayExecutions = await this.getTodayExecutionsForSymbol(symbol);
+    // Use cached today's executions or fetch if not provided
+    let todayExecutions: RawTrade[];
+    if (cachedTodayTrades) {
+      todayExecutions = this.filterTodayTradesForSymbol(cachedTodayTrades, symbol);
+    } else {
+      const allTrades = await ibkrService.getTodayTrades().catch(() => []);
+      todayExecutions = this.filterTodayTradesForSymbol(allTrades as unknown as RawTrade[], symbol);
+    }
 
     // Deduplicate by tradeId to avoid showing same trade twice
     const existingTradeIds = new Set(
@@ -525,8 +589,9 @@ export const wheelService = {
 
   /**
    * Get ticker suggestions based on option selling activity
+   * @param cachedPositions - Pre-fetched positions to avoid redundant API calls
    */
-  async getSuggestions(): Promise<WheelSuggestion[]> {
+  async getSuggestions(cachedPositions?: CachedIBKRData["positions"]): Promise<WheelSuggestion[]> {
     // Get already tracked symbols
     const tracked = await prisma.wheelTracker.findMany({
       select: { symbol: true },
@@ -541,20 +606,14 @@ export const wheelService = {
 
     // Check IBKR positions to identify which symbols have active positions
     const activePositionSymbols = new Set<string>();
-    try {
-      if (ibkrService.isConnected()) {
-        const positions = await ibkrService.getPositions();
-        for (const pos of positions) {
-          if (pos.pos !== 0) {
-            const symbol = pos.contract.symbol;
-            if (symbol) {
-              activePositionSymbols.add(symbol);
-            }
-          }
+    const positions = cachedPositions ?? (ibkrService.isConnected() ? await ibkrService.getPositions().catch(() => []) : []);
+    for (const pos of positions) {
+      if (pos.pos !== 0) {
+        const symbol = pos.contract.symbol;
+        if (symbol) {
+          activePositionSymbols.add(symbol);
         }
       }
-    } catch {
-      // If positions fetch fails, continue without active position info
     }
 
     // Find symbols with sold options
@@ -611,10 +670,9 @@ export const wheelService = {
 
   /**
    * Calculate aggregate metrics across all tracked tickers
+   * @param summaries - Pre-computed summaries to avoid redundant fetching
    */
-  async getAggregateMetrics(): Promise<WheelAggregateMetrics> {
-    const summaries = await this.getTrackedTickers();
-
+  getAggregateMetricsFromSummaries(summaries: WheelTickerSummary[]): WheelAggregateMetrics {
     let capitalDeployed = 0;
     let totalPremiums = 0;
     let completedCycles = 0;
@@ -653,6 +711,15 @@ export const wheelService = {
       activeWheels,
       completedCycles,
     };
+  },
+
+  /**
+   * Calculate aggregate metrics across all tracked tickers
+   * @deprecated Use getAggregateMetricsFromSummaries with pre-fetched summaries for better performance
+   */
+  async getAggregateMetrics(): Promise<WheelAggregateMetrics> {
+    const summaries = await this.getTrackedTickers();
+    return this.getAggregateMetricsFromSummaries(summaries);
   },
 
   /**
