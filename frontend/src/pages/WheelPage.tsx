@@ -4,8 +4,9 @@ import type {
   WheelListResponse,
   WheelTickerSummary,
   WheelSuggestion,
+  WheelMatchedTrade,
 } from "@assup/shared";
-import { formatCurrency, formatDisplayName } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -480,7 +481,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
 
       {/* Contract Lifecycles (for selected cycle) */}
       {selectedCycle && (
-        <ContractLifecycleView cycle={selectedCycle} symbol={symbol} />
+        <CycleTradesView cycle={selectedCycle} />
       )}
 
       {/* Messages for empty/filtered states */}
@@ -503,51 +504,23 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   );
 }
 
-// Compute cycle-level cash flow and P&L from trades
+// Compute cycle-level cash flow and P&L from matched trades
 function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
-  // Calculate totals from trades
+  // Calculate totals from matched trades
   let totalCashFlow = 0;
   let totalPnL = 0;
 
   for (const trade of cycle.trades) {
-    switch (trade.type) {
-      case "SOLD_PUT":
-      case "SOLD_CALL":
-        // Premium received
-        totalCashFlow += trade.premium;
-        totalPnL += trade.premium;
-        break;
-      case "BOUGHT_PUT":
-      case "BOUGHT_CALL":
-        // Cost to buy back (negative premium)
-        totalCashFlow += trade.premium;
-        totalPnL += trade.premium;
-        break;
-      case "EXPIRED":
-        // No cash flow, no P&L impact (premium already counted when sold)
-        break;
-      case "ASSIGNED":
-        // Cash outflow to buy shares at strike
-        if (trade.strike) {
-          totalCashFlow -= trade.strike * trade.quantity;
-        }
-        // Not P&L - acquiring an asset
-        break;
-      case "CALLED_AWAY":
-        // Cash inflow from selling shares at strike
-        if (trade.strike) {
-          totalCashFlow += trade.strike * trade.quantity;
-        }
-        // Stock P&L would require cost basis tracking
-        break;
-      case "BOUGHT_SHARES":
-        // Cash outflow
-        totalCashFlow += trade.premium; // negative value
-        break;
-      case "SOLD_SHARES":
-        // Cash inflow
-        totalCashFlow += trade.premium; // positive value
-        break;
+    // Cash flow: sum of open and close leg totals
+    if (trade.openLeg) {
+      totalCashFlow += trade.openLeg.total;
+    }
+    if (trade.closeLeg) {
+      totalCashFlow += trade.closeLeg.total;
+    }
+    // P&L: only count if the trade is closed
+    if (trade.netPnL !== null) {
+      totalPnL += trade.netPnL;
     }
   }
 
@@ -578,349 +551,113 @@ function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCy
   );
 }
 
-// Types for grouped contract view
-interface ContractLifecycle {
-  id: string;
-  type: "PUT" | "CALL" | "SHARES";
-  strike: number | null;
-  expiry: string | null;
-  openDate: string;
-  closeDate: string | null;
-  outcome: "expired" | "bought_back" | "assigned" | "called_away" | "sold" | "open";
-  openPremium: number;
-  closePremium: number;
-  netPnL: number;
-  costBasisAfter: number;
-  quantity: number;
-  // For assigned/called_away: info about the stock transaction
-  stockTransaction?: {
-    action: "bought" | "sold";
-    shares: number;
-    price: number;
-  };
-}
+function MatchedTradeRow({ trade }: { trade: WheelMatchedTrade }) {
+  const [expanded, setExpanded] = useState(false);
 
-function groupTradesIntoContracts(trades: import("@assup/shared").WheelTrade[]): ContractLifecycle[] {
-  const contracts: ContractLifecycle[] = [];
-  const usedTradeIds = new Set<string>();
-
-  // Process option sells first (SOLD_PUT, SOLD_CALL)
-  for (const trade of trades) {
-    if (usedTradeIds.has(trade.id)) continue;
-
-    if (trade.type === "SOLD_PUT" || trade.type === "SOLD_CALL") {
-      const isPut = trade.type === "SOLD_PUT";
-      usedTradeIds.add(trade.id);
-
-      // Find matching close trade (same strike and expiry)
-      const closeTrade = trades.find((t) => {
-        if (usedTradeIds.has(t.id)) return false;
-        if (t.strike !== trade.strike || t.expiry !== trade.expiry) return false;
-
-        if (isPut) {
-          return t.type === "BOUGHT_PUT" || t.type === "EXPIRED" || t.type === "ASSIGNED";
-        } else {
-          return t.type === "BOUGHT_CALL" || t.type === "EXPIRED" || t.type === "CALLED_AWAY";
-        }
-      });
-
-      let outcome: ContractLifecycle["outcome"] = "open";
-      let closePremium = 0;
-      let closeDate: string | null = null;
-      let costBasisAfter = trade.runningCostBasis;
-
-      let stockTransaction: ContractLifecycle["stockTransaction"];
-
-      if (closeTrade) {
-        usedTradeIds.add(closeTrade.id);
-        closeDate = closeTrade.tradeDate;
-        costBasisAfter = closeTrade.runningCostBasis;
-
-        if (closeTrade.type === "BOUGHT_PUT" || closeTrade.type === "BOUGHT_CALL") {
-          outcome = "bought_back";
-          closePremium = closeTrade.premium; // Buyback cost counts as P&L
-        } else if (closeTrade.type === "EXPIRED") {
-          outcome = "expired";
-          // closePremium stays 0 - full premium kept
-        } else if (closeTrade.type === "ASSIGNED") {
-          outcome = "assigned";
-          // Stock purchase is NOT P&L - it's acquiring an asset
-          // closePremium stays 0 - option premium is the only P&L
-          stockTransaction = {
-            action: "bought",
-            shares: closeTrade.quantity,
-            price: trade.strike || 0,
-          };
-        } else if (closeTrade.type === "CALLED_AWAY") {
-          outcome = "called_away";
-          // Stock sale is NOT option P&L - it's disposing an asset
-          // closePremium stays 0 - option premium is the only P&L
-          stockTransaction = {
-            action: "sold",
-            shares: closeTrade.quantity,
-            price: trade.strike || 0,
-          };
-        }
-      }
-
-      contracts.push({
-        id: trade.id,
-        type: isPut ? "PUT" : "CALL",
-        strike: trade.strike,
-        expiry: trade.expiry,
-        openDate: trade.tradeDate,
-        closeDate,
-        outcome,
-        openPremium: trade.premium,
-        closePremium,
-        netPnL: trade.premium + closePremium,
-        costBasisAfter,
-        quantity: trade.quantity,
-        stockTransaction,
-      });
-    }
-  }
-
-  // Process stock trades (BOUGHT_SHARES, SOLD_SHARES)
-  for (const trade of trades) {
-    if (usedTradeIds.has(trade.id)) continue;
-
-    if (trade.type === "BOUGHT_SHARES") {
-      usedTradeIds.add(trade.id);
-      contracts.push({
-        id: trade.id,
-        type: "SHARES",
-        strike: null,
-        expiry: null,
-        openDate: trade.tradeDate,
-        closeDate: null,
-        outcome: "open",
-        openPremium: trade.premium, // negative for purchase
-        closePremium: 0,
-        netPnL: trade.premium,
-        costBasisAfter: trade.runningCostBasis,
-        quantity: trade.quantity,
-      });
-    } else if (trade.type === "SOLD_SHARES") {
-      usedTradeIds.add(trade.id);
-      contracts.push({
-        id: trade.id,
-        type: "SHARES",
-        strike: null,
-        expiry: null,
-        openDate: trade.tradeDate,
-        closeDate: trade.tradeDate,
-        outcome: "sold",
-        openPremium: 0,
-        closePremium: trade.premium,
-        netPnL: trade.premium,
-        costBasisAfter: trade.runningCostBasis,
-        quantity: trade.quantity,
-      });
-    }
-  }
-
-  // Process ASSIGNED trades as share acquisitions (already used as close trade for PUT,
-  // but should also appear as shares held)
-  for (const trade of trades) {
-    if (trade.type === "ASSIGNED") {
-      // Find if there's a subsequent SOLD_SHARES or CALLED_AWAY for these shares
-      const closeTrade = trades.find((t) => {
-        if (t.tradeDate <= trade.tradeDate) return false;
-        return t.type === "SOLD_SHARES" || t.type === "CALLED_AWAY";
-      });
-
-      contracts.push({
-        id: `${trade.id}-shares`,
-        type: "SHARES",
-        strike: trade.strike,
-        expiry: null,
-        openDate: trade.tradeDate,
-        closeDate: closeTrade?.tradeDate || null,
-        outcome: closeTrade ? (closeTrade.type === "CALLED_AWAY" ? "called_away" : "sold") : "open",
-        openPremium: 0, // Cost shown via strike price, not as negative premium
-        closePremium: closeTrade?.premium || 0,
-        netPnL: closeTrade?.premium || 0,
-        costBasisAfter: trade.runningCostBasis,
-        quantity: trade.quantity,
-      });
-    }
-  }
-
-  // Sort by open date
-  return contracts.sort((a, b) => a.openDate.localeCompare(b.openDate));
-}
-
-function ContractLifecycleView({ cycle, symbol }: { cycle: import("@assup/shared").WheelCycle; symbol: string }) {
-  const contracts = groupTradesIntoContracts(cycle.trades);
-
-  const outcomeColors: Record<ContractLifecycle["outcome"], string> = {
-    expired: "bg-green-100 text-green-800",
-    bought_back: "bg-yellow-100 text-yellow-800",
-    assigned: "bg-blue-100 text-blue-800",
-    called_away: "bg-purple-100 text-purple-800",
-    sold: "bg-gray-100 text-gray-800",
+  const statusColors: Record<WheelMatchedTrade["status"], string> = {
     open: "bg-blue-100 text-blue-800",
+    closed: "bg-gray-100 text-gray-800",
+    expired: "bg-green-100 text-green-800",
+    assigned: "bg-yellow-100 text-yellow-800",
+    called_away: "bg-purple-100 text-purple-800",
   };
 
-  // Format contract name like "TLT Jan30'26 89 PUT"
-  const formatContractName = (contract: ContractLifecycle): string => {
-    if (contract.strike && contract.expiry) {
-      const expiryYYYYMMDD = contract.expiry.replace(/-/g, "");
-      return formatDisplayName({
-        symbol,
-        secType: "OPT",
-        strike: contract.strike,
-        right: contract.type === "PUT" ? "P" : "C",
-        lastTradeDateOrContractMonth: expiryYYYYMMDD,
-      });
-    }
-    return symbol;
-  };
-
-  // Get action descriptor based on contract type and outcome
-  const getActionDescriptor = (contract: ContractLifecycle): string => {
-    if (contract.type === "PUT" || contract.type === "CALL") {
-      const optionType = contract.type === "PUT" ? "PUT" : "CALL";
-      switch (contract.outcome) {
-        case "open":
-          return `Sold ${optionType}`;
-        case "expired":
-          return `Sold ${optionType} → expired`;
-        case "bought_back":
-          return `Sold ${optionType} → bought back`;
-        case "assigned":
-          return `Sold PUT → assigned`;
-        case "called_away":
-          return `Sold CALL → called away`;
-        default:
-          return `Sold ${optionType}`;
-      }
-    }
-    // SHARES type
-    if (contract.outcome === "open") {
-      if (contract.strike) {
-        return `Acquired ${contract.quantity} shares @ $${contract.strike.toFixed(0)}`;
-      }
-      return `Bought ${contract.quantity} shares`;
-    }
-    if (contract.outcome === "called_away") {
-      return `Sold ${contract.quantity} shares @ $${contract.strike?.toFixed(0) || "?"}`;
-    }
-    if (contract.outcome === "sold") {
-      return `Sold ${contract.quantity} shares`;
-    }
-    return `${contract.quantity} shares`;
-  };
-
-  // Calculate cash flow for the contract
-  const getCashFlow = (contract: ContractLifecycle): number => {
-    if (contract.type === "PUT" || contract.type === "CALL") {
-      // Options: premium received minus cost to close
-      return contract.openPremium + contract.closePremium;
-    }
-    // Shares: openPremium is negative for purchases, closePremium is positive for sales
-    if (contract.outcome === "open" && contract.strike) {
-      // Shares acquired via assignment - cash outflow
-      return -(contract.strike * contract.quantity);
-    }
-    if (contract.outcome === "called_away" && contract.strike) {
-      // Shares sold via call assignment - cash inflow
-      return contract.strike * contract.quantity;
-    }
-    // Direct share trades
-    return contract.openPremium + contract.closePremium;
-  };
-
-  // Calculate P&L for the contract (null if not applicable/realized)
-  const getPnL = (contract: ContractLifecycle): number | null => {
-    if (contract.type === "PUT" || contract.type === "CALL") {
-      // Options: net premium is the P&L
-      return contract.netPnL;
-    }
-    // Shares: P&L only realized when sold
-    if (contract.outcome === "open") {
-      return null; // Unrealized
-    }
-    // For shares sold, we'd need cost basis to calculate P&L
-    // Return null for now - could be enhanced if we track per-share cost basis
-    return null;
+  const statusLabels: Record<WheelMatchedTrade["status"], string> = {
+    open: "Open",
+    closed: "Closed",
+    expired: "Expired",
+    assigned: "Assigned",
+    called_away: "Called",
   };
 
   return (
-    <div>
-      <h4 className="font-medium mb-2">
-        Trades (Cycle {cycle.cycleNumber})
-      </h4>
-      <div className="space-y-2">
-        {contracts.map((contract) => {
-          const cashFlow = getCashFlow(contract);
-          const pnl = getPnL(contract);
-          const isOption = contract.type === "PUT" || contract.type === "CALL";
-
-          return (
-            <div
-              key={contract.id}
-              className="flex items-center justify-between p-3 rounded bg-muted"
+    <div className="rounded bg-muted">
+      {/* Summary row (always visible) */}
+      <div
+        className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/80"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-3">
+          <span className="font-medium">{trade.displayName}</span>
+          <Badge className={statusColors[trade.status]}>
+            {statusLabels[trade.status]}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-4">
+          {trade.netPnL !== null ? (
+            <span
+              className={`font-mono font-medium ${
+                trade.netPnL >= 0 ? "text-green-600" : "text-red-600"
+              }`}
             >
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-3">
-                  {isOption && (
-                    <span className="text-sm font-medium">
-                      {formatContractName(contract)}
-                    </span>
-                  )}
-                  <span className="text-sm text-muted-foreground">
-                    {getActionDescriptor(contract)}
-                  </span>
-                  <Badge className={outcomeColors[contract.outcome]}>
-                    {contract.outcome === "open" ? "Open" :
-                     contract.outcome === "expired" ? "Expired" :
-                     contract.outcome === "bought_back" ? "Closed" :
-                     contract.outcome === "assigned" ? "Assigned" :
-                     contract.outcome === "called_away" ? "Called" :
-                     "Sold"}
-                  </Badge>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {contract.openDate}
-                  {contract.closeDate && contract.closeDate !== contract.openDate && (
-                    <> → {contract.closeDate}</>
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center gap-6">
-                <div className="text-right min-w-[80px]">
-                  <div className="text-xs text-muted-foreground">Cash Flow</div>
-                  <span
-                    className={`font-mono font-medium ${
-                      cashFlow >= 0 ? "text-green-600" : "text-red-600"
-                    }`}
-                  >
-                    {cashFlow >= 0 ? "+" : ""}
-                    {formatCurrency(cashFlow)}
-                  </span>
-                </div>
-                <div className="text-right min-w-[80px]">
-                  <div className="text-xs text-muted-foreground">P&L</div>
-                  {pnl !== null ? (
-                    <span
-                      className={`font-mono font-medium ${
-                        pnl >= 0 ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {pnl >= 0 ? "+" : ""}
-                      {formatCurrency(pnl)}
-                    </span>
-                  ) : (
-                    <span className="font-mono text-muted-foreground">—</span>
-                  )}
-                </div>
-              </div>
+              {trade.netPnL >= 0 ? "+" : ""}
+              {formatCurrency(trade.netPnL)}
+            </span>
+          ) : (
+            <span className="font-mono text-muted-foreground">—</span>
+          )}
+          {expanded ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </div>
+      </div>
+
+      {/* Expanded legs (collapsible) */}
+      {expanded && (
+        <div className="px-3 pb-3 pt-0 space-y-1 text-sm border-t border-border/50">
+          {trade.openLeg && (
+            <div className="flex justify-between text-muted-foreground pt-2">
+              <span>
+                {trade.openLeg.date}: {trade.openLeg.action}
+                {trade.openLeg.price > 0 && (
+                  <span className="ml-1">@ ${trade.openLeg.price.toFixed(2)}</span>
+                )}
+              </span>
+              <span
+                className={
+                  trade.openLeg.total >= 0 ? "text-green-600" : "text-red-600"
+                }
+              >
+                {trade.openLeg.total >= 0 ? "+" : ""}
+                {formatCurrency(trade.openLeg.total)}
+              </span>
             </div>
-          );
-        })}
-        {contracts.length === 0 && (
+          )}
+          {trade.closeLeg && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>
+                {trade.closeLeg.date}: {trade.closeLeg.action}
+                {trade.closeLeg.price !== null && trade.closeLeg.price > 0 && (
+                  <span className="ml-1">@ ${trade.closeLeg.price.toFixed(2)}</span>
+                )}
+              </span>
+              <span
+                className={
+                  trade.closeLeg.total >= 0 ? "text-green-600" : "text-red-600"
+                }
+              >
+                {trade.closeLeg.total >= 0 ? "+" : ""}
+                {formatCurrency(trade.closeLeg.total)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
+  return (
+    <div>
+      <h4 className="font-medium mb-2">Trades (Cycle {cycle.cycleNumber})</h4>
+      <div className="space-y-2">
+        {cycle.trades.map((trade) => (
+          <MatchedTradeRow key={trade.id} trade={trade} />
+        ))}
+        {cycle.trades.length === 0 && (
           <div className="text-center text-muted-foreground py-4">
             No trades in this cycle
           </div>
