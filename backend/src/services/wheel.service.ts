@@ -59,6 +59,7 @@ interface CachedIBKRData {
   }>;
   todayTrades: RawTrade[];
   marketPrices: Map<string, number>;
+  optionPrices: Map<string, number>;  // key: "SYMBOL-STRIKE-EXPIRY-RIGHT" -> price per share
 }
 
 export const wheelService = {
@@ -70,6 +71,7 @@ export const wheelService = {
       positions: [],
       todayTrades: [],
       marketPrices: new Map(),
+      optionPrices: new Map(),
     };
 
     if (!ibkrService.isConnected()) {
@@ -85,6 +87,21 @@ export const wheelService = {
 
       result.positions = positions;
       result.todayTrades = todayTrades as unknown as RawTrade[];
+
+      // Populate option prices from positions
+      for (const pos of positions) {
+        if (pos.contract.secType === "OPT" && pos.marketPrice != null) {
+          const symbol = pos.contract.symbol;
+          const strike = pos.contract.strike;
+          const expiry = pos.contract.lastTradeDateOrContractMonth;
+          const right = pos.contract.right;
+          if (symbol && strike != null && expiry && right) {
+            // Key format: "SYMBOL-STRIKE-EXPIRY-RIGHT" (e.g., "AAPL-150-20240315-C")
+            const key = `${symbol}-${strike}-${expiry}-${right}`;
+            result.optionPrices.set(key, pos.marketPrice);
+          }
+        }
+      }
 
       // Fetch market prices for all symbols in parallel
       if (symbols.length > 0) {
