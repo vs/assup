@@ -213,15 +213,29 @@ export function WheelPage() {
 
       {/* Aggregate Metrics */}
       {data && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
           <MetricCard
             label="Capital Deployed"
             value={formatCurrency(data.metrics.capitalDeployed)}
           />
           <MetricCard
+            label="Realized P&L"
+            value={(data.metrics.totalRealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalRealizedPnL)}
+            className={data.metrics.totalRealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
+          />
+          <MetricCard
+            label="Unrealized P&L"
+            value={(data.metrics.totalUnrealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalUnrealizedPnL)}
+            className={data.metrics.totalUnrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
+          />
+          <MetricCard
             label="Total P&L"
-            value={(data.metrics.totalPremiums >= 0 ? "+" : "") + formatCurrency(data.metrics.totalPremiums)}
-            className={data.metrics.totalPremiums >= 0 ? "text-green-600" : "text-red-600"}
+            value={
+              (data.metrics.totalPnL >= 0 ? "+" : "") +
+              formatCurrency(data.metrics.totalPnL) +
+              (data.metrics.totalPnLPercent !== null ? ` (${data.metrics.totalPnLPercent.toFixed(1)}%)` : "")
+            }
+            className={data.metrics.totalPnL >= 0 ? "text-green-600" : "text-red-600"}
           />
           <MetricCard
             label="Yield"
@@ -345,9 +359,30 @@ function WheelTickerCard({
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm text-muted-foreground">P&L</div>
-              <div className={`font-semibold ${ticker.totalPremiums >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {ticker.totalPremiums >= 0 ? "+" : ""}{formatCurrency(ticker.totalPremiums)}
+              <div className="text-sm text-muted-foreground">Realized</div>
+              <div className={`font-semibold ${ticker.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {ticker.realizedPnL >= 0 ? "+" : ""}{formatCurrency(ticker.realizedPnL)}
+                {ticker.realizedPnLPercent !== null && (
+                  <span className="text-xs ml-1">({ticker.realizedPnLPercent.toFixed(1)}%)</span>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-muted-foreground">Unrealized</div>
+              <div className={`font-semibold ${ticker.unrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {ticker.unrealizedPnL >= 0 ? "+" : ""}{formatCurrency(ticker.unrealizedPnL)}
+                {ticker.unrealizedPnLPercent !== null && (
+                  <span className="text-xs ml-1">({ticker.unrealizedPnLPercent.toFixed(1)}%)</span>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-muted-foreground">Total P&L</div>
+              <div className={`font-semibold ${ticker.totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {ticker.totalPnL >= 0 ? "+" : ""}{formatCurrency(ticker.totalPnL)}
+                {ticker.totalPnLPercent !== null && (
+                  <span className="text-xs ml-1">({ticker.totalPnLPercent.toFixed(1)}%)</span>
+                )}
               </div>
             </div>
             <div className="text-right">
@@ -504,38 +539,61 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   );
 }
 
-// Compute cycle-level cash flow and P&L from matched trades
+// Display cycle P&L metrics from the cycle's pre-calculated fields
 function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
-  // Calculate totals from matched trades
-  let totalCashFlow = 0;
-  let totalPnL = 0;
+  const isCompleted = cycle.status !== "in_progress";
+  const totalPnL = cycle.realizedPnL + (cycle.unrealizedPnL ?? 0);
 
-  for (const trade of cycle.trades) {
-    // Cash flow: sum of open and close leg totals
-    if (trade.openLeg) {
-      totalCashFlow += trade.openLeg.total;
-    }
-    if (trade.closeLeg) {
-      totalCashFlow += trade.closeLeg.total;
-    }
-    // P&L: only count if the trade is closed
-    if (trade.netPnL !== null) {
-      totalPnL += trade.netPnL;
-    }
-  }
-
-  return (
-    <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
-      <div>
-        <div className="text-muted-foreground">Cash Flow</div>
-        <div className={`font-medium ${totalCashFlow >= 0 ? "text-green-600" : "text-red-600"}`}>
-          {totalCashFlow >= 0 ? "+" : ""}{formatCurrency(totalCashFlow)}
+  if (isCompleted) {
+    // Completed cycles: show just P&L with percentage
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <div className="text-muted-foreground">P&L</div>
+          <div className={`font-medium ${cycle.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {cycle.realizedPnL >= 0 ? "+" : ""}{formatCurrency(cycle.realizedPnL)}
+            {cycle.pnlPercent !== null && (
+              <span className="text-xs ml-1">({cycle.pnlPercent.toFixed(1)}%)</span>
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">ROC</div>
+          <div className="font-medium">
+            {cycle.roc.toFixed(1)}%
+            <span className="text-xs text-muted-foreground ml-1">
+              ({cycle.annualizedRoc.toFixed(0)}% ann.)
+            </span>
+          </div>
         </div>
       </div>
-      <div>
-        <div className="text-muted-foreground">P&L</div>
-        <div className={`font-medium ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-          {totalPnL >= 0 ? "+" : ""}{formatCurrency(totalPnL)}
+    );
+  }
+
+  // In-progress cycles: show Realized | Unrealized | Total
+  return (
+    <div className="mt-2 space-y-2 text-sm">
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <div className="text-muted-foreground">Realized</div>
+          <div className={`font-medium ${cycle.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {cycle.realizedPnL >= 0 ? "+" : ""}{formatCurrency(cycle.realizedPnL)}
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Unrealized</div>
+          <div className={`font-medium ${(cycle.unrealizedPnL ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {(cycle.unrealizedPnL ?? 0) >= 0 ? "+" : ""}{formatCurrency(cycle.unrealizedPnL ?? 0)}
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Total</div>
+          <div className={`font-medium ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {totalPnL >= 0 ? "+" : ""}{formatCurrency(totalPnL)}
+            {cycle.pnlPercent !== null && (
+              <span className="text-xs ml-1">({cycle.pnlPercent.toFixed(1)}%)</span>
+            )}
+          </div>
         </div>
       </div>
       <div>
