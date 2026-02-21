@@ -206,6 +206,18 @@ export const wheelService = {
   },
 
   /**
+   * Fetch today's executions for a specific symbol from TWS
+   */
+  async getTodayExecutionsForSymbol(symbol: string): Promise<RawTrade[]> {
+    const allTrades = await ibkrService.getTodayTrades();
+
+    // Filter to trades matching this symbol (underlying for options, symbol for stocks)
+    return allTrades.filter(t =>
+      t.underlying === symbol || t.symbol === symbol
+    ) as unknown as RawTrade[];
+  },
+
+  /**
    * Reconstruct wheel cycles from trade history
    * A cycle = any period where position (shares + options) is non-zero
    */
@@ -222,10 +234,27 @@ export const wheelService = {
       whereClause.tradeDate = { gte: startDate };
     }
 
-    const trades = await prisma.importedTrade.findMany({
+    const dbTrades = await prisma.importedTrade.findMany({
       where: whereClause,
       orderBy: { tradeDate: "asc" },
     }) as RawTrade[];
+
+    // Fetch today's executions from TWS and merge with database trades
+    const todayExecutions = await this.getTodayExecutionsForSymbol(symbol);
+
+    // Deduplicate by tradeId to avoid showing same trade twice
+    const existingTradeIds = new Set(
+      dbTrades.map(t => (t as unknown as { tradeId?: string }).tradeId).filter(Boolean)
+    );
+    const newExecutions = todayExecutions.filter(
+      t => !(t as unknown as { tradeId?: string }).tradeId ||
+           !existingTradeIds.has((t as unknown as { tradeId?: string }).tradeId!)
+    );
+
+    // Merge and sort by date
+    const trades = [...dbTrades, ...newExecutions].sort(
+      (a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
+    );
 
     // Query assigned options to detect stock assignments
     // (wasAssigned is set on option trades, not stock trades)
