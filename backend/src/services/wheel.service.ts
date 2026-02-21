@@ -172,7 +172,7 @@ export const wheelService = {
     const ibkrData = await this.fetchIBKRData([symbol]);
 
     // Get cycles first, then pass to summary to avoid duplicate reconstruction
-    const cycles = await this.reconstructCycles(symbol, tracker.startDate, ibkrData.todayTrades);
+    const cycles = await this.reconstructCycles(symbol, tracker.startDate, ibkrData.todayTrades, ibkrData);
     const summary = await this.getTickerSummaryWithCycles(symbol, tracker.startDate, cycles, ibkrData);
 
     return { ...summary, cycles };
@@ -184,7 +184,7 @@ export const wheelService = {
    */
   async getTickerSummary(symbol: string, startDate: Date | null, cachedData?: CachedIBKRData): Promise<WheelTickerSummary> {
     const todayTrades = cachedData?.todayTrades ?? [];
-    const cycles = await this.reconstructCycles(symbol, startDate, todayTrades);
+    const cycles = await this.reconstructCycles(symbol, startDate, todayTrades, cachedData);
     return this.getTickerSummaryWithCycles(symbol, startDate, cycles, cachedData);
   },
 
@@ -281,6 +281,42 @@ export const wheelService = {
       ? ((currentPrice - adjustedCostBasis) / currentPrice) * 100
       : null;
 
+    // Aggregate P&L from all cycles
+    let tickerRealizedPnL = 0;
+    let tickerUnrealizedPnL = 0;
+    let tickerCapitalDeployed = 0;
+
+    for (const cycle of cycles) {
+      tickerRealizedPnL += cycle.realizedPnL;
+      if (cycle.unrealizedPnL != null) {
+        tickerUnrealizedPnL += cycle.unrealizedPnL;
+      }
+      // For capital deployed, use max of current or in-progress cycle
+      if (cycle.status === "in_progress") {
+        tickerCapitalDeployed = cycle.capitalDeployed;
+      }
+    }
+
+    // If no in-progress cycle, use current position's capital
+    if (tickerCapitalDeployed === 0 && currentPosition) {
+      if (currentPhase === "csp_open" && currentPosition.strike) {
+        tickerCapitalDeployed = currentPosition.strike * 100 * currentPosition.quantity;
+      } else if (currentPhase === "holding_shares" || currentPhase === "cc_open") {
+        tickerCapitalDeployed = adjustedCostBasis * currentPosition.quantity;
+      }
+    }
+
+    const totalPnL = tickerRealizedPnL + tickerUnrealizedPnL;
+    const realizedPnLPercent = tickerCapitalDeployed > 0
+      ? (tickerRealizedPnL / tickerCapitalDeployed) * 100
+      : null;
+    const unrealizedPnLPercent = tickerCapitalDeployed > 0
+      ? (tickerUnrealizedPnL / tickerCapitalDeployed) * 100
+      : null;
+    const totalPnLPercent = tickerCapitalDeployed > 0
+      ? (totalPnL / tickerCapitalDeployed) * 100
+      : null;
+
     return {
       symbol,
       currentPhase,
@@ -292,6 +328,13 @@ export const wheelService = {
       cycleCount: cycles.length,
       completedCycles: completedCycles.length,
       currentPosition,
+      realizedPnL: tickerRealizedPnL,
+      unrealizedPnL: tickerUnrealizedPnL,
+      totalPnL,
+      capitalDeployed: tickerCapitalDeployed,
+      realizedPnLPercent,
+      unrealizedPnLPercent,
+      totalPnLPercent,
     };
   },
 
@@ -334,8 +377,9 @@ export const wheelService = {
    * Reconstruct wheel cycles from trade history
    * A cycle = any period where position (shares + options) is non-zero
    * @param cachedTodayTrades - Pre-fetched today's trades to avoid redundant API calls
+   * @param cachedData - Pre-fetched IBKR data for unrealized P&L calculation
    */
-  async reconstructCycles(symbol: string, startDate: Date | null, cachedTodayTrades?: RawTrade[]): Promise<WheelCycle[]> {
+  async reconstructCycles(symbol: string, startDate: Date | null, cachedTodayTrades?: RawTrade[], cachedData?: CachedIBKRData): Promise<WheelCycle[]> {
     // Get all trades for this underlying
     const whereClause: Record<string, unknown> = {
       OR: [
@@ -445,6 +489,11 @@ export const wheelService = {
     let cycleNumber = 0;
     let runningCostBasis = 0;
 
+    // P&L tracking variables
+    let cycleRealizedPnL = 0;
+    let cycleCapitalDeployed = 0;
+    let cyclePremiumReceived = 0; // Track total premium for capital calculation
+
     for (const trade of trades) {
       const isOption = trade.secType === "OPT";
       const isStock = trade.secType === "STK";
@@ -539,6 +588,23 @@ export const wheelService = {
           entryDescription = "Unknown entry";
         }
 
+        // Reset P&L tracking for new cycle
+        cycleRealizedPnL = 0;
+        cycleCapitalDeployed = 0;
+        cyclePremiumReceived = 0;
+
+        // Calculate initial capital deployed
+        if (tradeType === "SOLD_PUT" && trade.strike) {
+          // CSP: capital at risk is strike * 100 - premium received
+          const premium = trade.proceeds - trade.commission;
+          cycleCapitalDeployed = trade.strike * Math.abs(trade.quantity) * (trade.multiplier || 100) - premium;
+          cyclePremiumReceived = premium;
+          cycleRealizedPnL = premium; // Premium received is realized
+        } else if (tradeType === "ASSIGNED" || tradeType === "BOUGHT_SHARES") {
+          // Stock purchase: capital is cost of shares
+          cycleCapitalDeployed = Math.abs(trade.proceeds);
+        }
+
         currentCycle = {
           cycleNumber,
           startDate: dateStr,
@@ -556,6 +622,10 @@ export const wheelService = {
           entryDescription,
           exitType: "in_progress",
           exitDescription: null,
+          realizedPnL: 0,
+          unrealizedPnL: null,
+          capitalDeployed: 0,
+          pnlPercent: null,
         };
 
         runningCostBasis = trade.strike || Math.abs(trade.proceeds / Math.abs(trade.quantity));
@@ -574,6 +644,48 @@ export const wheelService = {
         if (isWheelTrade && isOption) {
           const shareEquiv = currentCycle.shareQuantity || 100;
           runningCostBasis -= premium / shareEquiv;
+        }
+
+        // Track realized P&L based on trade type (skip cycle-starting trades already handled)
+        if (prevTotalPosition !== 0 || tradeType !== "SOLD_PUT") {
+          switch (tradeType) {
+            case "SOLD_PUT":
+            case "SOLD_CALL":
+              // Premium received is realized P&L
+              cycleRealizedPnL += premium;
+              cyclePremiumReceived += premium;
+              break;
+            case "BOUGHT_PUT":
+            case "BOUGHT_CALL":
+              // Buyback cost reduces realized P&L
+              cycleRealizedPnL += premium; // premium is negative for buybacks
+              break;
+            case "EXPIRED":
+              // No additional P&L - premium already counted when sold
+              break;
+            case "CALLED_AWAY":
+              // Add (exit price - entry strike) x shares
+              if (currentCycle.entryStrike > 0) {
+                const exitPrice = trade.proceeds / Math.abs(trade.quantity);
+                const stockPnL = (exitPrice - currentCycle.entryStrike) * Math.abs(trade.quantity);
+                cycleRealizedPnL += stockPnL;
+              }
+              break;
+            case "SOLD_SHARES":
+              // Add (sell price - cost basis) x shares
+              if (runningCostBasis > 0) {
+                const sellPrice = trade.proceeds / Math.abs(trade.quantity);
+                const stockPnL = (sellPrice - runningCostBasis) * Math.abs(trade.quantity);
+                cycleRealizedPnL += stockPnL;
+              }
+              break;
+            case "ASSIGNED":
+            case "BOUGHT_SHARES":
+              // No realized P&L - just acquiring shares
+              // Update capital deployed to reflect actual stock cost
+              cycleCapitalDeployed = Math.abs(trade.proceeds) - cyclePremiumReceived;
+              break;
+          }
         }
 
         // For ASSIGNED/CALLED_AWAY trades, use strike/expiry from the matching option
@@ -642,6 +754,14 @@ export const wheelService = {
           ? currentCycle.roc * (365 / currentCycle.durationDays)
           : 0;
 
+        // Set final P&L values for completed cycle
+        currentCycle.realizedPnL = cycleRealizedPnL;
+        currentCycle.unrealizedPnL = null; // Completed cycles have no unrealized P&L
+        currentCycle.capitalDeployed = cycleCapitalDeployed > 0 ? cycleCapitalDeployed : capitalAtRisk;
+        currentCycle.pnlPercent = currentCycle.capitalDeployed > 0
+          ? (cycleRealizedPnL / currentCycle.capitalDeployed) * 100
+          : null;
+
         // Only count completed cycles that had option trades
         const optionTradeTypes = ["SOLD_PUT", "BOUGHT_PUT", "SOLD_CALL", "BOUGHT_CALL", "EXPIRED"];
         const hasOptionTrades = (currentCycle.trades as any[]).some((t) => optionTradeTypes.includes(t.type));
@@ -659,6 +779,9 @@ export const wheelService = {
         }
         currentCycle = null;
         runningCostBasis = 0;
+        cycleRealizedPnL = 0;
+        cycleCapitalDeployed = 0;
+        cyclePremiumReceived = 0;
       }
     }
 
@@ -666,6 +789,49 @@ export const wheelService = {
     if (currentCycle) {
       const startMs = new Date(currentCycle.startDate).getTime();
       currentCycle.durationDays = Math.ceil((Date.now() - startMs) / (1000 * 60 * 60 * 24));
+
+      // Set realized P&L for in-progress cycle
+      currentCycle.realizedPnL = cycleRealizedPnL;
+      currentCycle.capitalDeployed = cycleCapitalDeployed > 0
+        ? cycleCapitalDeployed
+        : currentCycle.entryStrike * 100;
+
+      // Calculate unrealized P&L for in-progress cycles using live prices
+      let unrealizedPnL = 0;
+
+      if (cachedData) {
+        // For held shares: (currentPrice - adjustedCostBasis) x shareQuantity
+        if (sharePosition > 0 && runningCostBasis > 0) {
+          const currentPrice = cachedData.marketPrices.get(symbol);
+          if (currentPrice != null) {
+            unrealizedPnL += (currentPrice - runningCostBasis) * sharePosition;
+          }
+        }
+
+        // For open options: premium received - current option value x 100
+        // Look for short option positions for this symbol in cachedData
+        if (optionPosition > 0 && cachedData.positions) {
+          for (const pos of cachedData.positions) {
+            if (pos.contract.secType === "OPT" &&
+                pos.contract.symbol === symbol &&
+                pos.pos < 0 && // short position
+                pos.marketPrice != null) {
+              // For short options: we received premium, now we'd need to pay marketPrice to close
+              // Unrealized P&L = original premium received - current cost to close
+              // Since we track realized P&L as premium received, unrealized is just the negative of current value
+              unrealizedPnL -= pos.marketPrice * Math.abs(pos.pos) * 100;
+            }
+          }
+        }
+      }
+
+      currentCycle.unrealizedPnL = unrealizedPnL;
+
+      // Calculate percentage
+      const totalPnL = cycleRealizedPnL + unrealizedPnL;
+      currentCycle.pnlPercent = currentCycle.capitalDeployed > 0
+        ? (totalPnL / currentCycle.capitalDeployed) * 100
+        : null;
 
       // Convert raw trades to matched trades
       const cycleStartDate = currentCycle.startDate;
@@ -770,10 +936,14 @@ export const wheelService = {
     let totalPremiums = 0;
     let completedCycles = 0;
     let activeWheels = 0;
+    let totalRealizedPnL = 0;
+    let totalUnrealizedPnL = 0;
 
     for (const summary of summaries) {
       totalPremiums += summary.totalPremiums;
       completedCycles += summary.completedCycles;
+      totalRealizedPnL += summary.realizedPnL;
+      totalUnrealizedPnL += summary.unrealizedPnL;
 
       if (summary.currentPhase !== "idle") {
         activeWheels++;
@@ -795,6 +965,11 @@ export const wheelService = {
     // TODO: Implement proper buy-and-hold comparison
     const vsBuyAndHold = 0;
 
+    const totalPnL = totalRealizedPnL + totalUnrealizedPnL;
+    const totalPnLPercent = capitalDeployed > 0
+      ? (totalPnL / capitalDeployed) * 100
+      : null;
+
     return {
       capitalDeployed,
       totalPremiums,
@@ -803,6 +978,10 @@ export const wheelService = {
       trackedCount: summaries.length,
       activeWheels,
       completedCycles,
+      totalRealizedPnL,
+      totalUnrealizedPnL,
+      totalPnL,
+      totalPnLPercent,
     };
   },
 
