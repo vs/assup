@@ -15,6 +15,15 @@ import type {
   WheelSuggestion,
   WheelAggregateMetrics,
 } from "@assup/shared";
+import {
+  groupOptionTrades,
+  groupStockTrades,
+  optionGroupToWheelMatchedTrade,
+  stockGroupToWheelMatchedTrade,
+  type OptionTradeInput,
+  type StockTradeInput
+} from "./tradeMatching.js";
+import type { WheelMatchedTrade } from "@assup/shared";
 
 interface RawTrade {
   id: string;
@@ -227,19 +236,18 @@ export const wheelService = {
     }
 
     // Calculate adjusted cost basis
-    // Start with the first assignment strike, subtract all premiums
+    // Start with the entry strike (assignment price or first CSP strike), subtract all premiums
     let adjustedCostBasis = 0;
 
     if (currentCycle) {
-      const assignmentTrade = currentCycle.trades.find((t) => t.type === "ASSIGNED");
-      if (assignmentTrade && assignmentTrade.strike) {
-        adjustedCostBasis = assignmentTrade.strike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
+      // Check if we have an assignment in the cycle
+      const hasAssignment = currentCycle.trades.some((t) => t.status === "assigned");
+      if (hasAssignment) {
+        // Use entryStrike from cycle (assignment price) - premium adjustment
+        adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
       } else {
-        // No assignment yet, use CSP strike
-        const cspTrade = currentCycle.trades.find((t) => t.type === "SOLD_PUT");
-        if (cspTrade && cspTrade.strike) {
-          adjustedCostBasis = cspTrade.strike - (currentCycle.totalPremium / 100);
-        }
+        // No assignment yet, use CSP entry strike
+        adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / 100);
       }
     }
 
@@ -272,6 +280,32 @@ export const wheelService = {
     return allTrades.filter(t =>
       t.underlying === symbol || t.symbol === symbol
     );
+  },
+
+  /**
+   * Match trades within a cycle into WheelMatchedTrade format
+   */
+  matchTradesForCycle(trades: RawTrade[], symbol: string): WheelMatchedTrade[] {
+    // Separate options and stocks
+    const optionTrades = trades.filter(t => t.secType === "OPT") as unknown as OptionTradeInput[];
+    const stockTrades = trades.filter(t => t.secType === "STK") as unknown as StockTradeInput[];
+
+    // Use shared grouping logic
+    const optionGroups = groupOptionTrades(optionTrades);
+    const stockGroups = groupStockTrades(stockTrades);
+
+    // Convert to WheelMatchedTrade format
+    const result: WheelMatchedTrade[] = [
+      ...optionGroups.map(g => optionGroupToWheelMatchedTrade(g, symbol)),
+      ...stockGroups.map(g => stockGroupToWheelMatchedTrade(g)),
+    ];
+
+    // Sort by date (open leg date)
+    return result.sort((a, b) => {
+      const dateA = a.openLeg?.date || a.closeLeg?.date || "";
+      const dateB = b.openLeg?.date || b.closeLeg?.date || "";
+      return dateA.localeCompare(dateB);
+    });
   },
 
   /**
@@ -517,7 +551,7 @@ export const wheelService = {
           runningCostBasis: Math.max(0, runningCostBasis),
         };
 
-        currentCycle.trades.push(wheelTrade);
+        (currentCycle.trades as any[]).push(wheelTrade);
         currentCycle.shareQuantity = sharePosition;
 
         if (isWheelTrade) {
@@ -568,8 +602,17 @@ export const wheelService = {
 
         // Only count completed cycles that had option trades
         const optionTradeTypes = ["SOLD_PUT", "BOUGHT_PUT", "SOLD_CALL", "BOUGHT_CALL", "EXPIRED"];
-        const hasOptionTrades = currentCycle.trades.some((t) => optionTradeTypes.includes(t.type));
+        const hasOptionTrades = (currentCycle.trades as any[]).some((t) => optionTradeTypes.includes(t.type));
         if (hasOptionTrades) {
+          // Convert raw trades to matched trades for the final cycle
+          const cycleStartDate = currentCycle.startDate;
+          const cycleEndDate = currentCycle.endDate;
+          const rawTrades = trades.filter(t => {
+            const dateStr = t.tradeDate.toISOString().split("T")[0];
+            return dateStr >= cycleStartDate &&
+                   (cycleEndDate === null || dateStr <= cycleEndDate);
+          });
+          currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
           cycles.push(currentCycle);
         }
         currentCycle = null;
@@ -581,6 +624,14 @@ export const wheelService = {
     if (currentCycle) {
       const startMs = new Date(currentCycle.startDate).getTime();
       currentCycle.durationDays = Math.ceil((Date.now() - startMs) / (1000 * 60 * 60 * 24));
+
+      // Convert raw trades to matched trades
+      const cycleStartDate = currentCycle.startDate;
+      const rawTrades = trades.filter(t => {
+        const dateStr = t.tradeDate.toISOString().split("T")[0];
+        return dateStr >= cycleStartDate;
+      });
+      currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
       cycles.push(currentCycle);
     }
 
