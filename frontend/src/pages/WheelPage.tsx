@@ -331,13 +331,14 @@ function WheelTickerCard({
             <Badge className={phaseColors[ticker.currentPhase]}>
               {phaseLabels[ticker.currentPhase]}
             </Badge>
-            {ticker.currentPrice && (
-              <span className="text-sm text-muted-foreground">
-                ${ticker.currentPrice.toFixed(2)}
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-4">
+            {ticker.currentPrice && (
+              <div className="text-right">
+                <div className="text-sm text-muted-foreground">Price</div>
+                <div className="font-semibold">${ticker.currentPrice.toFixed(2)}</div>
+              </div>
+            )}
             <div className="text-right">
               <div className="text-sm text-muted-foreground">Cost Basis</div>
               <div className="font-semibold">
