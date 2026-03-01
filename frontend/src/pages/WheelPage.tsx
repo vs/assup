@@ -32,10 +32,37 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+const CACHE_KEYS = {
+  tickers: "wheel-tickers-cache",
+  suggestions: "wheel-suggestions-cache",
+  detail: (symbol: string) => `wheel-detail-${symbol}`,
+};
+
+function readCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 export function WheelPage() {
-  const [data, setData] = useState<WheelListResponse | null>(null);
-  const [suggestions, setSuggestions] = useState<WheelSuggestion[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<WheelListResponse | null>(
+    () => readCache<WheelListResponse>(CACHE_KEYS.tickers)
+  );
+  const [suggestions, setSuggestions] = useState<WheelSuggestion[]>(
+    () => readCache<WheelSuggestion[]>(CACHE_KEYS.suggestions) ?? []
+  );
+  const [loading, setLoading] = useState(
+    () => readCache(CACHE_KEYS.tickers) === null
+  );
   const [error, setError] = useState<string | null>(null);
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -43,9 +70,10 @@ export function WheelPage() {
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
+      setLoading((prev) => prev && readCache(CACHE_KEYS.tickers) === null);
       const wheelData = await api.wheel.list({ includeSuggestions: false });
       setData(wheelData);
+      writeCache(CACHE_KEYS.tickers, wheelData);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -57,7 +85,10 @@ export function WheelPage() {
     // Load suggestions separately to avoid blocking initial render
     api.wheel
       .suggestions()
-      .then((res) => setSuggestions(res.suggestions))
+      .then((res) => {
+        setSuggestions(res.suggestions);
+        writeCache(CACHE_KEYS.suggestions, res.suggestions);
+      })
       .catch((err) => console.error("Failed to load wheel suggestions:", err));
   }, []);
 
@@ -71,6 +102,7 @@ export function WheelPage() {
       await api.wheel.add(newSymbol.trim());
       setNewSymbol("");
       setAddDialogOpen(false);
+      localStorage.removeItem(CACHE_KEYS.tickers);
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add ticker");
@@ -81,6 +113,7 @@ export function WheelPage() {
     if (!confirm(`Remove ${symbol} from wheel tracking?`)) return;
     try {
       await api.wheel.remove(symbol);
+      localStorage.removeItem(CACHE_KEYS.tickers);
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove ticker");
@@ -90,6 +123,7 @@ export function WheelPage() {
   const handleAddSuggestion = async (symbol: string) => {
     try {
       await api.wheel.add(symbol);
+      localStorage.removeItem(CACHE_KEYS.tickers);
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add ticker");
@@ -99,7 +133,11 @@ export function WheelPage() {
   const handleDismissSuggestion = async (symbol: string) => {
     try {
       await api.wheel.dismissSuggestion(symbol);
-      setSuggestions((prev) => prev.filter((s) => s.symbol !== symbol));
+      setSuggestions((prev) => {
+        const updated = prev.filter((s) => s.symbol !== symbol);
+        writeCache(CACHE_KEYS.suggestions, updated);
+        return updated;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to dismiss suggestion");
     }
@@ -400,17 +438,23 @@ function WheelTickerCard({
 }
 
 function WheelTickerDetail({ symbol }: { symbol: string }) {
-  const [detail, setDetail] = useState<import("@assup/shared").WheelTickerDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = CACHE_KEYS.detail(symbol);
+  const [detail, setDetail] = useState<import("@assup/shared").WheelTickerDetail | null>(
+    () => readCache<import("@assup/shared").WheelTickerDetail>(cacheKey)
+  );
+  const [loading, setLoading] = useState(() => readCache(cacheKey) === null);
   const [selectedCycleNumber, setSelectedCycleNumber] = useState<number | null>(null);
 
   useEffect(() => {
     api.wheel
       .detail(symbol)
-      .then(setDetail)
+      .then((data) => {
+        setDetail(data);
+        writeCache(cacheKey, data);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [symbol]);
+  }, [symbol, cacheKey]);
 
   if (loading) {
     return <div className="py-4 text-center text-muted-foreground">Loading...</div>;
