@@ -58,3 +58,13 @@ export interface PlaceOrderResult {
   quantity: number;
   limitPrice: number;
 }
+
+/**
+ * Response from an option quote request
+ */
+export interface OptionQuoteResult {
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  last: number | null;
+}

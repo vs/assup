@@ -10,8 +10,8 @@ import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
 import { allocationService } from "../services/allocation.service.js";
 import { IBKRConnectionError } from "../errors/index.js";
-import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema } from "@assup/shared";
-import type { Order, OrderImpact, PlaceOrderResult } from "@assup/shared";
+import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema, optionQuoteSchema } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderResult, OptionQuoteResult } from "@assup/shared";
 import { OpenOrder as IBOpenOrder, Contract, SecType, OptionType } from "@stoqey/ib";
 
 const router = Router();
@@ -300,6 +300,42 @@ router.post(
     };
 
     res.status(201).json(result);
+  })
+);
+
+/**
+ * POST /api/orders/quote
+ * Get a live bid/ask quote for an option contract
+ */
+router.post(
+  "/quote",
+  validate({ body: optionQuoteSchema }),
+  asyncHandler(async (req, res) => {
+    if (!ibkrService.isConnected()) {
+      throw new IBKRConnectionError();
+    }
+
+    const { symbol, expiration, strike, right } = req.body;
+
+    const contract: Contract = {
+      symbol,
+      secType: SecType.OPT,
+      exchange: "SMART",
+      currency: "USD",
+      lastTradeDateOrContractMonth: expiration,
+      strike,
+      right: right === "C" ? OptionType.Call : OptionType.Put,
+    };
+
+    const marketData = await ibkrService.getMarketData(contract);
+
+    const bid = marketData?.bid ?? null;
+    const ask = marketData?.ask ?? null;
+    const mid = bid != null && ask != null ? (bid + ask) / 2 : null;
+    const last = marketData?.last ?? null;
+
+    const result: OptionQuoteResult = { bid, ask, mid, last };
+    res.json(result);
   })
 );
 

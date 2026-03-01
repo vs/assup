@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
 import { ImportDialog } from "@/components/profit/ImportDialog";
+import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks/useSparklines";
@@ -228,12 +229,12 @@ export function ProfitPage() {
 
         {/* Current Month Tab */}
         <TabsContent value="current" className="space-y-4">
-          {currentMonth && <MonthProfitCard data={currentMonth} onSymbolClick={setChartSymbol} />}
+          {currentMonth && <MonthProfitCard data={currentMonth} onSymbolClick={setChartSymbol} onDataRefresh={() => loadData(selectedYear)} />}
         </TabsContent>
 
         {/* Next Month Tab */}
         <TabsContent value="next" className="space-y-4">
-          {nextMonth && <MonthProfitCard data={nextMonth} onSymbolClick={setChartSymbol} />}
+          {nextMonth && <MonthProfitCard data={nextMonth} onSymbolClick={setChartSymbol} onDataRefresh={() => loadData(selectedYear)} />}
         </TabsContent>
 
         {/* History Tab */}
@@ -306,13 +307,16 @@ function SummaryCard({
 // Month Profit Card (for current/next month)
 function MonthProfitCard({
   data,
-  onSymbolClick
+  onSymbolClick,
+  onDataRefresh,
 }: {
   data: MonthProfitView;
   onSymbolClick: (symbol: string) => void;
+  onDataRefresh?: () => void;
 }) {
   const monthLabel = `${MONTH_NAMES[data.month - 1]} ${data.year}`;
   const [realizedExpanded, setRealizedExpanded] = useState(false);
+  const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
 
   // Get unique underlying symbols for sparklines
   const sparklineSymbols = useMemo(() => {
@@ -683,6 +687,7 @@ function MonthProfitCard({
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unrealized P&L</TableHead>
                   <TableHead className="text-right">Projected</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -751,6 +756,15 @@ function MonthProfitCard({
                       <TableCell className="text-right font-mono text-blue-600">
                         {formatCurrency(pos.projectedProfit)}
                       </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setClosePosition(pos)}
+                        >
+                          Close
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -759,6 +773,13 @@ function MonthProfitCard({
           </CardContent>
         </Card>
       )}
+
+      <ClosePositionDialog
+        open={!!closePosition}
+        onOpenChange={(open) => { if (!open) setClosePosition(null); }}
+        position={closePosition}
+        onOrderPlaced={onDataRefresh}
+      />
     </div>
   );
 }

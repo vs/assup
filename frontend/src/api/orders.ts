@@ -3,7 +3,7 @@
  */
 
 import { request } from "./client";
-import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult, OptionQuoteResult } from "@assup/shared";
 
 export interface SimulateOrderInput {
   symbol: string;
@@ -11,6 +11,13 @@ export interface SimulateOrderInput {
   action: "BUY" | "SELL";
   quantity: number;
   price: number;
+}
+
+export interface OptionQuoteInput {
+  symbol: string;
+  expiration: string; // YYYYMMDD
+  strike: number;
+  right: "C" | "P";
 }
 
 export const ordersApi = {
@@ -28,5 +35,11 @@ export const ordersApi = {
     request<PlaceOrderResult>("/api/orders/place", {
       method: "POST",
       body: JSON.stringify(order),
+    }),
+
+  quote: (input: OptionQuoteInput) =>
+    request<OptionQuoteResult>("/api/orders/quote", {
+      method: "POST",
+      body: JSON.stringify(input),
     }),
 };

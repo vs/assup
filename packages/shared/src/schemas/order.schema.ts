@@ -33,3 +33,15 @@ export const placeOrderSchema = z.object({
 });
 
 export type PlaceOrderSchemaInput = z.infer<typeof placeOrderSchema>;
+
+/**
+ * Schema for getting an option quote
+ */
+export const optionQuoteSchema = z.object({
+  symbol: z.string().min(1, "Symbol is required").max(20).toUpperCase(),
+  expiration: z.string().length(8, "Expiration must be YYYYMMDD format"),
+  strike: z.number().positive("Strike must be positive"),
+  right: z.enum(["C", "P"], { errorMap: () => ({ message: "Right must be 'C' or 'P'" }) }),
+});
+
+export type OptionQuoteSchemaInput = z.infer<typeof optionQuoteSchema>;
