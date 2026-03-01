@@ -42,6 +42,7 @@ export interface Position {
   avgCost: number;
   marketPrice?: number;
   marketValue?: number;
+  unrealizedPnl?: number;
 }
 
 export interface HistoricalDataParams {
@@ -421,6 +422,7 @@ class IBKRService {
                   avgCost: pos.avgCost ?? 0,
                   marketPrice: pos.marketPrice,
                   marketValue: pos.marketValue,
+                  unrealizedPnl: pos.unrealizedPNL,
                 });
               });
             });

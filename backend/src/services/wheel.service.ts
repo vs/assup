@@ -56,6 +56,7 @@ interface CachedIBKRData {
     avgCost: number;
     marketPrice?: number;
     marketValue?: number;
+    unrealizedPnl?: number;
   }>;
   todayTrades: RawTrade[];
   marketPrices: Map<string, number>;
@@ -790,14 +791,13 @@ export const wheelService = {
       const startMs = new Date(currentCycle.startDate).getTime();
       currentCycle.durationDays = Math.ceil((Date.now() - startMs) / (1000 * 60 * 60 * 24));
 
-      // Set realized P&L for in-progress cycle
-      currentCycle.realizedPnL = cycleRealizedPnL;
       currentCycle.capitalDeployed = cycleCapitalDeployed > 0
         ? cycleCapitalDeployed
         : currentCycle.entryStrike * 100;
 
       // Calculate unrealized P&L for in-progress cycles using live prices
       let unrealizedPnL = 0;
+      let openOptionPremium = 0; // Premium already counted in realized that should move to unrealized
 
       if (cachedData) {
         // For held shares: (currentPrice - adjustedCostBasis) x shareQuantity
@@ -808,27 +808,30 @@ export const wheelService = {
           }
         }
 
-        // For open options: premium received - current option value x 100
-        // Look for short option positions for this symbol in cachedData
+        // For open options: use IBKR's pre-calculated unrealizedPnl
+        // IBKR's unrealizedPnl = costBasis - marketValue (premium received - cost to close)
+        // Since we already counted premium in cycleRealizedPnL, we need to move it to unrealized
         if (optionPosition > 0 && cachedData.positions) {
           for (const pos of cachedData.positions) {
             if (pos.contract.secType === "OPT" &&
                 pos.contract.symbol === symbol &&
                 pos.pos < 0 && // short position
-                pos.marketPrice != null) {
-              // For short options: we received premium, now we'd need to pay marketPrice to close
-              // Unrealized P&L = original premium received - current cost to close
-              // Since we track realized P&L as premium received, unrealized is just the negative of current value
-              unrealizedPnL -= pos.marketPrice * Math.abs(pos.pos) * 100;
+                pos.unrealizedPnl != null) {
+              unrealizedPnL += pos.unrealizedPnl;
+              // Track the premium for this open position (avgCost is per contract)
+              openOptionPremium += pos.avgCost * Math.abs(pos.pos);
             }
           }
         }
       }
 
+      // Adjust realized P&L: move open option premium from realized to unrealized
+      // This avoids double-counting since IBKR's unrealizedPnl already includes the premium
+      currentCycle.realizedPnL = cycleRealizedPnL - openOptionPremium;
       currentCycle.unrealizedPnL = unrealizedPnL;
 
-      // Calculate percentage
-      const totalPnL = cycleRealizedPnL + unrealizedPnL;
+      // Calculate percentage using total P&L (realized + unrealized)
+      const totalPnL = currentCycle.realizedPnL + unrealizedPnL;
       currentCycle.pnlPercent = currentCycle.capitalDeployed > 0
         ? (totalPnL / currentCycle.capitalDeployed) * 100
         : null;
