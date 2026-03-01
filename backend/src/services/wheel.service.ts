@@ -138,6 +138,14 @@ export const wheelService = {
   },
 
   /**
+   * Get symbols for all tracked tickers
+   */
+  async getTrackerSymbols(): Promise<string[]> {
+    const trackers = await prisma.wheelTracker.findMany({ select: { symbol: true } });
+    return trackers.map(t => t.symbol);
+  },
+
+  /**
    * Get all tracked tickers with summary data
    */
   async getTrackedTickers(cachedData?: CachedIBKRData): Promise<WheelTickerSummary[]> {

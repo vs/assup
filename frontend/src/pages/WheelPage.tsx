@@ -44,12 +44,9 @@ export function WheelPage() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [wheelData, suggestionsData] = await Promise.all([
-        api.wheel.list(),
-        api.wheel.suggestions(),
-      ]);
+      const wheelData = await api.wheel.list();
       setData(wheelData);
-      setSuggestions(suggestionsData.suggestions);
+      setSuggestions(wheelData.suggestions);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");

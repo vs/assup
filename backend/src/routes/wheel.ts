@@ -11,21 +11,30 @@ const router = Router();
 
 /**
  * GET /api/wheel
- * List all tracked tickers with summary data and aggregate metrics
+ * List all tracked tickers with summary data, aggregate metrics, and suggestions.
+ * Fetches IBKR data once and shares it between tickers and suggestions.
  */
 router.get(
   "/",
   asyncHandler(async (_req, res) => {
-    // Fetch tickers once, then compute metrics from the same data
-    const tickers = await wheelService.getTrackedTickers();
+    // Fetch IBKR data once, shared between tickers and suggestions
+    const symbols = await wheelService.getTrackerSymbols();
+    const ibkrData = await wheelService.fetchIBKRData(symbols);
+
+    // Run tickers and suggestions in parallel using shared IBKR data
+    const [tickers, suggestions] = await Promise.all([
+      wheelService.getTrackedTickers(ibkrData),
+      wheelService.getSuggestions(ibkrData.positions),
+    ]);
+
     const metrics = wheelService.getAggregateMetricsFromSummaries(tickers);
-    res.json({ tickers, metrics });
+    res.json({ tickers, metrics, suggestions });
   })
 );
 
 /**
  * GET /api/wheel/suggestions
- * Get ticker suggestions based on option activity
+ * Get ticker suggestions based on option activity (standalone endpoint)
  */
 router.get(
   "/suggestions",

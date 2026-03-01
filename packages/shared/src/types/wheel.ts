@@ -153,6 +153,7 @@ export interface WheelAggregateMetrics {
 export interface WheelListResponse {
   tickers: WheelTickerSummary[];
   metrics: WheelAggregateMetrics;
+  suggestions: WheelSuggestion[];
 }
 
 // Response for wheel suggestions endpoint
