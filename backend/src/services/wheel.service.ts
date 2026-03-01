@@ -485,6 +485,7 @@ export const wheelService = {
 
     const cycles: WheelCycle[] = [];
     let currentCycle: WheelCycle | null = null;
+    let cycleTradeIndices: number[] = []; // Track which raw trade indices belong to current cycle
     let sharePosition = 0;
     let optionPosition = 0; // positive = short options (sold contracts)
     let cycleNumber = 0;
@@ -495,7 +496,8 @@ export const wheelService = {
     let cycleCapitalDeployed = 0;
     let cyclePremiumReceived = 0; // Track total premium for capital calculation
 
-    for (const trade of trades) {
+    for (let tradeIdx = 0; tradeIdx < trades.length; tradeIdx++) {
+      const trade = trades[tradeIdx];
       const isOption = trade.secType === "OPT";
       const isStock = trade.secType === "STK";
       const isSell = trade.buySell === "SELL";
@@ -589,10 +591,11 @@ export const wheelService = {
           entryDescription = "Unknown entry";
         }
 
-        // Reset P&L tracking for new cycle
+        // Reset P&L and trade tracking for new cycle
         cycleRealizedPnL = 0;
         cycleCapitalDeployed = 0;
         cyclePremiumReceived = 0;
+        cycleTradeIndices = [];
 
         // Calculate initial capital deployed
         if (tradeType === "SOLD_PUT" && trade.strike) {
@@ -634,6 +637,7 @@ export const wheelService = {
 
       // Add trade to current cycle
       if (tradeType && currentCycle) {
+        cycleTradeIndices.push(tradeIdx);
         const premium = trade.proceeds - trade.commission;
 
         // Update running cost basis
@@ -735,10 +739,10 @@ export const wheelService = {
           currentCycle.exitType = isPut ? "put_expired" : "cc_expired";
           currentCycle.exitDescription = isPut ? "PUT expired worthless" : "CC expired worthless";
         } else if (tradeType === "BOUGHT_PUT" || tradeType === "BOUGHT_CALL") {
-          // Closed option position (buyback to close, not roll)
-          currentCycle.status = "expired_worthless"; // reuse status
-          currentCycle.exitType = isPut ? "put_expired" : "cc_expired";
-          currentCycle.exitDescription = isPut ? "PUT closed" : "CC closed";
+          // Closed option position (buyback to close)
+          currentCycle.status = "closed";
+          currentCycle.exitType = isPut ? "put_closed" : "cc_closed";
+          currentCycle.exitDescription = isPut ? "PUT bought back" : "CC bought back";
         }
 
         // Calculate metrics
@@ -767,18 +771,13 @@ export const wheelService = {
         const optionTradeTypes = ["SOLD_PUT", "BOUGHT_PUT", "SOLD_CALL", "BOUGHT_CALL", "EXPIRED"];
         const hasOptionTrades = (currentCycle.trades as any[]).some((t) => optionTradeTypes.includes(t.type));
         if (hasOptionTrades) {
-          // Convert raw trades to matched trades for the final cycle
-          const cycleStartDate = currentCycle.startDate;
-          const cycleEndDate = currentCycle.endDate;
-          const rawTrades = trades.filter(t => {
-            const dateStr = t.tradeDate.toISOString().split("T")[0];
-            return dateStr >= cycleStartDate &&
-                   (cycleEndDate === null || dateStr <= cycleEndDate);
-          });
+          // Convert raw trades to matched trades using tracked indices (not date range)
+          const rawTrades = cycleTradeIndices.map(i => trades[i]);
           currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
           cycles.push(currentCycle);
         }
         currentCycle = null;
+        cycleTradeIndices = [];
         runningCostBasis = 0;
         cycleRealizedPnL = 0;
         cycleCapitalDeployed = 0;
@@ -836,12 +835,8 @@ export const wheelService = {
         ? (totalPnL / currentCycle.capitalDeployed) * 100
         : null;
 
-      // Convert raw trades to matched trades
-      const cycleStartDate = currentCycle.startDate;
-      const rawTrades = trades.filter(t => {
-        const dateStr = t.tradeDate.toISOString().split("T")[0];
-        return dateStr >= cycleStartDate;
-      });
+      // Convert raw trades to matched trades using tracked indices (not date range)
+      const rawTrades = cycleTradeIndices.map(i => trades[i]);
       currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
       cycles.push(currentCycle);
     }

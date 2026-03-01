@@ -66,7 +66,7 @@ export interface WheelCycle {
   cycleNumber: number;
   startDate: string;
   endDate: string | null;
-  status: "in_progress" | "called_away" | "sold_shares" | "expired_worthless";
+  status: "in_progress" | "called_away" | "sold_shares" | "expired_worthless" | "closed";
   totalPremium: number;
   shareQuantity: number;
   entryStrike: number; // first CSP strike or buy price
@@ -78,7 +78,7 @@ export interface WheelCycle {
   // New fields for clarity
   entryType: "sold_put" | "bought_shares" | "assigned";
   entryDescription: string; // "Sold PUT $145" or "Bought 100 @ $148"
-  exitType: "called_away" | "sold_shares" | "put_expired" | "cc_expired" | "in_progress";
+  exitType: "called_away" | "sold_shares" | "put_expired" | "cc_expired" | "put_closed" | "cc_closed" | "in_progress";
   exitDescription: string | null; // "Called away @ $150" or null if in progress
   // P&L fields
   realizedPnL: number;

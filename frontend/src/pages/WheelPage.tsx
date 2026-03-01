@@ -325,33 +325,25 @@ function WheelTickerCard({
         className="cursor-pointer hover:bg-muted/50"
         onClick={onToggle}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center">
+          <div className="flex items-center gap-3 min-w-[140px]">
             <CardTitle className="text-lg">{ticker.symbol}</CardTitle>
             <Badge className={phaseColors[ticker.currentPhase]}>
               {phaseLabels[ticker.currentPhase]}
             </Badge>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-end gap-8 flex-1">
             {ticker.currentPrice && (
-              <div className="text-right">
+              <div className="text-right min-w-[70px]">
                 <div className="text-sm text-muted-foreground">Price</div>
                 <div className="font-semibold">${ticker.currentPrice.toFixed(2)}</div>
               </div>
             )}
-            <div className="text-right">
+            <div className="text-right min-w-[80px]">
               <div className="text-sm text-muted-foreground">Cost Basis</div>
               <div className="font-semibold">${ticker.adjustedCostBasis.toFixed(2)}</div>
             </div>
-            {ticker.percentBelowMarket !== null && (
-              <div className="text-right">
-                <div className="text-sm text-muted-foreground">vs Market</div>
-                <div className={`font-semibold ${ticker.percentBelowMarket >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {ticker.percentBelowMarket >= 0 ? "-" : "+"}{Math.abs(ticker.percentBelowMarket).toFixed(1)}%
-                </div>
-              </div>
-            )}
-            <div className="text-right">
+            <div className="text-right min-w-[120px]">
               <div className="text-sm text-muted-foreground">Realized</div>
               <div className={`font-semibold ${ticker.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
                 {ticker.realizedPnL >= 0 ? "+" : ""}{formatCurrency(ticker.realizedPnL)}
@@ -360,7 +352,7 @@ function WheelTickerCard({
                 )}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right min-w-[130px]">
               <div className="text-sm text-muted-foreground">Unrealized</div>
               <div className={`font-semibold ${ticker.unrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
                 {ticker.unrealizedPnL >= 0 ? "+" : ""}{formatCurrency(ticker.unrealizedPnL)}
@@ -369,12 +361,14 @@ function WheelTickerCard({
                 )}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right min-w-[80px]">
               <div className="text-sm text-muted-foreground">Cycles</div>
               <div className="font-semibold">
                 {ticker.cycleCount} ({ticker.completedCycles} done)
               </div>
             </div>
+          </div>
+          <div className="flex items-center gap-2 ml-6">
             <Button
               variant="ghost"
               size="icon"
@@ -462,6 +456,8 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
                     ? "Called Away"
                     : cycle.status === "expired_worthless"
                     ? "Expired"
+                    : cycle.status === "closed"
+                    ? "Closed"
                     : "Sold"}
                 </Badge>
               </div>
@@ -584,99 +580,129 @@ function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCy
 }
 
 function MatchedTradeRow({ trade }: { trade: WheelMatchedTrade }) {
-  const [expanded, setExpanded] = useState(false);
+  // Format opening action: "Sell PUT $67 Jan30 @ $1.55" or "Buy 5 shares @ $90.72"
+  const getOpenAction = () => {
+    if (!trade.openLeg) return null;
 
-  const statusColors: Record<WheelMatchedTrade["status"], string> = {
-    open: "bg-blue-100 text-blue-800",
-    closed: "bg-gray-100 text-gray-800",
-    expired: "bg-green-100 text-green-800",
-    assigned: "bg-yellow-100 text-yellow-800",
-    called_away: "bg-purple-100 text-purple-800",
+    if (trade.type === "STOCK") {
+      return {
+        action: `Buy ${trade.openLeg.quantity} shares`,
+        price: `@ $${trade.openLeg.price.toFixed(2)}`,
+        date: trade.openLeg.date,
+      };
+    }
+
+    // Option: extract strike and expiry from displayName
+    const parts = trade.displayName.split(" ");
+    if (parts.length >= 4) {
+      const expiry = parts[1];
+      const strike = parts[2];
+      return {
+        action: `${trade.openLeg.action} $${strike} ${expiry}`,
+        price: `@ $${trade.openLeg.price.toFixed(2)}`,
+        date: trade.openLeg.date,
+      };
+    }
+
+    return {
+      action: trade.openLeg.action,
+      price: trade.openLeg.price > 0 ? `@ $${trade.openLeg.price.toFixed(2)}` : "",
+      date: trade.openLeg.date,
+    };
   };
 
-  const statusLabels: Record<WheelMatchedTrade["status"], string> = {
-    open: "Open",
-    closed: "Closed",
-    expired: "Expired",
-    assigned: "Assigned",
-    called_away: "Called",
+  // Format closing action: "Bought back @ $0.78" or "Expired" or "Assigned"
+  const getCloseAction = () => {
+    if (!trade.closeLeg) {
+      return { action: "Open", price: "", date: "" };
+    }
+
+    const price = trade.closeLeg.price !== null && trade.closeLeg.price > 0
+      ? `@ $${trade.closeLeg.price.toFixed(2)}`
+      : "";
+
+    return {
+      action: trade.closeLeg.action,
+      price,
+      date: trade.closeLeg.date,
+    };
   };
+
+  const openAction = getOpenAction();
+  const closeAction = getCloseAction();
+  const isOpen = trade.status === "open";
+
+  // If no openLeg, this is a close-only trade (e.g., rolled from previous cycle)
+  if (!openAction) {
+    return (
+      <div className="rounded-lg border bg-card">
+        <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-4 px-5 py-3">
+          <div className="text-muted-foreground italic">Rolled from previous</div>
+          <div className="text-muted-foreground text-lg">→</div>
+          <div>
+            <div className="font-medium">{closeAction.action} {closeAction.price}</div>
+            <div className="text-xs text-muted-foreground">{closeAction.date}</div>
+          </div>
+          <div className="text-right min-w-[100px]">
+            {trade.netPnL !== null && (
+              <>
+                <div className={`font-mono font-semibold ${trade.netPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {trade.netPnL >= 0 ? "+" : ""}{formatCurrency(trade.netPnL)}
+                </div>
+                <div className="text-xs text-muted-foreground">P&L</div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded bg-muted">
-      {/* Summary row (always visible) */}
-      <div
-        className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/80"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-3">
-          <span className="font-medium">{trade.displayName}</span>
-          <Badge className={statusColors[trade.status]}>
-            {statusLabels[trade.status]}
-          </Badge>
+    <div className="rounded-lg border bg-card">
+      <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-4 px-5 py-3">
+        {/* Opening action */}
+        <div>
+          <div className="font-medium">{openAction.action} {openAction.price}</div>
+          <div className="text-xs text-muted-foreground">{openAction.date}</div>
         </div>
-        <div className="flex items-center gap-4">
-          {trade.netPnL !== null ? (
-            <span
-              className={`font-mono font-medium ${
-                trade.netPnL >= 0 ? "text-green-600" : "text-red-600"
-              }`}
-            >
-              {trade.netPnL >= 0 ? "+" : ""}
-              {formatCurrency(trade.netPnL)}
-            </span>
+
+        {/* Arrow */}
+        <div className="text-muted-foreground text-lg">→</div>
+
+        {/* Closing action */}
+        <div>
+          {isOpen ? (
+            <span className="text-blue-600 font-medium">Position open</span>
           ) : (
-            <span className="font-mono text-muted-foreground">—</span>
+            <>
+              <div className="font-medium">{closeAction.action} {closeAction.price}</div>
+              <div className="text-xs text-muted-foreground">{closeAction.date}</div>
+            </>
           )}
-          {expanded ? (
-            <ChevronUp className="h-4 w-4" />
+        </div>
+
+        {/* Result */}
+        <div className="text-right min-w-[100px]">
+          {trade.netPnL !== null ? (
+            <>
+              <div className={`font-mono font-semibold ${trade.netPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {trade.netPnL >= 0 ? "+" : ""}{formatCurrency(trade.netPnL)}
+              </div>
+              <div className="text-xs text-muted-foreground">P&L</div>
+            </>
           ) : (
-            <ChevronDown className="h-4 w-4" />
+            <>
+              <div className={`font-mono font-medium ${openAction && trade.openLeg && trade.openLeg.total >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {trade.openLeg && trade.openLeg.total >= 0 ? "+" : ""}{trade.openLeg ? formatCurrency(trade.openLeg.total) : "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {trade.type === "STOCK" ? "Cost" : "Premium"}
+              </div>
+            </>
           )}
         </div>
       </div>
-
-      {/* Expanded legs (collapsible) */}
-      {expanded && (
-        <div className="px-3 pb-3 pt-0 space-y-1 text-sm border-t border-border/50">
-          {trade.openLeg && (
-            <div className="flex justify-between text-muted-foreground pt-2">
-              <span>
-                {trade.openLeg.date}: {trade.openLeg.action}
-                {trade.openLeg.price > 0 && (
-                  <span className="ml-1">@ ${trade.openLeg.price.toFixed(2)}</span>
-                )}
-              </span>
-              <span
-                className={
-                  trade.openLeg.total >= 0 ? "text-green-600" : "text-red-600"
-                }
-              >
-                {trade.openLeg.total >= 0 ? "+" : ""}
-                {formatCurrency(trade.openLeg.total)}
-              </span>
-            </div>
-          )}
-          {trade.closeLeg && (
-            <div className="flex justify-between text-muted-foreground">
-              <span>
-                {trade.closeLeg.date}: {trade.closeLeg.action}
-                {trade.closeLeg.price !== null && trade.closeLeg.price > 0 && (
-                  <span className="ml-1">@ ${trade.closeLeg.price.toFixed(2)}</span>
-                )}
-              </span>
-              <span
-                className={
-                  trade.closeLeg.total >= 0 ? "text-green-600" : "text-red-600"
-                }
-              >
-                {trade.closeLeg.total >= 0 ? "+" : ""}
-                {formatCurrency(trade.closeLeg.total)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -684,7 +710,12 @@ function MatchedTradeRow({ trade }: { trade: WheelMatchedTrade }) {
 function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
   return (
     <div>
-      <h4 className="font-medium mb-2">Trades (Cycle {cycle.cycleNumber})</h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-medium">Trades in Cycle {cycle.cycleNumber}</h4>
+        <span className="text-sm text-muted-foreground">
+          {cycle.trades.length} trade{cycle.trades.length !== 1 ? "s" : ""}
+        </span>
+      </div>
       <div className="space-y-2">
         {cycle.trades.map((trade) => (
           <MatchedTradeRow key={trade.id} trade={trade} />

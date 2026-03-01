@@ -637,7 +637,7 @@ export function optionGroupToWheelMatchedTrade(
   group: OptionTradeGroup,
   symbol: string
 ): WheelMatchedTrade {
-  const { openTrade, closeTrade, wasAssigned, expiredWorthless, profit } = group;
+  const { openTrade, closeTrade, wasAssigned, expiredWorthless, profit, costBasis } = group;
 
   // Determine status
   let status: WheelMatchedTrade["status"];
@@ -660,12 +660,16 @@ export function optionGroupToWheelMatchedTrade(
     lastTradeDateOrContractMonth: group.expiry.replace(/-/g, ""),
   });
 
-  // Determine open action
-  const openAction = openTrade
+  // Determine if this was a short (sold to open) or long (bought to open) position
+  // When openTrade exists, use its direction; otherwise infer from closeTrade direction
+  const wasShortPosition = openTrade
     ? openTrade.buySell === "SELL"
-      ? `Sold ${group.right === "P" ? "PUT" : "CALL"}`
-      : `Bought ${group.right === "P" ? "PUT" : "CALL"}`
-    : null;
+    : closeTrade?.buySell === "BUY"; // BUY to close means was short
+
+  // Determine open action
+  const openAction = wasShortPosition
+    ? `Sold ${group.right === "P" ? "PUT" : "CALL"}`
+    : `Bought ${group.right === "P" ? "PUT" : "CALL"}`;
 
   // Determine close action
   let closeAction: string | null = null;
@@ -681,21 +685,37 @@ export function optionGroupToWheelMatchedTrade(
     closeAction = "Expired worthless";
   }
 
+  // Build open leg - synthesize from costBasis if openTrade is missing
+  let openLeg: WheelMatchedTrade["openLeg"] = null;
+  if (openTrade) {
+    openLeg = {
+      date: openTrade.tradeDate,
+      action: openAction,
+      price: openTrade.tradePrice,
+      quantity: openTrade.quantity,
+      total: openTrade.proceeds,
+    };
+  } else if (closeTrade && costBasis > 0) {
+    // Synthesize open leg from IBKR cost basis data
+    // The open trade happened before our FLEX report period
+    const quantity = closeTrade.quantity;
+    const pricePerContract = costBasis / quantity / 100; // costBasis is total, convert to per-share
+    openLeg = {
+      date: "(before report period)",
+      action: openAction,
+      price: pricePerContract,
+      quantity: quantity,
+      total: wasShortPosition ? costBasis : -costBasis,
+    };
+  }
+
   return {
     id: openTrade?.id || closeTrade?.id || `opt-${group.underlying}-${group.strike}-${group.expiry}`,
     type: "OPTION",
     displayName,
     status,
     netPnL: status === "open" ? null : profit,
-    openLeg: openTrade
-      ? {
-          date: openTrade.tradeDate,
-          action: openAction!,
-          price: openTrade.tradePrice,
-          quantity: openTrade.quantity,
-          total: openTrade.proceeds,
-        }
-      : null,
+    openLeg,
     closeLeg: closeTrade || expiredWorthless
       ? {
           date: closeTrade?.tradeDate || group.expiry,
