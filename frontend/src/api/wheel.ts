@@ -14,7 +14,14 @@ export const wheelApi = {
   /**
    * Get all tracked tickers with metrics
    */
-  list: () => request<WheelListResponse>("/api/wheel"),
+  list: (options?: { includeSuggestions?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.includeSuggestions === false) {
+      params.set("includeSuggestions", "false");
+    }
+    const suffix = params.toString();
+    return request<WheelListResponse>(`/api/wheel${suffix ? `?${suffix}` : ""}`);
+  },
 
   /**
    * Get suggestions for new tickers to track

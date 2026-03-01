@@ -44,15 +44,21 @@ export function WheelPage() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const wheelData = await api.wheel.list();
+      const wheelData = await api.wheel.list({ includeSuggestions: false });
       setData(wheelData);
-      setSuggestions(wheelData.suggestions);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
+      return;
     } finally {
       setLoading(false);
     }
+
+    // Load suggestions separately to avoid blocking initial render
+    api.wheel
+      .suggestions()
+      .then((res) => setSuggestions(res.suggestions))
+      .catch((err) => console.error("Failed to load wheel suggestions:", err));
   }, []);
 
   useEffect(() => {

@@ -18,13 +18,25 @@ router.get(
   "/",
   asyncHandler(async (_req, res) => {
     // Fetch IBKR data once, shared between tickers and suggestions
+    const includeSuggestionsParam = Array.isArray(_req.query.includeSuggestions)
+      ? _req.query.includeSuggestions[0]
+      : _req.query.includeSuggestions;
+    const includeSuggestions = includeSuggestionsParam !== "false" && includeSuggestionsParam !== "0";
+
     const symbols = await wheelService.getTrackerSymbols();
+    if (symbols.length === 0) {
+      const metrics = wheelService.getAggregateMetricsFromSummaries([]);
+      const suggestions = includeSuggestions ? await wheelService.getSuggestions() : [];
+      res.json({ tickers: [], metrics, suggestions });
+      return;
+    }
+
     const ibkrData = await wheelService.fetchIBKRData(symbols);
 
     // Run tickers and suggestions in parallel using shared IBKR data
     const [tickers, suggestions] = await Promise.all([
       wheelService.getTrackedTickers(ibkrData),
-      wheelService.getSuggestions(ibkrData.positions),
+      includeSuggestions ? wheelService.getSuggestions(ibkrData.positions) : Promise.resolve([]),
     ]);
 
     const metrics = wheelService.getAggregateMetricsFromSummaries(tickers);
