@@ -613,7 +613,7 @@ export const wheelService = {
           status: "in_progress",
           totalPremium: 0,
           shareQuantity: 0,
-          entryStrike: trade.strike || 0,
+          entryStrike: trade.strike || Math.abs(trade.proceeds / Math.abs(trade.quantity)),
           exitPrice: null,
           roc: 0,
           annualizedRoc: 0,
