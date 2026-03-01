@@ -38,13 +38,15 @@ import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks/useSparklines";
 
-// Helper to calculate days to expiration
+// Helper to calculate days to expiration using US Eastern timezone
 function calculateDTE(expiry: string): number {
-  const expiryDate = new Date(expiry);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  expiryDate.setHours(0, 0, 0, 0);
-  return Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const eastern = (d: Date) => {
+    const s = d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    return new Date(s + "T00:00:00");
+  };
+  const todayET = eastern(new Date());
+  const expiryDate = new Date(expiry + "T00:00:00");
+  return Math.ceil((expiryDate.getTime() - todayET.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 // Helper to format contract display name from trade data

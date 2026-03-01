@@ -26,6 +26,12 @@ import {
 } from "./tradeMatching.js";
 import type { WheelMatchedTrade } from "@assup/shared";
 
+/** Get current date at midnight in US Eastern timezone for DTE calculations */
+function nowInET(): Date {
+  const s = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  return new Date(s + "T00:00:00");
+}
+
 interface RawTrade {
   id: string;
   tradeId?: string;
@@ -202,7 +208,7 @@ const applyLiveDataToSummary = (
       expiry.slice(0, 4) + "-" + expiry.slice(4, 6) + "-" + expiry.slice(6, 8)
     ) : null;
     const dte = expiryDate
-      ? Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      ? Math.ceil((expiryDate.getTime() - nowInET().getTime()) / (1000 * 60 * 60 * 24))
       : undefined;
 
     const costBasis = Math.abs(optionPos.pos * optionPos.avgCost);
@@ -623,7 +629,7 @@ export const wheelService = {
         expiry.slice(0, 4) + "-" + expiry.slice(4, 6) + "-" + expiry.slice(6, 8)
       ) : null;
       const dte = expiryDate
-        ? Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        ? Math.ceil((expiryDate.getTime() - nowInET().getTime()) / (1000 * 60 * 60 * 24))
         : undefined;
 
       // Calculate unrealized P&L from market value and cost basis
