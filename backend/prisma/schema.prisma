@@ -221,6 +221,7 @@ model ImportedTrade {
   @@index([tradeDate])
   @@index([expiry])
   @@index([secType])
+  @@index([underlying])
   @@map("imported_trades")
 }
 

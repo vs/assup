@@ -47,6 +47,11 @@ interface RawTrade {
   realizedPnl: number | null;
 }
 
+interface PrefetchedTradeData {
+  dbTrades: RawTrade[];
+  assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null }>;
+}
+
 // Cached IBKR data to avoid redundant API calls
 interface CachedIBKRData {
   positions: Array<{
@@ -140,15 +145,70 @@ export const wheelService = {
       orderBy: { createdAt: "desc" },
     });
 
-    // Fetch IBKR data once if not provided
-    const symbols = trackers.map(t => t.symbol);
-    const ibkrData = cachedData ?? await this.fetchIBKRData(symbols);
+    if (trackers.length === 0) return [];
 
-    // Process all tickers in parallel
+    const symbols = trackers.map(t => t.symbol);
+
+    // Batch fetch: IBKR data + all DB trades in parallel (2 DB queries instead of 2 per symbol)
+    const [ibkrData, allDbTrades, allAssignedOptions] = await Promise.all([
+      cachedData ?? this.fetchIBKRData(symbols),
+      prisma.importedTrade.findMany({
+        where: {
+          OR: [
+            { underlying: { in: symbols } },
+            { symbol: { in: symbols }, secType: "STK" },
+          ],
+        },
+        orderBy: { tradeDate: "asc" },
+      }),
+      prisma.importedTrade.findMany({
+        where: {
+          underlying: { in: symbols },
+          secType: "OPT",
+          wasAssigned: true,
+        },
+        select: {
+          underlying: true,
+          expiry: true,
+          strike: true,
+          right: true,
+        },
+      }),
+    ]);
+
+    // Group trades by symbol
+    const tradesBySymbol = new Map<string, RawTrade[]>();
+    for (const trade of allDbTrades as unknown as RawTrade[]) {
+      const sym = trade.underlying || trade.symbol;
+      if (!tradesBySymbol.has(sym)) tradesBySymbol.set(sym, []);
+      tradesBySymbol.get(sym)!.push(trade);
+    }
+
+    // Group assigned options by symbol
+    const assignedBySymbol = new Map<string, Array<{ expiry: Date | null; strike: number | null; right: string | null }>>();
+    for (const opt of allAssignedOptions) {
+      const sym = opt.underlying!;
+      if (!assignedBySymbol.has(sym)) assignedBySymbol.set(sym, []);
+      assignedBySymbol.get(sym)!.push(opt);
+    }
+
+    // Process all tickers in parallel using pre-fetched data
     const summaries = await Promise.all(
-      trackers.map(tracker =>
-        this.getTickerSummary(tracker.symbol, tracker.startDate, ibkrData)
-      )
+      trackers.map(tracker => {
+        // Apply per-symbol startDate filter
+        let symbolTrades = tradesBySymbol.get(tracker.symbol) || [];
+        if (tracker.startDate) {
+          const startMs = tracker.startDate.getTime();
+          symbolTrades = symbolTrades.filter(t => new Date(t.tradeDate).getTime() >= startMs);
+        }
+
+        const prefetched: PrefetchedTradeData = {
+          dbTrades: symbolTrades,
+          assignedOptions: assignedBySymbol.get(tracker.symbol) || [],
+        };
+
+        return this.getTickerSummary(tracker.symbol, tracker.startDate, ibkrData, prefetched);
+      })
     );
 
     // Sort: active positions first, then by most recent activity
@@ -183,9 +243,9 @@ export const wheelService = {
    * Get ticker summary with current state and metrics
    * Uses cached IBKR data to avoid redundant API calls
    */
-  async getTickerSummary(symbol: string, startDate: Date | null, cachedData?: CachedIBKRData): Promise<WheelTickerSummary> {
+  async getTickerSummary(symbol: string, startDate: Date | null, cachedData?: CachedIBKRData, prefetchedData?: PrefetchedTradeData): Promise<WheelTickerSummary> {
     const todayTrades = cachedData?.todayTrades ?? [];
-    const cycles = await this.reconstructCycles(symbol, startDate, todayTrades, cachedData);
+    const cycles = await this.reconstructCycles(symbol, startDate, todayTrades, cachedData, prefetchedData);
     return this.getTickerSummaryWithCycles(symbol, startDate, cycles, cachedData);
   },
 
@@ -380,23 +440,48 @@ export const wheelService = {
    * @param cachedTodayTrades - Pre-fetched today's trades to avoid redundant API calls
    * @param cachedData - Pre-fetched IBKR data for unrealized P&L calculation
    */
-  async reconstructCycles(symbol: string, startDate: Date | null, cachedTodayTrades?: RawTrade[], cachedData?: CachedIBKRData): Promise<WheelCycle[]> {
-    // Get all trades for this underlying
-    const whereClause: Record<string, unknown> = {
-      OR: [
-        { underlying: symbol },
-        { symbol: symbol, secType: "STK" },
-      ],
-    };
+  async reconstructCycles(symbol: string, startDate: Date | null, cachedTodayTrades?: RawTrade[], cachedData?: CachedIBKRData, prefetchedData?: PrefetchedTradeData): Promise<WheelCycle[]> {
+    let dbTrades: RawTrade[];
+    let assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null }>;
 
-    if (startDate) {
-      whereClause.tradeDate = { gte: startDate };
+    if (prefetchedData) {
+      // Use pre-fetched data from batch query
+      dbTrades = prefetchedData.dbTrades;
+      assignedOptions = prefetchedData.assignedOptions;
+    } else {
+      // Fetch both queries in parallel
+      const whereClause: Record<string, unknown> = {
+        OR: [
+          { underlying: symbol },
+          { symbol: symbol, secType: "STK" },
+        ],
+      };
+      if (startDate) {
+        whereClause.tradeDate = { gte: startDate };
+      }
+
+      const [fetchedTrades, fetchedAssigned] = await Promise.all([
+        prisma.importedTrade.findMany({
+          where: whereClause,
+          orderBy: { tradeDate: "asc" },
+        }),
+        prisma.importedTrade.findMany({
+          where: {
+            underlying: symbol,
+            secType: "OPT",
+            wasAssigned: true,
+          },
+          select: {
+            expiry: true,
+            strike: true,
+            right: true,
+          },
+        }),
+      ]);
+
+      dbTrades = fetchedTrades as RawTrade[];
+      assignedOptions = fetchedAssigned;
     }
-
-    const dbTrades = await prisma.importedTrade.findMany({
-      where: whereClause,
-      orderBy: { tradeDate: "asc" },
-    }) as RawTrade[];
 
     // Use cached today's executions or fetch if not provided
     let todayExecutions: RawTrade[];
@@ -426,16 +511,6 @@ export const wheelService = {
       if (a.secType === "STK" && b.secType === "OPT") return -1;
       if (a.secType === "OPT" && b.secType === "STK") return 1;
       return 0;
-    });
-
-    // Query assigned options to detect stock assignments
-    // (wasAssigned is set on option trades, not stock trades)
-    const assignedOptions = await prisma.importedTrade.findMany({
-      where: {
-        underlying: symbol,
-        secType: "OPT",
-        wasAssigned: true,
-      },
     });
 
     // Build lookup maps for assigned PUTs and CALLs
