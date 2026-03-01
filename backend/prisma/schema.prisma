@@ -285,6 +285,20 @@ model WheelSuggestionDismissal {
   @@map("wheel_suggestion_dismissals")
 }
 
+// Wheel Summary Cache - precomputed summaries for faster list rendering
+model WheelSummaryCache {
+  id            String    @id @default(uuid()) @db.Uuid
+  symbol        String    @unique @db.VarChar(20)
+  startDate     DateTime? @map("start_date") @db.Date
+  tradeCount    Int       @map("trade_count")
+  lastTradeDate DateTime? @map("last_trade_date") @db.Date
+  summary       Json
+  computedAt    DateTime  @default(now()) @map("computed_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("wheel_summary_cache")
+}
+
 // Corporate Actions - stock splits, mergers, spinoffs from FLEX Query
 model CorporateAction {
   id            String   @id @default(uuid()) @db.Uuid

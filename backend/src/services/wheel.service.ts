@@ -4,6 +4,7 @@
  */
 
 import { SecType } from "@stoqey/ib";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
 import type {
@@ -52,6 +53,110 @@ interface PrefetchedTradeData {
   assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null }>;
 }
 
+const tradeSelect = {
+  id: true,
+  tradeId: true,
+  tradeDate: true,
+  symbol: true,
+  underlying: true,
+  secType: true,
+  strike: true,
+  expiry: true,
+  right: true,
+  quantity: true,
+  tradePrice: true,
+  proceeds: true,
+  commission: true,
+  buySell: true,
+  openClose: true,
+  wasAssigned: true,
+  multiplier: true,
+  costBasis: true,
+  realizedPnl: true,
+};
+
+const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
+  JSON.parse(JSON.stringify(summary)) as Prisma.InputJsonValue;
+
+const parseSummary = (value: Prisma.JsonValue): WheelTickerSummary | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as unknown as WheelTickerSummary;
+};
+
+let wheelSummaryCacheAvailable: boolean | null = null;
+
+const isMissingTableError = (err: unknown) =>
+  err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2021";
+
+const loadWheelSummaryCache = async (symbols: string[]) => {
+  if (wheelSummaryCacheAvailable === false || symbols.length === 0) return [];
+  try {
+    const caches = await prisma.wheelSummaryCache.findMany({
+      where: { symbol: { in: symbols } },
+    });
+    wheelSummaryCacheAvailable = true;
+    return caches;
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      wheelSummaryCacheAvailable = false;
+      return [];
+    }
+    throw err;
+  }
+};
+
+const upsertWheelSummaryCache = async (data: {
+  symbol: string;
+  startDate: Date | null;
+  tradeCount: number;
+  lastTradeDate: Date | null;
+  summary: WheelTickerSummary;
+}) => {
+  if (wheelSummaryCacheAvailable === false) return;
+  try {
+    await prisma.wheelSummaryCache.upsert({
+      where: { symbol: data.symbol },
+      create: {
+        symbol: data.symbol,
+        startDate: data.startDate,
+        tradeCount: data.tradeCount,
+        lastTradeDate: data.lastTradeDate,
+        summary: serializeSummary(data.summary),
+      },
+      update: {
+        startDate: data.startDate,
+        tradeCount: data.tradeCount,
+        lastTradeDate: data.lastTradeDate,
+        summary: serializeSummary(data.summary),
+        computedAt: new Date(),
+      },
+    });
+    wheelSummaryCacheAvailable = true;
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      wheelSummaryCacheAvailable = false;
+      return;
+    }
+    throw err;
+  }
+};
+
+const dateKey = (value?: Date | null) =>
+  value ? value.toISOString().split("T")[0] : null;
+
+const buildTradeWhereClause = (symbol: string, startDate: Date | null) => {
+  const whereClause: Record<string, unknown> = {
+    OR: [
+      { underlying: symbol },
+      { symbol: symbol, secType: "STK" },
+    ],
+  };
+  if (startDate) {
+    whereClause.tradeDate = { gte: startDate };
+  }
+  return whereClause;
+};
+
 // Cached IBKR data to avoid redundant API calls
 interface CachedIBKRData {
   positions: Array<{
@@ -67,6 +172,133 @@ interface CachedIBKRData {
   marketPrices: Map<string, number>;
   optionPrices: Map<string, number>;  // key: "SYMBOL-STRIKE-EXPIRY-RIGHT" -> price per share
 }
+
+const applyLiveDataToSummary = (
+  summary: WheelTickerSummary,
+  cachedData?: CachedIBKRData
+): WheelTickerSummary => {
+  if (!cachedData) return summary;
+
+  const positions = cachedData.positions ?? [];
+  const symbol = summary.symbol;
+
+  const optionPos = positions.find(
+    (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos !== 0
+  );
+  const stockPos = positions.find(
+    (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
+  );
+
+  let currentPhase: WheelTickerSummary["currentPhase"] = "idle";
+  let currentPosition: WheelTickerSummary["currentPosition"] = null;
+
+  if (optionPos && optionPos.pos < 0) {
+    // Short option position
+    const isCall = optionPos.contract.right === "C";
+    currentPhase = isCall ? "cc_open" : "csp_open";
+
+    const expiry = optionPos.contract.lastTradeDateOrContractMonth;
+    const expiryDate = expiry ? new Date(
+      expiry.slice(0, 4) + "-" + expiry.slice(4, 6) + "-" + expiry.slice(6, 8)
+    ) : null;
+    const dte = expiryDate
+      ? Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : undefined;
+
+    const costBasis = Math.abs(optionPos.pos * optionPos.avgCost);
+    const unrealizedPnl = optionPos.marketValue !== undefined
+      ? costBasis - Math.abs(optionPos.marketValue)
+      : undefined;
+
+    currentPosition = {
+      type: isCall ? "cc" : "csp",
+      strike: optionPos.contract.strike,
+      expiry: expiryDate?.toISOString().split("T")[0],
+      dte,
+      quantity: Math.abs(optionPos.pos),
+      unrealizedPnl,
+    };
+  } else if (stockPos) {
+    currentPhase = "holding_shares";
+    const costBasis = stockPos.pos * stockPos.avgCost;
+    const unrealizedPnl = stockPos.marketValue !== undefined
+      ? stockPos.marketValue - costBasis
+      : undefined;
+
+    currentPosition = {
+      type: "shares",
+      quantity: stockPos.pos,
+      unrealizedPnl,
+    };
+  }
+
+  const adjustedCostBasis = summary.adjustedCostBasis;
+  const currentPrice = cachedData.marketPrices.get(symbol) ?? summary.currentPrice ?? null;
+  const breakEven = adjustedCostBasis;
+  const percentBelowMarket = currentPrice && adjustedCostBasis > 0
+    ? ((currentPrice - adjustedCostBasis) / currentPrice) * 100
+    : null;
+
+  let unrealizedPnL = 0;
+
+  const shareQuantity = stockPos?.pos ?? 0;
+  if (shareQuantity > 0 && currentPrice != null && adjustedCostBasis > 0) {
+    unrealizedPnL += (currentPrice - adjustedCostBasis) * shareQuantity;
+  }
+
+  for (const pos of positions) {
+    if (pos.contract.secType === "OPT" &&
+        pos.contract.symbol === symbol &&
+        pos.pos < 0 &&
+        pos.unrealizedPnl != null) {
+      unrealizedPnL += pos.unrealizedPnl;
+    }
+  }
+
+  if (currentPhase === "idle") {
+    unrealizedPnL = 0;
+  }
+
+  let capitalDeployed = summary.capitalDeployed;
+  if (capitalDeployed === 0 && currentPosition) {
+    if (currentPhase === "csp_open" && currentPosition.strike) {
+      capitalDeployed = currentPosition.strike * 100 * currentPosition.quantity;
+    } else if (currentPhase === "holding_shares" || currentPhase === "cc_open") {
+      const quantity = currentPhase === "cc_open" ? shareQuantity : currentPosition.quantity;
+      capitalDeployed = adjustedCostBasis * quantity;
+    }
+  }
+  if (currentPhase === "idle") {
+    capitalDeployed = 0;
+  }
+
+  const realizedPnL = summary.realizedPnL;
+  const totalPnL = realizedPnL + unrealizedPnL;
+  const realizedPnLPercent = capitalDeployed > 0
+    ? (realizedPnL / capitalDeployed) * 100
+    : null;
+  const unrealizedPnLPercent = capitalDeployed > 0
+    ? (unrealizedPnL / capitalDeployed) * 100
+    : null;
+  const totalPnLPercent = capitalDeployed > 0
+    ? (totalPnL / capitalDeployed) * 100
+    : null;
+
+  return {
+    ...summary,
+    currentPhase,
+    currentPosition,
+    currentPrice,
+    breakEven,
+    percentBelowMarket,
+    unrealizedPnL,
+    totalPnL,
+    capitalDeployed,
+    realizedPnLPercent,
+    unrealizedPnLPercent,
+    totalPnLPercent,
+  };
+};
 
 export const wheelService = {
   /**
@@ -94,6 +326,9 @@ export const wheelService = {
       result.positions = positions;
       result.todayTrades = todayTrades as unknown as RawTrade[];
 
+      const trackedSymbols = new Set(symbols);
+      const symbolsNeedingPrice = new Set<string>();
+
       // Populate option prices from positions
       for (const pos of positions) {
         if (pos.contract.secType === "OPT" && pos.marketPrice != null) {
@@ -107,11 +342,25 @@ export const wheelService = {
             result.optionPrices.set(key, pos.marketPrice);
           }
         }
+
+        if (pos.pos !== 0) {
+          const symbol = pos.contract.symbol;
+          if (!symbol || !trackedSymbols.has(symbol)) continue;
+
+          if (pos.contract.secType === "STK" && pos.marketPrice != null) {
+            result.marketPrices.set(symbol, pos.marketPrice);
+          } else {
+            symbolsNeedingPrice.add(symbol);
+          }
+        }
       }
 
-      // Fetch market prices for all symbols in parallel
-      if (symbols.length > 0) {
-        const pricePromises = symbols.map(async (symbol) => {
+      // Fetch market prices only for active tracked symbols missing price data
+      const priceSymbols = Array.from(symbolsNeedingPrice).filter(
+        (symbol) => !result.marketPrices.has(symbol)
+      );
+      if (priceSymbols.length > 0) {
+        const pricePromises = priceSymbols.map(async (symbol) => {
           try {
             const contract = {
               symbol,
@@ -146,6 +395,22 @@ export const wheelService = {
   },
 
   /**
+   * Get trade stats for cache validation
+   */
+  async getTradeStats(symbol: string, startDate: Date | null): Promise<{ tradeCount: number; lastTradeDate: Date | null }> {
+    const stats = await prisma.importedTrade.aggregate({
+      where: buildTradeWhereClause(symbol, startDate),
+      _count: { _all: true },
+      _max: { tradeDate: true },
+    });
+
+    return {
+      tradeCount: stats._count._all,
+      lastTradeDate: stats._max.tradeDate,
+    };
+  },
+
+  /**
    * Get all tracked tickers with summary data
    */
   async getTrackedTickers(cachedData?: CachedIBKRData): Promise<WheelTickerSummary[]> {
@@ -157,53 +422,104 @@ export const wheelService = {
 
     const symbols = trackers.map(t => t.symbol);
 
-    // Batch fetch: IBKR data + all DB trades in parallel (2 DB queries instead of 2 per symbol)
-    const [ibkrData, allDbTrades, allAssignedOptions] = await Promise.all([
+    const [ibkrData, caches] = await Promise.all([
       cachedData ?? this.fetchIBKRData(symbols),
-      prisma.importedTrade.findMany({
-        where: {
-          OR: [
-            { underlying: { in: symbols } },
-            { symbol: { in: symbols }, secType: "STK" },
-          ],
-        },
-        orderBy: { tradeDate: "asc" },
-      }),
-      prisma.importedTrade.findMany({
-        where: {
-          underlying: { in: symbols },
-          secType: "OPT",
-          wasAssigned: true,
-        },
-        select: {
-          underlying: true,
-          expiry: true,
-          strike: true,
-          right: true,
-        },
-      }),
+      loadWheelSummaryCache(symbols),
     ]);
 
-    // Group trades by symbol
-    const tradesBySymbol = new Map<string, RawTrade[]>();
-    for (const trade of allDbTrades as unknown as RawTrade[]) {
+    const cacheBySymbol = new Map(caches.map(c => [c.symbol, c]));
+
+    const tradeStatsEntries = await Promise.all(
+      trackers.map(async (tracker) => {
+        const stats = await this.getTradeStats(tracker.symbol, tracker.startDate);
+        return [tracker.symbol, stats] as const;
+      })
+    );
+    const tradeStatsBySymbol = new Map(tradeStatsEntries);
+
+    // Index today's trades by symbol to detect new activity
+    const todayTradesBySymbol = new Map<string, RawTrade[]>();
+    for (const trade of ibkrData.todayTrades as RawTrade[]) {
       const sym = trade.underlying || trade.symbol;
-      if (!tradesBySymbol.has(sym)) tradesBySymbol.set(sym, []);
-      tradesBySymbol.get(sym)!.push(trade);
+      if (!sym) continue;
+      if (!todayTradesBySymbol.has(sym)) todayTradesBySymbol.set(sym, []);
+      todayTradesBySymbol.get(sym)!.push(trade);
     }
 
-    // Group assigned options by symbol
+    const rebuildSymbols = new Set<string>();
+    for (const tracker of trackers) {
+      const cache = cacheBySymbol.get(tracker.symbol);
+      const stats = tradeStatsBySymbol.get(tracker.symbol);
+      const hasTodayTrades = (todayTradesBySymbol.get(tracker.symbol)?.length ?? 0) > 0;
+      const cacheValid = cache &&
+        dateKey(cache.startDate) === dateKey(tracker.startDate) &&
+        stats &&
+        cache.tradeCount === stats.tradeCount &&
+        dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate) &&
+        !hasTodayTrades;
+
+      if (!cacheValid) {
+        rebuildSymbols.add(tracker.symbol);
+      }
+    }
+
+    // Prefetch trades only for symbols that need recomputation
+    const tradesBySymbol = new Map<string, RawTrade[]>();
     const assignedBySymbol = new Map<string, Array<{ expiry: Date | null; strike: number | null; right: string | null }>>();
-    for (const opt of allAssignedOptions) {
-      const sym = opt.underlying!;
-      if (!assignedBySymbol.has(sym)) assignedBySymbol.set(sym, []);
-      assignedBySymbol.get(sym)!.push(opt);
+
+    if (rebuildSymbols.size > 0) {
+      const symbolsToFetch = Array.from(rebuildSymbols);
+      const [allDbTrades, allAssignedOptions] = await Promise.all([
+        prisma.importedTrade.findMany({
+          where: {
+            OR: [
+              { underlying: { in: symbolsToFetch } },
+              { symbol: { in: symbolsToFetch }, secType: "STK" },
+            ],
+          },
+          orderBy: { tradeDate: "asc" },
+          select: tradeSelect,
+        }),
+        prisma.importedTrade.findMany({
+          where: {
+            underlying: { in: symbolsToFetch },
+            secType: "OPT",
+            wasAssigned: true,
+          },
+          select: {
+            underlying: true,
+            expiry: true,
+            strike: true,
+            right: true,
+          },
+        }),
+      ]);
+
+      for (const trade of allDbTrades as unknown as RawTrade[]) {
+        const sym = trade.underlying || trade.symbol;
+        if (!tradesBySymbol.has(sym)) tradesBySymbol.set(sym, []);
+        tradesBySymbol.get(sym)!.push(trade);
+      }
+
+      for (const opt of allAssignedOptions) {
+        const sym = opt.underlying!;
+        if (!assignedBySymbol.has(sym)) assignedBySymbol.set(sym, []);
+        assignedBySymbol.get(sym)!.push(opt);
+      }
     }
 
-    // Process all tickers in parallel using pre-fetched data
     const summaries = await Promise.all(
-      trackers.map(tracker => {
-        // Apply per-symbol startDate filter
+      trackers.map(async (tracker) => {
+        if (!rebuildSymbols.has(tracker.symbol)) {
+          const cache = cacheBySymbol.get(tracker.symbol);
+          if (cache && cache.summary) {
+            const cachedSummary = parseSummary(cache.summary as Prisma.JsonValue);
+            if (cachedSummary) {
+              return applyLiveDataToSummary(cachedSummary, ibkrData);
+            }
+          }
+        }
+
         let symbolTrades = tradesBySymbol.get(tracker.symbol) || [];
         if (tracker.startDate) {
           const startMs = tracker.startDate.getTime();
@@ -215,7 +531,19 @@ export const wheelService = {
           assignedOptions: assignedBySymbol.get(tracker.symbol) || [],
         };
 
-        return this.getTickerSummary(tracker.symbol, tracker.startDate, ibkrData, prefetched);
+        const summary = await this.getTickerSummary(tracker.symbol, tracker.startDate, ibkrData, prefetched);
+        const stats = tradeStatsBySymbol.get(tracker.symbol);
+        if (stats) {
+          await upsertWheelSummaryCache({
+            symbol: tracker.symbol,
+            startDate: tracker.startDate,
+            tradeCount: stats.tradeCount,
+            lastTradeDate: stats.lastTradeDate,
+            summary,
+          });
+        }
+
+        return summary;
       })
     );
 
@@ -458,20 +786,13 @@ export const wheelService = {
       assignedOptions = prefetchedData.assignedOptions;
     } else {
       // Fetch both queries in parallel
-      const whereClause: Record<string, unknown> = {
-        OR: [
-          { underlying: symbol },
-          { symbol: symbol, secType: "STK" },
-        ],
-      };
-      if (startDate) {
-        whereClause.tradeDate = { gte: startDate };
-      }
+      const whereClause = buildTradeWhereClause(symbol, startDate);
 
       const [fetchedTrades, fetchedAssigned] = await Promise.all([
         prisma.importedTrade.findMany({
           where: whereClause,
           orderBy: { tradeDate: "asc" },
+          select: tradeSelect,
         }),
         prisma.importedTrade.findMany({
           where: {
@@ -932,17 +1253,14 @@ export const wheelService = {
    * @param cachedPositions - Pre-fetched positions to avoid redundant API calls
    */
   async getSuggestions(cachedPositions?: CachedIBKRData["positions"]): Promise<WheelSuggestion[]> {
-    // Get already tracked symbols
-    const tracked = await prisma.wheelTracker.findMany({
-      select: { symbol: true },
-    });
+    // Get already tracked + dismissed symbols in parallel
+    const [tracked, dismissed] = await Promise.all([
+      prisma.wheelTracker.findMany({ select: { symbol: true } }),
+      prisma.wheelSuggestionDismissal.findMany({ select: { symbol: true } }),
+    ]);
     const trackedSymbols = new Set(tracked.map((t) => t.symbol));
-
-    // Get dismissed symbols
-    const dismissed = await prisma.wheelSuggestionDismissal.findMany({
-      select: { symbol: true },
-    });
     const dismissedSymbols = new Set(dismissed.map((d) => d.symbol));
+    const excludedSymbols = Array.from(new Set([...trackedSymbols, ...dismissedSymbols]));
 
     // Check IBKR positions to identify which symbols have active positions
     const activePositionSymbols = new Set<string>();
@@ -956,52 +1274,63 @@ export const wheelService = {
       }
     }
 
-    // Find symbols with sold options
-    const optionTrades = await prisma.importedTrade.findMany({
-      where: {
-        secType: "OPT",
-        buySell: "SELL",
-        underlying: { not: null },
+    const baseWhere = {
+      secType: "OPT",
+      buySell: "SELL",
+      underlying: {
+        not: null,
+        ...(excludedSymbols.length > 0 ? { notIn: excludedSymbols } : {}),
       },
-      select: {
-        underlying: true,
-        right: true,
-        proceeds: true,
-        tradeDate: true,
-      },
-      orderBy: { tradeDate: "desc" },
-    });
+    };
 
-    // Aggregate by underlying
-    const symbolStats = new Map<string, WheelSuggestion>();
+    // Aggregate via DB: totals and first/last dates
+    const [byUnderlying, byUnderlyingRight] = await Promise.all([
+      prisma.importedTrade.groupBy({
+        by: ["underlying"],
+        where: baseWhere,
+        _sum: { proceeds: true },
+        _min: { tradeDate: true },
+        _max: { tradeDate: true },
+      }),
+      prisma.importedTrade.groupBy({
+        by: ["underlying", "right"],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
+    ]);
 
-    for (const trade of optionTrades) {
-      const symbol = trade.underlying!;
-      if (trackedSymbols.has(symbol) || dismissedSymbols.has(symbol)) continue;
-
-      if (!symbolStats.has(symbol)) {
-        symbolStats.set(symbol, {
-          symbol,
-          putCount: 0,
-          callCount: 0,
-          totalPremium: 0,
-          lastTradeDate: trade.tradeDate.toISOString().split("T")[0],
-          firstTradeDate: trade.tradeDate.toISOString().split("T")[0],
-          hasActivePosition: activePositionSymbols.has(symbol),
-        });
+    const countsBySymbol = new Map<string, { putCount: number; callCount: number }>();
+    for (const row of byUnderlyingRight) {
+      const symbol = row.underlying;
+      if (!symbol || !row.right) continue;
+      if (!countsBySymbol.has(symbol)) {
+        countsBySymbol.set(symbol, { putCount: 0, callCount: 0 });
       }
+      const counts = countsBySymbol.get(symbol)!;
+      if (row.right === "P") counts.putCount += row._count._all;
+      if (row.right === "C") counts.callCount += row._count._all;
+    }
 
-      const stats = symbolStats.get(symbol)!;
-      if (trade.right === "P") stats.putCount++;
-      if (trade.right === "C") stats.callCount++;
-      stats.totalPremium += trade.proceeds;
-
-      const dateStr = trade.tradeDate.toISOString().split("T")[0];
-      if (dateStr < stats.firstTradeDate) stats.firstTradeDate = dateStr;
+    const suggestions: WheelSuggestion[] = [];
+    for (const row of byUnderlying) {
+      const symbol = row.underlying;
+      if (!symbol) continue;
+      const counts = countsBySymbol.get(symbol) ?? { putCount: 0, callCount: 0 };
+      const firstTradeDate = row._min.tradeDate?.toISOString().split("T")[0] ?? "";
+      const lastTradeDate = row._max.tradeDate?.toISOString().split("T")[0] ?? "";
+      suggestions.push({
+        symbol,
+        putCount: counts.putCount,
+        callCount: counts.callCount,
+        totalPremium: row._sum.proceeds ?? 0,
+        lastTradeDate,
+        firstTradeDate,
+        hasActivePosition: activePositionSymbols.has(symbol),
+      });
     }
 
     // Sort: Active positions first, then by lastTradeDate descending
-    return Array.from(symbolStats.values()).sort((a, b) => {
+    return suggestions.sort((a, b) => {
       if (a.hasActivePosition && !b.hasActivePosition) return -1;
       if (!a.hasActivePosition && b.hasActivePosition) return 1;
       return b.lastTradeDate.localeCompare(a.lastTradeDate);
