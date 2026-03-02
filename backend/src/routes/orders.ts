@@ -270,7 +270,7 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    const { symbol, expiration, strike, right, action, quantity, limitPrice } = req.body;
+    const { symbol, expiration, strike, right, action, quantity, limitPrice, tif } = req.body;
 
     // Build the option contract
     const contract: Contract = {
@@ -289,6 +289,7 @@ router.post(
       quantity,
       limitPrice,
       orderType: "LMT",
+      tif,
     });
 
     const result: PlaceOrderResult = {
@@ -357,7 +358,7 @@ router.put(
       return;
     }
 
-    const { limitPrice, quantity } = req.body;
+    const { limitPrice, quantity, tif } = req.body;
 
     // Find the existing order to get its contract and action
     const rawOrders = await ibkrService.getAllOpenOrders();
@@ -379,6 +380,7 @@ router.put(
       action,
       quantity,
       limitPrice,
+      tif,
     });
 
     const result: ModifyOrderResult = { orderId, limitPrice, quantity };

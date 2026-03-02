@@ -46,6 +46,7 @@ export interface PlaceOrderInput {
   action: "BUY" | "SELL";
   quantity: number;
   limitPrice: number;
+  tif?: "DAY" | "GTC";
 }
 
 /**
@@ -66,6 +67,7 @@ export interface ModifyOrderInput {
   orderId: number;
   limitPrice: number;
   quantity: number;
+  tif?: "DAY" | "GTC";
 }
 
 /**

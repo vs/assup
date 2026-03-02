@@ -39,6 +39,7 @@ export function SellOptionDialog({
 }: SellOptionDialogProps) {
   const [quantity, setQuantity] = useState(1);
   const [limitPrice, setLimitPrice] = useState(0);
+  const [tif, setTif] = useState<"DAY" | "GTC">("DAY");
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ orderId: number } | null>(null);
@@ -48,6 +49,7 @@ export function SellOptionDialog({
     if (open && opportunity) {
       setQuantity(1);
       setLimitPrice(opportunity.midPrice);
+      setTif("DAY");
       setError(null);
       setSuccess(null);
     }
@@ -80,6 +82,7 @@ export function SellOptionDialog({
         action: "SELL",
         quantity,
         limitPrice,
+        tif,
       });
 
       setSuccess({ orderId: result.orderId });
@@ -185,6 +188,31 @@ export function SellOptionDialog({
               onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
               disabled={placing}
             />
+          </div>
+
+          {/* Time in Force */}
+          <div className="space-y-2">
+            <Label>Time in Force</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={tif === "DAY" ? "default" : "outline"}
+                onClick={() => setTif("DAY")}
+                disabled={placing}
+              >
+                DAY
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={tif === "GTC" ? "default" : "outline"}
+                onClick={() => setTif("GTC")}
+                disabled={placing}
+              >
+                GTC
+              </Button>
+            </div>
           </div>
 
           {/* Total premium */}

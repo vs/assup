@@ -30,6 +30,7 @@ export function ClosePositionDialog({
 }: ClosePositionDialogProps) {
   const [quantity, setQuantity] = useState(1);
   const [limitPrice, setLimitPrice] = useState(0);
+  const [tif, setTif] = useState<"DAY" | "GTC">("DAY");
   const [placing, setPlacing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export function ClosePositionDialog({
       setError(null);
       setSuccess(null);
       setQuote(null);
+      setTif("DAY");
 
       // In modify mode, pre-fill from existing order
       if (existingOrder) {
@@ -108,6 +110,7 @@ export function ClosePositionDialog({
         const result = await api.orders.modify(existingOrder.orderId, {
           limitPrice,
           quantity,
+          tif,
         });
         setSuccess({ orderId: result.orderId, message: "Order modified successfully!" });
       } else {
@@ -119,6 +122,7 @@ export function ClosePositionDialog({
           action,
           quantity,
           limitPrice,
+          tif,
         });
         setSuccess({ orderId: result.orderId, message: "Order placed successfully!" });
       }
@@ -247,6 +251,31 @@ export function ClosePositionDialog({
               onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
               disabled={placing}
             />
+          </div>
+
+          {/* Time in Force */}
+          <div className="space-y-2">
+            <Label>Time in Force</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={tif === "DAY" ? "default" : "outline"}
+                onClick={() => setTif("DAY")}
+                disabled={placing}
+              >
+                DAY
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={tif === "GTC" ? "default" : "outline"}
+                onClick={() => setTif("GTC")}
+                disabled={placing}
+              >
+                GTC
+              </Button>
+            </div>
           </div>
 
           {/* Total cost */}

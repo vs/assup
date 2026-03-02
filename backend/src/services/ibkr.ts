@@ -755,6 +755,7 @@ class IBKRService {
       quantity: number;
       limitPrice: number;
       orderType?: "LMT" | "MKT";
+      tif?: "DAY" | "GTC";
     }
   ): Promise<number> {
     if (!this.api || !this.api.isConnected) {
@@ -766,7 +767,7 @@ class IBKRService {
       totalQuantity: orderParams.quantity,
       orderType: orderParams.orderType === "MKT" ? OrderType.MKT : OrderType.LMT,
       lmtPrice: orderParams.limitPrice,
-      tif: TimeInForce.DAY,
+      tif: orderParams.tif === "GTC" ? TimeInForce.GTC : TimeInForce.DAY,
       transmit: true,
     };
 
@@ -998,6 +999,7 @@ class IBKRService {
       action: "BUY" | "SELL";
       quantity: number;
       limitPrice: number;
+      tif?: "DAY" | "GTC";
     }
   ): Promise<void> {
     if (!this.api || !this.api.isConnected) {
@@ -1009,7 +1011,7 @@ class IBKRService {
       totalQuantity: orderParams.quantity,
       orderType: OrderType.LMT,
       lmtPrice: orderParams.limitPrice,
-      tif: TimeInForce.DAY,
+      tif: orderParams.tif === "GTC" ? TimeInForce.GTC : TimeInForce.DAY,
       transmit: true,
     };
 

@@ -30,6 +30,7 @@ export const placeOrderSchema = z.object({
   action: z.enum(["BUY", "SELL"]),
   quantity: z.number().int().positive("Quantity must be positive"),
   limitPrice: z.number().positive("Limit price must be positive"),
+  tif: z.enum(["DAY", "GTC"]).optional().default("DAY"),
 });
 
 export type PlaceOrderSchemaInput = z.infer<typeof placeOrderSchema>;
@@ -40,6 +41,7 @@ export type PlaceOrderSchemaInput = z.infer<typeof placeOrderSchema>;
 export const modifyOrderSchema = z.object({
   limitPrice: z.number().positive("Limit price must be positive"),
   quantity: z.number().int().positive("Quantity must be positive"),
+  tif: z.enum(["DAY", "GTC"]).optional(),
 });
 
 export type ModifyOrderSchemaInput = z.infer<typeof modifyOrderSchema>;

@@ -43,7 +43,7 @@ export const ordersApi = {
       body: JSON.stringify(input),
     }),
 
-  modify: (orderId: number, params: { limitPrice: number; quantity: number }) =>
+  modify: (orderId: number, params: { limitPrice: number; quantity: number; tif?: "DAY" | "GTC" }) =>
     request<ModifyOrderResult>(`/api/orders/${orderId}`, {
       method: "PUT",
       body: JSON.stringify(params),
