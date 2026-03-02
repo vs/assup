@@ -13,7 +13,7 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
-export interface MonthlyProfitQueryParams {
+interface MonthlyProfitQueryParams {
   startDate?: string;
   endDate?: string;
 }

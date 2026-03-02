@@ -5,13 +5,13 @@
 import { request } from "./client";
 import type { AssetClass } from "@assup/shared";
 
-export interface AssetClassCreateInput {
+interface AssetClassCreateInput {
   name: string;
   description?: string;
   color?: string;
 }
 
-export interface AssetClassUpdateInput {
+interface AssetClassUpdateInput {
   name?: string;
   description?: string;
   color?: string;

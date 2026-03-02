@@ -5,13 +5,13 @@
 import { request } from "./client";
 import type { AllocationProfile, AllocationTargetInput } from "@assup/shared";
 
-export interface AllocationProfileCreateInput {
+interface AllocationProfileCreateInput {
   name: string;
   isActive?: boolean;
   targets?: AllocationTargetInput[];
 }
 
-export interface AllocationProfileUpdateInput {
+interface AllocationProfileUpdateInput {
   name?: string;
   isActive?: boolean;
   targets?: AllocationTargetInput[];

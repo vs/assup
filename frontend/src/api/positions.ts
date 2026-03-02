@@ -5,7 +5,7 @@
 import { request, buildQuery } from "./client";
 import type { Position, PositionSummary, OptionsWeightMode } from "@assup/shared";
 
-export interface PositionSummaryOptions {
+interface PositionSummaryOptions {
   includeOptions?: boolean;
   optionsWeightMode?: OptionsWeightMode;
 }

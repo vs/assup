@@ -31,14 +31,3 @@ export async function setDockBadge(connected: boolean): Promise<void> {
   }
 }
 
-export async function invokeBackendDiscovery(): Promise<string | null> {
-  if (!isTauri()) return null;
-
-  try {
-    const url = await window.__TAURI__!.core.invoke<string | null>('get_backend_url');
-    return url;
-  } catch (e) {
-    console.error('Failed to discover backend:', e);
-    return null;
-  }
-}

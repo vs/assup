@@ -5,7 +5,7 @@
 import { request } from "./client";
 import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult } from "@assup/shared";
 
-export interface SimulateOrderInput {
+interface SimulateOrderInput {
   symbol: string;
   secType?: string;
   action: "BUY" | "SELL";
@@ -13,7 +13,7 @@ export interface SimulateOrderInput {
   price: number;
 }
 
-export interface OptionQuoteInput {
+interface OptionQuoteInput {
   symbol: string;
   expiration: string; // YYYYMMDD
   strike: number;

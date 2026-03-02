@@ -5,11 +5,11 @@
 import { request } from "./client";
 import type { Watchlist, WatchlistWithItems, WatchlistItem } from "@assup/shared";
 
-export interface WatchlistCreateInput {
+interface WatchlistCreateInput {
   name: string;
 }
 
-export interface WatchlistItemCreateInput {
+interface WatchlistItemCreateInput {
   symbol: string;
   conId?: number;
   secType?: string;

@@ -37,14 +37,3 @@ export function ErrorAlert({ message, onDismiss, title = "Error" }: ErrorAlertPr
   );
 }
 
-/**
- * Inline error message (smaller, for form fields)
- */
-export function ErrorMessage({ message }: { message: string }) {
-  return (
-    <p className="text-sm text-destructive flex items-center gap-1">
-      <AlertCircle className="h-3.5 w-3.5" />
-      {message}
-    </p>
-  );
-}

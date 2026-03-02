@@ -5,7 +5,7 @@
 import { request } from "./client";
 import type { SecurityAssignment } from "@assup/shared";
 
-export interface SecurityAssignmentCreateInput {
+interface SecurityAssignmentCreateInput {
   symbol: string;
   conId?: number;
   secType?: string;
@@ -13,7 +13,7 @@ export interface SecurityAssignmentCreateInput {
   source?: string;
 }
 
-export interface SecurityAssignmentUpdateInput {
+interface SecurityAssignmentUpdateInput {
   assetClassId: string;
 }
 

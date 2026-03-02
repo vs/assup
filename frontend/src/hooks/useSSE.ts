@@ -217,22 +217,3 @@ export function usePositionUpdates(onUpdate: () => void) {
   }, []);
 }
 
-// Hook that triggers a callback when order changes are broadcast
-export function useOrderUpdates(onUpdate: () => void) {
-  const callbackRef = useRef(onUpdate);
-  useEffect(() => {
-    callbackRef.current = onUpdate;
-  });
-
-  useEffect(() => {
-    const unsubscribe = sseManager.subscribe();
-    const removeListener = sseManager.addListener("order", () => {
-      callbackRef.current();
-    });
-
-    return () => {
-      removeListener();
-      unsubscribe();
-    };
-  }, []);
-}

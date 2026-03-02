@@ -1,10 +1,6 @@
 import { Button } from "@/components/ui/button";
 import {
   Inbox,
-  Layers,
-  Briefcase,
-  List,
-  Search,
   Plus,
   type LucideIcon,
 } from "lucide-react";
@@ -38,60 +34,5 @@ export function EmptyState({
         </Button>
       )}
     </div>
-  );
-}
-
-// Pre-configured empty states for common scenarios
-export function NoAssetClassesEmpty({ onAction }: { onAction?: () => void }) {
-  return (
-    <EmptyState
-      icon={Layers}
-      title="No asset classes"
-      description="Create your first asset class to start organizing your portfolio."
-      actionLabel="Create Asset Class"
-      onAction={onAction}
-    />
-  );
-}
-
-export function NoPositionsEmpty() {
-  return (
-    <EmptyState
-      icon={Briefcase}
-      title="No positions"
-      description="Connect to TWS and ensure you have open positions to see them here."
-    />
-  );
-}
-
-export function NoWatchlistsEmpty({ onAction }: { onAction?: () => void }) {
-  return (
-    <EmptyState
-      icon={List}
-      title="No watchlists"
-      description="Create a watchlist to track securities you're interested in."
-      actionLabel="Create Watchlist"
-      onAction={onAction}
-    />
-  );
-}
-
-export function NoSearchResultsEmpty() {
-  return (
-    <EmptyState
-      icon={Search}
-      title="No results found"
-      description="Try adjusting your search criteria or filters."
-    />
-  );
-}
-
-export function NoDataEmpty({ message }: { message?: string }) {
-  return (
-    <EmptyState
-      icon={Inbox}
-      title="No data"
-      description={message || "There's nothing to display here yet."}
-    />
   );
 }

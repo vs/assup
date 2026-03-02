@@ -4,7 +4,7 @@
 
 export { AssetClassSelect } from "./AssetClassSelect";
 export { EmptyState } from "./EmptyState";
-export { ErrorAlert, ErrorMessage } from "./ErrorAlert";
+export { ErrorAlert } from "./ErrorAlert";
 export { ErrorBoundary } from "./ErrorBoundary";
 export { ExposureTooltip } from "./ExposureTooltip";
 export { ExternalLinks } from "./ExternalLinks";

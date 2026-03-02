@@ -5,13 +5,13 @@
 import { request } from "./client";
 import type { ScannerPreset, ScannerCriteria, ScanResult, UnderinvestedClass, ScanJob, ScanJobCreateInput } from "@assup/shared";
 
-export interface ScannerPresetCreateInput {
+interface ScannerPresetCreateInput {
   name: string;
   criteria: ScannerCriteria;
   isDefault?: boolean;
 }
 
-export interface ScannerPresetUpdateInput {
+interface ScannerPresetUpdateInput {
   name?: string;
   criteria?: ScannerCriteria;
   isDefault?: boolean;
