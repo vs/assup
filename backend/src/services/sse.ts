@@ -1,8 +1,8 @@
 import { Response } from "express";
 
-export type SSEEventType = "position" | "order" | "allocation" | "connection" | "scanner" | "scanner_job";
+type SSEEventType = "position" | "order" | "allocation" | "connection" | "scanner" | "scanner_job";
 
-export interface SSEMessage {
+interface SSEMessage {
   type: SSEEventType;
   data: unknown;
   timestamp: string;

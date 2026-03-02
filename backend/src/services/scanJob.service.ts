@@ -120,7 +120,7 @@ export function startJobExecution(
 /**
  * Progress updater interface
  */
-export interface ProgressUpdater {
+interface ProgressUpdater {
   setTotalSymbols(total: number): Promise<void>;
   symbolComplete(
     symbol: string,

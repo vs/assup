@@ -5,7 +5,7 @@
 /**
  * Extract error message from an unknown error value.
  */
-export function getErrorMessage(err: unknown): string {
+function getErrorMessage(err: unknown): string {
   if (err instanceof Error) {
     return err.message;
   }
@@ -21,7 +21,7 @@ export function getErrorMessage(err: unknown): string {
 /**
  * Extract error code from an unknown error value.
  */
-export function getErrorCode(err: unknown): string | undefined {
+function getErrorCode(err: unknown): string | undefined {
   if (typeof err === 'object' && err !== null) {
     const e = err as Record<string, unknown>;
     if (typeof e.code === 'string') {
@@ -35,14 +35,14 @@ export function getErrorCode(err: unknown): string | undefined {
  * Check if error indicates the account doesn't support positions.
  * This is common for certain IBKR account types.
  */
-export function isPositionNotSupportedError(err: unknown): boolean {
+function isPositionNotSupportedError(err: unknown): boolean {
   return getErrorMessage(err).includes('does not support positions');
 }
 
 /**
  * Check if error is a timeout error.
  */
-export function isTimeoutError(err: unknown): boolean {
+function isTimeoutError(err: unknown): boolean {
   return getErrorCode(err) === 'timeout';
 }
 

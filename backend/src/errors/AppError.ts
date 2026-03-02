@@ -74,24 +74,6 @@ export class IBKROperationError extends AppError {
 }
 
 /**
- * Error for unauthorized access (401)
- */
-export class UnauthorizedError extends AppError {
-  constructor(message = "Unauthorized") {
-    super(message, 401);
-  }
-}
-
-/**
- * Error for forbidden access (403)
- */
-export class ForbiddenError extends AppError {
-  constructor(message = "Forbidden") {
-    super(message, 403);
-  }
-}
-
-/**
  * Error for bad requests (400)
  */
 export class BadRequestError extends AppError {

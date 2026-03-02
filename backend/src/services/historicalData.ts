@@ -1,7 +1,7 @@
 import { ibkrService } from "./ibkr.js";
 import { Bar, BarSizeSetting, WhatToShow, Stock } from "@stoqey/ib";
 
-export interface PricePoint {
+interface PricePoint {
   date: string;
   close: number;
 }

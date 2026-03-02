@@ -9,7 +9,5 @@ export {
   ConflictError,
   IBKRConnectionError,
   IBKROperationError,
-  UnauthorizedError,
-  ForbiddenError,
   BadRequestError,
 } from "./AppError.js";
