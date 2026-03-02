@@ -3,7 +3,7 @@
  */
 
 import { request } from "./client";
-import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult, OptionQuoteResult } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult } from "@assup/shared";
 
 export interface SimulateOrderInput {
   symbol: string;
@@ -41,5 +41,16 @@ export const ordersApi = {
     request<OptionQuoteResult>("/api/orders/quote", {
       method: "POST",
       body: JSON.stringify(input),
+    }),
+
+  modify: (orderId: number, params: { limitPrice: number; quantity: number }) =>
+    request<ModifyOrderResult>(`/api/orders/${orderId}`, {
+      method: "PUT",
+      body: JSON.stringify(params),
+    }),
+
+  cancel: (orderId: number) =>
+    request<void>(`/api/orders/${orderId}`, {
+      method: "DELETE",
     }),
 };

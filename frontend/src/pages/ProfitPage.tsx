@@ -6,6 +6,7 @@ import type {
   MonthProfitView,
   MonthSummary,
   ImportBatch,
+  Order,
 } from "@assup/shared";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -317,6 +318,27 @@ function MonthProfitCard({
   const monthLabel = `${MONTH_NAMES[data.month - 1]} ${data.year}`;
   const [realizedExpanded, setRealizedExpanded] = useState(false);
   const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
+  const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
+  const [openOrders, setOpenOrders] = useState<Order[]>([]);
+
+  // Fetch open orders to match against expiring positions
+  const loadOrders = useCallback(() => {
+    api.orders.list()
+      .then(setOpenOrders)
+      .catch(() => setOpenOrders([]));
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  // Match a position to its existing BUY order
+  const findMatchingOrder = useCallback((pos: import("@assup/shared").CurrentOptionPosition): Order | undefined => {
+    // Match by displayName since both position and order use formatDisplayName
+    return openOrders.find(
+      (o) => o.action === "BUY" && o.secType === "OPT" && o.displayName === pos.displayName
+    );
+  }, [openOrders]);
 
   // Get unique underlying symbols for sparklines
   const sparklineSymbols = useMemo(() => {
@@ -695,6 +717,7 @@ function MonthProfitCard({
                 {data.unrealized.positions.map((pos, idx) => {
                   const sparkline = getSparklineState(pos.underlying);
                   const dte = calculateDTE(pos.expiry);
+                  const matchingOrder = findMatchingOrder(pos);
                   return (
                     <TableRow key={idx}>
                       <TableCell>
@@ -763,13 +786,38 @@ function MonthProfitCard({
                         {formatCurrency(pos.projectedProfit)}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setClosePosition(pos)}
-                        >
-                          Close
-                        </Button>
+                        {matchingOrder ? (
+                          <div className="flex items-center gap-2">
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-mono">{formatCurrency(matchingOrder.limitPrice ?? 0)}</span>
+                              {" x "}{matchingOrder.quantity}
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {matchingOrder.status}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setExistingOrderForDialog(matchingOrder);
+                                setClosePosition(pos);
+                              }}
+                            >
+                              Adjust
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setExistingOrderForDialog(null);
+                              setClosePosition(pos);
+                            }}
+                          >
+                            Close
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -782,9 +830,10 @@ function MonthProfitCard({
 
       <ClosePositionDialog
         open={!!closePosition}
-        onOpenChange={(open) => { if (!open) setClosePosition(null); }}
+        onOpenChange={(open) => { if (!open) { setClosePosition(null); setExistingOrderForDialog(null); } }}
         position={closePosition}
-        onOrderPlaced={onDataRefresh}
+        existingOrder={existingOrderForDialog}
+        onOrderPlaced={() => { loadOrders(); onDataRefresh?.(); }}
       />
     </div>
   );
