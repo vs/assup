@@ -5,7 +5,6 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { AssetClassesPage } from "@/pages/AssetClassesPage";
 import { PositionsPage } from "@/pages/PositionsPage";
 import { WatchlistsPage } from "@/pages/WatchlistsPage";
-import { OrdersPage } from "@/pages/OrdersPage";
 import { ScannerPage } from "@/pages/ScannerPage";
 import { ProfitPage } from "@/pages/ProfitPage";
 import { WheelPage } from "@/pages/WheelPage";
@@ -21,7 +20,6 @@ function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/watchlists" element={<WatchlistsPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/profit" element={<ProfitPage />} />
             <Route path="/wheel" element={<WheelPage />} />

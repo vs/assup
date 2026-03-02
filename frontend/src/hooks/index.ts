@@ -6,5 +6,4 @@ export {
   useSSEConnection,
   useAllocationUpdates,
   usePositionUpdates,
-  useOrderUpdates,
 } from "./useSSE";
