@@ -15,7 +15,7 @@ let cleanupInterval: NodeJS.Timeout | null = null;
 /**
  * Initialize the service - start cleanup interval
  */
-export function initScanJobService(): void {
+function initScanJobService(): void {
   // Run cleanup every 10 minutes
   cleanupInterval = setInterval(() => {
     cleanupExpiredJobs().catch(console.error);
@@ -45,7 +45,7 @@ async function markStaleJobsAsFailed(): Promise<void> {
 /**
  * Create a new scan job (does not start execution)
  */
-export async function createJob(
+async function createJob(
   criteria: ScannerCriteria,
   presetId?: string,
   presetName?: string
@@ -72,7 +72,7 @@ export async function createJob(
 /**
  * Start job execution (call after createJob)
  */
-export function startJobExecution(
+function startJobExecution(
   jobId: string,
   executeFn: (signal: AbortSignal, updateProgress: ProgressUpdater) => Promise<void>
 ): void {
@@ -182,7 +182,7 @@ function createProgressUpdater(jobId: string): ProgressUpdater {
 /**
  * Cancel a running job
  */
-export async function cancelJob(jobId: string): Promise<ScanJob | null> {
+async function cancelJob(jobId: string): Promise<ScanJob | null> {
   const controller = runningJobs.get(jobId);
   if (controller) {
     controller.abort();
@@ -202,7 +202,7 @@ export async function cancelJob(jobId: string): Promise<ScanJob | null> {
 /**
  * Get a single job by ID
  */
-export async function getJob(jobId: string): Promise<ScanJob | null> {
+async function getJob(jobId: string): Promise<ScanJob | null> {
   const job = await prisma.scanJob.findUnique({ where: { id: jobId } });
   return job ? mapPrismaJobToScanJob(job) : null;
 }
@@ -210,7 +210,7 @@ export async function getJob(jobId: string): Promise<ScanJob | null> {
 /**
  * Get all non-expired jobs
  */
-export async function getJobs(): Promise<ScanJob[]> {
+async function getJobs(): Promise<ScanJob[]> {
   // Clean up expired jobs first
   await prisma.scanJob.deleteMany({
     where: { expiresAt: { lt: new Date() } },
@@ -226,7 +226,7 @@ export async function getJobs(): Promise<ScanJob[]> {
 /**
  * Delete a job manually
  */
-export async function deleteJob(jobId: string): Promise<void> {
+async function deleteJob(jobId: string): Promise<void> {
   // Cancel if running
   const controller = runningJobs.get(jobId);
   if (controller) {
@@ -240,7 +240,7 @@ export async function deleteJob(jobId: string): Promise<void> {
 /**
  * Cleanup expired jobs
  */
-export async function cleanupExpiredJobs(): Promise<number> {
+async function cleanupExpiredJobs(): Promise<number> {
   const result = await prisma.scanJob.deleteMany({
     where: { expiresAt: { lt: new Date() } },
   });
