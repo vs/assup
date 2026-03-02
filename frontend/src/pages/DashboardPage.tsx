@@ -31,13 +31,18 @@ export function DashboardPage() {
     settingsRef.current = settings;
   }, [settings]);
 
+  const loadDataRef = useRef(loadData);
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  });
+
   const handleAllocationUpdate = useCallback(() => {
-    loadData(settingsRef.current);
+    loadDataRef.current(settingsRef.current);
   }, []);
   useAllocationUpdates(handleAllocationUpdate);
 
   const handleRefresh = useCallback(() => {
-    loadData(settingsRef.current);
+    loadDataRef.current(settingsRef.current);
   }, []);
 
   useEffect(() => {

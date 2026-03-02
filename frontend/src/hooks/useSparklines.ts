@@ -72,11 +72,13 @@ export function useSparklines(symbols: string[]) {
     }
   }, []);
 
+  const symbolsKey = symbols.join(",");
   useEffect(() => {
-    if (symbols.length > 0) {
-      fetchSparklines(symbols);
+    const currentSymbols = symbolsKey.split(",").filter(Boolean);
+    if (currentSymbols.length > 0) {
+      fetchSparklines(currentSymbols);
     }
-  }, [symbols.join(","), fetchSparklines]);
+  }, [symbolsKey, fetchSparklines]);
 
   const getSparklineState = useCallback(
     (symbol: string) => {

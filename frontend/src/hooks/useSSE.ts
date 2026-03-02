@@ -164,10 +164,6 @@ export function useSSEConnection() {
       setClientId(sseManager.clientId);
     });
 
-    // Sync initial state
-    setConnected(sseManager.connected);
-    setClientId(sseManager.clientId);
-
     return () => {
       unsubscribe();
       unsubscribeConnection();
@@ -184,7 +180,9 @@ export function useSSEConnection() {
 // Hook that triggers a callback when allocation changes are broadcast
 export function useAllocationUpdates(onUpdate: () => void) {
   const callbackRef = useRef(onUpdate);
-  callbackRef.current = onUpdate;
+  useEffect(() => {
+    callbackRef.current = onUpdate;
+  });
 
   useEffect(() => {
     const unsubscribe = sseManager.subscribe();
@@ -202,7 +200,9 @@ export function useAllocationUpdates(onUpdate: () => void) {
 // Hook that triggers a callback when position changes are broadcast
 export function usePositionUpdates(onUpdate: () => void) {
   const callbackRef = useRef(onUpdate);
-  callbackRef.current = onUpdate;
+  useEffect(() => {
+    callbackRef.current = onUpdate;
+  });
 
   useEffect(() => {
     const unsubscribe = sseManager.subscribe();
@@ -220,7 +220,9 @@ export function usePositionUpdates(onUpdate: () => void) {
 // Hook that triggers a callback when order changes are broadcast
 export function useOrderUpdates(onUpdate: () => void) {
   const callbackRef = useRef(onUpdate);
-  callbackRef.current = onUpdate;
+  useEffect(() => {
+    callbackRef.current = onUpdate;
+  });
 
   useEffect(() => {
     const unsubscribe = sseManager.subscribe();

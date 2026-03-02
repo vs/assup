@@ -11,13 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { X, RefreshCw } from "lucide-react";
 
-export interface FilterState {
+interface FilterState {
   assetClassId: string | null;
   includeOptions: boolean;
   optionsWeightMode: "notional" | "delta";
 }
 
-export const DEFAULT_FILTERS: FilterState = {
+const DEFAULT_FILTERS: FilterState = {
   assetClassId: null,
   includeOptions: true,
   optionsWeightMode: "notional",

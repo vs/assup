@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,19 +23,22 @@ export function LotTraceModal({ symbol, onClose }: LotTraceModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!symbol) {
-      setData(null);
-      return;
-    }
-
+  const fetchData = useCallback(async (sym: string) => {
     setIsLoading(true);
     setError(null);
-    taxesApi.lotTrace(symbol)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setIsLoading(false));
-  }, [symbol]);
+    try {
+      const result = await taxesApi.lotTrace(sym);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (symbol) fetchData(symbol);
+  }, [symbol, fetchData]);
 
   return (
     <Dialog open={!!symbol} onOpenChange={() => onClose()}>

@@ -50,7 +50,7 @@ function readCache<T>(key: string): T | null {
 function writeCache(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch { /* localStorage unavailable */ }
 }
 
 export function WheelPage() {

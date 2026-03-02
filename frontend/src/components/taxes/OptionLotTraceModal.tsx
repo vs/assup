@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,19 +22,22 @@ export function OptionLotTraceModal({ symbol, onClose }: OptionLotTraceModalProp
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!symbol) {
-      setData(null);
-      return;
-    }
-
+  const fetchData = useCallback(async (sym: string) => {
     setIsLoading(true);
     setError(null);
-    taxesApi.optionLotTrace(symbol)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setIsLoading(false));
-  }, [symbol]);
+    try {
+      const result = await taxesApi.optionLotTrace(sym);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (symbol) fetchData(symbol);
+  }, [symbol, fetchData]);
 
   const handleLotClick = (lotRef: string) => scrollToAndHighlight(`option-${lotRef}`);
 

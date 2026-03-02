@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { api } from "@/api";
 import type { Watchlist, WatchlistWithItems, WatchlistItem, AssetClass } from "@assup/shared";
 import { ErrorAlert, PageLoadingSkeleton, AssetClassSelect, ExternalLinks } from "@/components/common";
@@ -61,8 +61,13 @@ export function WatchlistsPage() {
   );
   const { getSparklineState } = useSparklines(symbols);
 
+  const loadDataRef = useRef(loadData);
   useEffect(() => {
-    loadData();
+    loadDataRef.current = loadData;
+  });
+
+  useEffect(() => {
+    loadDataRef.current();
   }, []);
 
   async function loadData() {

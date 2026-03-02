@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { api } from "@/api";
 import type { Position, AssetClass, AllocationProfile, PositionSummary } from "@assup/shared";
 import { calculatePositionExposure } from "@assup/shared";
@@ -22,14 +22,19 @@ export function PositionsPage() {
 
   const { filters, setFilters } = usePositionFilters();
 
+  const loadDataRef = useRef(loadData);
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  });
+
   // Subscribe to real-time allocation updates
   const handleAllocationUpdate = useCallback(() => {
-    loadData();
+    loadDataRef.current();
   }, []);
   useAllocationUpdates(handleAllocationUpdate);
 
   useEffect(() => {
-    loadData();
+    loadDataRef.current();
   }, []);
 
   async function loadData() {

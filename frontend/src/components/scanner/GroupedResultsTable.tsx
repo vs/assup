@@ -177,4 +177,3 @@ export function GroupedResultsTable({ opportunities, onSellClick }: GroupedResul
   );
 }
 
-export { GRID_COLS };
