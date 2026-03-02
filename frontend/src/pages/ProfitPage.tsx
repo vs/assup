@@ -320,6 +320,8 @@ function MonthProfitCard({
   const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
   const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
   const [openOrders, setOpenOrders] = useState<Order[]>([]);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Fetch open orders to match against expiring positions
   const loadOrders = useCallback(() => {
@@ -350,6 +352,45 @@ function MonthProfitCard({
   }, [data.unrealized.positions]);
 
   const { getSparklineState } = useSparklines(sparklineSymbols);
+
+  const toggleSort = useCallback((column: string) => {
+    if (sortColumn !== column) {
+      setSortColumn(column);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortColumn(null);
+      setSortDir("asc");
+    }
+  }, [sortColumn, sortDir]);
+
+  const sortedPositions = useMemo(() => {
+    const positions = [...data.unrealized.positions];
+    if (!sortColumn) return positions;
+    const getValue = (pos: (typeof positions)[0]): number | string => {
+      switch (sortColumn) {
+        case "contract": return pos.displayName;
+        case "type": return pos.right;
+        case "assetClass": return pos.assetClassName ?? "";
+        case "price": return pos.underlyingPrice ?? 0;
+        case "strike": return pos.strike;
+        case "expiry": return pos.expiry;
+        case "dte": return calculateDTE(pos.expiry);
+        case "qty": return pos.quantity;
+        case "unrealizedPnl": return pos.unrealizedPnl;
+        case "projected": return pos.projectedProfit;
+        default: return 0;
+      }
+    };
+    positions.sort((a, b) => {
+      const va = getValue(a);
+      const vb = getValue(b);
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return positions;
+  }, [data.unrealized.positions, sortColumn, sortDir]);
 
   const hasRealizedTrades = data.realized.closedTrades.length > 0 ||
     data.realized.stockTrades.length > 0 ||
@@ -699,22 +740,32 @@ function MonthProfitCard({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Contract</TableHead>
-                  <TableHead className="w-24"></TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Asset Class</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">Strike</TableHead>
-                  <TableHead>Expiry</TableHead>
-                  <TableHead className="text-right">DTE</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Unrealized P&L</TableHead>
-                  <TableHead className="text-right">Projected</TableHead>
-                  <TableHead className="text-right">Order</TableHead>
+                  {([
+                    ["contract", "Contract", ""],
+                    ["", "", "w-24"],
+                    ["type", "Type", ""],
+                    ["assetClass", "Asset Class", ""],
+                    ["price", "Price", "text-right"],
+                    ["strike", "Strike", "text-right"],
+                    ["expiry", "Expiry", ""],
+                    ["dte", "DTE", "text-right"],
+                    ["qty", "Qty", "text-right"],
+                    ["unrealizedPnl", "Unrealized P&L", "text-right"],
+                    ["projected", "Projected", "text-right"],
+                    ["", "Order", "text-right"],
+                  ] as const).map(([key, label, className]) => (
+                    <TableHead
+                      key={label || key}
+                      className={`${className} ${key ? "cursor-pointer select-none hover:text-foreground" : ""}`}
+                      onClick={key ? () => toggleSort(key) : undefined}
+                    >
+                      {label}{key && sortColumn === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.unrealized.positions.map((pos, idx) => {
+                {sortedPositions.map((pos, idx) => {
                   const sparkline = getSparklineState(pos.underlying);
                   const dte = calculateDTE(pos.expiry);
                   const matchingOrder = findMatchingOrder(pos);
