@@ -710,7 +710,7 @@ function MonthProfitCard({
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unrealized P&L</TableHead>
                   <TableHead className="text-right">Projected</TableHead>
-                  <TableHead></TableHead>
+                  <TableHead className="text-right">Order</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -795,7 +795,7 @@ function MonthProfitCard({
                             }}
                           >
                             {formatCurrency(matchingOrder.limitPrice ?? 0)} x {matchingOrder.quantity}
-                            <span className="absolute inset-0 flex items-center justify-end opacity-0 group-hover/order:opacity-100 bg-background/90 text-sm font-sans">
+                            <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/order:opacity-100 bg-background text-sm font-sans">
                               Adjust
                             </span>
                           </span>
