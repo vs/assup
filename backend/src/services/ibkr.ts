@@ -21,7 +21,7 @@ import {
 import type { ImportedTrade } from "@prisma/client";
 import { Subscription } from "rxjs";
 
-export interface ConnectionStatus {
+interface ConnectionStatus {
   connected: boolean;
   account: string | null;
   serverVersion: number | null;
@@ -45,7 +45,7 @@ export interface Position {
   unrealizedPnl?: number;
 }
 
-export interface HistoricalDataParams {
+interface HistoricalDataParams {
   contract: Contract;
   endDateTime?: string;
   duration: string;
@@ -55,14 +55,14 @@ export interface HistoricalDataParams {
   formatDate: number;
 }
 
-export interface OptionChainEntry {
+interface OptionChainEntry {
   strike: number;
   expiration: string;
   call: Contract;
   put: Contract;
 }
 
-export interface TickerData {
+interface TickerData {
   contract: Contract;
   bid?: number;
   ask?: number;

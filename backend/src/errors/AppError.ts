@@ -44,15 +44,6 @@ export class ValidationError extends AppError {
 }
 
 /**
- * Error for duplicate/conflict resources (409)
- */
-export class ConflictError extends AppError {
-  constructor(message: string) {
-    super(message, 409);
-  }
-}
-
-/**
  * Error for IBKR connection issues (503)
  */
 export class IBKRConnectionError extends AppError {

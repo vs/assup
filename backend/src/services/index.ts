@@ -2,7 +2,7 @@
  * Service layer exports
  */
 
-export { ibkrService, type Position as IBPosition } from "./ibkr.js";
+export { ibkrService } from "./ibkr.js";
 export { sseService } from "./sse.js";
 export { historicalDataService } from "./historicalData.js";
 export { assignmentService, type AssignmentMap, type AssignmentWithClass, getSecurityKey } from "./assignment.service.js";

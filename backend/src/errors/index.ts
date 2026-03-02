@@ -6,7 +6,6 @@ export {
   AppError,
   NotFoundError,
   ValidationError,
-  ConflictError,
   IBKRConnectionError,
   IBKROperationError,
   BadRequestError,

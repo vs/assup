@@ -26,16 +26,6 @@ export function initScanJobService(): void {
 }
 
 /**
- * Shutdown the service - clear cleanup interval
- */
-export function shutdownScanJobService(): void {
-  if (cleanupInterval) {
-    clearInterval(cleanupInterval);
-    cleanupInterval = null;
-  }
-}
-
-/**
  * Mark jobs left in "running" state as failed (server restart scenario)
  */
 async function markStaleJobsAsFailed(): Promise<void> {
@@ -261,13 +251,6 @@ export async function cleanupExpiredJobs(): Promise<number> {
 }
 
 /**
- * Check if a job is running
- */
-export function isJobRunning(jobId: string): boolean {
-  return runningJobs.has(jobId);
-}
-
-/**
  * Map Prisma ScanJob to shared ScanJob type
  */
 function mapPrismaJobToScanJob(job: any): ScanJob {
@@ -292,7 +275,6 @@ function mapPrismaJobToScanJob(job: any): ScanJob {
 
 export const scanJobService = {
   init: initScanJobService,
-  shutdown: shutdownScanJobService,
   createJob,
   startJobExecution,
   cancelJob,
@@ -300,5 +282,4 @@ export const scanJobService = {
   getJobs,
   deleteJob,
   cleanupExpiredJobs,
-  isJobRunning,
 };
