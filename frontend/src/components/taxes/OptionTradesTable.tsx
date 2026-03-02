@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { taxesApi } from "@/api/taxes";
 import type { TaxOptionTrade } from "@assup/shared";
 import { OptionLotTraceModal } from "./OptionLotTraceModal";
+import { formatCzk, formatUsd } from "./formatters";
 
 interface Props {
   year: number;
@@ -44,19 +45,6 @@ export function OptionTradesTable({ year }: Props) {
     };
     loadData();
   }, [year]);
-
-  const formatCzk = (value: number) =>
-    new Intl.NumberFormat("cs-CZ", {
-      style: "currency",
-      currency: "CZK",
-      maximumFractionDigits: 0,
-    }).format(value);
-
-  const formatUsd = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
 
   const getCloseTypeBadge = (type: string) => {
     switch (type) {

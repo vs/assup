@@ -4,11 +4,12 @@
 
 import { prisma } from "../db/index.js";
 import { assignmentService, AssignmentMap, getSecurityKey } from "./assignment.service.js";
-import type {
-  AssetClassAllocation,
-  OptionsExposure,
-  OptionsWeightMode,
-  Position,
+import {
+  getOptionsNotionalSign,
+  type AssetClassAllocation,
+  type OptionsExposure,
+  type OptionsWeightMode,
+  type Position,
 } from "@assup/shared";
 
 /**
@@ -137,8 +138,8 @@ class AllocationService {
         }
 
         // Calculate signed notional based on position type
-        const signedNotional = this.calculateSignedNotional(notional, isPut, isShort);
-        byAssetClass[pos.assetClassId].optionsNotional += signedNotional;
+        const sign = getOptionsNotionalSign(pos.position, pos.right);
+        byAssetClass[pos.assetClassId].optionsNotional += notional * sign;
         byAssetClass[pos.assetClassId].optionsDelta += delta;
 
         totalOptionsNotional += Math.abs(notional);
@@ -357,20 +358,6 @@ class AllocationService {
     };
   }
 
-  /**
-   * Calculate signed notional based on position type
-   * Short puts add notional exposure (obligation to buy)
-   * Short calls reduce exposure (obligation to sell)
-   * Long puts: hedge (negative notional)
-   * Long calls: additional exposure (positive notional)
-   */
-  private calculateSignedNotional(notional: number, isPut: boolean, isShort: boolean): number {
-    if (isPut) {
-      return isShort ? notional : -notional;
-    } else {
-      return isShort ? -notional : notional;
-    }
-  }
 }
 
 export const allocationService = new AllocationService();

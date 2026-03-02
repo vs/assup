@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { taxesApi } from "@/api/taxes";
 import type { TaxInterest } from "@assup/shared";
+import { formatCzk, formatUsd } from "./formatters";
 
 interface Props {
   year: number;
@@ -36,19 +37,6 @@ export function InterestTable({ year }: Props) {
     };
     loadData();
   }, [year]);
-
-  const formatCzk = (value: number) =>
-    new Intl.NumberFormat("cs-CZ", {
-      style: "currency",
-      currency: "CZK",
-      maximumFractionDigits: 0,
-    }).format(value);
-
-  const formatUsd = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
 
   if (loading) {
     return (

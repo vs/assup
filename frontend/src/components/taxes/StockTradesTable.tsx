@@ -12,6 +12,7 @@ import {
 import { taxesApi } from "@/api/taxes";
 import type { TaxStockTrade } from "@assup/shared";
 import { LotTraceModal } from "./LotTraceModal";
+import { formatCzk, formatUsd } from "./formatters";
 
 interface Props {
   year: number;
@@ -43,21 +44,6 @@ export function StockTradesTable({ year }: Props) {
     };
     loadData();
   }, [year]);
-
-  const formatCzk = (value: number | null) =>
-    value !== null
-      ? new Intl.NumberFormat("cs-CZ", {
-          style: "currency",
-          currency: "CZK",
-          maximumFractionDigits: 0,
-        }).format(value)
-      : "—";
-
-  const formatUsd = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
 
   if (loading) {
     return (
