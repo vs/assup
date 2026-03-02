@@ -743,6 +743,14 @@ class ProfitService {
           assignments.map((a) => [a.symbol, a])
         );
 
+        // Build underlying price map from stock positions
+        const underlyingPriceMap = new Map<string, number>();
+        for (const pos of positions) {
+          if (pos.contract.secType === "STK" && pos.contract.symbol && pos.marketPrice != null) {
+            underlyingPriceMap.set(pos.contract.symbol, pos.marketPrice);
+          }
+        }
+
         for (const pos of positions) {
           if (pos.contract.secType !== "OPT") continue;
 
@@ -811,6 +819,7 @@ class ProfitService {
             marketValue,
             unrealizedPnl,
             projectedProfit,
+            underlyingPrice: underlyingPriceMap.get(underlying),
             assetClassId: assignment?.assetClassId,
             assetClassName: assignment?.assetClass.name,
             assetClassColor: assignment?.assetClass.color,

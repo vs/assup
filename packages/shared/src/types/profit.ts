@@ -179,6 +179,7 @@ export interface CurrentOptionPosition {
   marketValue: number;
   unrealizedPnl: number;
   projectedProfit: number;
+  underlyingPrice?: number;
   assetClassId?: string;
   assetClassName?: string;
   assetClassColor?: string;
