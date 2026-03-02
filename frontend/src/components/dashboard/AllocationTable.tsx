@@ -21,12 +21,13 @@ interface AllocationTableProps {
   includeOptions?: boolean;
 }
 
+const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
+
 export function AllocationTable({
   data,
   netLiquidation,
   includeOptions = false,
 }: AllocationTableProps) {
-  const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
   return (
     <div className="overflow-x-auto">
@@ -118,8 +119,6 @@ function DiffBar({ diff }: { diff: number }) {
 }
 
 function ActionBadge({ id, diffValue }: { id: string | null; diffValue: number }) {
-  const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
-
   if (!id || id === "unassigned") return <span className="text-muted-foreground">-</span>;
 
   if (diffValue < -1) {

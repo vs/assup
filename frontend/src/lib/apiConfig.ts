@@ -101,7 +101,3 @@ export function getApiBase(): string {
   return import.meta.env.VITE_API_URL || 'http://localhost:3000';
 }
 
-export function setApiBase(url: string): void {
-  discoveredUrl = url;
-  window.__ASSUP_API_URL__ = url;
-}
