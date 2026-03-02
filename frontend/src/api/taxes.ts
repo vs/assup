@@ -3,6 +3,7 @@
  */
 
 import { request } from "./client";
+import { getApiBase } from "@/lib/apiConfig";
 import type {
   TaxSummary,
   TaxStockTradesResponse,
@@ -12,8 +13,6 @@ import type {
   LotTraceResponse,
   OptionLotTraceResponse,
 } from "@assup/shared";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 export const taxesApi = {
   summary: (year: number) =>
@@ -43,6 +42,6 @@ export const taxesApi = {
 
   export: (year: number) => {
     // Direct download - opens in new tab/downloads file
-    window.location.href = `${API_BASE}/api/taxes/export/${year}`;
+    window.location.href = `${getApiBase()}/api/taxes/export/${year}`;
   },
 };

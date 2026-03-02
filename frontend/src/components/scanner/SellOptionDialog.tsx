@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "@/api";
-import { formatCurrency, formatDisplayName } from "@assup/shared";
+import { formatCurrency, formatDisplayName, parseOptionExpiry } from "@assup/shared";
 import type { ExtendedOptionOpportunity } from "./types";
 import {
   Dialog,
@@ -20,15 +20,9 @@ interface SellOptionDialogProps {
   onOrderPlaced?: () => void;
 }
 
-/**
- * Format expiration from YYYYMMDD to readable date
- */
 function formatExpiration(expiration: string): string {
-  if (expiration.length !== 8) return expiration;
-  const year = expiration.substring(0, 4);
-  const month = expiration.substring(4, 6);
-  const day = expiration.substring(6, 8);
-  return `${year}-${month}-${day}`;
+  const parsed = parseOptionExpiry(expiration);
+  return parsed ? `${parsed.year}-${parsed.month}-${parsed.day}` : expiration;
 }
 
 export function SellOptionDialog({

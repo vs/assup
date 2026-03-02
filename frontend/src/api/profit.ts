@@ -3,6 +3,7 @@
  */
 
 import { request, buildQuery } from "./client";
+import { getApiBase } from "@/lib/apiConfig";
 import type {
   ImportResult,
   ImportListResponse,
@@ -10,8 +11,6 @@ import type {
   MonthDetail,
   MonthProfitView,
 } from "@assup/shared";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
 
 interface MonthlyProfitQueryParams {
   startDate?: string;
@@ -31,7 +30,7 @@ export const profitApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${API_BASE}/api/profit/import`, {
+    const response = await fetch(`${getApiBase()}/api/profit/import`, {
       method: "POST",
       body: formData,
     });
