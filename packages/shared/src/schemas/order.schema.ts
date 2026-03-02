@@ -35,6 +35,16 @@ export const placeOrderSchema = z.object({
 export type PlaceOrderSchemaInput = z.infer<typeof placeOrderSchema>;
 
 /**
+ * Schema for modifying an existing order
+ */
+export const modifyOrderSchema = z.object({
+  limitPrice: z.number().positive("Limit price must be positive"),
+  quantity: z.number().int().positive("Quantity must be positive"),
+});
+
+export type ModifyOrderSchemaInput = z.infer<typeof modifyOrderSchema>;
+
+/**
  * Schema for getting an option quote
  */
 export const optionQuoteSchema = z.object({

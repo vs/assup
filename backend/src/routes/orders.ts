@@ -10,8 +10,8 @@ import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
 import { allocationService } from "../services/allocation.service.js";
 import { IBKRConnectionError } from "../errors/index.js";
-import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema, optionQuoteSchema } from "@assup/shared";
-import type { Order, OrderImpact, PlaceOrderResult, OptionQuoteResult } from "@assup/shared";
+import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema, optionQuoteSchema, modifyOrderSchema } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult } from "@assup/shared";
 import { OpenOrder as IBOpenOrder, Contract, SecType, OptionType } from "@stoqey/ib";
 
 const router = Router();
@@ -336,6 +336,75 @@ router.post(
 
     const result: OptionQuoteResult = { bid, ask, mid, last };
     res.json(result);
+  })
+);
+
+/**
+ * PUT /api/orders/:id
+ * Modify an existing order's limit price and/or quantity
+ */
+router.put(
+  "/:id",
+  validate({ body: modifyOrderSchema }),
+  asyncHandler(async (req, res) => {
+    if (!ibkrService.isConnected()) {
+      throw new IBKRConnectionError();
+    }
+
+    const orderId = parseInt(req.params.id, 10);
+    if (isNaN(orderId)) {
+      res.status(400).json({ error: "Invalid order ID" });
+      return;
+    }
+
+    const { limitPrice, quantity } = req.body;
+
+    // Find the existing order to get its contract and action
+    const rawOrders = await ibkrService.getAllOpenOrders();
+    const existingOrder = rawOrders.find((o) => o.orderId === orderId);
+
+    if (!existingOrder) {
+      res.status(404).json({ error: `Order ${orderId} not found in open orders` });
+      return;
+    }
+
+    if (!existingOrder.contract) {
+      res.status(400).json({ error: `Order ${orderId} has no contract` });
+      return;
+    }
+
+    const action = (existingOrder.order?.action || "BUY") as "BUY" | "SELL";
+
+    await ibkrService.modifyOrder(orderId, existingOrder.contract, {
+      action,
+      quantity,
+      limitPrice,
+    });
+
+    const result: ModifyOrderResult = { orderId, limitPrice, quantity };
+    res.json(result);
+  })
+);
+
+/**
+ * DELETE /api/orders/:id
+ * Cancel an existing order
+ */
+router.delete(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    if (!ibkrService.isConnected()) {
+      throw new IBKRConnectionError();
+    }
+
+    const orderId = parseInt(req.params.id, 10);
+    if (isNaN(orderId)) {
+      res.status(400).json({ error: "Invalid order ID" });
+      return;
+    }
+
+    await ibkrService.cancelOrder(orderId);
+    res.status(204).end();
   })
 );
 

@@ -985,6 +985,83 @@ class IBKRService {
     }
   }
 
+  /**
+   * Modify an existing order
+   * @param orderId The order ID to modify
+   * @param contract The contract for the order
+   * @param orderParams Updated order parameters
+   */
+  async modifyOrder(
+    orderId: number,
+    contract: Contract,
+    orderParams: {
+      action: "BUY" | "SELL";
+      quantity: number;
+      limitPrice: number;
+    }
+  ): Promise<void> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const order: Order = {
+      action: orderParams.action === "BUY" ? OrderAction.BUY : OrderAction.SELL,
+      totalQuantity: orderParams.quantity,
+      orderType: OrderType.LMT,
+      lmtPrice: orderParams.limitPrice,
+      tif: TimeInForce.DAY,
+      transmit: true,
+    };
+
+    console.log(`Modifying order ${orderId}: ${orderParams.action} ${orderParams.quantity} @ $${orderParams.limitPrice}`);
+    this.api.modifyOrder(orderId, contract, order);
+
+    // Wait for confirmation like placeOrder does
+    await this.waitForOrderConfirmation(orderId);
+  }
+
+  /**
+   * Cancel an existing order
+   * @param orderId The order ID to cancel
+   */
+  async cancelOrder(orderId: number): Promise<void> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    console.log(`Cancelling order ${orderId}`);
+    this.api.cancelOrder(orderId);
+
+    // Wait briefly for cancellation confirmation
+    const maxWaitMs = 3000;
+    const pollIntervalMs = 500;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+      try {
+        const orders = await this.getAllOpenOrders();
+        const order = orders.find((o) => o.orderId === orderId);
+
+        if (!order) {
+          console.log(`Order ${orderId} cancelled successfully`);
+          return;
+        }
+
+        const status = order.orderStatus?.status || order.orderState?.status;
+        if (status === "Cancelled" || status === "Inactive") {
+          console.log(`Order ${orderId} confirmed cancelled`);
+          return;
+        }
+      } catch (err) {
+        console.debug(`Error checking cancel status: ${err}`);
+      }
+    }
+
+    console.log(`Order ${orderId} cancel confirmation timeout - assuming cancelled`);
+  }
+
   async disconnect() {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);

@@ -60,6 +60,24 @@ export interface PlaceOrderResult {
 }
 
 /**
+ * Input for modifying an existing order
+ */
+export interface ModifyOrderInput {
+  orderId: number;
+  limitPrice: number;
+  quantity: number;
+}
+
+/**
+ * Response from modifying an order
+ */
+export interface ModifyOrderResult {
+  orderId: number;
+  limitPrice: number;
+  quantity: number;
+}
+
+/**
  * Response from an option quote request
  */
 export interface OptionQuoteResult {
