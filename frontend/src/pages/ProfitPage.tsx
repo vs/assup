@@ -703,8 +703,8 @@ function MonthProfitCard({
                   <TableHead className="w-24"></TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Asset Class</TableHead>
-                  <TableHead className="text-right">Strike</TableHead>
                   <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Strike</TableHead>
                   <TableHead>Expiry</TableHead>
                   <TableHead className="text-right">DTE</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
@@ -763,12 +763,12 @@ function MonthProfitCard({
                         )}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        ${pos.strike.toFixed(pos.strike % 1 === 0 ? 0 : 2)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
                         {pos.underlyingPrice != null
                           ? `$${pos.underlyingPrice.toFixed(2)}`
                           : <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${pos.strike.toFixed(pos.strike % 1 === 0 ? 0 : 2)}
                       </TableCell>
                       <TableCell>{pos.expiry}</TableCell>
                       <TableCell className={`text-right font-mono ${dte <= 7 ? "text-red-600" : ""}`}>
