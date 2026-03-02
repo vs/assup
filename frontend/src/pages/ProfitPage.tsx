@@ -785,27 +785,20 @@ function MonthProfitCard({
                       <TableCell className="text-right font-mono text-blue-600">
                         {formatCurrency(pos.projectedProfit)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right font-mono">
                         {matchingOrder ? (
-                          <div className="flex items-center gap-2">
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-mono">{formatCurrency(matchingOrder.limitPrice ?? 0)}</span>
-                              {" x "}{matchingOrder.quantity}
-                            </div>
-                            <Badge variant="outline" className="text-xs">
-                              {matchingOrder.status}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setExistingOrderForDialog(matchingOrder);
-                                setClosePosition(pos);
-                              }}
-                            >
+                          <span
+                            className="cursor-pointer group/order relative"
+                            onClick={() => {
+                              setExistingOrderForDialog(matchingOrder);
+                              setClosePosition(pos);
+                            }}
+                          >
+                            {formatCurrency(matchingOrder.limitPrice ?? 0)} x {matchingOrder.quantity}
+                            <span className="absolute inset-0 flex items-center justify-end opacity-0 group-hover/order:opacity-100 bg-background/90 text-sm font-sans">
                               Adjust
-                            </Button>
-                          </div>
+                            </span>
+                          </span>
                         ) : (
                           <Button
                             variant="ghost"
