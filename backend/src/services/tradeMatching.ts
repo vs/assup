@@ -361,10 +361,12 @@ export function groupOptionTrades(
       }
     } else if (openTrade?.buySell === "SELL") {
       // Short position: profit = premium received - cost to close - commissions
-      profit = effectiveCostBasis - sellPrice - effectiveCommission;
+      // Note: commission is already negative (money paid), so we add it to subtract
+      profit = effectiveCostBasis - sellPrice + effectiveCommission;
     } else {
       // Long position: profit = sell price - cost basis - commissions
-      profit = sellPrice - effectiveCostBasis - effectiveCommission;
+      // Note: commission is already negative (money paid), so we add it to subtract
+      profit = sellPrice - effectiveCostBasis + effectiveCommission;
     }
 
     // For assigned options, set profit to 0 (P&L is realized in stock position)
@@ -463,12 +465,13 @@ export function groupStockTrades(
   const sells = trades.filter((t) => t.buySell === "SELL");
 
   for (const sell of sells) {
-    // Skip sells without realized P&L data
-    if (sell.realizedPnl === null) continue;
+    // Skip sells without realized P&L data (null or undefined)
+    if (sell.realizedPnl == null) continue;
 
     const assetClass = assignmentMap?.get(sell.symbol);
     const quantity = Math.abs(sell.quantity);
-    const sellProceeds = quantity * sell.tradePrice - sell.commission;
+    // Note: commission is already negative (money paid), so we add it to subtract
+    const sellProceeds = quantity * sell.tradePrice + sell.commission;
 
     // Use IBKR's cost basis if available, otherwise derive from proceeds and P&L
     const costBasis = sell.costBasis !== null
