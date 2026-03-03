@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PageHeader, PageLoadingSkeleton, ErrorAlert } from "@/components/common";
 import { taxesApi } from "@/api/taxes";
+import { formatCzk } from "@/components/taxes/formatters";
 import { StockTradesTable } from "@/components/taxes/StockTradesTable";
 import { OptionTradesTable } from "@/components/taxes/OptionTradesTable";
 import { DividendsTable } from "@/components/taxes/DividendsTable";
@@ -57,13 +58,6 @@ export function TaxesPage() {
       setExporting(false);
     }
   };
-
-  const formatCzk = (value: number) =>
-    new Intl.NumberFormat("cs-CZ", {
-      style: "currency",
-      currency: "CZK",
-      maximumFractionDigits: 0,
-    }).format(value);
 
   if (loading) return <PageLoadingSkeleton />;
 
