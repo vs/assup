@@ -3,7 +3,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
-  Layers,
   Briefcase,
   List,
   Search,
@@ -48,7 +47,6 @@ const navItems = [
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
   { to: "/taxes", label: "Taxes", icon: Receipt },
-  { to: "/asset-classes", label: "Asset Classes", icon: Layers },
 ];
 
 export function Navigation() {
