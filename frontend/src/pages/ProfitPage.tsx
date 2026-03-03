@@ -5,7 +5,6 @@ import type {
   MonthlyProfitResponse,
   MonthProfitView,
   MonthSummary,
-  ImportBatch,
   Order,
 } from "@assup/shared";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
@@ -34,7 +33,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks, SortableHead } from "@/components/common";
-import { ImportDialog } from "@/components/profit/ImportDialog";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
@@ -85,10 +83,8 @@ export function ProfitPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyProfitResponse | null>(null);
   const [currentMonth, setCurrentMonth] = useState<MonthProfitView | null>(null);
   const [nextMonth, setNextMonth] = useState<MonthProfitView | null>(null);
-  const [imports, setImports] = useState<ImportBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -103,17 +99,15 @@ export function ProfitPage() {
         ? new Date().toISOString().split("T")[0] // YTD for current year
         : `${year}-12-31`; // Full year for past years
 
-      const [monthly, current, next, importList, yearsData] = await Promise.all([
+      const [monthly, current, next, yearsData] = await Promise.all([
         api.profit.monthly({ startDate, endDate }),
         api.profit.current(),
         api.profit.next(),
-        api.profit.imports.list(),
         api.profit.years(),
       ]);
       setMonthlyData(monthly);
       setCurrentMonth(current);
       setNextMonth(next);
-      setImports(importList.imports);
       setAvailableYears(yearsData.years);
       setError(null);
     } catch (err) {
@@ -125,11 +119,6 @@ export function ProfitPage() {
 
   useEffect(() => {
     loadData(selectedYear);
-  }, [loadData, selectedYear]);
-
-  const handleImportComplete = useCallback(() => {
-    loadData(selectedYear);
-    setImportDialogOpen(false);
   }, [loadData, selectedYear]);
 
   const handleYearChange = useCallback((year: number) => {
@@ -162,24 +151,21 @@ export function ProfitPage() {
         loading={loading}
         onRefresh={() => loadData(selectedYear)}
         actions={
-          <div className="flex items-center gap-2">
-            <Select
-              value={selectedYear.toString()}
-              onValueChange={(value) => handleYearChange(parseInt(value, 10))}
-            >
-              <SelectTrigger className="w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableYears.map((year) => (
-                  <SelectItem key={year} value={year.toString()}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => setImportDialogOpen(true)}>Import Data</Button>
-          </div>
+          <Select
+            value={selectedYear.toString()}
+            onValueChange={(value) => handleYearChange(parseInt(value, 10))}
+          >
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableYears.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         }
       />
 
@@ -226,7 +212,6 @@ export function ProfitPage() {
           <TabsTrigger value="current">Current Month</TabsTrigger>
           <TabsTrigger value="next">Next Month</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="imports">Imports</TabsTrigger>
         </TabsList>
 
         {/* Current Month Tab */}
@@ -263,17 +248,7 @@ export function ProfitPage() {
           )}
         </TabsContent>
 
-        {/* Imports Tab */}
-        <TabsContent value="imports" className="space-y-4">
-          <ImportsCard imports={imports} onDelete={() => loadData(selectedYear)} />
-        </TabsContent>
       </Tabs>
-
-      <ImportDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        onImportComplete={handleImportComplete}
-      />
 
       <ChartModal
         symbol={chartSymbol}
@@ -1302,72 +1277,3 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
   );
 }
 
-// Imports Card
-function ImportsCard({
-  imports,
-  onDelete,
-}: {
-  imports: ImportBatch[];
-  onDelete: () => void;
-}) {
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this import and all associated data?")) return;
-    try {
-      await api.profit.imports.delete(id);
-      onDelete();
-    } catch (err) {
-      console.error("Failed to delete import:", err);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Import History
-          <Badge variant="secondary">{imports.length}</Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {imports.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">
-            No imports yet. Click "Import Data" to upload your IBKR Flex Query.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Filename</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead className="text-right">Records</TableHead>
-                <TableHead>Imported</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {imports.map((imp) => (
-                <TableRow key={imp.id}>
-                  <TableCell className="font-medium">{imp.filename}</TableCell>
-                  <TableCell>
-                    {imp.periodStart} - {imp.periodEnd}
-                  </TableCell>
-                  <TableCell className="text-right">{imp.recordCount}</TableCell>
-                  <TableCell>{new Date(imp.importedAt).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(imp.id)}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
