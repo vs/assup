@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSSEConnection } from "./useSSE";
 
-export interface ConnectionStatus {
+interface ConnectionStatus {
   connected: boolean;
   account: string | null;
   serverVersion: number | null;

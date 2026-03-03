@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getApiBase } from "@/lib/apiConfig";
 
-export type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job";
-
-export interface SSEMessage {
-  type: SSEEventType;
-  data: unknown;
-  timestamp: string;
-}
+type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job";
 
 // Singleton SSE connection manager
 class SSEManager {

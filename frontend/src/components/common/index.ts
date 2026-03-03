@@ -8,10 +8,5 @@ export { ErrorAlert } from "./ErrorAlert";
 export { ErrorBoundary } from "./ErrorBoundary";
 export { ExposureTooltip } from "./ExposureTooltip";
 export { ExternalLinks } from "./ExternalLinks";
-export {
-  PageLoadingSkeleton,
-  TableLoadingSkeleton,
-  CardLoadingSkeleton,
-  ChartLoadingSkeleton,
-} from "./LoadingSkeleton";
+export { PageLoadingSkeleton } from "./LoadingSkeleton";
 export { PageHeader } from "./PageHeader";
