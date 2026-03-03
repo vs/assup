@@ -3,6 +3,7 @@
  */
 
 import { prisma } from "../db/index.js";
+import { getSecurityKey } from "@assup/shared";
 
 /**
  * Assignment data with asset class information
@@ -24,12 +25,7 @@ export interface AssignmentWithClass {
  */
 export type AssignmentMap = Map<string, AssignmentWithClass>;
 
-/**
- * Create a unique key for a security based on symbol and type
- */
-export function getSecurityKey(symbol: string, secType: string): string {
-  return `${symbol}:${secType}`;
-}
+export { getSecurityKey };
 
 class AssignmentService {
   /**
