@@ -2,6 +2,7 @@
  * Service for calculating profit from options trading, dividends, and interest
  */
 
+import { SecType } from "@stoqey/ib";
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
 import { cnbExchangeRateService } from "./cnbExchangeRate.service.js";
@@ -749,6 +750,28 @@ class ProfitService {
           if (pos.contract.secType === "STK" && pos.contract.symbol && pos.marketPrice != null) {
             underlyingPriceMap.set(pos.contract.symbol, pos.marketPrice);
           }
+        }
+
+        // Fetch prices for underlyings not held as stock positions
+        const missingSymbols = Array.from(underlyingSymbols).filter(s => !underlyingPriceMap.has(s));
+        if (missingSymbols.length > 0) {
+          const pricePromises = missingSymbols.map(async (symbol) => {
+            try {
+              const data = await ibkrService.getMarketData({
+                symbol,
+                secType: SecType.STK,
+                exchange: "SMART",
+                currency: "USD",
+              });
+              const price = data?.last ?? data?.close;
+              if (price != null && price > 0) {
+                underlyingPriceMap.set(symbol, price);
+              }
+            } catch {
+              // Skip - price will remain missing
+            }
+          });
+          await Promise.all(pricePromises);
         }
 
         for (const pos of positions) {
