@@ -53,18 +53,6 @@ export class IBKRConnectionError extends AppError {
 }
 
 /**
- * Error for IBKR operation failures
- */
-export class IBKROperationError extends AppError {
-  public readonly ibkrCode?: number;
-
-  constructor(message: string, ibkrCode?: number) {
-    super(message, 502);
-    this.ibkrCode = ibkrCode;
-  }
-}
-
-/**
  * Error for bad requests (400)
  */
 export class BadRequestError extends AppError {

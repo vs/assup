@@ -7,6 +7,5 @@ export {
   NotFoundError,
   ValidationError,
   IBKRConnectionError,
-  IBKROperationError,
   BadRequestError,
 } from "./AppError.js";
