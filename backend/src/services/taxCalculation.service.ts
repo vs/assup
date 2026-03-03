@@ -552,7 +552,7 @@ class TaxCalculationService {
   /**
    * Build option lot info with exchange rates
    */
-  private async buildOptionLots(opens: Array<{ id: string; tradeDate: Date; quantity: number; proceeds: number | null; currency: string | null; buySell: string }>) {
+  private async buildOptionLots(opens: Array<{ id: string; tradeDate: Date; quantity: number; proceeds: number | null; currency: string | null; buySell: string; wasAssigned?: boolean }>) {
     const lots: Array<{
       id: string;
       lotRef: string;
@@ -565,6 +565,7 @@ class TaxCalculationService {
       currency: string;
       isShort: boolean;
       action: string;
+      wasAssigned: boolean;
     }> = [];
 
     for (let i = 0; i < opens.length; i++) {
@@ -585,6 +586,7 @@ class TaxCalculationService {
         currency: open.currency || "USD",
         isShort: open.buySell === "SELL",
         action: open.buySell === "SELL" ? "SELL to open" : "BUY to open",
+        wasAssigned: open.wasAssigned || false,
       });
     }
 
@@ -593,12 +595,13 @@ class TaxCalculationService {
 
   /**
    * Determine option close type
+   * @param openWasAssigned - wasAssigned flag from the matched OPEN trade (set by detectAssignments)
    */
-  private determineCloseType(close: { wasAssigned: boolean | null; proceeds: number | null; costBasis: number | null }): "closed" | "expired" | "assigned" {
-    if (close.wasAssigned || (close.proceeds === 0 && (close.costBasis || 0) > 0)) {
+  private determineCloseType(close: { proceeds: number | null }, openWasAssigned: boolean): "closed" | "expired" | "assigned" {
+    if (openWasAssigned) {
       return "assigned";
     }
-    if (close.proceeds === 0 && (close.costBasis || 0) === 0) {
+    if (close.proceeds === 0) {
       return "expired";
     }
     return "closed";
@@ -666,19 +669,32 @@ class TaxCalculationService {
         const closeQty = Math.abs(close.quantity);
         const closeRate = await cnbExchangeRateService.getRate(close.tradeDate, close.currency || "USD");
         const closePremiumPerContract = closeQty > 0 ? Math.abs(close.proceeds || 0) / closeQty : 0;
-        const closeType = this.determineCloseType(close);
 
-        // FIFO matching
+        // FIFO matching - determine close type AFTER matching to use the open trade's wasAssigned flag
         let qtyRemaining = closeQty;
         let incomeUsd = 0, expenseUsd = 0, incomeCzk = 0, expenseCzk = 0;
         let hasMatchingOpen = false;
+        let openWasAssigned = false;
 
+        // First pass: FIFO matching to find consumed lots and assignment status
+        const consumedLotInfo: Array<{ lot: typeof lots[0]; qty: number }> = [];
         for (const lot of lots) {
           if (qtyRemaining <= 0 || lot.remainingQty <= 0 || lot.tradeDate > close.tradeDate) continue;
 
           hasMatchingOpen = true;
+          if (lot.wasAssigned) openWasAssigned = true;
           const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
+          consumedLotInfo.push({ lot, qty: qtyToConsume });
 
+          lot.remainingQty -= qtyToConsume;
+          qtyRemaining -= qtyToConsume;
+        }
+
+        // Determine close type using the open trade's assignment status
+        const closeType = this.determineCloseType(close, openWasAssigned);
+
+        // Second pass: calculate income/expense using the determined close type
+        for (const { lot, qty: qtyToConsume } of consumedLotInfo) {
           const openPremiumUsd = lot.premiumPerContract * qtyToConsume;
           const openPremiumCzk = openPremiumUsd * lot.exchangeRate;
           const closePremiumUsd = closePremiumPerContract * qtyToConsume;
@@ -700,9 +716,6 @@ class TaxCalculationService {
               incomeCzk += closePremiumCzk;
             }
           }
-
-          lot.remainingQty -= qtyToConsume;
-          qtyRemaining -= qtyToConsume;
         }
 
         // If no matching open but IBKR provides realizedPnl and costBasis, populate USD values
@@ -1394,15 +1407,14 @@ class TaxCalculationService {
         const closeProceeds = close.proceeds || 0;
         const closePremiumPerContract = closeQty > 0 ? closeProceeds / closeQty : 0;
 
-        const closeType = this.determineCloseType(close);
-        const closeAction = this.determineCloseAction(close.buySell, closeType);
-
         const consumedLots: OptionConsumedLot[] = [];
+        let openWasAssigned = false;
 
         // Consume from oldest lots (FIFO)
         for (const lot of lots) {
           if (qtyRemaining <= 0 || lot.remainingQty <= 0) continue;
 
+          if (lot.wasAssigned) openWasAssigned = true;
           const qtyToConsume = Math.min(qtyRemaining, lot.remainingQty);
 
           // Calculate proportional premiums
@@ -1436,6 +1448,10 @@ class TaxCalculationService {
           lot.remainingQty -= qtyToConsume;
           qtyRemaining -= qtyToConsume;
         }
+
+        // Determine close type using the open trade's assignment status
+        const closeType = this.determineCloseType(close, openWasAssigned);
+        const closeAction = this.determineCloseAction(close.buySell, closeType);
 
         entries.push({
           type: "close",
