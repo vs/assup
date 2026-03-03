@@ -969,8 +969,10 @@ export const wheelService = {
         );
 
         if (isAssignmentClose) {
-          // Skip this trade entirely - the ASSIGNED/CALLED_AWAY trade already handles it
-          tradeType = null;
+          // Keep the BOUGHT_PUT/BOUGHT_CALL type so this trade is included in
+          // cycleTradeIndices for matchTradesForCycle to properly pair open/close
+          // and detect assignment. Since proceeds=0, premium≈0 so cycleRealizedPnL
+          // is unaffected.
         } else {
           tradeType = "EXPIRED";
         }

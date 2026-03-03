@@ -369,11 +369,6 @@ export function groupOptionTrades(
       profit = sellPrice - effectiveCostBasis + effectiveCommission;
     }
 
-    // For assigned options, set profit to 0 (P&L is realized in stock position)
-    if (wasAssigned) {
-      profit = 0;
-    }
-
     // For open positions (not closed, not expired), no realized P&L yet
     const isOpenPosition = closeQuantity === 0 && !expiredWorthless && !wasAssigned;
     if (isOpenPosition) {
@@ -686,6 +681,9 @@ export function optionGroupToWheelMatchedTrade(
     }
   } else if (expiredWorthless) {
     closeAction = "Expired worthless";
+  } else if (wasAssigned) {
+    // Assignment detected but no close trade in DB (e.g., FLEX report missing the close record)
+    closeAction = group.right === "P" ? "Assigned" : "Called away";
   }
 
   // Build open leg - synthesize from costBasis if openTrade is missing
@@ -719,7 +717,7 @@ export function optionGroupToWheelMatchedTrade(
     status,
     netPnL: status === "open" ? null : profit,
     openLeg,
-    closeLeg: closeTrade || expiredWorthless
+    closeLeg: closeTrade || expiredWorthless || wasAssigned
       ? {
           date: closeTrade?.tradeDate || group.expiry,
           action: closeAction!,
