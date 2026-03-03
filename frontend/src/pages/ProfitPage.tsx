@@ -33,12 +33,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
+import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks, SortableHead } from "@/components/common";
 import { ImportDialog } from "@/components/profit/ImportDialog";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks/useSparklines";
+import { useTableSort } from "@/hooks/useTableSort";
 
 // Helper to calculate days to expiration using US Eastern timezone
 function calculateDTE(expiry: string): number {
@@ -320,8 +321,6 @@ function MonthProfitCard({
   const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
   const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
   const [openOrders, setOpenOrders] = useState<Order[]>([]);
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Fetch open orders to match against expiring positions
   const loadOrders = useCallback(() => {
@@ -353,44 +352,54 @@ function MonthProfitCard({
 
   const { getSparklineState } = useSparklines(sparklineSymbols);
 
-  const toggleSort = useCallback((column: string) => {
-    if (sortColumn !== column) {
-      setSortColumn(column);
-      setSortDir("asc");
-    } else if (sortDir === "asc") {
-      setSortDir("desc");
-    } else {
-      setSortColumn(null);
-      setSortDir("asc");
+  // Sort: expiring positions
+  const getExpiringValue = useCallback((pos: (typeof data.unrealized.positions)[0], col: string): string | number => {
+    switch (col) {
+      case "contract": return pos.displayName;
+      case "type": return pos.right;
+      case "assetClass": return pos.assetClassName ?? "";
+      case "price": return pos.underlyingPrice ?? 0;
+      case "strike": return pos.strike;
+      case "expiry": return pos.expiry;
+      case "dte": return calculateDTE(pos.expiry);
+      case "qty": return pos.quantity;
+      case "unrealizedPnl": return pos.unrealizedPnl;
+      case "projected": return pos.projectedProfit;
+      default: return 0;
     }
-  }, [sortColumn, sortDir]);
+  }, []);
+  const expSort = useTableSort(data.unrealized.positions, getExpiringValue);
 
-  const sortedPositions = useMemo(() => {
-    const positions = [...data.unrealized.positions];
-    if (!sortColumn) return positions;
-    const getValue = (pos: (typeof positions)[0]): number | string => {
-      switch (sortColumn) {
-        case "contract": return pos.displayName;
-        case "type": return pos.right;
-        case "assetClass": return pos.assetClassName ?? "";
-        case "price": return pos.underlyingPrice ?? 0;
-        case "strike": return pos.strike;
-        case "expiry": return pos.expiry;
-        case "dte": return calculateDTE(pos.expiry);
-        case "qty": return pos.quantity;
-        case "unrealizedPnl": return pos.unrealizedPnl;
-        case "projected": return pos.projectedProfit;
-        default: return 0;
-      }
-    };
-    positions.sort((a, b) => {
-      const va = getValue(a);
-      const vb = getValue(b);
-      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return positions;
-  }, [data.unrealized.positions, sortColumn, sortDir]);
+  // Sort: realized option trades
+  const getOptionTradeValue = useCallback((trade: (typeof data.realized.closedTrades)[0], col: string): string | number => {
+    switch (col) {
+      case "date": return trade.closeTrade?.tradeDate || trade.expiry;
+      case "contract": return formatTradeDisplayName(trade);
+      case "type": return trade.right;
+      case "assetClass": return trade.assetClassName ?? "";
+      case "premium": return trade.costBasis;
+      case "closeCost": return trade.sellPrice;
+      case "profit": return trade.profit;
+      case "status": return trade.wasAssigned ? "Assigned" : trade.expiredWorthless ? "Expired" : "Closed";
+      default: return 0;
+    }
+  }, []);
+  const optSort = useTableSort(data.realized.closedTrades, getOptionTradeValue);
+
+  // Sort: realized stock trades
+  const getStockTradeValue = useCallback((trade: (typeof data.realized.stockTrades)[0], col: string): string | number => {
+    switch (col) {
+      case "date": return trade.sellTrade?.tradeDate || "";
+      case "symbol": return trade.symbol;
+      case "assetClass": return trade.assetClassName ?? "";
+      case "qty": return trade.quantity;
+      case "costBasis": return trade.costBasis;
+      case "sellProceeds": return trade.sellProceeds;
+      case "profit": return trade.profit;
+      default: return 0;
+    }
+  }, []);
+  const stkSort = useTableSort(data.realized.stockTrades, getStockTradeValue);
 
   const hasRealizedTrades = data.realized.closedTrades.length > 0 ||
     data.realized.stockTrades.length > 0 ||
@@ -453,24 +462,18 @@ function MonthProfitCard({
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Contract</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Asset Class</TableHead>
-                            <TableHead className="text-right">Premium</TableHead>
-                            <TableHead className="text-right">Close Cost</TableHead>
-                            <TableHead className="text-right">Profit</TableHead>
-                            <TableHead>Status</TableHead>
+                            <SortableHead column="date" {...optSort}>Date</SortableHead>
+                            <SortableHead column="contract" {...optSort}>Contract</SortableHead>
+                            <SortableHead column="type" {...optSort}>Type</SortableHead>
+                            <SortableHead column="assetClass" {...optSort}>Asset Class</SortableHead>
+                            <SortableHead column="premium" className="text-right" {...optSort}>Premium</SortableHead>
+                            <SortableHead column="closeCost" className="text-right" {...optSort}>Close Cost</SortableHead>
+                            <SortableHead column="profit" className="text-right" {...optSort}>Profit</SortableHead>
+                            <SortableHead column="status" {...optSort}>Status</SortableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {[...data.realized.closedTrades]
-                            .sort((a, b) => {
-                              const dateA = a.closeTrade?.tradeDate || a.expiry;
-                              const dateB = b.closeTrade?.tradeDate || b.expiry;
-                              return dateB.localeCompare(dateA); // Most recent first
-                            })
-                            .map((trade, idx) => (
+                          {optSort.sorted.map((trade, idx) => (
                             <TableRow key={idx}>
                               <TableCell className="text-muted-foreground">
                                 {trade.closeTrade?.tradeDate || trade.expiry}
@@ -549,23 +552,17 @@ function MonthProfitCard({
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Sell Date</TableHead>
-                            <TableHead>Symbol</TableHead>
-                            <TableHead>Asset Class</TableHead>
-                            <TableHead className="text-right">Qty</TableHead>
-                            <TableHead className="text-right">Cost Basis</TableHead>
-                            <TableHead className="text-right">Sell Proceeds</TableHead>
-                            <TableHead className="text-right">Profit</TableHead>
+                            <SortableHead column="date" {...stkSort}>Sell Date</SortableHead>
+                            <SortableHead column="symbol" {...stkSort}>Symbol</SortableHead>
+                            <SortableHead column="assetClass" {...stkSort}>Asset Class</SortableHead>
+                            <SortableHead column="qty" className="text-right" {...stkSort}>Qty</SortableHead>
+                            <SortableHead column="costBasis" className="text-right" {...stkSort}>Cost Basis</SortableHead>
+                            <SortableHead column="sellProceeds" className="text-right" {...stkSort}>Sell Proceeds</SortableHead>
+                            <SortableHead column="profit" className="text-right" {...stkSort}>Profit</SortableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {[...data.realized.stockTrades]
-                            .sort((a, b) => {
-                              const dateA = a.sellTrade?.tradeDate || "";
-                              const dateB = b.sellTrade?.tradeDate || "";
-                              return dateB.localeCompare(dateA); // Most recent first
-                            })
-                            .map((trade, idx) => (
+                          {stkSort.sorted.map((trade, idx) => (
                             <TableRow key={idx}>
                               <TableCell className="text-muted-foreground">
                                 {trade.sellTrade?.tradeDate || "-"}
@@ -740,32 +737,22 @@ function MonthProfitCard({
             <Table>
               <TableHeader>
                 <TableRow>
-                  {([
-                    ["contract", "Contract", ""],
-                    ["", "", "w-24"],
-                    ["type", "Type", ""],
-                    ["assetClass", "Asset Class", ""],
-                    ["price", "Price", "text-right"],
-                    ["strike", "Strike", "text-right"],
-                    ["expiry", "Expiry", ""],
-                    ["dte", "DTE", "text-right"],
-                    ["qty", "Qty", "text-right"],
-                    ["unrealizedPnl", "Unrealized P&L", "text-right"],
-                    ["projected", "Projected", "text-right"],
-                    ["", "Order", "text-right"],
-                  ] as const).map(([key, label, className]) => (
-                    <TableHead
-                      key={label || key}
-                      className={`${className} ${key ? "cursor-pointer select-none hover:text-foreground" : ""}`}
-                      onClick={key ? () => toggleSort(key) : undefined}
-                    >
-                      {label}{key && sortColumn === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-                    </TableHead>
-                  ))}
+                  <SortableHead column="contract" {...expSort}>Contract</SortableHead>
+                  <TableHead className="w-24" />
+                  <SortableHead column="type" {...expSort}>Type</SortableHead>
+                  <SortableHead column="assetClass" {...expSort}>Asset Class</SortableHead>
+                  <SortableHead column="price" className="text-right" {...expSort}>Price</SortableHead>
+                  <SortableHead column="strike" className="text-right" {...expSort}>Strike</SortableHead>
+                  <SortableHead column="expiry" {...expSort}>Expiry</SortableHead>
+                  <SortableHead column="dte" className="text-right" {...expSort}>DTE</SortableHead>
+                  <SortableHead column="qty" className="text-right" {...expSort}>Qty</SortableHead>
+                  <SortableHead column="unrealizedPnl" className="text-right" {...expSort}>Unrealized P&L</SortableHead>
+                  <SortableHead column="projected" className="text-right" {...expSort}>Projected</SortableHead>
+                  <TableHead className="text-right">Order</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedPositions.map((pos, idx) => {
+                {expSort.sorted.map((pos, idx) => {
                   const sparkline = getSparklineState(pos.underlying);
                   const dte = calculateDTE(pos.expiry);
                   const matchingOrder = findMatchingOrder(pos);
@@ -995,6 +982,39 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
     return <div className="py-4 text-center text-muted-foreground">No data</div>;
   }
 
+  return <MonthDetailContent detail={detail} />;
+}
+
+function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.profit.monthDetail>> }) {
+  const getOptionTradeValue = useCallback((trade: (typeof detail.realized.optionTrades)[0], col: string): string | number => {
+    switch (col) {
+      case "date": return trade.closeTrade?.tradeDate || trade.expiry;
+      case "contract": return formatTradeDisplayName(trade);
+      case "type": return trade.right;
+      case "assetClass": return trade.assetClassName ?? "";
+      case "premium": return trade.costBasis;
+      case "closeCost": return trade.sellPrice;
+      case "profit": return trade.profit;
+      case "status": return trade.wasAssigned ? "Assigned" : trade.expiredWorthless ? "Expired" : "Closed";
+      default: return 0;
+    }
+  }, []);
+  const optSort = useTableSort(detail.realized.optionTrades, getOptionTradeValue);
+
+  const getStockTradeValue = useCallback((trade: (typeof detail.realized.stockTrades)[0], col: string): string | number => {
+    switch (col) {
+      case "date": return trade.sellTrade?.tradeDate || "";
+      case "symbol": return trade.symbol;
+      case "assetClass": return trade.assetClassName ?? "";
+      case "qty": return trade.quantity;
+      case "costBasis": return trade.costBasis;
+      case "sellProceeds": return trade.sellProceeds;
+      case "profit": return trade.profit;
+      default: return 0;
+    }
+  }, []);
+  const stkSort = useTableSort(detail.realized.stockTrades, getStockTradeValue);
+
   return (
     <div className="space-y-4">
       {/* Option Trades */}
@@ -1004,24 +1024,18 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Contract</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Asset Class</TableHead>
-                <TableHead className="text-right">Premium</TableHead>
-                <TableHead className="text-right">Close Cost</TableHead>
-                <TableHead className="text-right">Profit</TableHead>
-                <TableHead>Status</TableHead>
+                <SortableHead column="date" {...optSort}>Date</SortableHead>
+                <SortableHead column="contract" {...optSort}>Contract</SortableHead>
+                <SortableHead column="type" {...optSort}>Type</SortableHead>
+                <SortableHead column="assetClass" {...optSort}>Asset Class</SortableHead>
+                <SortableHead column="premium" className="text-right" {...optSort}>Premium</SortableHead>
+                <SortableHead column="closeCost" className="text-right" {...optSort}>Close Cost</SortableHead>
+                <SortableHead column="profit" className="text-right" {...optSort}>Profit</SortableHead>
+                <SortableHead column="status" {...optSort}>Status</SortableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...detail.realized.optionTrades]
-                .sort((a, b) => {
-                  const dateA = a.closeTrade?.tradeDate || a.expiry;
-                  const dateB = b.closeTrade?.tradeDate || b.expiry;
-                  return dateB.localeCompare(dateA); // Most recent first
-                })
-                .map((trade, idx) => (
+              {optSort.sorted.map((trade, idx) => (
                 <TableRow key={idx}>
                   <TableCell className="text-muted-foreground">
                     {trade.closeTrade?.tradeDate || trade.expiry}
@@ -1100,23 +1114,17 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Sell Date</TableHead>
-                <TableHead>Symbol</TableHead>
-                <TableHead>Asset Class</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Cost Basis</TableHead>
-                <TableHead className="text-right">Sell Proceeds</TableHead>
-                <TableHead className="text-right">Profit</TableHead>
+                <SortableHead column="date" {...stkSort}>Sell Date</SortableHead>
+                <SortableHead column="symbol" {...stkSort}>Symbol</SortableHead>
+                <SortableHead column="assetClass" {...stkSort}>Asset Class</SortableHead>
+                <SortableHead column="qty" className="text-right" {...stkSort}>Qty</SortableHead>
+                <SortableHead column="costBasis" className="text-right" {...stkSort}>Cost Basis</SortableHead>
+                <SortableHead column="sellProceeds" className="text-right" {...stkSort}>Sell Proceeds</SortableHead>
+                <SortableHead column="profit" className="text-right" {...stkSort}>Profit</SortableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...detail.realized.stockTrades]
-                .sort((a, b) => {
-                  const dateA = a.sellTrade?.tradeDate || "";
-                  const dateB = b.sellTrade?.tradeDate || "";
-                  return dateB.localeCompare(dateA); // Most recent first
-                })
-                .map((trade, idx) => (
+              {stkSort.sorted.map((trade, idx) => (
                 <TableRow key={idx}>
                   <TableCell className="text-muted-foreground">
                     {trade.sellTrade?.tradeDate || "-"}

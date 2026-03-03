@@ -102,15 +102,6 @@ export function PositionsPage() {
     });
   }, [positions, filters]);
 
-  // Sort positions to put Cash last
-  const sortedPositions = useMemo(() => {
-    return [...filteredPositions].sort((a, b) => {
-      if (a.secType === "CASH") return 1;
-      if (b.secType === "CASH") return -1;
-      return 0;
-    });
-  }, [filteredPositions]);
-
   // Calculate summary values
   const netLiquidation = summary?.account.netLiquidation ?? 0;
   const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
@@ -226,7 +217,7 @@ export function PositionsPage() {
             </p>
           ) : (
             <PositionTable
-              positions={sortedPositions}
+              positions={filteredPositions}
               assetClasses={assetClasses}
               netLiquidation={netLiquidation}
               assigningKey={assigning}

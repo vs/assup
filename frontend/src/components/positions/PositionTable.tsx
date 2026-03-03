@@ -1,4 +1,6 @@
+import { useCallback } from "react";
 import type { Position, AssetClass, SparklinePoint } from "@assup/shared";
+import { calculatePositionExposure } from "@assup/shared";
 import {
   Table,
   TableBody,
@@ -6,8 +8,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ExposureTooltip } from "@/components/common";
+import { ExposureTooltip, SortableHead } from "@/components/common";
 import { PositionRow } from "./PositionRow";
+import { useTableSort } from "@/hooks/useTableSort";
 
 interface SparklineState {
   data: SparklinePoint[];
@@ -40,30 +43,62 @@ export function PositionTable({
   showPercentColumn = true,
   showAssignColumn = false,
 }: PositionTableProps) {
+  const getColumnValue = useCallback((pos: Position, col: string): string | number => {
+    switch (col) {
+      case "symbol": return pos.symbol;
+      case "type": {
+        if (pos.secType === "OPT") return pos.right === "P" ? "PUT" : "CALL";
+        if (pos.secType === "CASH") return "Cash";
+        return "Stock";
+      }
+      case "assetClass": return pos.assetClassName ?? "";
+      case "quantity": return pos.position;
+      case "costBasis": return pos.costBasis ?? 0;
+      case "mktValue": return pos.marketValue ?? 0;
+      case "pnl": return pos.unrealizedPnl ?? 0;
+      case "exposure": return calculatePositionExposure(pos);
+      case "pctOfTotal": return netLiquidation > 0 ? calculatePositionExposure(pos) / netLiquidation : 0;
+      default: return 0;
+    }
+  }, [netLiquidation]);
+
+  const { sorted, sortColumn, sortDir, toggleSort } = useTableSort(positions, getColumnValue);
+
+  // When no explicit sort, keep cash at bottom
+  const displayPositions = sortColumn ? sorted : [...positions].sort((a, b) => {
+    if (a.secType === "CASH") return 1;
+    if (b.secType === "CASH") return -1;
+    return 0;
+  });
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Symbol</TableHead>
+          <SortableHead column="symbol" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Symbol</SortableHead>
           <TableHead className="w-24">7D</TableHead>
-          <TableHead>Type</TableHead>
-          {showAssetClassColumn && <TableHead>Asset Class</TableHead>}
-          <TableHead className="text-right">Quantity</TableHead>
-          <TableHead className="text-right">Cost Basis</TableHead>
-          <TableHead className="text-right">Mkt Value</TableHead>
-          <TableHead className="text-right">P&L</TableHead>
-          <TableHead className="text-right">
+          <SortableHead column="type" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Type</SortableHead>
+          {showAssetClassColumn && (
+            <SortableHead column="assetClass" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Asset Class</SortableHead>
+          )}
+          <SortableHead column="quantity" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Quantity</SortableHead>
+          <SortableHead column="costBasis" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Cost Basis</SortableHead>
+          <SortableHead column="mktValue" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Mkt Value</SortableHead>
+          <SortableHead column="pnl" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>P&L</SortableHead>
+          <SortableHead column="exposure" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>
             <span className="inline-flex items-center gap-1">
               Exposure
               <ExposureTooltip />
             </span>
-          </TableHead>
-          {showPercentColumn && <TableHead className="text-right">% of Total</TableHead>}
+          </SortableHead>
+          {showPercentColumn && (
+            <SortableHead column="pctOfTotal" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>% of Total</SortableHead>
+          )}
           {showAssignColumn && <TableHead>Assign To</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
-        {positions.map((pos) => {
+        {displayPositions.map((pos) => {
           const key = `${pos.symbol}:${pos.secType}`;
           const sparkline = getSparkline(pos);
           return (
