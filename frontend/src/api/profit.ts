@@ -10,6 +10,7 @@ import type {
   MonthlyProfitResponse,
   MonthDetail,
   MonthProfitView,
+  AllPositionsView,
 } from "@assup/shared";
 
 interface MonthlyProfitQueryParams {
@@ -78,6 +79,11 @@ export const profitApi = {
    * Get next month profit with unrealized and projected
    */
   next: () => request<MonthProfitView>("/api/profit/next"),
+
+  /**
+   * Get all open option positions regardless of expiry month
+   */
+  positions: () => request<AllPositionsView>("/api/profit/positions"),
 
   /**
    * Trigger assignment detection
