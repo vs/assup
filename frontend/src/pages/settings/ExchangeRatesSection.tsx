@@ -132,7 +132,7 @@ export function ExchangeRatesSection() {
         </div>
       </div>
 
-      {error && <ErrorAlert message={error} />}
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       {fetchResult && (
         <Alert>

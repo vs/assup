@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ErrorAlert } from "@/components/common";
+import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { ImportDialog } from "@/components/profit/ImportDialog";
 
 export function ImportsSection() {
@@ -52,6 +52,10 @@ export function ImportsSection() {
       console.error("Failed to delete import:", err);
     }
   };
+
+  if (loading && imports.length === 0) {
+    return <PageLoadingSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
