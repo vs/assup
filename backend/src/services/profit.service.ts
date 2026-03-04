@@ -18,6 +18,7 @@ import type {
   StockTradeGroup,
   CashTransaction,
   CurrentOptionPosition,
+  AllPositionsView,
 } from "@assup/shared";
 
 /**
@@ -703,6 +704,136 @@ class ProfitService {
     const year = nextMonth > 12 ? now.getFullYear() + 1 : now.getFullYear();
     const month = nextMonth > 12 ? 1 : nextMonth;
     return this.getMonthProfitView(year, month);
+  }
+
+  /**
+   * Get all open option positions regardless of expiry month
+   */
+  async getAllPositions(): Promise<AllPositionsView> {
+    const positions: CurrentOptionPosition[] = [];
+
+    if (ibkrService.isConnected()) {
+      try {
+        const ibkrPositions = await ibkrService.getPositions();
+
+        // Collect underlying symbols for asset class lookup
+        const underlyingSymbols = new Set<string>();
+        for (const pos of ibkrPositions) {
+          if (pos.contract.secType === "OPT" && pos.pos !== 0) {
+            const symbol = pos.contract.symbol || "";
+            underlyingSymbols.add(symbol.split(" ")[0] || symbol);
+          }
+        }
+
+        // Fetch asset class assignments
+        const assignments = await prisma.securityAssignment.findMany({
+          where: {
+            symbol: { in: Array.from(underlyingSymbols) },
+            secType: "STK",
+          },
+          include: { assetClass: true },
+        });
+        const assignmentMap = new Map(
+          assignments.map((a) => [a.symbol, a])
+        );
+
+        // Build underlying price map from stock positions
+        const underlyingPriceMap = new Map<string, number>();
+        for (const pos of ibkrPositions) {
+          if (pos.contract.secType === "STK" && pos.contract.symbol && pos.marketPrice != null) {
+            underlyingPriceMap.set(pos.contract.symbol, pos.marketPrice);
+          }
+        }
+
+        // Fetch prices for underlyings not held as stock positions
+        const missingSymbols = Array.from(underlyingSymbols).filter(s => !underlyingPriceMap.has(s));
+        if (missingSymbols.length > 0) {
+          const pricePromises = missingSymbols.map(async (symbol) => {
+            try {
+              const data = await ibkrService.getMarketData({
+                symbol,
+                secType: SecType.STK,
+                exchange: "SMART",
+                currency: "USD",
+              });
+              const price = data?.last ?? data?.close;
+              if (price != null && price > 0) {
+                underlyingPriceMap.set(symbol, price);
+              }
+            } catch {
+              // Skip - price will remain missing
+            }
+          });
+          await Promise.all(pricePromises);
+        }
+
+        for (const pos of ibkrPositions) {
+          if (pos.contract.secType !== "OPT") continue;
+          if (pos.pos === 0) continue;
+
+          const expiryStr = pos.contract.lastTradeDateOrContractMonth;
+          if (!expiryStr) continue;
+
+          const expiry = this.parseContractExpiry(expiryStr);
+          if (!expiry) continue;
+
+          // NOTE: No month filter — include all expiry months
+
+          const strike = pos.contract.strike || 0;
+          const right = (pos.contract.right || "C") as "C" | "P";
+          const costBasis = pos.avgCost * Math.abs(pos.pos);
+          const marketValue = pos.marketValue || 0;
+
+          const unrealizedPnl = pos.pos < 0
+            ? costBasis + marketValue
+            : marketValue - costBasis;
+
+          let projectedProfit = 0;
+          if (pos.pos < 0) {
+            projectedProfit = costBasis;
+          }
+
+          const symbol = pos.contract.symbol || "";
+          const underlying = symbol.split(" ")[0] || symbol;
+          const assignment = assignmentMap.get(underlying);
+
+          positions.push({
+            symbol,
+            displayName: formatDisplayName({
+              symbol: underlying,
+              secType: "OPT",
+              strike,
+              right,
+              lastTradeDateOrContractMonth: pos.contract.lastTradeDateOrContractMonth,
+            }),
+            underlying,
+            strike,
+            expiry: expiry.toISOString().split("T")[0],
+            right,
+            quantity: pos.pos,
+            avgCost: pos.avgCost,
+            marketPrice: pos.marketPrice || 0,
+            marketValue,
+            unrealizedPnl,
+            projectedProfit,
+            underlyingPrice: underlyingPriceMap.get(underlying),
+            assetClassId: assignment?.assetClassId,
+            assetClassName: assignment?.assetClass.name,
+            assetClassColor: assignment?.assetClass.color,
+          });
+        }
+      } catch {
+        // IBKR not connected, return empty
+      }
+    }
+
+    // Sort by expiry ascending (nearest first)
+    positions.sort((a, b) => a.expiry.localeCompare(b.expiry));
+
+    const totalUnrealized = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+    const totalProjected = positions.reduce((sum, p) => sum + p.projectedProfit, 0);
+
+    return { totalUnrealized, totalProjected, positions };
   }
 
   /**
