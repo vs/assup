@@ -6,6 +6,7 @@ import type {
   MonthProfitView,
   MonthSummary,
   Order,
+  AllPositionsView,
 } from "@assup/shared";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,6 +77,20 @@ export function ProfitPage() {
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
+  const [allPositions, setAllPositions] = useState<AllPositionsView | null>(null);
+  const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
+  const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
+  const [openOrders, setOpenOrders] = useState<Order[]>([]);
+
+  const loadOrders = useCallback(() => {
+    api.orders.list()
+      .then(setOpenOrders)
+      .catch(() => setOpenOrders([]));
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
 
   const loadData = useCallback(async (year: number) => {
     try {
@@ -86,16 +101,18 @@ export function ProfitPage() {
         ? new Date().toISOString().split("T")[0] // YTD for current year
         : `${year}-12-31`; // Full year for past years
 
-      const [monthly, current, next, yearsData] = await Promise.all([
+      const [monthly, current, next, yearsData, positions] = await Promise.all([
         api.profit.monthly({ startDate, endDate }),
         api.profit.current(),
         api.profit.next(),
         api.profit.years(),
+        api.profit.positions(),
       ]);
       setMonthlyData(monthly);
       setCurrentMonth(current);
       setNextMonth(next);
       setAvailableYears(yearsData.years);
+      setAllPositions(positions);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -194,12 +211,55 @@ export function ProfitPage() {
         </div>
       )}
 
-      <Tabs defaultValue="current" className="space-y-4">
+      <Tabs defaultValue="positions" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="positions">Open Positions</TabsTrigger>
           <TabsTrigger value="current">Current Month</TabsTrigger>
           <TabsTrigger value="next">Next Month</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
+
+        {/* Open Positions Tab */}
+        <TabsContent value="positions" className="space-y-4">
+          {allPositions && (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Unrealized P&L</div>
+                      <div className={`text-lg font-semibold ${allPositions.totalUnrealized >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {formatCurrency(allPositions.totalUnrealized)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {allPositions.positions.length} open positions
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Projected (if expire worthless)</div>
+                      <div className="text-lg font-semibold text-blue-600">
+                        {formatCurrency(allPositions.totalProjected)}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <PositionsTable
+                    positions={allPositions.positions}
+                    openOrders={openOrders}
+                    onSymbolClick={setChartSymbol}
+                    onClosePosition={(pos, order) => {
+                      setExistingOrderForDialog(order);
+                      setClosePosition(pos);
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
 
         {/* Current Month Tab */}
         <TabsContent value="current" className="space-y-4">
@@ -236,6 +296,14 @@ export function ProfitPage() {
         </TabsContent>
 
       </Tabs>
+
+      <ClosePositionDialog
+        open={!!closePosition}
+        onOpenChange={(open) => { if (!open) { setClosePosition(null); setExistingOrderForDialog(null); } }}
+        position={closePosition}
+        existingOrder={existingOrderForDialog}
+        onOrderPlaced={() => { loadOrders(); loadData(selectedYear); }}
+      />
 
       <ChartModal
         symbol={chartSymbol}
