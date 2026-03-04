@@ -1,12 +1,21 @@
 import { useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Settings } from "lucide-react";
 import { Navigation } from "./Navigation";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useSSEConnection } from "@/hooks/useSSE";
 import { setDockBadge, isTauri } from "@/lib/tauriIntegration";
 
 export function Layout() {
   const { connected } = useSSEConnection();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (isTauri()) {
@@ -30,6 +39,19 @@ export function Layout() {
           </div>
           <div className="flex items-center gap-2">
             <ConnectionStatus />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <Settings className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => navigate("/settings")}>
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
