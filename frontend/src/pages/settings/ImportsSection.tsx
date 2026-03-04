@@ -58,20 +58,18 @@ export function ImportsSection() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">FLEX Imports</h2>
-        <Button onClick={() => setImportDialogOpen(true)}>Import Data</Button>
-      </div>
-
+    <div className="space-y-6 py-2">
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Import History
-            <Badge variant="secondary">{imports.length}</Badge>
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              Import History
+              <Badge variant="secondary">{imports.length}</Badge>
+            </CardTitle>
+            <Button onClick={() => setImportDialogOpen(true)}>Import Data</Button>
+          </div>
         </CardHeader>
         <CardContent>
           {imports.length === 0 ? (

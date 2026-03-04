@@ -229,44 +229,37 @@ export function AssetClassesSection() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Asset Classes & Allocation</h2>
-          <p className="text-sm text-muted-foreground">
-            Define asset classes and their target allocation percentages.
-          </p>
-        </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Asset Class
-        </Button>
-      </div>
-
+    <div className="space-y-6 py-2">
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Portfolio Allocation</CardTitle>
+              <CardTitle>Asset Classes & Allocation</CardTitle>
               <CardDescription>
-                Set target percentages for each asset class. Total must equal 100%.
+                Define asset classes and set target allocation percentages. Total must equal 100%.
               </CardDescription>
             </div>
-            {assetClasses.length > 0 && (
-              <Badge
-                variant={isAllocationValid ? "default" : "destructive"}
-                className="text-sm"
-              >
-                {isAllocationValid ? (
-                  <Check className="h-3 w-3 mr-1" />
-                ) : (
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                )}
-                Total: {totalPercentage.toFixed(1)}%
-              </Badge>
-            )}
+            <div className="flex items-center gap-3">
+              {assetClasses.length > 0 && (
+                <Badge
+                  variant={isAllocationValid ? "default" : "destructive"}
+                  className="text-sm"
+                >
+                  {isAllocationValid ? (
+                    <Check className="h-3 w-3 mr-1" />
+                  ) : (
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                  )}
+                  Total: {totalPercentage.toFixed(1)}%
+                </Badge>
+              )}
+              <Button onClick={openCreateDialog}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Asset Class
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

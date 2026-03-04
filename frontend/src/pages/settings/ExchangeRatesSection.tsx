@@ -104,7 +104,7 @@ export function ExchangeRatesSection() {
   const { currencies, dates, dateMap } = pivotRates();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 py-2">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Exchange Rates</h2>
         <div className="flex items-center gap-4">
