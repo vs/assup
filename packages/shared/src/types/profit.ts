@@ -225,6 +225,13 @@ export interface MonthlyProfitResponse {
   };
 }
 
+// All open option positions (no month filter)
+export interface AllPositionsView {
+  totalUnrealized: number;
+  totalProjected: number;
+  positions: CurrentOptionPosition[];
+}
+
 // Import list response
 export interface ImportListResponse {
   imports: ImportBatch[];
