@@ -25,7 +25,7 @@ export function ConnectionStatus() {
 
   return (
     <div
-      className={`relative rounded-lg border bg-muted/30 shadow-sm ${showDetails ? "rounded-b-none border-b-transparent z-50" : ""}`}
+      className="relative rounded-lg border bg-muted/30 shadow-sm"
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
@@ -57,9 +57,9 @@ export function ConnectionStatus() {
         </Link>
       </div>
 
-      {/* Expanded details — absolutely positioned below to avoid layout shift */}
+      {/* Details popup — positioned to the left of the indicator box */}
       {showDetails && (
-        <div className="absolute top-full right-0 w-72 border border-t bg-muted/30 backdrop-blur rounded-b-lg shadow-lg px-3 py-3 z-50">
+        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 z-50 w-72 rounded-lg border bg-card p-4 shadow-lg">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
               {isConnected ? (
