@@ -182,6 +182,18 @@ router.get(
 );
 
 /**
+ * GET /api/profit/positions
+ * Get all open option positions regardless of expiry month
+ */
+router.get(
+  "/positions",
+  asyncHandler(async (_req, res) => {
+    const result = await profitService.getAllPositions();
+    res.json(result);
+  })
+);
+
+/**
  * POST /api/profit/detect-assignments
  * Manually trigger assignment detection
  */
