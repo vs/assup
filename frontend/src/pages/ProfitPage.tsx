@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api";
 import type {
@@ -9,7 +9,6 @@ import type {
 } from "@assup/shared";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -34,21 +33,9 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks, SortableHead } from "@/components/common";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
-import { Sparkline } from "@/components/Sparkline";
+import { PositionsTable } from "@/components/profit/PositionsTable";
 import { ChartModal } from "@/components/ChartModal";
-import { useSparklines } from "@/hooks/useSparklines";
 import { useTableSort } from "@/hooks/useTableSort";
-
-// Helper to calculate days to expiration using US Eastern timezone
-function calculateDTE(expiry: string): number {
-  const eastern = (d: Date) => {
-    const s = d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-    return new Date(s + "T00:00:00");
-  };
-  const todayET = eastern(new Date());
-  const expiryDate = new Date(expiry + "T00:00:00");
-  return Math.ceil((expiryDate.getTime() - todayET.getTime()) / (1000 * 60 * 60 * 24));
-}
 
 // Helper to format contract display name from trade data
 function formatTradeDisplayName(trade: { underlying: string; strike: number; expiry: string; right: "C" | "P" }): string {
@@ -307,43 +294,6 @@ function MonthProfitCard({
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
-
-  // Match a position to its existing BUY order
-  const findMatchingOrder = useCallback((pos: import("@assup/shared").CurrentOptionPosition): Order | undefined => {
-    // Match by displayName since both position and order use formatDisplayName
-    return openOrders.find(
-      (o) => o.action === "BUY" && o.secType === "OPT" && o.displayName === pos.displayName
-    );
-  }, [openOrders]);
-
-  // Get unique underlying symbols for sparklines
-  const sparklineSymbols = useMemo(() => {
-    const symbols = new Set<string>();
-    for (const pos of data.unrealized.positions) {
-      symbols.add(pos.underlying);
-    }
-    return Array.from(symbols);
-  }, [data.unrealized.positions]);
-
-  const { getSparklineState } = useSparklines(sparklineSymbols);
-
-  // Sort: expiring positions
-  const getExpiringValue = useCallback((pos: (typeof data.unrealized.positions)[0], col: string): string | number => {
-    switch (col) {
-      case "contract": return pos.displayName;
-      case "type": return pos.right;
-      case "assetClass": return pos.assetClassName ?? "";
-      case "price": return pos.underlyingPrice ?? 0;
-      case "strike": return pos.strike;
-      case "expiry": return pos.expiry;
-      case "dte": return calculateDTE(pos.expiry);
-      case "qty": return pos.quantity;
-      case "unrealizedPnl": return pos.unrealizedPnl;
-      case "projected": return pos.projectedProfit;
-      default: return 0;
-    }
-  }, []);
-  const expSort = useTableSort(data.unrealized.positions, getExpiringValue);
 
   // Sort: realized option trades
   const getOptionTradeValue = useCallback((trade: (typeof data.realized.closedTrades)[0], col: string): string | number => {
@@ -785,127 +735,15 @@ function MonthProfitCard({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <SortableHead column="contract" {...expSort}>Contract</SortableHead>
-                  <TableHead className="w-24" />
-                  <SortableHead column="type" {...expSort}>Type</SortableHead>
-                  <SortableHead column="assetClass" {...expSort}>Asset Class</SortableHead>
-                  <SortableHead column="price" className="text-right" {...expSort}>Price</SortableHead>
-                  <SortableHead column="strike" className="text-right" {...expSort}>Strike</SortableHead>
-                  <SortableHead column="expiry" {...expSort}>Expiry</SortableHead>
-                  <SortableHead column="dte" className="text-right" {...expSort}>DTE</SortableHead>
-                  <SortableHead column="qty" className="text-right" {...expSort}>Qty</SortableHead>
-                  <SortableHead column="unrealizedPnl" className="text-right" {...expSort}>Unrealized P&L</SortableHead>
-                  <SortableHead column="projected" className="text-right" {...expSort}>Projected</SortableHead>
-                  <TableHead className="text-right">Order</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {expSort.sorted.map((pos, idx) => {
-                  const sparkline = getSparklineState(pos.underlying);
-                  const dte = calculateDTE(pos.expiry);
-                  const matchingOrder = findMatchingOrder(pos);
-                  return (
-                    <TableRow key={idx}>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <a
-                            href={`https://www.tradingview.com/chart/?symbol=${pos.underlying}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium hover:text-primary hover:underline"
-                          >
-                            {pos.displayName}
-                          </a>
-                          <ExternalLinks symbol={pos.underlying} />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Sparkline
-                          data={sparkline.data}
-                          loading={sparkline.loading}
-                          error={sparkline.error}
-                          onChartClick={() => onSymbolClick(pos.underlying)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={pos.right === "P" ? "danger" : "success"}>
-                          {pos.right === "P" ? "PUT" : "CALL"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {pos.assetClassName ? (
-                          <Link
-                            to={`/positions?assetClassId=${pos.assetClassId}`}
-                            className="flex items-center gap-2 hover:text-primary"
-                          >
-                            <div
-                              className="h-2 w-2 rounded-full shrink-0"
-                              style={{ backgroundColor: pos.assetClassColor }}
-                            />
-                            <span className="truncate text-sm">{pos.assetClassName}</span>
-                          </Link>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {pos.underlyingPrice != null
-                          ? `$${pos.underlyingPrice.toFixed(2)}`
-                          : <span className="text-muted-foreground">-</span>}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        ${pos.strike.toFixed(pos.strike % 1 === 0 ? 0 : 2)}
-                      </TableCell>
-                      <TableCell>{pos.expiry}</TableCell>
-                      <TableCell className={`text-right font-mono ${dte <= 7 ? "text-red-600" : ""}`}>
-                        {dte}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">{pos.quantity}</TableCell>
-                      <TableCell
-                        className={`text-right font-mono ${
-                          pos.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
-                        }`}
-                      >
-                        {formatCurrency(pos.unrealizedPnl)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-blue-600">
-                        {formatCurrency(pos.projectedProfit)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {matchingOrder ? (
-                          <span
-                            className="cursor-pointer group/order relative"
-                            onClick={() => {
-                              setExistingOrderForDialog(matchingOrder);
-                              setClosePosition(pos);
-                            }}
-                          >
-                            {formatCurrency(matchingOrder.limitPrice ?? 0)} x {matchingOrder.quantity}
-                            <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/order:opacity-100 bg-background text-sm font-sans">
-                              Adjust
-                            </span>
-                          </span>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setExistingOrderForDialog(null);
-                              setClosePosition(pos);
-                            }}
-                          >
-                            Close
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <PositionsTable
+              positions={data.unrealized.positions}
+              openOrders={openOrders}
+              onSymbolClick={onSymbolClick}
+              onClosePosition={(pos, order) => {
+                setExistingOrderForDialog(order);
+                setClosePosition(pos);
+              }}
+            />
           </CardContent>
         </Card>
       )}
