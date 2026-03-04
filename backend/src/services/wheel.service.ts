@@ -1012,7 +1012,7 @@ export const wheelService = {
         // Calculate initial capital deployed
         if (tradeType === "SOLD_PUT" && trade.strike) {
           // CSP: capital at risk is strike * 100 - premium received
-          const premium = trade.proceeds - trade.commission;
+          const premium = trade.proceeds + trade.commission;
           cycleCapitalDeployed = trade.strike * Math.abs(trade.quantity) * (trade.multiplier || 100) - premium;
           cyclePremiumReceived = premium;
           cycleRealizedPnL = premium; // Premium received is realized
@@ -1050,7 +1050,7 @@ export const wheelService = {
       // Add trade to current cycle
       if (tradeType && currentCycle) {
         cycleTradeIndices.push(tradeIdx);
-        const premium = trade.proceeds - trade.commission;
+        const premium = trade.proceeds + trade.commission;
 
         // Update running cost basis
         if (tradeType === "ASSIGNED" && trade.strike) {

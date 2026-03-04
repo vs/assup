@@ -552,7 +552,7 @@ export function groupStockTradesForWheel(
     }
 
     const quantity = Math.abs(sell.quantity);
-    const sellProceeds = quantity * sell.tradePrice - sell.commission;
+    const sellProceeds = quantity * sell.tradePrice + sell.commission;
 
     // Use IBKR's realizedPnl if available, otherwise calculate from matched cost basis
     const profit = sell.realizedPnl !== null

@@ -952,7 +952,7 @@ class IBKRService {
         quantity: isBuy ? quantity : -quantity,
         tradePrice: avgPrice,
         proceeds,
-        commission: totalCommission,
+        commission: -Math.abs(totalCommission),
         buySell: isBuy ? "BUY" : "SELL",
         openClose: null,
         costBasis: null,

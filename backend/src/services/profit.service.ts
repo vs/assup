@@ -976,7 +976,7 @@ class ProfitService {
     for (const buy of buyTrades) {
       const existing = costBasisMap.get(buy.symbol) || { totalQty: 0, totalCost: 0 };
       existing.totalQty += Math.abs(buy.quantity);
-      existing.totalCost += Math.abs(buy.quantity) * buy.tradePrice + buy.commission;
+      existing.totalCost += Math.abs(buy.quantity) * buy.tradePrice - buy.commission;
       costBasisMap.set(buy.symbol, existing);
     }
 
@@ -987,7 +987,7 @@ class ProfitService {
         const avgCostPerShare = costInfo.totalCost / costInfo.totalQty;
         const sellQty = Math.abs(sell.quantity);
         const costBasis = avgCostPerShare * sellQty;
-        const sellProceeds = sellQty * sell.tradePrice - sell.commission;
+        const sellProceeds = sellQty * sell.tradePrice + sell.commission;
         sell.costBasis = costBasis;
         sell.realizedPnl = sellProceeds - costBasis;
       }

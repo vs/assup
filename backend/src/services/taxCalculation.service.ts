@@ -260,12 +260,12 @@ class TaxCalculationService {
       if (assignedStrike !== null) {
         // Assigned stock: use Strike × Quantity (actual cash paid)
         // NOT IBKR's adjusted basis which has premium subtracted
-        totalCostUsd = assignedStrike * qty + buy.commission;
+        totalCostUsd = assignedStrike * qty - buy.commission;
         wasFromAssignment = true;
       } else {
         // Normal purchase: use IBKR proceeds + commission for cost basis
         // This handles bonds correctly where tradePrice is a percentage of face value
-        totalCostUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+        totalCostUsd = Math.abs(buy.proceeds || 0) - buy.commission;
       }
 
       // Calculate cumulative split multiplier for this lot
@@ -1146,10 +1146,10 @@ class TaxCalculationService {
         let costBasisUsd: number;
         if (assignedStrike !== null) {
           // Assigned stock: use Strike × Quantity (actual cash paid)
-          costBasisUsd = assignedStrike * qty + buy.commission;
+          costBasisUsd = assignedStrike * qty - buy.commission;
         } else {
           // Normal purchase: use IBKR proceeds + commission
-          costBasisUsd = Math.abs(buy.proceeds || 0) + buy.commission;
+          costBasisUsd = Math.abs(buy.proceeds || 0) - buy.commission;
         }
         const costBasisCzk = costBasisUsd * rate;
 

@@ -665,7 +665,7 @@ class ImportService {
         quantity,
         tradePrice,
         proceeds: parseFloat(trade.proceeds),
-        commission: Math.abs(commission),
+        commission,
         buySell: trade.buySell.toUpperCase(),
         openClose: trade.openCloseIndicator?.toUpperCase() || null,
         costBasis: trade.costBasis ? parseFloat(trade.costBasis) : null,
