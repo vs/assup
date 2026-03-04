@@ -410,6 +410,18 @@ function MonthProfitCard({
                     <span className="text-muted-foreground">Int:</span>{" "}
                     <span className="text-purple-600">{formatCurrency(data.realized.interest)}</span>
                   </div>
+                  {data.realized.withholdingTax !== 0 && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Tax:</span>{" "}
+                      <span className="text-red-600">{formatCurrency(data.realized.withholdingTax)}</span>
+                    </div>
+                  )}
+                  {data.realized.fees !== 0 && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Fees:</span>{" "}
+                      <span className="text-red-600">{formatCurrency(data.realized.fees)}</span>
+                    </div>
+                  )}
                   <div className="text-sm font-semibold">
                     <span className="text-muted-foreground">Total:</span>{" "}
                     <span className={data.realized.total >= 0 ? "text-green-600" : "text-red-600"}>
@@ -648,6 +660,70 @@ function MonthProfitCard({
                                 </TableCell>
                                 <TableCell className="text-right text-purple-600">
                                   {formatCurrency(int.amount)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+
+                  {/* Withholding Tax */}
+                  {data.realized.cashTransactions.filter(tx => tx.type === "WITHHOLDING_TAX").length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Withholding Tax</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Symbol</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.realized.cashTransactions
+                            .filter(tx => tx.type === "WITHHOLDING_TAX")
+                            .map((tax) => (
+                              <TableRow key={tax.id}>
+                                <TableCell>{tax.transactionDate}</TableCell>
+                                <TableCell className="font-medium">{tax.symbol || "-"}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {tax.description}
+                                </TableCell>
+                                <TableCell className="text-right text-red-600">
+                                  {formatCurrency(tax.amount)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+
+                  {/* Fees */}
+                  {data.realized.cashTransactions.filter(tx => tx.type === "FEE").length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Fees</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.realized.cashTransactions
+                            .filter(tx => tx.type === "FEE")
+                            .map((fee) => (
+                              <TableRow key={fee.id}>
+                                <TableCell>{fee.transactionDate}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {fee.description}
+                                </TableCell>
+                                <TableCell className="text-right text-red-600">
+                                  {formatCurrency(fee.amount)}
                                 </TableCell>
                               </TableRow>
                             ))}

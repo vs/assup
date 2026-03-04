@@ -194,6 +194,8 @@ export interface MonthProfitView {
     stocksProfit: number;
     dividends: number;
     interest: number;
+    withholdingTax: number;
+    fees: number;
     total: number;
     closedTrades: OptionTradeGroup[];
     stockTrades: StockTradeGroup[];

@@ -875,16 +875,16 @@ class ProfitService {
         stocksProfit: detail.summary.stocksProfit,
         dividends: detail.summary.dividends,
         interest: detail.summary.interest,
-        total:
-          detail.summary.optionsProfit +
-          detail.summary.stocksProfit +
-          detail.summary.dividends +
-          detail.summary.interest,
+        withholdingTax: detail.summary.withholdingTax,
+        fees: detail.summary.fees,
+        total: detail.summary.total,
         closedTrades: detail.realized.optionTrades,
         stockTrades: detail.realized.stockTrades,
         cashTransactions: [
           ...detail.realized.dividends,
           ...detail.realized.interest,
+          ...detail.realized.withholdingTax,
+          ...detail.realized.fees,
         ],
       },
       unrealized: {
