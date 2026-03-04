@@ -57,17 +57,15 @@ export function ConnectionStatus() {
         </Link>
       </div>
 
-      {/* Details popup — positioned to the left of the indicator box */}
+      {/* Details popup — positioned to the left, anchored to top */}
       {showDetails && (
-        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 z-50 w-72 rounded-lg border bg-card p-4 shadow-lg">
+        <div className="absolute right-full top-0 mr-3 z-50 w-64 rounded-lg border bg-background p-3 shadow-lg">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               {isConnected ? (
                 <>
-                  <h4 className="font-medium text-card-foreground mb-3">
-                    Connected to TWS
-                  </h4>
-                  <dl className="text-sm space-y-2">
+                  <h4 className="text-sm font-medium mb-2">Connected to TWS</h4>
+                  <dl className="text-xs space-y-1.5">
                     {status.account && (
                       <div className="flex justify-between">
                         <dt className="text-muted-foreground">Account</dt>
@@ -76,8 +74,8 @@ export function ConnectionStatus() {
                     )}
                     {status.serverVersion && (
                       <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Server Version</dt>
-                        <dd className="font-medium">{status.serverVersion}</dd>
+                        <dt className="text-muted-foreground">Server</dt>
+                        <dd className="font-medium">v{status.serverVersion}</dd>
                       </div>
                     )}
                     {status.serverConnectionTime && (
@@ -92,25 +90,17 @@ export function ConnectionStatus() {
                 </>
               ) : (
                 <>
-                  <h4 className="font-medium text-card-foreground mb-2">
-                    Connection Issue
-                  </h4>
-                  <p className="text-sm text-muted-foreground">
+                  <h4 className="text-sm font-medium mb-1.5">Disconnected</h4>
+                  <p className="text-xs text-muted-foreground break-words">
                     {sseError || status.error}
                   </p>
-
                   {!sseError && (
-                    <div className="mt-3 pt-3 border-t">
-                      <h5 className="text-sm font-medium text-card-foreground mb-2">
-                        Troubleshooting steps:
-                      </h5>
-                      <ul className="text-sm text-muted-foreground space-y-1.5 list-disc list-inside">
-                        <li>Ensure TWS or IB Gateway is running</li>
-                        <li>Check API is enabled in TWS settings</li>
-                        <li>Verify port 7497 (paper) or 7496 (live)</li>
-                        <li>Add trusted IP in TWS API settings</li>
-                      </ul>
-                    </div>
+                    <ul className="mt-2 pt-2 border-t text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                      <li>Check TWS is running</li>
+                      <li>Enable API in TWS settings</li>
+                      <li>Port: 7497 (paper) / 7496 (live)</li>
+                      <li>Add trusted IP in TWS</li>
+                    </ul>
                   )}
                 </>
               )}
@@ -118,9 +108,9 @@ export function ConnectionStatus() {
             {isPinned && (
               <button
                 onClick={() => setIsPinned(false)}
-                className="p-1 rounded hover:bg-muted transition-colors shrink-0"
+                className="p-0.5 rounded hover:bg-muted transition-colors shrink-0"
               >
-                <X className="h-4 w-4 text-muted-foreground" />
+                <X className="h-3.5 w-3.5 text-muted-foreground" />
               </button>
             )}
           </div>
