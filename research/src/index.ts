@@ -3,6 +3,7 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { prisma } from "./db/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import tickersRouter from "./routes/tickers.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3002", 10);
@@ -42,6 +43,9 @@ app.get("/api/health", async (_req, res) => {
     });
   }
 });
+
+// Routes
+app.use("/api/tickers", tickersRouter);
 
 // Error handler (must be last)
 app.use(errorHandler);
