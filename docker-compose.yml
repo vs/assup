@@ -37,6 +37,27 @@ services:
     networks:
       - assup-default
 
+  research:
+    build:
+      context: .
+      dockerfile: research/Dockerfile
+    image: assup-research
+    container_name: assup-research
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - DATABASE_URL=postgresql://research:${RESEARCH_DB_PASSWORD:-research_dev}@research-db:5432/research
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SEEKING_ALPHA_API_KEY=${SEEKING_ALPHA_API_KEY}
+      - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY}
+      - MARKET_DATA_PROVIDER=${MARKET_DATA_PROVIDER:-polygon}
+    depends_on:
+      research-db:
+        condition: service_healthy
+    networks:
+      - assup-default
+
   backend:
     build:
       context: .
