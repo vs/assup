@@ -4,6 +4,8 @@ import rateLimit from "express-rate-limit";
 import { prisma } from "./db/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import tickersRouter from "./routes/tickers.js";
+import { initCollectors } from "./collectors/index.js";
+import { initAnalyzers } from "./analyzers/index.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3002", 10);
@@ -26,6 +28,10 @@ app.use(
   })
 );
 app.use(express.json());
+
+// Initialize collectors and analyzers
+initCollectors();
+initAnalyzers();
 
 // Health check
 app.get("/api/health", async (_req, res) => {
