@@ -18,6 +18,25 @@ services:
     networks:
       - assup-default
 
+  research-db:
+    image: postgres:16-alpine
+    container_name: assup-research-db
+    environment:
+      POSTGRES_USER: research
+      POSTGRES_PASSWORD: ${RESEARCH_DB_PASSWORD:-research_dev}
+      POSTGRES_DB: research
+    ports:
+      - "5433:5432"
+    volumes:
+      - assup-research-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U research -d research"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assup-default
+
   backend:
     build:
       context: .
@@ -58,3 +77,4 @@ networks:
 volumes:
   assup-postgres-data:
     external: true
+  assup-research-data:
