@@ -15,8 +15,7 @@ COPY research/prisma ./research/prisma
 COPY research/prisma.config.ts ./research/prisma.config.ts
 
 # Install all dependencies from root (handles workspace linking)
-# Delete lockfile to force fresh resolution of platform-specific optional dependencies
-RUN rm -f package-lock.json && npm install
+RUN npm ci
 
 # Copy research source
 COPY research ./research
@@ -43,7 +42,7 @@ COPY --from=builder /app/research/prisma ./research/prisma
 COPY --from=builder /app/research/prisma.config.ts ./research/prisma.config.ts
 
 # Install production dependencies and generate Prisma client for runtime
-RUN rm -f package-lock.json && npm install --omit=dev && \
+RUN npm ci --omit=dev && \
     cd research && npx prisma generate
 
 # Copy built artifacts

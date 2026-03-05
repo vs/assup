@@ -103,8 +103,16 @@ export async function synthesize(
   const text =
     message.content[0].type === "text" ? message.content[0].text : "";
 
-  // Parse JSON response
-  const parsed = JSON.parse(text) as SynthesizerOutput;
+  // Parse JSON response — strip markdown fences if model wraps output
+  let parsed: SynthesizerOutput;
+  try {
+    const cleaned = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    parsed = JSON.parse(cleaned) as SynthesizerOutput;
+  } catch {
+    throw new Error(
+      `Failed to parse synthesizer JSON output. Raw text (first 500 chars): ${text.slice(0, 500)}`
+    );
+  }
 
   // Validate required fields
   const validRecs = ["buy", "sell", "wheel", "hold", "avoid"];

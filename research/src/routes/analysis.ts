@@ -29,22 +29,16 @@ router.get(
     });
     if (!ticker) throw new NotFoundError("Ticker", req.params.symbol);
 
-    const allAnalyses = await prisma.analysis.findMany({
+    // Fetch only the latest analysis per source using distinct
+    const analyses = await prisma.analysis.findMany({
       where: { tickerId: ticker.id },
       orderBy: { analyzedAt: "desc" },
+      distinct: ["source"],
     });
-
-    // Deduplicate: keep only the latest per source
-    const latestBySource = new Map<string, typeof allAnalyses[number]>();
-    for (const a of allAnalyses) {
-      if (!latestBySource.has(a.source)) {
-        latestBySource.set(a.source, a);
-      }
-    }
 
     res.json({
       symbol: ticker.symbol,
-      analyses: Array.from(latestBySource.values()),
+      analyses,
       lastUpdated: ticker.lastAnalyzed,
     });
   })

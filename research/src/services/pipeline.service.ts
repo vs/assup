@@ -99,7 +99,11 @@ class PipelineService {
         confidence: result.confidence,
       });
     } catch (err) {
-      await jobService.fail(jobId, (err as Error).message);
+      try {
+        await jobService.fail(jobId, (err as Error).message);
+      } catch (failErr) {
+        console.error(`Failed to record job failure for ${jobId}:`, failErr);
+      }
     }
   }
 }
