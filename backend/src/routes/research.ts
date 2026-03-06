@@ -31,10 +31,11 @@ router.get(
 router.get(
   "/tickers",
   asyncHandler(async (req, res) => {
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit
-      ? parseInt(req.query.limit as string, 10)
-      : 100;
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(
+      500,
+      Math.max(1, parseInt(req.query.limit as string, 10) || 100)
+    );
     const result = await researchService.listTickers(page, limit);
     res.json(result);
   })
@@ -84,7 +85,8 @@ router.get(
 router.get(
   "/:symbol",
   asyncHandler(async (req, res) => {
-    const result = await researchService.getReport(req.params.symbol);
+    const symbol = req.params.symbol.toUpperCase();
+    const result = await researchService.getReport(symbol);
     res.json(result);
   })
 );
@@ -96,15 +98,13 @@ router.get(
 router.get(
   "/:symbol/history",
   asyncHandler(async (req, res) => {
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit
-      ? parseInt(req.query.limit as string, 10)
-      : 20;
-    const result = await researchService.getReportHistory(
-      req.params.symbol,
-      page,
-      limit
+    const symbol = req.params.symbol.toUpperCase();
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit as string, 10) || 20)
     );
+    const result = await researchService.getReportHistory(symbol, page, limit);
     res.json(result);
   })
 );
@@ -117,10 +117,8 @@ router.get(
 router.post(
   "/:symbol/generate",
   asyncHandler(async (req, res) => {
-    const result = await researchService.generateReport(
-      req.params.symbol,
-      req.body
-    );
+    const symbol = req.params.symbol.toUpperCase();
+    const result = await researchService.generateReport(symbol, req.body);
     res.status(202).json(result);
   })
 );
@@ -132,7 +130,8 @@ router.post(
 router.get(
   "/:symbol/analysis",
   asyncHandler(async (req, res) => {
-    const result = await researchService.getAnalysis(req.params.symbol);
+    const symbol = req.params.symbol.toUpperCase();
+    const result = await researchService.getAnalysis(symbol);
     res.json(result);
   })
 );

@@ -334,14 +334,27 @@ export function ResearchPage() {
     setGeneratingSymbol(symbol);
     setError(null);
     try {
-      await researchApi.generate(symbol);
-      // Refresh the report for this ticker
-      try {
-        const report = await researchApi.getReport(symbol);
-        setReports((prev) => ({ ...prev, [symbol]: report }));
-      } catch {
-        // Report may not be ready yet if async
+      const { jobId } = await researchApi.generate(symbol);
+
+      // Poll job status until complete
+      const maxAttempts = 60; // 5 minutes at 5s intervals
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const job = await researchApi.getJob(jobId);
+
+        if (job.status === "completed") {
+          const report = await researchApi.getReport(symbol);
+          setReports((prev) => ({ ...prev, [symbol]: report }));
+          return;
+        }
+
+        if (job.status === "failed") {
+          setError(job.error || `Report generation failed for ${symbol}`);
+          return;
+        }
       }
+
+      setError(`Report generation timed out for ${symbol}`);
     } catch (err) {
       setError(
         err instanceof Error
