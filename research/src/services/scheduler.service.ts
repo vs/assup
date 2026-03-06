@@ -3,6 +3,7 @@ import { prisma } from "../db/index.js";
 import { collectionService } from "./collection.service.js";
 import { macroService } from "./macro.service.js";
 import { pipelineService } from "./pipeline.service.js";
+import { screenerService } from "./screener.service.js";
 
 const DAILY_SOURCES = [
   "technical",
@@ -26,6 +27,7 @@ async function processBatched<T>(
 
 class SchedulerService {
   private jobs: cron.ScheduledTask[] = [];
+  private screenerJobs: cron.ScheduledTask[] = [];
 
   /**
    * Start all scheduled cron jobs.
@@ -70,6 +72,11 @@ class SchedulerService {
       }, { timezone: "America/New_York" })
     );
 
+    // Load screener schedules
+    this.refreshScreenerSchedules().catch((err) => {
+      console.error("[Scheduler] Failed to load screener schedules:", (err as Error).message);
+    });
+
     console.log("[Scheduler] All jobs scheduled.");
   }
 
@@ -82,14 +89,56 @@ class SchedulerService {
       job.stop();
     }
     this.jobs = [];
+
+    for (const job of this.screenerJobs) {
+      job.stop();
+    }
+    this.screenerJobs = [];
+
     console.log("[Scheduler] All jobs stopped.");
   }
 
   /**
-   * Placeholder for screener schedule integration (Task 6).
+   * Load enabled screener configs and create cron jobs for each.
+   * Stops any existing screener jobs before reloading.
+   * Call this after creating/updating/deleting screener configs.
    */
   async refreshScreenerSchedules(): Promise<void> {
-    // Will be implemented in Task 6
+    // Stop existing screener cron jobs
+    for (const job of this.screenerJobs) {
+      job.stop();
+    }
+    this.screenerJobs = [];
+
+    // Load all enabled screener configs
+    const configs = await prisma.screenerConfig.findMany({
+      where: { enabled: true },
+    });
+
+    // Create a cron job for each
+    for (const config of configs) {
+      if (!cron.validate(config.schedule)) {
+        console.warn(`[Scheduler] Invalid cron expression for screener "${config.name}": ${config.schedule}`);
+        continue;
+      }
+
+      const task = cron.schedule(
+        config.schedule,
+        async () => {
+          console.log(`[Scheduler] Running screener: ${config.name}`);
+          try {
+            const result = await screenerService.runScreener(config.id);
+            console.log(`[Scheduler] Screener "${config.name}" found ${result.discovered.length} tickers, added ${result.added.length}`);
+          } catch (err) {
+            console.error(`[Scheduler] Screener "${config.name}" failed:`, (err as Error).message);
+          }
+        },
+        { timezone: "America/New_York" }
+      );
+      this.screenerJobs.push(task);
+    }
+
+    console.log(`[Scheduler] Loaded ${this.screenerJobs.length} screener schedules`);
   }
 
   /**
