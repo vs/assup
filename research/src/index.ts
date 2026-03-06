@@ -11,6 +11,7 @@ import macroRouter from "./routes/macro.js";
 import screenerRouter from "./routes/screener.js";
 import { initCollectors } from "./collectors/index.js";
 import { initAnalyzers } from "./analyzers/index.js";
+import { schedulerService } from "./services/scheduler.service.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3002", 10);
@@ -65,6 +66,18 @@ app.use("/api/screener", screenerRouter);
 
 // Error handler (must be last)
 app.use(errorHandler);
+
+// Start scheduler if enabled
+if (process.env.SCHEDULER_ENABLED === "true") {
+  schedulerService.start();
+  console.log("Scheduler started");
+}
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  schedulerService.stop();
+  process.exit(0);
+});
 
 app.listen(PORT, () => {
   console.log(`Research service running on port ${PORT}`);
