@@ -9,6 +9,7 @@ export type {
   EarningsEvent,
   DividendEvent,
   AnalystRating,
+  TickerSearchResult,
 } from "./types.js";
 
 let provider: MarketDataProvider | null = null;

@@ -57,6 +57,16 @@ export interface AnalystRating {
   action: string;  // upgrade, downgrade, initiate, reiterate
 }
 
+export interface TickerSearchResult {
+  symbol: string;
+  name: string;
+  market: string;       // "stocks", "otc"
+  type: string;         // "CS" (common stock), "ETF", etc.
+  active: boolean;
+  marketCap: number | null;
+  lastPrice: number | null;
+}
+
 export interface MarketDataProvider {
   name: string;
 
@@ -81,4 +91,13 @@ export interface MarketDataProvider {
 
   // Analyst
   getAnalystRatings(symbol: string): Promise<AnalystRating[]>;
+
+  // Screener
+  searchTickers(criteria: {
+    market?: string;
+    type?: string;
+    search?: string;
+    active?: boolean;
+    limit?: number;
+  }): Promise<TickerSearchResult[]>;
 }

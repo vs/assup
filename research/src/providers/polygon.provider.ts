@@ -6,6 +6,7 @@ import type {
   EarningsEvent,
   DividendEvent,
   AnalystRating,
+  TickerSearchResult,
 } from "./types.js";
 
 const BASE_URL = "https://api.polygon.io";
@@ -189,6 +190,79 @@ class PolygonProvider implements MarketDataProvider {
     // Polygon doesn't have analyst ratings — return empty
     // This will be filled by the analyst_consensus collector from another source
     return [];
+  }
+
+  async searchTickers(criteria: {
+    market?: string;
+    type?: string;
+    search?: string;
+    active?: boolean;
+    limit?: number;
+  }): Promise<TickerSearchResult[]> {
+    const params: Record<string, string> = {
+      market: criteria.market || "stocks",
+      active: String(criteria.active ?? true),
+      limit: String(criteria.limit || 100),
+      sort: "ticker",
+      order: "asc",
+    };
+    if (criteria.type) params.type = criteria.type;
+    if (criteria.search) params.search = criteria.search;
+
+    const data = await this.fetch<{
+      results: Array<{
+        ticker: string;
+        name: string;
+        market: string;
+        type: string;
+        active: boolean;
+      }>;
+    }>("/v3/reference/tickers", params);
+
+    const tickers = data.results || [];
+    if (tickers.length === 0) return [];
+
+    // Build base results
+    const results: TickerSearchResult[] = tickers.map((t) => ({
+      symbol: t.ticker,
+      name: t.name,
+      market: t.market,
+      type: t.type,
+      active: t.active,
+      marketCap: null,
+      lastPrice: null,
+    }));
+
+    // Try to enrich with snapshot data for market cap and last price
+    try {
+      const tickerList = tickers.map((t) => t.ticker).join(",");
+      const snapshots = await this.fetch<{
+        tickers: Array<{
+          ticker: string;
+          todaysChange: number;
+          lastTrade: { p: number };
+          prevDay: { c: number };
+          day: { v: number };
+        }>;
+      }>("/v2/snapshot/locale/us/markets/stocks/tickers", {
+        tickers: tickerList,
+      });
+
+      const snapshotMap = new Map(
+        (snapshots.tickers || []).map((s) => [s.ticker, s])
+      );
+
+      for (const result of results) {
+        const snap = snapshotMap.get(result.symbol);
+        if (snap) {
+          result.lastPrice = snap.lastTrade?.p ?? snap.prevDay?.c ?? null;
+        }
+      }
+    } catch {
+      // Snapshot enrichment is best-effort; leave marketCap and lastPrice as null
+    }
+
+    return results;
   }
 }
 
