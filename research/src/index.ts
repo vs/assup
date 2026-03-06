@@ -8,6 +8,7 @@ import reportsRouter from "./routes/reports.js";
 import analysisRouter from "./routes/analysis.js";
 import jobsRouter from "./routes/jobs.js";
 import macroRouter from "./routes/macro.js";
+import screenerRouter from "./routes/screener.js";
 import { initCollectors } from "./collectors/index.js";
 import { initAnalyzers } from "./analyzers/index.js";
 
@@ -60,6 +61,7 @@ app.use("/api/reports", reportsRouter);
 app.use("/api/analysis", analysisRouter);
 app.use("/api/jobs", jobsRouter);
 app.use("/api/macro", macroRouter);
+app.use("/api/screener", screenerRouter);
 
 // Error handler (must be last)
 app.use(errorHandler);
