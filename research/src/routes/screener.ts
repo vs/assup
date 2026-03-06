@@ -3,6 +3,7 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { screenerService } from "../services/screener.service.js";
 import { jobService } from "../services/job.service.js";
+import { schedulerService } from "../services/scheduler.service.js";
 import {
   createScreenerSchema,
   updateScreenerSchema,
@@ -33,6 +34,11 @@ router.post(
   validate({ body: createScreenerSchema }),
   asyncHandler(async (req, res) => {
     const config = await screenerService.createConfig(req.body);
+    if (process.env.SCHEDULER_ENABLED === "true") {
+      schedulerService.refreshScreenerSchedules().catch((err) => {
+        console.error("[Screener] Failed to refresh schedules:", (err as Error).message);
+      });
+    }
     res.status(201).json(config);
   })
 );
@@ -61,6 +67,11 @@ router.patch(
   asyncHandler(async (req, res) => {
     const { id } = req.params as unknown as { id: string };
     const config = await screenerService.updateConfig(id, req.body);
+    if (process.env.SCHEDULER_ENABLED === "true") {
+      schedulerService.refreshScreenerSchedules().catch((err) => {
+        console.error("[Screener] Failed to refresh schedules:", (err as Error).message);
+      });
+    }
     res.json(config);
   })
 );
@@ -75,6 +86,11 @@ router.delete(
   asyncHandler(async (req, res) => {
     const { id } = req.params as unknown as { id: string };
     await screenerService.deleteConfig(id);
+    if (process.env.SCHEDULER_ENABLED === "true") {
+      schedulerService.refreshScreenerSchedules().catch((err) => {
+        console.error("[Screener] Failed to refresh schedules:", (err as Error).message);
+      });
+    }
     res.status(204).send();
   })
 );
@@ -90,9 +106,9 @@ router.post(
     const { id } = req.params as unknown as { id: string };
 
     // Verify config exists before creating job
-    await screenerService.getConfig(id);
+    const config = await screenerService.getConfig(id);
 
-    const job = await jobService.create("screener_run", id);
+    const job = await jobService.create("screener_run", config.name.slice(0, 20));
 
     // Run screener in background (don't await)
     (async () => {
