@@ -9,4 +9,5 @@ export { ExposureTooltip } from "./ExposureTooltip";
 export { ExternalLinks } from "./ExternalLinks";
 export { PageLoadingSkeleton } from "./LoadingSkeleton";
 export { PageHeader } from "./PageHeader";
+export { RecommendationBadge } from "./RecommendationBadge";
 export { SortableHead } from "./SortableHead";
