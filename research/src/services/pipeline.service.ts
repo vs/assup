@@ -2,6 +2,7 @@ import { prisma } from "../db/index.js";
 import { collectionService } from "./collection.service.js";
 import { jobService } from "./job.service.js";
 import { synthesize } from "../synthesizer/synthesizer.js";
+import { macroService } from "./macro.service.js";
 import { NotFoundError } from "../errors/AppError.js";
 
 class PipelineService {
@@ -42,6 +43,12 @@ class PipelineService {
         symbol,
         { force: options.force }
       );
+
+      // Step 1.5: Ensure fresh macro context
+      await jobService.updateProgress(jobId, "Updating macro context...");
+      await macroService.collectAndAnalyze().catch((err) => {
+        console.warn(`Macro collection failed (non-fatal): ${(err as Error).message}`);
+      });
 
       if (analysisIds.length === 0) {
         await jobService.fail(jobId, "No analysis results produced — all collectors may have failed");

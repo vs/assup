@@ -83,7 +83,7 @@ class CollectionService {
     options: { force?: boolean; sources?: string[] } = {}
   ): Promise<string[]> {
     const collectors = getAllCollectors();
-    const sources = options.sources || collectors.map((c) => c.source);
+    const sources = options.sources || collectors.map((c) => c.source).filter((s) => s !== "macro");
     const analysisIds: string[] = [];
 
     // Collect in parallel (with concurrency limit)
