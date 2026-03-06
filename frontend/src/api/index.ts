@@ -19,6 +19,7 @@ export { settingsApi } from "./settings";
 export { historicalApi } from "./historical";
 export { profitApi } from "./profit";
 export { wheelApi } from "./wheel";
+export { researchApi } from "./research";
 
 // Combined api object for backward compatibility
 import { assetClassesApi } from "./assetClasses";
@@ -32,6 +33,7 @@ import { settingsApi } from "./settings";
 import { historicalApi } from "./historical";
 import { profitApi } from "./profit";
 import { wheelApi } from "./wheel";
+import { researchApi } from "./research";
 
 export const api = {
   assetClasses: assetClassesApi,
@@ -45,4 +47,5 @@ export const api = {
   historical: historicalApi,
   profit: profitApi,
   wheel: wheelApi,
+  research: researchApi,
 };
