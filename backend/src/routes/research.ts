@@ -59,8 +59,17 @@ router.post(
       return;
     }
 
-    const result = await researchService.syncTickers(symbols);
-    res.json({ synced: result.added.length, skipped: result.skipped.length });
+    // Chunk into batches of 100 (research service limit)
+    let totalSynced = 0;
+    let totalSkipped = 0;
+    for (let i = 0; i < symbols.length; i += 100) {
+      const batch = symbols.slice(i, i + 100);
+      const result = await researchService.syncTickers(batch);
+      totalSynced += result.added.length;
+      totalSkipped += result.skipped.length;
+    }
+
+    res.json({ synced: totalSynced, skipped: totalSkipped });
   })
 );
 

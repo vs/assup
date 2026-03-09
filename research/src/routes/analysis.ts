@@ -29,12 +29,27 @@ router.get(
     });
     if (!ticker) throw new NotFoundError("Ticker", req.params.symbol);
 
-    // Fetch only the latest analysis per source using distinct
-    const analyses = await prisma.analysis.findMany({
-      where: { tickerId: ticker.id },
-      orderBy: { analyzedAt: "desc" },
-      distinct: ["source"],
-    });
+    // Fetch the latest analysis per source using a window function
+    const analyses = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        tickerId: string;
+        source: string;
+        analyzedAt: Date;
+        signal: string;
+        confidence: number;
+        summary: string;
+        details: Record<string, unknown>;
+      }>
+    >`
+      SELECT a.*
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY "analyzedAt" DESC) AS rn
+        FROM "Analysis"
+        WHERE "tickerId" = ${ticker.id}::uuid
+      ) a
+      WHERE a.rn = 1
+    `;
 
     res.json({
       symbol: ticker.symbol,

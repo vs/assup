@@ -55,10 +55,23 @@ class TickerService {
         continue;
       }
 
-      const ticker = await prisma.ticker.create({
-        data: { symbol, source },
-      });
-      results.push(ticker);
+      try {
+        const ticker = await prisma.ticker.create({
+          data: { symbol, source },
+        });
+        results.push(ticker);
+      } catch (err) {
+        // Unique constraint violation — another request added it concurrently
+        if (
+          err instanceof Error &&
+          "code" in err &&
+          (err as { code: string }).code === "P2002"
+        ) {
+          skipped.push(symbol);
+        } else {
+          throw err;
+        }
+      }
     }
 
     return { added: results, skipped };

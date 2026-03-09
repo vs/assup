@@ -108,10 +108,12 @@ function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
             </span>
           </div>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>
-              VIX: <span className="font-medium">{macro.details.vix}</span> (
-              {macro.details.vixTrend})
-            </span>
+            {macro.details.vix != null && (
+              <span>
+                VIX: <span className="font-medium">{macro.details.vix}</span> (
+                {macro.details.vixTrend})
+              </span>
+            )}
             <span>S&P 500: {macro.details.sp500Trend}</span>
             <span>Updated {timeAgo(macro.analyzedAt)}</span>
           </div>

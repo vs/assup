@@ -79,14 +79,14 @@ export interface MacroAnalysis {
   summary: string;
   analyzedAt: string;
   details: {
-    vix: number;
+    vix: number | null;
     vixTrend: string;
+    vixSma20: number | null;
+    sp500Price: number | null;
+    sp500Sma200: number | null;
     sp500Trend: string;
-    yieldCurve: string;
-    creditSpread: string;
-    dxy: string;
-    putCallRatio: number;
-    sentiment: string;
+    putCallRatio: number | null;
+    regime: MarketRegime;
   };
 }
 
