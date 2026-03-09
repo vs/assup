@@ -40,21 +40,23 @@ class PolygonProvider implements MarketDataProvider {
   async getQuote(symbol: string): Promise<QuoteData> {
     const data = await this.fetch<{
       ticker: {
-        lastTrade: { p: number };
-        prevDay: { c: number; o: number; h: number; l: number; v: number };
-        day: { o: number; h: number; l: number; v: number };
+        lastTrade?: { p: number };
+        prevDay?: { c: number; o: number; h: number; l: number; v: number };
+        day?: { o: number; h: number; l: number; v: number };
       };
     }>(`/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}`);
 
     const t = data.ticker;
+    const prev = t.prevDay;
+    const day = t.day;
     return {
       symbol,
-      last: t.lastTrade.p,
-      close: t.prevDay.c,
-      open: t.day.o,
-      high: t.day.h,
-      low: t.day.l,
-      volume: t.day.v,
+      last: t.lastTrade?.p ?? prev?.c ?? 0,
+      close: prev?.c ?? 0,
+      open: day?.o ?? prev?.o ?? 0,
+      high: day?.h ?? prev?.h ?? 0,
+      low: day?.l ?? prev?.l ?? 0,
+      volume: day?.v ?? prev?.v ?? 0,
     };
   }
 

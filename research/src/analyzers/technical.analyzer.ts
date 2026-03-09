@@ -196,7 +196,10 @@ export const technicalAnalyzer: Analyzer = {
       trend,
     };
 
-    const summary = signals.slice(0, 3).join(". ") + ".";
+    const summary =
+      signals.length > 0
+        ? signals.slice(0, 3).join(". ") + "."
+        : "Insufficient data for technical signals.";
 
     return {
       signal,

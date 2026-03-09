@@ -14,7 +14,7 @@ interface UnusualActivity {
 interface OptionsDetails {
   avgIV: number;
   ivRank: number;
-  putCallRatio: number;
+  putCallRatio: number | null;
   totalPutVolume: number;
   totalCallVolume: number;
   unusualActivity: UnusualActivity[];
@@ -45,8 +45,10 @@ function calculateIVRank(chain: OptionsChainEntry[]): number {
   return ((avgIV - minIV) / (maxIV - minIV)) * 100;
 }
 
+const MIN_VOLUME_FOR_RATIO = 100;
+
 function calculatePutCallRatio(chain: OptionsChainEntry[]): {
-  ratio: number;
+  ratio: number | null;
   totalPutVolume: number;
   totalCallVolume: number;
 } {
@@ -61,7 +63,11 @@ function calculatePutCallRatio(chain: OptionsChainEntry[]): {
     }
   }
 
-  const ratio = totalCallVolume > 0 ? totalPutVolume / totalCallVolume : 0;
+  // Require minimum volume for a meaningful ratio
+  const ratio =
+    totalCallVolume >= MIN_VOLUME_FOR_RATIO
+      ? totalPutVolume / totalCallVolume
+      : null;
 
   return { ratio, totalPutVolume, totalCallVolume };
 }
@@ -146,18 +152,20 @@ export const optionsAnalyzer: Analyzer = {
       signals.push(`Low IV rank (${ivRank.toFixed(1)}%) - poor premium environment`);
     }
 
-    // Put/call ratio signals
-    if (putCallRatio < 0.7) {
-      score += 1;
-      signals.push(
-        `Low put/call ratio (${putCallRatio.toFixed(2)}) - bullish sentiment`
-      );
-    }
-    if (putCallRatio > 1.5) {
-      score -= 1;
-      signals.push(
-        `Extreme put/call ratio (${putCallRatio.toFixed(2)}) - heavy put buying`
-      );
+    // Put/call ratio signals (only when volume is sufficient)
+    if (putCallRatio != null) {
+      if (putCallRatio < 0.7) {
+        score += 1;
+        signals.push(
+          `Low put/call ratio (${putCallRatio.toFixed(2)}) - bullish sentiment`
+        );
+      }
+      if (putCallRatio > 1.5) {
+        score -= 1;
+        signals.push(
+          `Extreme put/call ratio (${putCallRatio.toFixed(2)}) - heavy put buying`
+        );
+      }
     }
 
     // Unusual activity

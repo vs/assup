@@ -28,33 +28,20 @@ function postFilter(
   criteria: ScreenerCriteria
 ): TickerSearchResult[] {
   return results.filter((r) => {
-    if (
-      criteria.minMarketCap != null &&
-      r.marketCap != null &&
-      r.marketCap < criteria.minMarketCap
-    ) {
-      return false;
+    // Null values fail constraints — unknown data should not pass filters
+    if (criteria.minMarketCap != null) {
+      if (r.marketCap == null || r.marketCap < criteria.minMarketCap)
+        return false;
     }
-    if (
-      criteria.maxMarketCap != null &&
-      r.marketCap != null &&
-      r.marketCap > criteria.maxMarketCap
-    ) {
-      return false;
+    if (criteria.maxMarketCap != null) {
+      if (r.marketCap == null || r.marketCap > criteria.maxMarketCap)
+        return false;
     }
-    if (
-      criteria.minPrice != null &&
-      r.lastPrice != null &&
-      r.lastPrice < criteria.minPrice
-    ) {
-      return false;
+    if (criteria.minPrice != null) {
+      if (r.lastPrice == null || r.lastPrice < criteria.minPrice) return false;
     }
-    if (
-      criteria.maxPrice != null &&
-      r.lastPrice != null &&
-      r.lastPrice > criteria.maxPrice
-    ) {
-      return false;
+    if (criteria.maxPrice != null) {
+      if (r.lastPrice == null || r.lastPrice > criteria.maxPrice) return false;
     }
     return true;
   });

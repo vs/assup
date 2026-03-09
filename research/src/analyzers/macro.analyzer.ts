@@ -145,7 +145,10 @@ export const macroAnalyzer: Analyzer = {
         ? Math.min(Math.abs(score) / signalCount, 1)
         : 0;
 
-    const summary = signals.slice(0, 3).join(". ") + ".";
+    const summary =
+      signals.length > 0
+        ? signals.slice(0, 3).join(". ") + "."
+        : "Insufficient data for macro signals.";
 
     const details: MacroDetails = {
       vix,
