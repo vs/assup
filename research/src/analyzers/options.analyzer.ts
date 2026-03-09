@@ -123,7 +123,24 @@ export const optionsAnalyzer: Analyzer = {
   source: "options",
 
   async analyze(rawData: Record<string, unknown>): Promise<AnalysisOutput> {
-    const chain = rawData.chain as OptionsChainEntry[];
+    const chain = (rawData.chain as OptionsChainEntry[] | null) ?? [];
+
+    if (chain.length === 0) {
+      return {
+        signal: "neutral",
+        confidence: 0,
+        summary: "No options chain data available.",
+        details: {
+          avgIV: 0,
+          ivRank: 50,
+          putCallRatio: null,
+          totalPutVolume: 0,
+          totalCallVolume: 0,
+          unusualActivity: [],
+          wheelSuitability: 0,
+        },
+      };
+    }
 
     const avgIV = calculateAvgIV(chain);
     const ivRank = calculateIVRank(chain);

@@ -180,7 +180,10 @@ export const socialAnalyzer: Analyzer = {
       signals.push(`${stocktwitsMentionCount} StockTwits mentions`);
     }
 
-    const summary = signals.join(". ") + ".";
+    const summary =
+      signals.length > 0
+        ? signals.join(". ") + "."
+        : "No significant social sentiment signals.";
 
     return {
       signal,

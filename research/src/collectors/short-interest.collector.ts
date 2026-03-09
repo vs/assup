@@ -94,12 +94,21 @@ export const shortInterestCollector: Collector = {
       );
     }
 
-    const entries: ShortInterestEntry[] = result.results.map((r) => ({
-      shortInterest: r.short_interest ?? r.shares_short ?? 0,
-      shortPercentOfFloat: r.short_percent_of_float ?? 0,
-      settlementDate: r.settlement_date ?? r.date ?? "",
-      avgDailyVolume: r.avg_daily_volume ?? 0,
-    }));
+    const entries: ShortInterestEntry[] = result.results.map((r) => {
+      const settlementDate = r.settlement_date ?? r.date;
+      if (!settlementDate) {
+        throw new Error(
+          `Short interest entry missing settlement_date for ${symbol}. ` +
+            `Check Polygon API response format.`
+        );
+      }
+      return {
+        shortInterest: r.short_interest ?? r.shares_short ?? 0,
+        shortPercentOfFloat: r.short_percent_of_float ?? 0,
+        settlementDate,
+        avgDailyVolume: r.avg_daily_volume ?? 0,
+      };
+    });
 
     const latest = entries[0];
     const daysToCover = computeDaysToCover(latest.shortInterest, latest.avgDailyVolume);

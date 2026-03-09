@@ -60,7 +60,6 @@ export const secFilingsCollector: Collector = {
     const result = (await response.json()) as EdgarSearchResponse;
 
     const hits = result.hits?.hits ?? [];
-    const totalCount = result.hits?.total?.value ?? 0;
 
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
@@ -72,6 +71,8 @@ export const secFilingsCollector: Collector = {
       periodOfReport: hit._source.period_of_report ?? null,
     }));
 
+    // Both counts derived from returned hits (same page) for consistency
+    const filingCount90d = recentFilings.length;
     const filingCount30d = recentFilings.filter((f) => {
       const fileDate = new Date(f.fileDate);
       return fileDate >= thirtyDaysAgo;
@@ -81,7 +82,7 @@ export const secFilingsCollector: Collector = {
       source: "sec_filings",
       data: {
         symbol,
-        filingCount90d: totalCount,
+        filingCount90d,
         filingCount30d,
         recentFilings,
         searchUrl: url,

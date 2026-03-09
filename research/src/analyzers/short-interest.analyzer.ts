@@ -28,6 +28,24 @@ export const shortInterestAnalyzer: Analyzer = {
     const historicalEntries =
       (rawData.historicalEntries as ShortInterestHistoricalEntry[]) ?? [];
 
+    // Early return when data is missing — avoids false "low short interest" signals
+    if (shortPercentOfFloat === 0 && daysToCover === 0) {
+      return {
+        signal: "neutral",
+        confidence: 0.1,
+        summary: "Insufficient short interest data for meaningful analysis.",
+        details: {
+          shortPercentOfFloat,
+          daysToCover,
+          shortInterestTrend,
+          shortInterestChange,
+          shortInterestShares,
+          shortLevel: "low",
+          historicalEntryCount: historicalEntries.length,
+        },
+      };
+    }
+
     const shortLevel = classifyShortLevel(shortPercentOfFloat);
 
     let score = 0;
@@ -114,14 +132,6 @@ export const shortInterestAnalyzer: Analyzer = {
     // Reduce confidence if we have limited historical data
     if (historicalEntries.length < 2) {
       confidence = Math.max(confidence * 0.5, 0.1);
-    }
-
-    // Minimal data: very low confidence
-    if (shortPercentOfFloat === 0 && daysToCover === 0) {
-      signal = "neutral";
-      confidence = 0.1;
-      signals.length = 0;
-      signals.push("Insufficient short interest data for meaningful analysis");
     }
 
     const summary =

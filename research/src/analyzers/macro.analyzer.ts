@@ -19,7 +19,7 @@ function determineVixTrend(
   vix: number | null,
   vixSma20: number | null
 ): VixTrend {
-  if (vix === null || vixSma20 === null) return "stable";
+  if (vix === null || vixSma20 === null || vixSma20 === 0) return "stable";
   const pctDiff = (vix - vixSma20) / vixSma20;
   if (pctDiff > 0.05) return "rising";
   if (pctDiff < -0.05) return "falling";

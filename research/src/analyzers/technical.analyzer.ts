@@ -5,7 +5,7 @@ import type { OHLCV } from "../providers/index.js";
 interface TechnicalDetails {
   currentPrice: number;
   rsi14: number | null;
-  macd: { macd: number; signal: number; histogram: number } | null;
+  macd: { macd: number | null; signal: number | null; histogram: number | null } | null;
   sma50: number | null;
   sma200: number | null;
   bollingerBands: { upper: number; middle: number; lower: number } | null;
@@ -48,8 +48,17 @@ export const technicalAnalyzer: Analyzer = {
   source: "technical",
 
   async analyze(rawData: Record<string, unknown>): Promise<AnalysisOutput> {
-    const ohlcv = rawData.ohlcv as OHLCV[];
-    const currentPrice = rawData.currentPrice as number;
+    const ohlcv = (rawData.ohlcv as OHLCV[] | null) ?? [];
+    const currentPrice = (rawData.currentPrice as number | null) ?? 0;
+
+    if (ohlcv.length === 0) {
+      return {
+        signal: "neutral",
+        confidence: 0,
+        summary: "No OHLCV data available for technical analysis.",
+        details: {},
+      };
+    }
 
     const closes = ohlcv.map((d) => d.close);
     const highs = ohlcv.map((d) => d.high);
@@ -174,9 +183,9 @@ export const technicalAnalyzer: Analyzer = {
       rsi14,
       macd: macdLatest
         ? {
-            macd: macdLatest.MACD ?? 0,
-            signal: macdLatest.signal ?? 0,
-            histogram: macdLatest.histogram ?? 0,
+            macd: macdLatest.MACD ?? null,
+            signal: macdLatest.signal ?? null,
+            histogram: macdLatest.histogram ?? null,
           }
         : null,
       sma50,
