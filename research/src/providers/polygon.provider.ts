@@ -39,24 +39,28 @@ class PolygonProvider implements MarketDataProvider {
 
   async getQuote(symbol: string): Promise<QuoteData> {
     const data = await this.fetch<{
-      ticker: {
+      ticker?: {
         lastTrade?: { p: number };
         prevDay?: { c: number; o: number; h: number; l: number; v: number };
         day?: { o: number; h: number; l: number; v: number };
-      };
+      } | null;
     }>(`/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}`);
+
+    if (!data.ticker) {
+      throw new Error(`Polygon snapshot returned no ticker data for ${symbol}`);
+    }
 
     const t = data.ticker;
     const prev = t.prevDay;
     const day = t.day;
     return {
       symbol,
-      last: t.lastTrade?.p ?? prev?.c ?? 0,
-      close: prev?.c ?? 0,
-      open: day?.o ?? prev?.o ?? 0,
-      high: day?.h ?? prev?.h ?? 0,
-      low: day?.l ?? prev?.l ?? 0,
-      volume: day?.v ?? prev?.v ?? 0,
+      last: t.lastTrade?.p ?? prev?.c ?? null,
+      close: prev?.c ?? null,
+      open: day?.o ?? prev?.o ?? null,
+      high: day?.h ?? prev?.h ?? null,
+      low: day?.l ?? prev?.l ?? null,
+      volume: day?.v ?? prev?.v ?? null,
     };
   }
 
@@ -114,12 +118,12 @@ class PolygonProvider implements MarketDataProvider {
       expiration: r.details.expiration_date,
       strike: r.details.strike_price,
       right: r.details.contract_type === "call" ? "C" as const : "P" as const,
-      bid: r.last_quote?.bid || 0,
-      ask: r.last_quote?.ask || 0,
-      last: r.last_trade?.price || 0,
-      volume: r.day?.volume || 0,
-      openInterest: r.open_interest || 0,
-      impliedVolatility: r.implied_volatility || 0,
+      bid: r.last_quote?.bid ?? 0,
+      ask: r.last_quote?.ask ?? 0,
+      last: r.last_trade?.price ?? 0,
+      volume: r.day?.volume ?? 0,
+      openInterest: r.open_interest ?? 0,
+      impliedVolatility: r.implied_volatility ?? null,
       delta: r.greeks?.delta ?? null,
       gamma: r.greeks?.gamma ?? null,
       theta: r.greeks?.theta ?? null,

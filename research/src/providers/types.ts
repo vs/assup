@@ -17,7 +17,7 @@ export interface OptionsChainEntry {
   last: number;
   volume: number;
   openInterest: number;
-  impliedVolatility: number;
+  impliedVolatility: number | null;
   delta: number | null;
   gamma: number | null;
   theta: number | null;
@@ -25,12 +25,12 @@ export interface OptionsChainEntry {
 
 export interface QuoteData {
   symbol: string;
-  last: number;
-  close: number;
-  open: number;
-  high: number;
-  low: number;
-  volume: number;
+  last: number | null;
+  close: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  volume: number | null;
 }
 
 export interface EarningsEvent {

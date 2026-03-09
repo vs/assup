@@ -24,7 +24,7 @@ interface OptionsDetails {
 function calculateAvgIV(chain: OptionsChainEntry[]): number {
   const ivValues = chain
     .map((e) => e.impliedVolatility)
-    .filter((iv) => iv > 0);
+    .filter((iv): iv is number => iv != null && iv > 0);
   if (ivValues.length === 0) return 0;
   return ivValues.reduce((sum, iv) => sum + iv, 0) / ivValues.length;
 }
@@ -32,7 +32,7 @@ function calculateAvgIV(chain: OptionsChainEntry[]): number {
 function calculateIVRank(chain: OptionsChainEntry[]): number {
   const ivValues = chain
     .map((e) => e.impliedVolatility)
-    .filter((iv) => iv > 0);
+    .filter((iv): iv is number => iv != null && iv > 0);
   if (ivValues.length < 2) return 50; // default when insufficient data
 
   const sorted = [...ivValues].sort((a, b) => a - b);

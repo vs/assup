@@ -39,12 +39,12 @@ function computeShortInterestTrend(
   const latest = entries[0];
   const previous = entries[1];
 
+  if (previous.shortPercentOfFloat === 0) return "unknown";
+
   const changePercent =
-    previous.shortPercentOfFloat > 0
-      ? ((latest.shortPercentOfFloat - previous.shortPercentOfFloat) /
-          previous.shortPercentOfFloat) *
-        100
-      : 0;
+    ((latest.shortPercentOfFloat - previous.shortPercentOfFloat) /
+      previous.shortPercentOfFloat) *
+    100;
 
   if (changePercent > 5) return "increasing";
   if (changePercent < -5) return "decreasing";

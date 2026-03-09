@@ -82,14 +82,16 @@ async function fetchRedditPosts(symbol: string): Promise<SocialPost[]> {
 
   return children.map((child) => ({
     source: "reddit" as const,
-    title: child.data.title,
-    body: child.data.selftext.slice(0, 500),
+    title: child.data.title ?? "",
+    body: (child.data.selftext ?? "").slice(0, 500),
     timestamp: new Date(child.data.created_utc * 1000).toISOString(),
-    score: child.data.score,
-    comments: child.data.num_comments,
-    subreddit: child.data.subreddit,
+    score: child.data.score ?? 0,
+    comments: child.data.num_comments ?? 0,
+    subreddit: child.data.subreddit ?? "",
     sentiment: null,
-    url: `${REDDIT_BASE_URL}${child.data.permalink}`,
+    url: child.data.permalink
+      ? `${REDDIT_BASE_URL}${child.data.permalink}`
+      : "",
   }));
 }
 

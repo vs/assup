@@ -63,13 +63,15 @@ export const secFilingsCollector: Collector = {
 
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const recentFilings = hits.map((hit) => ({
-      id: hit._id,
-      fileDate: hit._source.file_date,
-      formType: hit._source.form_type,
-      entityName: hit._source.entity_name,
-      periodOfReport: hit._source.period_of_report ?? null,
-    }));
+    const recentFilings = hits
+      .filter((hit) => hit._source != null)
+      .map((hit) => ({
+        id: hit._id,
+        fileDate: hit._source.file_date,
+        formType: hit._source.form_type,
+        entityName: hit._source.entity_name,
+        periodOfReport: hit._source.period_of_report ?? null,
+      }));
 
     // Both counts derived from returned hits (same page) for consistency
     const filingCount90d = recentFilings.length;
