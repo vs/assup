@@ -68,7 +68,7 @@ services:
       - "3000:3000"
     environment:
       - IB_HOST=host.docker.internal
-      - IB_PORT=7497
+      - IB_PORT=7496
       - DATABASE_URL=postgresql://assup:${DB_PASSWORD:-assup_dev}@postgres:5432/assup
       - RESEARCH_API_URL=http://research:3002
     extra_hosts:
