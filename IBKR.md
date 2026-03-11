@@ -7,7 +7,7 @@ Before using Assup, configure TWS:
 1. **Enable API Access**
    - Edit → Global Configuration → API → Settings
    - Enable "ActiveX and Socket Clients"
-   - Port: `7497` (Paper Trading) or `7496` (Live)
+   - Port: `7496`
    - Disable "Read-Only API" if trading is required
 
 2. **Add Trusted IPs**
