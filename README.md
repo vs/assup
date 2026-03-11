@@ -7,7 +7,6 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
 - **Dashboard** — Current vs. target allocation with options exposure (notional/delta-weighted)
 - **Positions** — IBKR positions with asset class assignments and filtering
 - **Watchlists** — Track securities with TradingView chart integration and scanner shortcuts
-- **Order Simulator** — Analyze how trades would impact portfolio allocation before execution
 - **Options Scanner** — Find options opportunities, place orders directly, external research links
 - **Profit Tracker** — Import IBKR FLEX reports to track realized P&L, dividends, interest, and withholding tax
 - **Taxes** — Czech tax compliance with FIFO lot matching, CZK conversion via CNB rates, 3-year and 100k CZK exemption tracking

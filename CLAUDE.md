@@ -10,7 +10,6 @@
 - **IBKR Integration:** Connects to Interactive Brokers TWS to fetch positions, account data, and market information.
 - **Allocation Dashboard:** View current vs. target allocation with options exposure columns (notional and delta-weighted). Identify underinvested and overinvested asset classes.
 - **Watchlist Management:** Maintain lists of securities for monitoring with inline asset class assignment, TradingView chart integration, and scanner shortcuts.
-- **Orders Impact Analysis:** Simulate orders to see how execution would affect portfolio allocation before placing trades. Order confirmation from TWS.
 - **Options Scanner:** Find PUT/CALL options for underinvested asset classes based on configurable criteria (expiration, delta, annualized return, premium percentage). Background scanner jobs with progress tracking. Place orders directly from scanner. External research links (TradingView, Seeking Alpha).
 - **Profit Tracking:** Import IBKR FLEX reports to track realized P&L from options and stock trades, dividends, interest, and withholding tax. Supports partial fill aggregation and cost basis from IBKR.
 - **Tax Reporting:** Czech tax compliance with FIFO lot matching, CZK conversion via CNB daily rates, 3-year holding period exemption, 100k CZK value exemption, income basket separation (securities vs. derivatives), and CSV export for tax returns.
@@ -67,7 +66,7 @@
 | `/api/security-assignments` | Symbol-to-asset-class mappings |
 | `/api/positions` | IBKR positions with enrichment |
 | `/api/watchlists` | Watchlist management |
-| `/api/orders` | Order simulation, impact analysis, and placement |
+| `/api/orders` | Order placement and open order tracking |
 | `/api/scanner` | Options opportunity scanner with order placement |
 | `/api/scanner/jobs` | Background scanner job tracking |
 | `/api/profit` | Profit tracking, FLEX report import, realized P&L |
