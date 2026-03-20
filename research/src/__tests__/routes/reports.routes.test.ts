@@ -74,6 +74,20 @@ describe("reports routes", () => {
       expect(res.status).toBe(202);
       expect(res.body).toEqual({ jobId: "job-123", status: "queued" });
     });
+
+    it("passes mode option to pipeline", async () => {
+      vi.mocked(pipelineService.generateReport).mockResolvedValue("job-456");
+
+      const res = await request(app)
+        .post("/api/reports/AAPL/generate")
+        .send({ mode: "api" });
+
+      expect(res.status).toBe(202);
+      expect(pipelineService.generateReport).toHaveBeenCalledWith(
+        "AAPL",
+        expect.objectContaining({ mode: "api" })
+      );
+    });
   });
 
   describe("GET /api/reports/:symbol/history", () => {

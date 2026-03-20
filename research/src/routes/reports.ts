@@ -20,6 +20,7 @@ const historyQuerySchema = z.object({
 const generateBodySchema = z.object({
   force: z.boolean().default(false),
   model: z.enum(["claude-sonnet-4-6", "claude-opus-4-6"]).default("claude-sonnet-4-6"),
+  mode: z.enum(["claude-cli", "api"]).optional(),
 }).default({});
 
 /**
@@ -86,10 +87,10 @@ router.post(
   "/:symbol/generate",
   validate({ params: symbolParamsSchema, body: generateBodySchema }),
   asyncHandler(async (req, res) => {
-    const { force, model } = req.body;
+    const { force, model, mode } = req.body;
     const jobId = await pipelineService.generateReport(
       req.params.symbol,
-      { force, model }
+      { force, model, mode }
     );
     res.status(202).json({ jobId, status: "queued" });
   })

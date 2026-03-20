@@ -1,7 +1,7 @@
 import { prisma } from "../db/index.js";
 import { collectionService } from "./collection.service.js";
 import { jobService } from "./job.service.js";
-import { synthesize } from "../synthesizer/synthesizer.js";
+import { synthesize, type SynthesizerMode } from "../synthesizer/synthesizer.js";
 import { macroService } from "./macro.service.js";
 import { NotFoundError } from "../errors/AppError.js";
 
@@ -12,7 +12,7 @@ class PipelineService {
    */
   async generateReport(
     symbol: string,
-    options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6" } = {}
+    options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6"; mode?: SynthesizerMode } = {}
   ): Promise<string> {
     const ticker = await prisma.ticker.findUnique({ where: { symbol } });
     if (!ticker) throw new NotFoundError("Ticker", symbol);
@@ -31,7 +31,7 @@ class PipelineService {
     jobId: string,
     tickerId: string,
     symbol: string,
-    options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6" }
+    options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6"; mode?: SynthesizerMode }
   ): Promise<void> {
     try {
       await jobService.start(jobId);
@@ -85,7 +85,10 @@ class PipelineService {
           : undefined,
       };
 
-      const result = await synthesize(synthInput, options.model);
+      const result = await synthesize(synthInput, {
+        model: options.model,
+        mode: options.mode,
+      });
 
       // Step 5: Store report
       await jobService.updateProgress(jobId, "Storing report...");
