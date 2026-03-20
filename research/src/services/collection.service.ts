@@ -2,12 +2,16 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { getCollector, getAllCollectors } from "../collectors/registry.js";
 import { getAnalyzer } from "../analyzers/registry.js";
+import { isSkipped } from "../collectors/types.js";
+
+// Prisma's DbNull representation for writing explicit null to JSON columns
+const DbNull = "DbNull" as unknown as Prisma.NullTypes.DbNull;
 
 class CollectionService {
   /**
    * Collect data from a specific source for a ticker.
    * Skips if existing data is still fresh.
-   * Returns true if new data was collected.
+   * Returns true if new data was collected or a skip was recorded.
    */
   async collectSource(tickerId: string, symbol: string, source: string, force = false): Promise<boolean> {
     const collector = getCollector(source);
@@ -30,6 +34,20 @@ class CollectionService {
     // Collect fresh data
     const result = await collector.collect(symbol);
 
+    if (isSkipped(result)) {
+      await prisma.dataCollection.create({
+        data: {
+          tickerId,
+          source: result.source,
+          status: "skipped",
+          data: DbNull,
+          skipReason: result.reason,
+          expiresAt: result.expiresAt,
+        },
+      });
+      return true;
+    }
+
     await prisma.dataCollection.create({
       data: {
         tickerId,
@@ -51,7 +69,7 @@ class CollectionService {
     if (!analyzer) return null;
 
     const latestData = await prisma.dataCollection.findFirst({
-      where: { tickerId, source },
+      where: { tickerId, source, status: "ok" },
       orderBy: { collectedAt: "desc" },
     });
 

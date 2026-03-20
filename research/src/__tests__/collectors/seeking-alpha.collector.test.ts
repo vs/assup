@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { seekingAlphaCollector } from "../../collectors/seeking-alpha.collector.js";
+import type { SkippedCollection } from "../../collectors/types.js";
 
 describe("seekingAlphaCollector", () => {
   const originalEnv = process.env.SEEKING_ALPHA_API_KEY;
@@ -13,9 +14,15 @@ describe("seekingAlphaCollector", () => {
     vi.restoreAllMocks();
   });
 
-  it("throws when API key not set", async () => {
+  it("returns SkippedCollection when API key not set", async () => {
     delete process.env.SEEKING_ALPHA_API_KEY;
-    await expect(seekingAlphaCollector.collect("AAPL")).rejects.toThrow("SEEKING_ALPHA_API_KEY");
+    const result = await seekingAlphaCollector.collect("AAPL");
+    expect(result).toMatchObject({
+      _tag: "skipped",
+      source: "seeking_alpha",
+      reason: "SEEKING_ALPHA_API_KEY not configured",
+    });
+    expect((result as SkippedCollection).expiresAt).toBeInstanceOf(Date);
   });
 
   it("collects ratings and metrics", async () => {
@@ -28,9 +35,10 @@ describe("seekingAlphaCollector", () => {
     });
 
     const result = await seekingAlphaCollector.collect("AAPL");
+    expect(result).not.toHaveProperty("_tag");
     expect(result.source).toBe("seeking_alpha");
-    expect(result.data.ratings).toBeDefined();
-    expect(result.data.metrics).toBeDefined();
+    expect((result as any).data.ratings).toBeDefined();
+    expect((result as any).data.metrics).toBeDefined();
   });
 
   it("succeeds when only ratings available", async () => {
@@ -43,8 +51,8 @@ describe("seekingAlphaCollector", () => {
     });
 
     const result = await seekingAlphaCollector.collect("AAPL");
-    expect(result.data.ratings).toBeDefined();
-    expect(result.data.metrics).toBeNull();
+    expect((result as any).data.ratings).toBeDefined();
+    expect((result as any).data.metrics).toBeNull();
   });
 
   it("throws when both endpoints fail", async () => {

@@ -1,4 +1,4 @@
-import type { Collector, CollectedData } from "./types.js";
+import type { Collector, CollectionResult } from "./types.js";
 
 const POLYGON_BASE_URL = "https://api.polygon.io";
 const STALENESS_MINUTES = 7 * 24 * 60; // 10080 minutes (7 days)
@@ -56,7 +56,7 @@ export const shortInterestCollector: Collector = {
   defaultSchedule: "0 18 1,15 * *", // Bi-weekly: 1st and 15th of each month at 6 PM
   stalenessMinutes: STALENESS_MINUTES,
 
-  async collect(symbol: string): Promise<CollectedData> {
+  async collect(symbol: string): Promise<CollectionResult> {
     const apiKey = process.env.MARKET_DATA_API_KEY;
     if (!apiKey) {
       throw new Error(
@@ -79,6 +79,14 @@ export const shortInterestCollector: Collector = {
     });
 
     if (!response.ok) {
+      if (response.status === 403 || response.status === 404) {
+        return {
+          _tag: "skipped",
+          source: "short_interest",
+          reason: `Polygon API returned ${response.status} (endpoint not available on your plan)`,
+          expiresAt: new Date(Date.now() + STALENESS_MINUTES * 60 * 1000),
+        };
+      }
       const body = await response.text();
       throw new Error(
         `Polygon short interest API returned ${response.status} for ${symbol}: ${body}`

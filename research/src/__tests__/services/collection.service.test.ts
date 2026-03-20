@@ -110,6 +110,34 @@ describe("collectionService", () => {
       expect(prisma.dataCollection.findFirst).not.toHaveBeenCalled();
       expect(mockCollector.collect).toHaveBeenCalledWith("AAPL");
     });
+
+    it("writes skipped row when collector returns SkippedCollection", async () => {
+      const mockCollector = {
+        source: "options",
+        defaultSchedule: "0 18 * * 1-5",
+        stalenessMinutes: 1440,
+        collect: vi.fn().mockResolvedValue({
+          _tag: "skipped",
+          source: "options",
+          reason: "Polygon options API not authorized (403)",
+          expiresAt: new Date(Date.now() + 1440 * 60 * 1000),
+        }),
+      };
+      vi.mocked(getCollector).mockReturnValue(mockCollector);
+      vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.dataCollection.create).mockResolvedValue({} as any);
+
+      const result = await collectionService.collectSource("t1", "AAPL", "options");
+      expect(result).toBe(true);
+      expect(prisma.dataCollection.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tickerId: "t1",
+          source: "options",
+          status: "skipped",
+          skipReason: "Polygon options API not authorized (403)",
+        }),
+      });
+    });
   });
 
   describe("analyzeSource", () => {
@@ -129,6 +157,20 @@ describe("collectionService", () => {
 
       const result = await collectionService.analyzeSource("t1", "technical");
       expect(result).toBeNull();
+    });
+
+    it("filters by status ok when finding latest data", async () => {
+      vi.mocked(getAnalyzer).mockReturnValue({
+        source: "options",
+        analyze: vi.fn(),
+      });
+      vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue(null);
+
+      await collectionService.analyzeSource("t1", "options");
+      expect(prisma.dataCollection.findFirst).toHaveBeenCalledWith({
+        where: { tickerId: "t1", source: "options", status: "ok" },
+        orderBy: { collectedAt: "desc" },
+      });
     });
 
     it("analyzes data and stores result, returns analysis ID", async () => {

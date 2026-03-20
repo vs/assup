@@ -1,4 +1,4 @@
-import type { Collector, CollectedData } from "./types.js";
+import type { Collector, CollectionResult } from "./types.js";
 
 const SA_BASE_URL = "https://seeking-alpha.p.rapidapi.com";
 
@@ -7,10 +7,15 @@ export const seekingAlphaCollector: Collector = {
   defaultSchedule: "0 18 * * 1-5",
   stalenessMinutes: 24 * 60,
 
-  async collect(symbol: string): Promise<CollectedData> {
+  async collect(symbol: string): Promise<CollectionResult> {
     const apiKey = process.env.SEEKING_ALPHA_API_KEY;
     if (!apiKey) {
-      throw new Error("SEEKING_ALPHA_API_KEY not configured");
+      return {
+        _tag: "skipped",
+        source: "seeking_alpha",
+        reason: "SEEKING_ALPHA_API_KEY not configured",
+        expiresAt: new Date(Date.now() + this.stalenessMinutes * 60 * 1000),
+      };
     }
 
     const headers = {

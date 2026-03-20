@@ -101,6 +101,15 @@ export interface ScreenerConfig {
   lastRun: string | null;
 }
 
+// === Collection Status ===
+
+export interface CollectionStatus {
+  source: string;
+  status: "skipped";
+  skipReason: string;
+  collectedAt: string;
+}
+
 // === API Request/Response ===
 
 export interface AddTickersRequest {
@@ -121,5 +130,6 @@ export interface ReportHistoryResponse {
 export interface AnalysisSummaryResponse {
   symbol: string;
   analyses: AnalysisResult[];
+  collectionStatuses: CollectionStatus[];
   lastUpdated: string | null;
 }

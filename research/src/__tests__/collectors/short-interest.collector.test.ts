@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { shortInterestCollector } from "../../collectors/short-interest.collector.js";
 import { mockFetchResponse, mockFetchError } from "../helpers/mock-fetch.js";
+import type { SkippedCollection } from "../../collectors/types.js";
 
 describe("shortInterestCollector", () => {
   const originalEnv = process.env.MARKET_DATA_API_KEY;
@@ -34,17 +35,39 @@ describe("shortInterestCollector", () => {
     }));
 
     const result = await shortInterestCollector.collect("AAPL");
+    expect(result).not.toHaveProperty("_tag");
     expect(result.source).toBe("short_interest");
-    expect(result.data.shortInterestShares).toBe(5000000);
-    expect(result.data.shortPercentOfFloat).toBe(12.5);
-    expect(result.data.daysToCover).toBe(5);
-    expect(result.data.shortInterestTrend).toBe("increasing");
-    expect(result.data.historicalEntries).toHaveLength(2);
+    const data = (result as any).data;
+    expect(data.shortInterestShares).toBe(5000000);
+    expect(data.shortPercentOfFloat).toBe(12.5);
+    expect(data.daysToCover).toBe(5);
+    expect(data.shortInterestTrend).toBe("increasing");
+    expect(data.historicalEntries).toHaveLength(2);
   });
 
-  it("throws when API returns error", async () => {
+  it("returns SkippedCollection when API returns 403", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(mockFetchError(403, "Forbidden"));
-    await expect(shortInterestCollector.collect("AAPL")).rejects.toThrow("403");
+    const result = await shortInterestCollector.collect("AAPL");
+    expect(result).toMatchObject({
+      _tag: "skipped",
+      source: "short_interest",
+    });
+    expect((result as SkippedCollection).reason).toContain("403");
+  });
+
+  it("returns SkippedCollection when API returns 404", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(mockFetchError(404, "Not Found"));
+    const result = await shortInterestCollector.collect("AAPL");
+    expect(result).toMatchObject({
+      _tag: "skipped",
+      source: "short_interest",
+    });
+    expect((result as SkippedCollection).reason).toContain("404");
+  });
+
+  it("throws when API returns other errors", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(mockFetchError(500, "Internal Server Error"));
+    await expect(shortInterestCollector.collect("AAPL")).rejects.toThrow("500");
   });
 
   it("throws when no results returned", async () => {
@@ -67,7 +90,7 @@ describe("shortInterestCollector", () => {
     }));
 
     const result = await shortInterestCollector.collect("AAPL");
-    expect(result.data.settlementDate).toBe("2026-02-01");
+    expect((result as any).data.settlementDate).toBe("2026-02-01");
   });
 
   it("computes trend as decreasing when short % drops > 5%", async () => {
@@ -80,7 +103,7 @@ describe("shortInterestCollector", () => {
     }));
 
     const result = await shortInterestCollector.collect("AAPL");
-    expect(result.data.shortInterestTrend).toBe("decreasing");
+    expect((result as any).data.shortInterestTrend).toBe("decreasing");
   });
 
   it("computes trend as unknown when previous shortPercentOfFloat is 0", async () => {
@@ -93,7 +116,7 @@ describe("shortInterestCollector", () => {
     }));
 
     const result = await shortInterestCollector.collect("AAPL");
-    expect(result.data.shortInterestTrend).toBe("unknown");
+    expect((result as any).data.shortInterestTrend).toBe("unknown");
   });
 
   it("daysToCover is 0 when avgDailyVolume is 0", async () => {
@@ -105,6 +128,6 @@ describe("shortInterestCollector", () => {
     }));
 
     const result = await shortInterestCollector.collect("AAPL");
-    expect(result.data.daysToCover).toBe(0);
+    expect((result as any).data.daysToCover).toBe(0);
   });
 });

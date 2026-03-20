@@ -6,6 +6,7 @@ import type {
   MacroAnalysis,
   MarketRegime,
   AnalysisResult,
+  CollectionStatus,
 } from "@assup/shared";
 import {
   ErrorAlert,
@@ -134,6 +135,7 @@ interface ReportDetailProps {
   symbol: string;
   report: ResearchReport | null;
   analyses: AnalysisResult[];
+  skipped: CollectionStatus[];
   loading: boolean;
 }
 
@@ -149,6 +151,7 @@ function ReportDetailDialog({
   symbol,
   report,
   analyses,
+  skipped,
   loading,
 }: ReportDetailProps) {
   return (
@@ -194,7 +197,7 @@ function ReportDetailDialog({
             </div>
 
             {/* Signal Breakdown */}
-            {analyses.length > 0 && (
+            {(analyses.length > 0 || skipped.length > 0) && (
               <div>
                 <h3 className="text-sm font-semibold mb-1">Signal Breakdown</h3>
                 <Table>
@@ -224,6 +227,20 @@ function ReportDetailDialog({
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm max-w-48 truncate">
                           {a.summary}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {skipped.map((s) => (
+                      <TableRow key={`skipped-${s.source}`} className="opacity-50">
+                        <TableCell className="font-medium capitalize">
+                          {s.source.replace(/_/g, " ")}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-muted-foreground text-xs">skipped</span>
+                        </TableCell>
+                        <TableCell>--</TableCell>
+                        <TableCell className="text-muted-foreground text-sm max-w-48 truncate">
+                          {s.skipReason}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -262,6 +279,7 @@ export function ResearchPage() {
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const [detailReport, setDetailReport] = useState<ResearchReport | null>(null);
   const [detailAnalyses, setDetailAnalyses] = useState<AnalysisResult[]>([]);
+  const [detailSkipped, setDetailSkipped] = useState<CollectionStatus[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -373,6 +391,7 @@ export function ResearchPage() {
     setDetailLoading(true);
     setDetailReport(null);
     setDetailAnalyses([]);
+    setDetailSkipped([]);
 
     try {
       const [reportResult, analysisResult] = await Promise.allSettled([
@@ -385,6 +404,7 @@ export function ResearchPage() {
       }
       if (analysisResult.status === "fulfilled") {
         setDetailAnalyses(analysisResult.value.analyses);
+        setDetailSkipped(analysisResult.value.collectionStatuses ?? []);
       }
     } catch {
       // Errors are handled by showing empty state in dialog
@@ -397,6 +417,7 @@ export function ResearchPage() {
     setDetailSymbol(null);
     setDetailReport(null);
     setDetailAnalyses([]);
+    setDetailSkipped([]);
   }
 
   if (loading) return <PageLoadingSkeleton />;
@@ -561,6 +582,7 @@ export function ResearchPage() {
         symbol={detailSymbol || ""}
         report={detailReport}
         analyses={detailAnalyses}
+        skipped={detailSkipped}
         loading={detailLoading}
       />
     </div>

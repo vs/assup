@@ -28,7 +28,9 @@ model DataCollection {
   tickerId    String   @map("ticker_id") @db.Uuid
   source      String   @db.VarChar(30)
   collectedAt DateTime @default(now()) @map("collected_at") @db.Timestamptz()
-  data        Json     @db.JsonB
+  status      String   @default("ok") @db.VarChar(10)
+  data        Json?    @db.JsonB
+  skipReason  String?  @map("skip_reason")
   expiresAt   DateTime? @map("expires_at") @db.Timestamptz()
 
   ticker Ticker @relation(fields: [tickerId], references: [id], onDelete: Cascade)

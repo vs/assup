@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { macroCollector } from "../collectors/macro.collector.js";
 import { macroAnalyzer } from "../analyzers/macro.analyzer.js";
+import { isSkipped } from "../collectors/types.js";
 
 const FRESHNESS_HOURS = 24;
 
@@ -39,6 +40,10 @@ class MacroService {
 
     // Collect macro data (symbol is ignored by macro collector)
     const collected = await macroCollector.collect("");
+
+    if (isSkipped(collected)) {
+      throw new Error(`Macro collection skipped: ${collected.reason}`);
+    }
 
     // Analyze the collected data
     const analysis = await macroAnalyzer.analyze(collected.data);

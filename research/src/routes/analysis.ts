@@ -18,7 +18,7 @@ const sourceParamsSchema = z.object({
 
 /**
  * GET /api/analysis/:symbol
- * Latest analysis from all sources
+ * Latest analysis from all sources + skipped collection statuses
  */
 router.get(
   "/:symbol",
@@ -42,18 +42,40 @@ router.get(
         details: Record<string, unknown>;
       }>
     >`
-      SELECT a.*
+      SELECT a.id, a.ticker_id AS "tickerId", a.source,
+             a.analyzed_at AS "analyzedAt", a.signal, a.confidence,
+             a.summary, a.details
       FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY "analyzedAt" DESC) AS rn
-        FROM "Analysis"
-        WHERE "tickerId" = ${ticker.id}::uuid
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY analyzed_at DESC) AS rn
+        FROM analysis
+        WHERE ticker_id = ${ticker.id}::uuid
       ) a
       WHERE a.rn = 1
+    `;
+
+    // Fetch latest skipped collections per source
+    const collectionStatuses = await prisma.$queryRaw<
+      Array<{
+        source: string;
+        status: string;
+        skipReason: string;
+        collectedAt: Date;
+      }>
+    >`
+      SELECT dc.source, dc.status, dc.skip_reason AS "skipReason",
+             dc.collected_at AS "collectedAt"
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY collected_at DESC) AS rn
+        FROM data_collection
+        WHERE ticker_id = ${ticker.id}::uuid
+      ) dc
+      WHERE dc.rn = 1 AND dc.status = 'skipped'
     `;
 
     res.json({
       symbol: ticker.symbol,
       analyses,
+      collectionStatuses,
       lastUpdated: ticker.lastAnalyzed,
     });
   })

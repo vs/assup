@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { optionsCollector } from "../../collectors/options.collector.js";
+import type { SkippedCollection } from "../../collectors/types.js";
 
 vi.mock("../../providers/index.js", () => ({
   getMarketDataProvider: vi.fn(),
@@ -27,14 +28,40 @@ describe("optionsCollector", () => {
     mockProvider.getOptionsChain.mockResolvedValue(chain);
 
     const result = await optionsCollector.collect("AAPL");
+    expect(result).not.toHaveProperty("_tag");
     expect(result.source).toBe("options");
-    expect(result.data.chain).toEqual(chain);
-    expect(result.data.symbol).toBe("AAPL");
+    expect((result as any).data.chain).toEqual(chain);
+    expect((result as any).data.symbol).toBe("AAPL");
   });
 
   it("throws when no chain data returned", async () => {
     mockProvider.getOptionsChain.mockResolvedValue([]);
     await expect(optionsCollector.collect("AAPL")).rejects.toThrow("No options chain data");
+  });
+
+  it("returns SkippedCollection when provider returns 403", async () => {
+    mockProvider.getOptionsChain.mockRejectedValue(new Error("Polygon API error 403: NOT_AUTHORIZED"));
+    const result = await optionsCollector.collect("AAPL");
+    expect(result).toMatchObject({
+      _tag: "skipped",
+      source: "options",
+    });
+    expect((result as SkippedCollection).reason).toContain("403");
+  });
+
+  it("returns SkippedCollection when provider returns 404", async () => {
+    mockProvider.getOptionsChain.mockRejectedValue(new Error("Polygon API error 404: Not Found"));
+    const result = await optionsCollector.collect("AAPL");
+    expect(result).toMatchObject({
+      _tag: "skipped",
+      source: "options",
+    });
+    expect((result as SkippedCollection).reason).toContain("404");
+  });
+
+  it("rethrows other provider errors", async () => {
+    mockProvider.getOptionsChain.mockRejectedValue(new Error("Polygon API error 500: Internal Server Error"));
+    await expect(optionsCollector.collect("AAPL")).rejects.toThrow("500");
   });
 
   it("requests 4 expirations", async () => {
