@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
+import { Writable } from "node:stream";
 
 const { mockCreate } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
@@ -9,6 +11,12 @@ vi.mock("@anthropic-ai/sdk", () => ({
     messages = { create: mockCreate };
   },
 }));
+
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn(),
+}));
+
+import { spawn } from "node:child_process";
 
 import { synthesize } from "../../synthesizer/synthesizer.js";
 
@@ -153,5 +161,159 @@ describe("synthesizer", () => {
         ]),
       })
     );
+  });
+});
+
+describe("synthesizeWithClaude (claude-cli mode)", () => {
+  beforeAll(() => {
+    process.env.SYNTHESIZER_MODE = "claude-cli";
+  });
+
+  afterAll(() => {
+    delete process.env.SYNTHESIZER_MODE;
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function createMockChild(
+    stdout: string,
+    stderr = "",
+    exitCode = 0,
+    signal: string | null = null
+  ) {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new Writable({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
+
+    vi.mocked(spawn).mockReturnValue(child);
+
+    // Emit data and close on next tick
+    process.nextTick(() => {
+      if (stdout) child.stdout.emit("data", Buffer.from(stdout));
+      if (stderr) child.stderr.emit("data", Buffer.from(stderr));
+      child.emit("close", exitCode, signal);
+    });
+
+    return child;
+  }
+
+  it("parses valid JSON from claude stdout", async () => {
+    createMockChild(JSON.stringify(validOutput));
+
+    const result = await synthesize(baseInput);
+
+    expect(result).toEqual(validOutput);
+  });
+
+  it("strips markdown fences from claude output", async () => {
+    createMockChild("```json\n" + JSON.stringify(validOutput) + "\n```");
+
+    const result = await synthesize(baseInput);
+
+    expect(result).toEqual(validOutput);
+  });
+
+  it("throws on non-zero exit code", async () => {
+    createMockChild("", "Something went wrong", 1);
+
+    await expect(synthesize(baseInput)).rejects.toThrow(
+      "Claude CLI failed: Something went wrong"
+    );
+  });
+
+  it("throws on invalid JSON from claude", async () => {
+    createMockChild("This is not JSON at all");
+
+    await expect(synthesize(baseInput)).rejects.toThrow(
+      "Failed to parse synthesizer JSON"
+    );
+  });
+
+  it("throws on timeout (SIGTERM)", async () => {
+    createMockChild("", "", 0, "SIGTERM");
+
+    await expect(synthesize(baseInput)).rejects.toThrow(
+      "Claude CLI timed out after 5 minutes"
+    );
+  });
+
+  it("throws on spawn error", async () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new Writable({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
+
+    vi.mocked(spawn).mockReturnValue(child);
+
+    process.nextTick(() => {
+      child.emit("error", new Error("ENOENT: claude not found"));
+    });
+
+    await expect(synthesize(baseInput)).rejects.toThrow(
+      "Claude CLI failed to start: ENOENT: claude not found"
+    );
+  });
+
+  it("passes system prompt and model to claude args", async () => {
+    createMockChild(JSON.stringify(validOutput));
+
+    await synthesize(baseInput, { model: "claude-opus-4-6" });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "claude",
+      expect.arrayContaining([
+        "--system-prompt",
+        expect.stringContaining("rigorous financial research analyst"),
+        "--model",
+        "claude-opus-4-6",
+      ]),
+      expect.any(Object)
+    );
+  });
+
+  it("unsets CLAUDECODE env var in child process", async () => {
+    process.env.CLAUDECODE = "true";
+    try {
+      createMockChild(JSON.stringify(validOutput));
+
+      await synthesize(baseInput);
+
+      const spawnCall = vi.mocked(spawn).mock.calls[0];
+      const spawnOptions = spawnCall[2] as any;
+      expect(spawnOptions.env).toBeDefined();
+      expect(spawnOptions.env.CLAUDECODE).toBeUndefined();
+    } finally {
+      delete process.env.CLAUDECODE;
+    }
+  });
+
+  it("writes prompt to stdin", async () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+
+    const writtenChunks: string[] = [];
+    child.stdin = new Writable({
+      write(chunk: any, _enc: any, cb: any) {
+        writtenChunks.push(chunk.toString());
+        cb();
+      },
+    });
+
+    vi.mocked(spawn).mockReturnValue(child);
+
+    process.nextTick(() => {
+      child.stdout.emit("data", Buffer.from(JSON.stringify(validOutput)));
+      child.emit("close", 0, null);
+    });
+
+    await synthesize(baseInput);
+
+    const written = writtenChunks.join("");
+    expect(written).toContain("Analyze AAPL");
+    expect(written).toContain("RSI at 32 indicates oversold");
   });
 });

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { spawn } from "node:child_process";
 
 interface SynthesizerInput {
   symbol: string;
@@ -139,10 +140,57 @@ async function synthesizeWithSDK(
 }
 
 async function synthesizeWithClaude(
-  _input: SynthesizerInput,
-  _model: string
+  input: SynthesizerInput,
+  model: string
 ): Promise<SynthesizerOutput> {
-  throw new Error("Claude CLI synthesizer not yet implemented");
+  const prompt = buildUserPrompt(input);
+
+  const args = [
+    "--print",
+    "--output-format", "text",
+    "--system-prompt", SYSTEM_PROMPT,
+    "--model", model,
+    "--dangerously-skip-permissions",
+    "--no-session-persistence",
+  ];
+
+  // Build env without CLAUDECODE to avoid nested-session detection
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
+
+  const stdout = await new Promise<string>((resolve, reject) => {
+    const child = spawn("claude", args, {
+      env,
+      timeout: 5 * 60 * 1000, // 5 minutes
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let out = "";
+    let err = "";
+
+    child.stdout.on("data", (data: Buffer) => { out += data.toString(); });
+    child.stderr.on("data", (data: Buffer) => { err += data.toString(); });
+
+    child.on("error", (e) => reject(new Error(`Claude CLI failed to start: ${e.message}`)));
+
+    child.on("close", (code, signal) => {
+      if (signal) {
+        reject(new Error("Claude CLI timed out after 5 minutes"));
+      } else if (code !== 0) {
+        reject(new Error(`Claude CLI failed: ${err || `exit code ${code}`}`));
+      } else {
+        resolve(out);
+      }
+    });
+
+    // Ignore EPIPE — child may exit before consuming stdin;
+    // the close event carries the real exit code/error.
+    child.stdin.on("error", () => {});
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+
+  return parseAndValidate(stdout);
 }
 
 export async function synthesize(
