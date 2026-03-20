@@ -18,6 +18,12 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "postinstall": "npm run build:shared"
   },
+  "optionalDependencies": {
+    "@tailwindcss/oxide": "^4.1.17",
+    "esbuild": "^0.27.2",
+    "lightningcss": "^1.30.2",
+    "rollup": "^4.56.0"
+  },
   "devDependencies": {
     "typescript": "^5.3.2"
   }

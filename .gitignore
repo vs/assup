@@ -1,5 +1,10 @@
 # Dependencies
 node_modules/
+# Workspace lockfiles (root package-lock.json is the single source of truth)
+backend/package-lock.json
+frontend/package-lock.json
+research/package-lock.json
+desktop/package-lock.json
 
 # Screenshots
 screenshots/

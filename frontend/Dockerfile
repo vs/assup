@@ -4,24 +4,25 @@ WORKDIR /app
 
 ARG VITE_API_URL=http://localhost:3000
 
-# Copy root package files for workspace
-COPY package*.json ./
+# Copy root package files and lockfile for deterministic installs
+COPY package.json package-lock.json ./
 COPY tsconfig.base.json ./
 
-# Copy shared package
+# Copy workspace package.json files (required for npm ci to resolve workspace graph)
+COPY packages/shared/package.json ./packages/shared/
+COPY frontend/package.json ./frontend/
+COPY backend/package.json ./backend/
+COPY research/package.json ./research/
+COPY desktop/package.json ./desktop/
+
+# Install dependencies without running postinstall scripts
+RUN npm ci --ignore-scripts --workspace=@assup/shared --workspace=frontend --include-workspace-root
+
+# Copy shared and frontend sources
 COPY packages/shared ./packages/shared
-
-# Copy frontend package
-COPY frontend/package*.json ./frontend/
-
-# Install all dependencies from root (handles workspace linking)
-# Delete lockfile to force fresh resolution of platform-specific optional dependencies
-RUN rm -f package-lock.json && npm install
-
-# Copy frontend source
 COPY frontend ./frontend
 
-# Build shared package first, then frontend
+# Build shared and frontend
 RUN npm run build -w @assup/shared && \
     VITE_API_URL=$VITE_API_URL npm run build -w frontend
 
