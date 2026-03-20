@@ -176,25 +176,29 @@ function ReportDetailDialog({
           <div className="py-8 text-center text-muted-foreground">
             Loading report...
           </div>
-        ) : !report ? (
-          <div className="py-8 text-center text-muted-foreground">
-            No report available for {symbol}. Click "Generate" to create one.
-          </div>
         ) : (
           <div className="space-y-4">
-            {/* Summary */}
-            <div>
-              <h3 className="text-sm font-semibold mb-1">Summary</h3>
-              <p className="text-sm text-muted-foreground">{report.summary}</p>
-            </div>
+            {report ? (
+              <>
+                {/* Summary */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-1">Summary</h3>
+                  <p className="text-sm text-muted-foreground">{report.summary}</p>
+                </div>
 
-            {/* Full Report */}
-            <div>
-              <h3 className="text-sm font-semibold mb-1">Full Report</h3>
-              <div className="text-sm whitespace-pre-wrap bg-muted/50 rounded-md p-3 max-h-64 overflow-y-auto">
-                {report.fullReport}
+                {/* Full Report */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-1">Full Report</h3>
+                  <div className="text-sm whitespace-pre-wrap bg-muted/50 rounded-md p-3 max-h-64 overflow-y-auto">
+                    {report.fullReport}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="py-4 text-center text-muted-foreground">
+                No report available for {symbol}. Click "Generate" to create one.
               </div>
-            </div>
+            )}
 
             {/* Signal Breakdown */}
             {(analyses.length > 0 || skipped.length > 0) && (
@@ -249,9 +253,11 @@ function ReportDetailDialog({
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground">
-              Generated {timeAgo(report.createdAt)}
-            </p>
+            {report && (
+              <p className="text-xs text-muted-foreground">
+                Generated {timeAgo(report.createdAt)}
+              </p>
+            )}
           </div>
         )}
       </DialogContent>
@@ -544,7 +550,7 @@ export function ResearchPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleViewDetail(ticker.symbol)}
-                            disabled={!report}
+                            disabled={!report && !ticker.lastAnalyzed}
                             title="View report"
                           >
                             <Eye className="h-4 w-4 mr-1" />
