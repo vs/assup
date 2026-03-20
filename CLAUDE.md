@@ -23,7 +23,7 @@
 - **Frontend:** Vite + React 19 (TypeScript), shadcn/ui, Tailwind CSS v4
 - **Database:** PostgreSQL 16 with Prisma ORM
 - **IBKR API:** `@stoqey/ib` library for TWS connectivity
-- **Research:** Separate Express microservice with own PostgreSQL database, Polygon.io for market data, Anthropic Claude for report synthesis
+- **Research:** Separate Express microservice with own PostgreSQL database, Polygon.io for market data, Anthropic Claude for report synthesis, Vitest for unit tests
 - **Desktop:** Tauri (Rust) wrapping the frontend
 - **Containerization:** Docker & Docker Compose
 - **Monorepo:** npm workspaces with shared types in `packages/shared`
