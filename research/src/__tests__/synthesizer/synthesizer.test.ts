@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 
 const { mockCreate } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
@@ -39,6 +39,13 @@ function setResponse(text: string) {
 }
 
 describe("synthesizer", () => {
+  beforeAll(() => {
+    process.env.SYNTHESIZER_MODE = "api";
+  });
+  afterAll(() => {
+    delete process.env.SYNTHESIZER_MODE;
+  });
+
   it("returns parsed recommendation from valid JSON response", async () => {
     setResponse(JSON.stringify(validOutput));
 

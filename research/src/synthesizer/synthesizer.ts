@@ -23,6 +23,13 @@ interface SynthesizerOutput {
   fullReport: string;
 }
 
+export type SynthesizerMode = "claude-cli" | "api";
+
+export interface SynthesizeOptions {
+  model?: "claude-sonnet-4-6" | "claude-opus-4-6";
+  mode?: SynthesizerMode;
+}
+
 const SYSTEM_PROMPT = `You are a rigorous financial research analyst. You synthesize data from multiple sources into actionable research reports.
 
 Rules:
@@ -73,6 +80,31 @@ function buildUserPrompt(input: SynthesizerInput): string {
   return prompt;
 }
 
+function parseAndValidate(text: string): SynthesizerOutput {
+  let parsed: SynthesizerOutput;
+  try {
+    const cleaned = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    parsed = JSON.parse(cleaned) as SynthesizerOutput;
+  } catch {
+    throw new Error(
+      `Failed to parse synthesizer JSON output. Raw text (first 500 chars): ${text.slice(0, 500)}`
+    );
+  }
+
+  const validRecs = ["buy", "sell", "wheel", "hold", "avoid"];
+  if (!validRecs.includes(parsed.recommendation)) {
+    throw new Error(`Invalid recommendation: ${parsed.recommendation}`);
+  }
+  if (typeof parsed.confidence !== "number" || parsed.confidence < 0 || parsed.confidence > 1) {
+    throw new Error(`Invalid confidence: ${parsed.confidence}`);
+  }
+  if (!parsed.summary || !parsed.fullReport) {
+    throw new Error("Missing summary or fullReport in synthesizer output");
+  }
+
+  return parsed;
+}
+
 let client: Anthropic | null = null;
 
 function getClient(): Anthropic {
@@ -82,7 +114,7 @@ function getClient(): Anthropic {
   return client;
 }
 
-export async function synthesize(
+async function synthesizeWithSDK(
   input: SynthesizerInput,
   model: "claude-sonnet-4-6" | "claude-opus-4-6" = "claude-sonnet-4-6"
 ): Promise<SynthesizerOutput> {
@@ -103,28 +135,30 @@ export async function synthesize(
   const text =
     message.content[0].type === "text" ? message.content[0].text : "";
 
-  // Parse JSON response — strip markdown fences if model wraps output
-  let parsed: SynthesizerOutput;
-  try {
-    const cleaned = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-    parsed = JSON.parse(cleaned) as SynthesizerOutput;
-  } catch {
-    throw new Error(
-      `Failed to parse synthesizer JSON output. Raw text (first 500 chars): ${text.slice(0, 500)}`
-    );
-  }
+  return parseAndValidate(text);
+}
 
-  // Validate required fields
-  const validRecs = ["buy", "sell", "wheel", "hold", "avoid"];
-  if (!validRecs.includes(parsed.recommendation)) {
-    throw new Error(`Invalid recommendation: ${parsed.recommendation}`);
-  }
-  if (typeof parsed.confidence !== "number" || parsed.confidence < 0 || parsed.confidence > 1) {
-    throw new Error(`Invalid confidence: ${parsed.confidence}`);
-  }
-  if (!parsed.summary || !parsed.fullReport) {
-    throw new Error("Missing summary or fullReport in synthesizer output");
-  }
+async function synthesizeWithClaude(
+  _input: SynthesizerInput,
+  _model: string
+): Promise<SynthesizerOutput> {
+  throw new Error("Claude CLI synthesizer not yet implemented");
+}
 
-  return parsed;
+export async function synthesize(
+  input: SynthesizerInput,
+  optionsOrModel?: SynthesizeOptions | "claude-sonnet-4-6" | "claude-opus-4-6"
+): Promise<SynthesizerOutput> {
+  const options: SynthesizeOptions =
+    typeof optionsOrModel === "string"
+      ? { model: optionsOrModel }
+      : optionsOrModel ?? {};
+
+  const mode = options.mode ?? (process.env.SYNTHESIZER_MODE as SynthesizerMode) ?? "claude-cli";
+  const model = options.model ?? "claude-sonnet-4-6";
+
+  if (mode === "claude-cli") {
+    return synthesizeWithClaude(input, model);
+  }
+  return synthesizeWithSDK(input, model);
 }
