@@ -13,6 +13,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { ImportsSection } from "@/pages/settings/ImportsSection";
 import { AssetClassesSection } from "@/pages/settings/AssetClassesSection";
 import { ExchangeRatesSection } from "@/pages/settings/ExchangeRatesSection";
+import { ResearchSection } from "@/pages/settings/ResearchSection";
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
               <Route path="imports" element={<ImportsSection />} />
               <Route path="asset-classes" element={<AssetClassesSection />} />
               <Route path="exchange-rates" element={<ExchangeRatesSection />} />
+              <Route path="research" element={<ResearchSection />} />
             </Route>
           </Route>
         </Routes>

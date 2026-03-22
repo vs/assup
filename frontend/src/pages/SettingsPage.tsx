@@ -5,6 +5,7 @@ const settingsTabs = [
   { to: "/settings/imports", label: "FLEX Imports" },
   { to: "/settings/asset-classes", label: "Asset Classes" },
   { to: "/settings/exchange-rates", label: "Exchange Rates" },
+  { to: "/settings/research", label: "Research" },
 ];
 
 export function SettingsPage() {

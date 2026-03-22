@@ -53,4 +53,10 @@ export const researchApi = {
   // Jobs
   getJob: (jobId: string) =>
     request<ResearchJob>(`/api/research/jobs/${jobId}`),
+
+  // Status
+  getClaudeStatus: () =>
+    request<{ available: boolean; mode: string; error?: string }>(
+      "/api/research/claude-status"
+    ),
 };
