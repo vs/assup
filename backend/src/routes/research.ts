@@ -88,6 +88,19 @@ router.get(
 // ── Dynamic :symbol routes ──────────────────────────────────────────
 
 /**
+ * GET /api/research/:symbol/data
+ * Get raw collection data for a symbol
+ */
+router.get(
+  "/:symbol/data",
+  asyncHandler(async (req, res) => {
+    const symbol = req.params.symbol.toUpperCase();
+    const result = await researchService.getCollectionData(symbol);
+    res.json(result);
+  })
+);
+
+/**
  * GET /api/research/:symbol
  * Get the latest report for a symbol
  */
