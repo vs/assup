@@ -85,6 +85,18 @@ router.get(
   })
 );
 
+/**
+ * GET /api/research/claude-status
+ * Check Claude CLI availability and auth status
+ */
+router.get(
+  "/claude-status",
+  asyncHandler(async (_req, res) => {
+    const result = await researchService.getClaudeStatus();
+    res.json(result);
+  })
+);
+
 // ── Dynamic :symbol routes ──────────────────────────────────────────
 
 /**

@@ -100,6 +100,11 @@ class ResearchService {
   async getJob(jobId: string): Promise<ResearchJob> {
     return this.fetch<ResearchJob>(`/api/jobs/${jobId}`);
   }
+
+  // Claude status
+  async getClaudeStatus(): Promise<{ available: boolean; mode: string; error?: string }> {
+    return this.fetch<{ available: boolean; mode: string; error?: string }>("/api/claude-status");
+  }
 }
 
 export const researchService = new ResearchService();
