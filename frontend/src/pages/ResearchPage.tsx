@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { researchApi } from "@/api";
+import { researchApi, settingsApi } from "@/api";
 import type {
   ResearchTicker,
   ResearchReport,
@@ -360,7 +360,15 @@ export function ResearchPage() {
     setGeneratingSymbol(symbol);
     setError(null);
     try {
-      const { jobId } = await researchApi.generate(symbol);
+      const researchSettings = await settingsApi
+        .get<{ synthesizerMode: string }>("research")
+        .then((r) => r.value)
+        .catch(() => ({ synthesizerMode: undefined }));
+
+      const { jobId } = await researchApi.generate(symbol, {
+        force: true,
+        mode: researchSettings.synthesizerMode,
+      });
 
       // Poll job status until complete
       const maxAttempts = 60; // 5 minutes at 5s intervals

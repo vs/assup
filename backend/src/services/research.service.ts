@@ -56,7 +56,7 @@ class ResearchService {
 
   async generateReport(
     symbol: string,
-    options?: { force?: boolean },
+    options?: { force?: boolean; mode?: string },
   ): Promise<{ jobId: string }> {
     return this.fetch<{ jobId: string }>(
       `/api/reports/${symbol}/generate`,

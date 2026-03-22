@@ -22,7 +22,7 @@ export const researchApi = {
       `/api/research/${symbol}/history${buildQuery({ page })}`
     ),
 
-  generate: (symbol: string, options?: { force?: boolean }) =>
+  generate: (symbol: string, options?: { force?: boolean; mode?: string }) =>
     request<{ jobId: string }>(`/api/research/${symbol}/generate`, {
       method: "POST",
       body: JSON.stringify(options || {}),
