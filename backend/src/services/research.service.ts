@@ -7,6 +7,7 @@ import type {
   AnalysisSummaryResponse,
   ReportHistoryResponse,
   TickerListResponse,
+  CollectionDataResponse,
 } from "@assup/shared";
 
 class ResearchService {
@@ -94,6 +95,11 @@ class ResearchService {
         body: JSON.stringify({ symbols, source: "external" }),
       },
     );
+  }
+
+  // Collection data
+  async getCollectionData(symbol: string): Promise<CollectionDataResponse> {
+    return this.fetch<CollectionDataResponse>(`/api/data/${symbol}`);
   }
 
   // Jobs

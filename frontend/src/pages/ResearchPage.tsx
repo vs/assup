@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { researchApi, settingsApi } from "@/api";
 import type {
   ResearchTicker,
   ResearchReport,
   MacroAnalysis,
   MarketRegime,
-  AnalysisResult,
-  CollectionStatus,
 } from "@assup/shared";
 import {
   ErrorAlert,
@@ -17,13 +16,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Table,
   TableBody,
   TableCell,
@@ -33,18 +25,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ListRestart, Eye, Zap, AlertTriangle } from "lucide-react";
+import { timeAgo } from "@/utils/format";
 
 // --- Helpers ---
-
-function timeAgo(dateStr: string): string {
-  const hours = Math.round(
-    (Date.now() - new Date(dateStr).getTime()) / 3600000
-  );
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -127,147 +110,10 @@ function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
   );
 }
 
-// --- Report Detail Dialog ---
-
-interface ReportDetailProps {
-  open: boolean;
-  onClose: () => void;
-  symbol: string;
-  report: ResearchReport | null;
-  analyses: AnalysisResult[];
-  skipped: CollectionStatus[];
-  loading: boolean;
-}
-
-const signalColors: Record<string, string> = {
-  bullish: "text-green-700",
-  bearish: "text-red-700",
-  neutral: "text-amber-700",
-};
-
-function ReportDetailDialog({
-  open,
-  onClose,
-  symbol,
-  report,
-  analyses,
-  skipped,
-  loading,
-}: ReportDetailProps) {
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <span className="text-xl">{symbol}</span>
-            {report && (
-              <RecommendationBadge
-                recommendation={report.recommendation}
-                confidence={report.confidence}
-              />
-            )}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Research report details for {symbol}
-          </DialogDescription>
-        </DialogHeader>
-
-        {loading ? (
-          <div className="py-8 text-center text-muted-foreground">
-            Loading report...
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {report ? (
-              <>
-                {/* Summary */}
-                <div>
-                  <h3 className="text-sm font-semibold mb-1">Summary</h3>
-                  <p className="text-sm text-muted-foreground">{report.summary}</p>
-                </div>
-
-                {/* Full Report */}
-                <div>
-                  <h3 className="text-sm font-semibold mb-1">Full Report</h3>
-                  <div className="text-sm whitespace-pre-wrap bg-muted/50 rounded-md p-3 max-h-64 overflow-y-auto">
-                    {report.fullReport}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="py-4 text-center text-muted-foreground">
-                No report available for {symbol}. Click "Generate" to create one.
-              </div>
-            )}
-
-            {/* Signal Breakdown */}
-            {(analyses.length > 0 || skipped.length > 0) && (
-              <div>
-                <h3 className="text-sm font-semibold mb-1">Signal Breakdown</h3>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Signal</TableHead>
-                      <TableHead>Confidence</TableHead>
-                      <TableHead>Summary</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {analyses.map((a) => (
-                      <TableRow key={a.id}>
-                        <TableCell className="font-medium capitalize">
-                          {a.source.replace(/_/g, " ")}
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={`capitalize font-medium ${signalColors[a.signal] || ""}`}
-                          >
-                            {a.signal}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {Math.round(a.confidence * 100)}%
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm max-w-48 truncate">
-                          {a.summary}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {skipped.map((s) => (
-                      <TableRow key={`skipped-${s.source}`} className="opacity-50">
-                        <TableCell className="font-medium capitalize">
-                          {s.source.replace(/_/g, " ")}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-muted-foreground text-xs">skipped</span>
-                        </TableCell>
-                        <TableCell>--</TableCell>
-                        <TableCell className="text-muted-foreground text-sm max-w-48 truncate">
-                          {s.skipReason}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-
-            {report && (
-              <p className="text-xs text-muted-foreground">
-                Generated {timeAgo(report.createdAt)}
-              </p>
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // --- Main Page ---
 
 export function ResearchPage() {
+  const navigate = useNavigate();
   const [tickers, setTickers] = useState<ResearchTicker[]>([]);
   const [reports, setReports] = useState<Record<string, ResearchReport>>({});
   const [macro, setMacro] = useState<MacroAnalysis | null>(null);
@@ -280,13 +126,6 @@ export function ResearchPage() {
 
   // Generate state
   const [generatingSymbol, setGeneratingSymbol] = useState<string | null>(null);
-
-  // Detail dialog state
-  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
-  const [detailReport, setDetailReport] = useState<ResearchReport | null>(null);
-  const [detailAnalyses, setDetailAnalyses] = useState<AnalysisResult[]>([]);
-  const [detailSkipped, setDetailSkipped] = useState<CollectionStatus[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -398,40 +237,6 @@ export function ResearchPage() {
     } finally {
       setGeneratingSymbol(null);
     }
-  }
-
-  async function handleViewDetail(symbol: string) {
-    setDetailSymbol(symbol);
-    setDetailLoading(true);
-    setDetailReport(null);
-    setDetailAnalyses([]);
-    setDetailSkipped([]);
-
-    try {
-      const [reportResult, analysisResult] = await Promise.allSettled([
-        researchApi.getReport(symbol),
-        researchApi.getAnalysis(symbol),
-      ]);
-
-      if (reportResult.status === "fulfilled") {
-        setDetailReport(reportResult.value);
-      }
-      if (analysisResult.status === "fulfilled") {
-        setDetailAnalyses(analysisResult.value.analyses);
-        setDetailSkipped(analysisResult.value.collectionStatuses ?? []);
-      }
-    } catch {
-      // Errors are handled by showing empty state in dialog
-    } finally {
-      setDetailLoading(false);
-    }
-  }
-
-  function closeDetail() {
-    setDetailSymbol(null);
-    setDetailReport(null);
-    setDetailAnalyses([]);
-    setDetailSkipped([]);
   }
 
   if (loading) return <PageLoadingSkeleton />;
@@ -557,7 +362,7 @@ export function ResearchPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleViewDetail(ticker.symbol)}
+                            onClick={() => navigate(`/research/${ticker.symbol}`)}
                             disabled={!report && !ticker.lastAnalyzed}
                             title="View report"
                           >
@@ -589,16 +394,6 @@ export function ResearchPage() {
         </CardContent>
       </Card>
 
-      {/* Report Detail Dialog */}
-      <ReportDetailDialog
-        open={detailSymbol !== null}
-        onClose={closeDetail}
-        symbol={detailSymbol || ""}
-        report={detailReport}
-        analyses={detailAnalyses}
-        skipped={detailSkipped}
-        loading={detailLoading}
-      />
     </div>
   );
 }

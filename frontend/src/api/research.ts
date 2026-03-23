@@ -10,6 +10,7 @@ import type {
   AnalysisSummaryResponse,
   ReportHistoryResponse,
   TickerListResponse,
+  CollectionDataResponse,
 } from "@assup/shared";
 
 export const researchApi = {
@@ -49,6 +50,10 @@ export const researchApi = {
         method: "POST",
       }
     ),
+
+  // Collection data (OHLCV, raw source data)
+  getCollectionData: (symbol: string) =>
+    request<CollectionDataResponse>(`/api/research/${symbol}/data`),
 
   // Jobs
   getJob: (jobId: string) =>
