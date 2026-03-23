@@ -174,8 +174,10 @@ async function synthesizeWithClaude(
     child.on("error", (e) => reject(new Error(`Claude CLI failed to start: ${e.message}`)));
 
     child.on("close", (code, signal) => {
-      if (signal) {
+      if (signal === "SIGTERM") {
         reject(new Error("Claude CLI timed out after 5 minutes"));
+      } else if (signal) {
+        reject(new Error(`Claude CLI killed with signal ${signal}`));
       } else if (code !== 0) {
         reject(new Error(`Claude CLI failed: ${err || `exit code ${code}`}`));
       } else {

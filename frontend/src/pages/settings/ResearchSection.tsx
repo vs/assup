@@ -52,6 +52,7 @@ export function ResearchSection() {
   }, [loadData]);
 
   const handleModeChange = async (useCli: boolean) => {
+    const prev = settings;
     const newSettings: ResearchSettings = {
       ...settings,
       synthesizerMode: useCli ? "claude-cli" : "api",
@@ -60,6 +61,7 @@ export function ResearchSection() {
     try {
       await settingsApi.set("research", newSettings);
     } catch (err) {
+      setSettings(prev);
       setError(err instanceof Error ? err.message : "Failed to save");
     }
   };
