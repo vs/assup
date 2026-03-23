@@ -48,6 +48,9 @@ COPY --from=builder /app/research/prisma.config.ts ./research/prisma.config.ts
 RUN npm ci --omit=dev --ignore-scripts --workspace=@assup/shared --workspace=assup-research && \
     cd research && DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
+# Install Claude Code CLI globally for synthesis
+RUN npm install -g @anthropic-ai/claude-code
+
 # Copy built artifacts
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/research/dist ./research/dist

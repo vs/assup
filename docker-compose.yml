@@ -47,6 +47,8 @@ services:
     container_name: assup-research
     ports:
       - "3002:3002"
+    volumes:
+      - ${CLAUDE_CONFIG_DIR:-~/.claude}:/root/.claude:ro
     environment:
       - PORT=3002
       - DATABASE_URL=postgresql://research:${RESEARCH_DB_PASSWORD:-research_dev}@research-db:5432/research
@@ -54,6 +56,7 @@ services:
       - SEEKING_ALPHA_API_KEY=${SEEKING_ALPHA_API_KEY}
       - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY}
       - MARKET_DATA_PROVIDER=${MARKET_DATA_PROVIDER:-polygon}
+      - SYNTHESIZER_MODE=${SYNTHESIZER_MODE:-claude-cli}
     depends_on:
       research-db:
         condition: service_healthy
