@@ -9,6 +9,7 @@ import { ProfitPage } from "@/pages/ProfitPage";
 import { WheelPage } from "@/pages/WheelPage";
 import { TaxesPage } from "@/pages/TaxesPage";
 import { ResearchPage } from "@/pages/ResearchPage";
+import { ResearchReportPage } from "@/pages/ResearchReportPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { ImportsSection } from "@/pages/settings/ImportsSection";
 import { AssetClassesSection } from "@/pages/settings/AssetClassesSection";
@@ -28,6 +29,7 @@ function App() {
             <Route path="/wheel" element={<WheelPage />} />
             <Route path="/taxes" element={<TaxesPage />} />
             <Route path="/research" element={<ResearchPage />} />
+            <Route path="/research/:symbol" element={<ResearchReportPage />} />
             <Route path="/settings" element={<SettingsPage />}>
               <Route index element={<Navigate to="/settings/imports" replace />} />
               <Route path="imports" element={<ImportsSection />} />
