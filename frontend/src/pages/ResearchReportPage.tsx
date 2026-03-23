@@ -13,23 +13,12 @@ import type {
 import { RecommendationBadge, PageLoadingSkeleton } from "@/components/common";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft } from "lucide-react";
 import { PriceVolumeChart } from "@/components/research/PriceVolumeChart";
 import { RsiChart } from "@/components/research/RsiChart";
 import { SourceCard, SkippedSourceCard } from "@/components/research/SourceCard";
 
-// --- Helpers ---
-
-function timeAgo(dateStr: string): string {
-  const hours = Math.round(
-    (Date.now() - new Date(dateStr).getTime()) / 3600000,
-  );
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
+import { timeAgo } from "@/utils/format";
 
 function extractOhlcv(
   collections: CollectionDataEntry[],

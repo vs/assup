@@ -25,18 +25,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ListRestart, Eye, Zap, AlertTriangle } from "lucide-react";
+import { timeAgo } from "@/utils/format";
 
 // --- Helpers ---
-
-function timeAgo(dateStr: string): string {
-  const hours = Math.round(
-    (Date.now() - new Date(dateStr).getTime()) / 3600000
-  );
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
