@@ -48,7 +48,7 @@ services:
     ports:
       - "3002:3002"
     volumes:
-      - ${CLAUDE_CONFIG_DIR:-~/.claude}:/root/.claude:ro
+      - ${CLAUDE_CONFIG_DIR:-~/.claude}:/home/assup/.claude:ro
     environment:
       - PORT=3002
       - DATABASE_URL=postgresql://research:${RESEARCH_DB_PASSWORD:-research_dev}@research-db:5432/research
