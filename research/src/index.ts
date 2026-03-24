@@ -10,6 +10,7 @@ import jobsRouter from "./routes/jobs.js";
 import macroRouter from "./routes/macro.js";
 import screenerRouter from "./routes/screener.js";
 import claudeStatusRouter from "./routes/claude-status.js";
+import authRouter from "./routes/auth.js";
 import dataRouter from "./routes/data.js";
 import { initCollectors } from "./collectors/index.js";
 import { initAnalyzers } from "./analyzers/index.js";
@@ -66,6 +67,7 @@ app.use("/api/jobs", jobsRouter);
 app.use("/api/macro", macroRouter);
 app.use("/api/screener", screenerRouter);
 app.use("/api/claude-status", claudeStatusRouter);
+app.use("/api/auth", authRouter);
 app.use("/api/data", dataRouter);
 
 // Error handler (must be last)

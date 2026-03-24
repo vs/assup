@@ -97,6 +97,42 @@ router.get(
   })
 );
 
+/**
+ * GET /api/research/auth/status
+ * Get OAuth token auth status
+ */
+router.get(
+  "/auth/status",
+  asyncHandler(async (_req, res) => {
+    const result = await researchService.getAuthStatus();
+    res.json(result);
+  })
+);
+
+/**
+ * PUT /api/research/auth/token
+ * Validate and store OAuth token
+ */
+router.put(
+  "/auth/token",
+  asyncHandler(async (req, res) => {
+    const result = await researchService.setAuthToken(req.body.token);
+    res.json(result);
+  })
+);
+
+/**
+ * DELETE /api/research/auth/token
+ * Remove stored OAuth token
+ */
+router.delete(
+  "/auth/token",
+  asyncHandler(async (_req, res) => {
+    const result = await researchService.deleteAuthToken();
+    res.json(result);
+  })
+);
+
 // ── Dynamic :symbol routes ──────────────────────────────────────────
 
 /**

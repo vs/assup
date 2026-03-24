@@ -61,7 +61,25 @@ export const researchApi = {
 
   // Status
   getClaudeStatus: () =>
-    request<{ available: boolean; mode: string; error?: string }>(
+    request<{ available: boolean; mode: string; error?: string; keyConfigured?: boolean; keySource?: string }>(
       "/api/research/claude-status"
+    ),
+
+  // Auth
+  getAuthStatus: () =>
+    request<{ configured: boolean; source: string; maskedToken?: string }>(
+      "/api/research/auth/status"
+    ),
+
+  setAuthToken: (token: string) =>
+    request<{ configured: boolean; source: string; maskedToken?: string }>(
+      "/api/research/auth/token",
+      { method: "PUT", body: JSON.stringify({ token }) }
+    ),
+
+  deleteAuthToken: () =>
+    request<{ configured: boolean; source: string }>(
+      "/api/research/auth/token",
+      { method: "DELETE" }
     ),
 };

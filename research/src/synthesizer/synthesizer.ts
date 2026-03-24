@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
+import { getOAuthToken } from "../services/auth.service.js";
 
 interface SynthesizerInput {
   symbol: string;
@@ -199,6 +200,14 @@ async function synthesizeWithClaude(
   // Build env without CLAUDECODE to avoid nested-session detection
   const env = { ...process.env };
   delete env.CLAUDECODE;
+
+  // Inject stored OAuth token; remove API key when OAuth is present
+  // (API key takes precedence in Claude CLI and would bill per-call)
+  const oauthToken = await getOAuthToken();
+  if (oauthToken) {
+    env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+    delete env.ANTHROPIC_API_KEY;
+  }
 
   const stdout = await new Promise<string>((resolve, reject) => {
     const child = spawn("claude", args, {

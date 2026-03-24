@@ -110,3 +110,12 @@ model MacroSnapshot {
 
   @@map("macro_snapshot")
 }
+
+model Setting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique @db.VarChar(50)
+  value     Json     @db.JsonB
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("setting")
+}

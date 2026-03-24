@@ -33,7 +33,16 @@ class ResearchService {
 
     if (!response.ok) {
       const body = await response.text().catch(() => "Unknown error");
-      throw new AppError(`Research service error: ${body}`, response.status);
+      let errorMessage: string;
+      try {
+        const parsed = JSON.parse(body);
+        errorMessage = parsed.detail
+          ? `${parsed.error}: ${parsed.detail}`
+          : (parsed.error || body);
+      } catch {
+        errorMessage = body;
+      }
+      throw new AppError(errorMessage, response.status);
     }
 
     if (response.status === 204) return undefined as T;
@@ -110,6 +119,24 @@ class ResearchService {
   // Claude status
   async getClaudeStatus(): Promise<{ available: boolean; mode: string; error?: string }> {
     return this.fetch<{ available: boolean; mode: string; error?: string }>("/api/claude-status");
+  }
+
+  // Auth
+  async getAuthStatus(): Promise<{ configured: boolean; source: string; maskedToken?: string }> {
+    return this.fetch<{ configured: boolean; source: string; maskedToken?: string }>("/api/auth/status");
+  }
+
+  async setAuthToken(token: string): Promise<{ configured: boolean; source: string; maskedToken?: string }> {
+    return this.fetch<{ configured: boolean; source: string; maskedToken?: string }>("/api/auth/token", {
+      method: "PUT",
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async deleteAuthToken(): Promise<{ configured: boolean; source: string }> {
+    return this.fetch<{ configured: boolean; source: string }>("/api/auth/token", {
+      method: "DELETE",
+    });
   }
 }
 
