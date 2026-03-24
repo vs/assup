@@ -51,8 +51,13 @@ RUN npm ci --omit=dev --ignore-scripts --workspace=@assup/shared --workspace=ass
 # Install Claude Code CLI globally for synthesis
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create non-root user (claude-code refuses --dangerously-skip-permissions as root)
-RUN addgroup -S assup && adduser -S assup -G assup
+# Create non-root user with home dir (claude-code refuses --dangerously-skip-permissions as root)
+RUN addgroup -S assup && adduser -S assup -G assup -h /home/assup -s /bin/sh
+
+# Create minimal Claude config so CLI doesn't crash on startup
+RUN mkdir -p /home/assup/.claude && \
+    echo '{"hasCompletedOnboarding":true}' > /home/assup/.claude.json && \
+    chown -R assup:assup /home/assup/.claude /home/assup/.claude.json
 
 # Copy built artifacts
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
@@ -64,5 +69,6 @@ RUN chown -R assup:assup /app
 EXPOSE 3002
 
 USER assup
+ENV HOME=/home/assup
 WORKDIR /app/research
 CMD ["npm", "start"]
