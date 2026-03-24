@@ -155,7 +155,7 @@ function AnalystConsensusRenderer({ data }: { data: Record<string, unknown> }) {
               <span className="font-medium">{String(r.firm ?? r.analyst ?? "--")}</span>
               <span>{String(r.rating ?? r.action ?? "--")}</span>
               {r.targetPrice != null && <span className="ml-auto">${fmt(r.targetPrice as number)}</span>}
-              {r.date && <span>{String(r.date)}</span>}
+              {r.date != null && <span>{String(r.date)}</span>}
             </div>
           ))}
         </div>
