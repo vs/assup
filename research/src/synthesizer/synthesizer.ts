@@ -81,14 +81,47 @@ function buildUserPrompt(input: SynthesizerInput): string {
   return prompt;
 }
 
+function extractJson(text: string): string {
+  // Strip markdown fences
+  const fenceStripped = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+
+  // Try the stripped text directly first
+  try {
+    JSON.parse(fenceStripped);
+    return fenceStripped;
+  } catch {
+    // Fall through to extraction
+  }
+
+  // Extract the first top-level JSON object from within surrounding text
+  const start = text.indexOf("{");
+  if (start === -1) throw new Error("No JSON object found in output");
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  throw new Error("No complete JSON object found in output");
+}
+
 function parseAndValidate(text: string): SynthesizerOutput {
   let parsed: SynthesizerOutput;
   try {
-    const cleaned = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-    parsed = JSON.parse(cleaned) as SynthesizerOutput;
-  } catch {
+    parsed = JSON.parse(extractJson(text)) as SynthesizerOutput;
+  } catch (e) {
     throw new Error(
-      `Failed to parse synthesizer JSON output. Raw text (first 500 chars): ${text.slice(0, 500)}`
+      `Failed to parse synthesizer JSON output: ${(e as Error).message}. Raw text (first 500 chars): ${text.slice(0, 500)}`
     );
   }
 
@@ -120,6 +153,9 @@ async function synthesizeWithSDK(
   model: "claude-sonnet-4-6" | "claude-opus-4-6" = "claude-sonnet-4-6"
 ): Promise<SynthesizerOutput> {
   const anthropic = getClient();
+  const sources = input.analyses.map((a) => a.source).join(", ");
+  console.log(`[Synthesizer] SDK call for ${input.symbol} (model=${model}, sources=${sources})`);
+  const start = Date.now();
 
   const message = await anthropic.messages.create({
     model,
@@ -136,6 +172,9 @@ async function synthesizeWithSDK(
   const text =
     message.content[0].type === "text" ? message.content[0].text : "";
 
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  console.log(`[Synthesizer] SDK response for ${input.symbol} in ${elapsed}s (${text.length} chars, usage: ${message.usage.input_tokens}in/${message.usage.output_tokens}out)`);
+
   return parseAndValidate(text);
 }
 
@@ -144,6 +183,9 @@ async function synthesizeWithClaude(
   model: string
 ): Promise<SynthesizerOutput> {
   const prompt = buildUserPrompt(input);
+  const sources = input.analyses.map((a) => a.source).join(", ");
+  console.log(`[Synthesizer] CLI call for ${input.symbol} (model=${model}, sources=${sources}, prompt=${prompt.length} chars)`);
+  const start = Date.now();
 
   const args = [
     "--print",
@@ -174,13 +216,22 @@ async function synthesizeWithClaude(
     child.on("error", (e) => reject(new Error(`Claude CLI failed to start: ${e.message}`)));
 
     child.on("close", (code, signal) => {
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      if (err) {
+        console.warn(`[Synthesizer] CLI stderr for ${input.symbol}: ${err.slice(0, 500)}`);
+      }
       if (signal === "SIGTERM") {
         reject(new Error("Claude CLI timed out after 5 minutes"));
       } else if (signal) {
         reject(new Error(`Claude CLI killed with signal ${signal}`));
       } else if (code !== 0) {
-        reject(new Error(`Claude CLI failed: ${err || `exit code ${code}`}`));
+        console.error(`[Synthesizer] CLI failed for ${input.symbol} in ${elapsed}s (exit ${code})`);
+        reject(new Error(`Claude CLI failed (exit ${code}): ${err || "(no stderr)"}`));
+      } else if (!out.trim()) {
+        console.error(`[Synthesizer] CLI returned empty stdout for ${input.symbol} in ${elapsed}s`);
+        reject(new Error(`Claude CLI returned empty output. stderr: ${err || "(none)"}`));
       } else {
+        console.log(`[Synthesizer] CLI response for ${input.symbol} in ${elapsed}s (${out.length} chars)`);
         resolve(out);
       }
     });

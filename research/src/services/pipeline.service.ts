@@ -19,9 +19,11 @@ class PipelineService {
 
     const job = await jobService.create("generate_report", symbol);
 
+    console.log(`[Pipeline] Starting report generation for ${symbol} (job=${job.id}, mode=${options.mode ?? "default"}, model=${options.model ?? "default"}, force=${!!options.force})`);
+
     // Run pipeline in background (don't await)
     this.runPipeline(job.id, ticker.id, symbol, options).catch((err) => {
-      console.error(`Pipeline failed for ${symbol}:`, err);
+      console.error(`[Pipeline] Failed for ${symbol}:`, err);
     });
 
     return job.id;
@@ -33,24 +35,29 @@ class PipelineService {
     symbol: string,
     options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6"; mode?: SynthesizerMode }
   ): Promise<void> {
+    const pipelineStart = Date.now();
     try {
       await jobService.start(jobId);
 
       // Step 1: Collect and analyze
       await jobService.updateProgress(jobId, "Collecting data from all sources...");
+      console.log(`[Pipeline] ${symbol}: collecting data from all sources...`);
+      const collectStart = Date.now();
       const analysisIds = await collectionService.collectAndAnalyzeAll(
         tickerId,
         symbol,
         { force: options.force }
       );
+      console.log(`[Pipeline] ${symbol}: collection complete in ${((Date.now() - collectStart) / 1000).toFixed(1)}s — ${analysisIds.length} analyses produced`);
 
       // Step 1.5: Ensure fresh macro context
       await jobService.updateProgress(jobId, "Updating macro context...");
       await macroService.collectAndAnalyze().catch((err) => {
-        console.warn(`Macro collection failed (non-fatal): ${(err as Error).message}`);
+        console.warn(`[Pipeline] ${symbol}: macro collection failed (non-fatal): ${(err as Error).message}`);
       });
 
       if (analysisIds.length === 0) {
+        console.error(`[Pipeline] ${symbol}: no analysis results — aborting synthesis`);
         await jobService.fail(jobId, "No analysis results produced — all collectors may have failed");
         return;
       }
@@ -60,11 +67,15 @@ class PipelineService {
       const analyses = await prisma.analysis.findMany({
         where: { id: { in: analysisIds } },
       });
+      console.log(`[Pipeline] ${symbol}: synthesizing from ${analyses.length} analyses (sources: ${analyses.map((a) => a.source).join(", ")})`);
 
       // Step 3: Fetch latest macro context (if available)
       const macroSnapshot = await prisma.macroSnapshot.findFirst({
         orderBy: { analyzedAt: "desc" },
       });
+      if (macroSnapshot) {
+        console.log(`[Pipeline] ${symbol}: including macro context (regime=${macroSnapshot.regime})`);
+      }
 
       // Step 4: Synthesize
       const synthInput = {
@@ -103,16 +114,21 @@ class PipelineService {
         },
       });
 
+      const totalElapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
+      console.log(`[Pipeline] ${symbol}: complete in ${totalElapsed}s — ${result.recommendation} (confidence=${result.confidence}, reportId=${report.id})`);
+
       await jobService.complete(jobId, {
         reportId: report.id,
         recommendation: result.recommendation,
         confidence: result.confidence,
       });
     } catch (err) {
+      const totalElapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
+      console.error(`[Pipeline] ${symbol}: failed after ${totalElapsed}s:`, (err as Error).message);
       try {
         await jobService.fail(jobId, (err as Error).message);
       } catch (failErr) {
-        console.error(`Failed to record job failure for ${jobId}:`, failErr);
+        console.error(`[Pipeline] Failed to record job failure for ${jobId}:`, failErr);
       }
     }
   }
