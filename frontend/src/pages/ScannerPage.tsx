@@ -320,14 +320,10 @@ export function ScannerPage() {
               <ToggleGroupItem value="CALL" className="px-4">
                 CALLs
               </ToggleGroupItem>
-              <ToggleGroupItem value="BOTH" className="px-4">
-                Both
-              </ToggleGroupItem>
             </ToggleGroup>
             <p className="text-xs text-muted-foreground">
               {criteria.optionTypes === "PUT" && "Cash-secured puts for buying opportunities"}
               {criteria.optionTypes === "CALL" && "Covered calls for income on existing positions"}
-              {criteria.optionTypes === "BOTH" && "Scan for both put and call opportunities"}
             </p>
           </div>
 
@@ -406,7 +402,7 @@ export function ScannerPage() {
           {/* Strike Range Controls - conditional based on option type */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* PUT Strike Range */}
-            {(criteria.optionTypes === "PUT" || criteria.optionTypes === "BOTH") && (
+            {criteria.optionTypes === "PUT" && (
               <>
                 <div className="space-y-2">
                   <Label>PUT Min Strike %</Label>
@@ -433,7 +429,7 @@ export function ScannerPage() {
               </>
             )}
             {/* CALL Strike Range */}
-            {(criteria.optionTypes === "CALL" || criteria.optionTypes === "BOTH") && (
+            {criteria.optionTypes === "CALL" && (
               <>
                 <div className="space-y-2">
                   <Label>CALL Min Strike %</Label>

@@ -276,7 +276,7 @@ async function scanOptionsForSymbols(
   symbols: string[],
   symbolAssignments: Array<{ symbol: string; assetClass: { name: string; color: string } }>,
   criteria: {
-    optionTypes?: "PUT" | "CALL" | "BOTH";
+    optionTypes?: "PUT" | "CALL";
     minDaysToExpiry: number;
     maxDaysToExpiry: number;
     minDelta: number;
@@ -413,8 +413,8 @@ async function scanOptionsForSymbols(
 
       // Determine which option types to scan
       const optionTypes = criteria.optionTypes || "PUT";
-      const scanPuts = optionTypes === "PUT" || optionTypes === "BOTH";
-      const scanCalls = optionTypes === "CALL" || optionTypes === "BOTH";
+      const scanPuts = optionTypes === "PUT";
+      const scanCalls = optionTypes === "CALL";
 
       // Calculate separate strike ranges for PUTs and CALLs
       const putMinStrike = referencePrice * (criteria.putMinStrikePercent / 100);

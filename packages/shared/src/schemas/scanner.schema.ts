@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-export const optionTypeFilterSchema = z.enum(["PUT", "CALL", "BOTH"]);
+export const optionTypeFilterSchema = z.enum(["PUT", "CALL"]);
 
 export const scannerCriteriaSchema = z.object({
   optionTypes: optionTypeFilterSchema.default("PUT"),

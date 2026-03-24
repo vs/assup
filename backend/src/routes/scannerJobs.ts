@@ -276,8 +276,8 @@ async function executeJobScan(
         const referencePrice = underlyingPrice ?? uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
 
         const optionTypes = criteria.optionTypes || "PUT";
-        const scanPuts = optionTypes === "PUT" || optionTypes === "BOTH";
-        const scanCalls = optionTypes === "CALL" || optionTypes === "BOTH";
+        const scanPuts = optionTypes === "PUT";
+        const scanCalls = optionTypes === "CALL";
 
         const putMinStrike = referencePrice * (criteria.putMinStrikePercent / 100);
         const putMaxStrike = referencePrice * (criteria.putMaxStrikePercent / 100);

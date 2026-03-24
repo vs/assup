@@ -2,7 +2,7 @@
  * Scanner types for options opportunity discovery
  */
 
-export type OptionTypeFilter = "PUT" | "CALL" | "BOTH";
+export type OptionTypeFilter = "PUT" | "CALL";
 
 export interface ScannerCriteria {
   optionTypes: OptionTypeFilter;
