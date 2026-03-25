@@ -142,4 +142,92 @@ describe("saCommentsCollector", () => {
     expect(data.articles[0].comments).toEqual([]);
     expect(data.totalComments).toBe(0);
   });
+
+  it("caps articles to 3 even when API returns more", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+
+      if (urlStr.includes("/v1/symbols/analysis")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              data: [
+                { id: "1", attributes: { title: "Art 1", publishOn: "2026-03-01T10:00:00Z" } },
+                { id: "2", attributes: { title: "Art 2", publishOn: "2026-03-01T11:00:00Z" } },
+                { id: "3", attributes: { title: "Art 3", publishOn: "2026-03-01T12:00:00Z" } },
+                { id: "4", attributes: { title: "Art 4", publishOn: "2026-03-01T13:00:00Z" } },
+                { id: "5", attributes: { title: "Art 5", publishOn: "2026-03-01T14:00:00Z" } },
+              ],
+            }),
+        } as Response);
+      }
+
+      if (urlStr.includes("/v1/articles/comment-maps")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ data: [] }),
+        } as Response);
+      }
+
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+
+    const result = await saCommentsCollector.collect("AAPL");
+    const data = (result as CollectedData).data as any;
+    expect(data.articles).toHaveLength(3);
+    expect(data.articleCount).toBe(3);
+  });
+
+  it("caps comment IDs to 20 when comment-maps returns more", async () => {
+    const commentMapIds = Array.from({ length: 25 }, (_, i) => ({ id: `c${i + 1}` }));
+
+    vi.spyOn(globalThis, "fetch").mockImplementation((url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+
+      if (urlStr.includes("/v1/symbols/analysis")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              data: [
+                { id: "100", attributes: { title: "Article One", publishOn: "2026-03-01T10:00:00Z" } },
+              ],
+            }),
+        } as Response);
+      }
+
+      if (urlStr.includes("/v1/articles/comment-maps")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ data: commentMapIds }),
+        } as Response);
+      }
+
+      if (urlStr.includes("/v1/articles/comments")) {
+        // Verify only 20 comment IDs are passed in the URL
+        const parsedUrl = new URL(urlStr);
+        const ids = parsedUrl.searchParams.get("comment_ids")!.split(",");
+        expect(ids).toHaveLength(20);
+        expect(ids[0]).toBe("c1");
+        expect(ids[19]).toBe("c20");
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ data: [] }),
+        } as Response);
+      }
+
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+
+    const result = await saCommentsCollector.collect("AAPL");
+    const data = (result as CollectedData).data as any;
+    expect(data.articles).toHaveLength(1);
+  });
 });
