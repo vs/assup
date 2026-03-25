@@ -35,7 +35,7 @@ export const saCommentsCollector: Collector = {
       if (!res.ok) {
         console.warn(`[sa_comments] Articles fetch failed for ${symbol}: HTTP ${res.status}`);
       } else {
-        const json = await res.json();
+        const json = (await res.json()) as { data?: Array<{ id: string; attributes: { title: string; publishOn: string } }> };
         articlesRaw = (json.data ?? []).slice(0, MAX_ARTICLES);
       }
     } catch (err) {
@@ -86,8 +86,8 @@ async function fetchCommentIds(
       { headers },
     );
     if (!res.ok) return [];
-    const json = await res.json();
-    return (json.data ?? []).map((d: { id: string }) => d.id);
+    const json = (await res.json()) as { data?: Array<{ id: string }> };
+    return (json.data ?? []).map((d) => d.id);
   } catch (err) {
     console.warn(`[sa_comments] Failed to fetch comment IDs for article ${articleId}:`, (err as Error).message);
     return [];
@@ -105,9 +105,8 @@ async function fetchComments(
       { headers },
     );
     if (!res.ok) return [];
-    const json = await res.json();
-    return (json.data ?? []).map(
-      (d: { id: string; attributes: { content: string; created_at: string; likes_count: number } }) => ({
+    const json = (await res.json()) as { data?: Array<{ id: string; attributes: { content: string; created_at: string; likes_count: number } }> };
+    return (json.data ?? []).map((d) => ({
         id: d.id,
         content: d.attributes.content,
         createdAt: d.attributes.created_at,
