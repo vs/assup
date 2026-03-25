@@ -26,21 +26,42 @@ import {
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Search, Save, X, Check, ChevronsUpDown, Trash2, Settings2 } from "lucide-react";
+import { Search, Save, X, Check, ChevronsUpDown } from "lucide-react";
 
-const DEFAULT_CRITERIA: ScannerCriteria = {
+const PUT_DEFAULTS: ScannerCriteria = {
   optionTypes: "PUT",
-  minDaysToExpiry: 14,
+  minDaysToExpiry: 3,
   maxDaysToExpiry: 45,
-  minDelta: 0.1,
-  maxDelta: 0.3,
-  minAnnualizedReturn: 6,
-  minPremiumPercent: 0.4,
-  putMinStrikePercent: 75,
+  minDelta: 0,
+  maxDelta: 0.35,
+  minAnnualizedReturn: 5,
+  minPremiumPercent: 0.2,
+  putMinStrikePercent: 70,
   putMaxStrikePercent: 100,
   callMinStrikePercent: 100,
   callMaxStrikePercent: 125,
 };
+
+const CALL_DEFAULTS: ScannerCriteria = {
+  optionTypes: "CALL",
+  minDaysToExpiry: 3,
+  maxDaysToExpiry: 45,
+  minDelta: 0,
+  maxDelta: 0.35,
+  minAnnualizedReturn: 5,
+  minPremiumPercent: 0.2,
+  putMinStrikePercent: 100,
+  putMaxStrikePercent: 70,
+  callMinStrikePercent: 100,
+  callMaxStrikePercent: 130,
+};
+
+const STRATEGY_DEFAULTS: Record<OptionTypeFilter, ScannerCriteria> = {
+  PUT: PUT_DEFAULTS,
+  CALL: CALL_DEFAULTS,
+};
+
+const DEFAULT_CRITERIA = PUT_DEFAULTS;
 
 /**
  * Normalize preset criteria to handle legacy field names and missing fields
@@ -84,7 +105,6 @@ export function ScannerPage() {
   const [error, setError] = useState<string | null>(null);
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [symbolComboboxOpen, setSymbolComboboxOpen] = useState(false);
-  const [presetsPopoverOpen, setPresetsPopoverOpen] = useState(false);
   const [sellDialogOpen, setSellDialogOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<ExtendedOptionOpportunity | null>(null);
 
@@ -251,49 +271,21 @@ export function ScannerPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Scanner Criteria</CardTitle>
           <div className="flex items-center gap-2">
-            {presets.length > 0 && (
-              <Popover open={presetsPopoverOpen} onOpenChange={setPresetsPopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline">
-                    <Settings2 className="h-4 w-4 mr-2" />
-                    Presets
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-2" align="end">
-                  <div className="space-y-1">
-                    {presets.map((p) => (
-                      <div
-                        key={p.id}
-                        className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted"
-                      >
-                        <button
-                          className="flex-1 text-left text-sm truncate hover:underline"
-                          onClick={() => {
-                            loadPreset(p.id);
-                            setPresetsPopoverOpen(false);
-                          }}
-                        >
-                          {p.name}
-                          {p.isDefault && (
-                            <Badge variant="secondary" className="ml-2 text-xs">
-                              Default
-                            </Badge>
-                          )}
-                        </button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => deletePreset(p.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
+            {presets.map((p) => (
+              <Button
+                key={p.id}
+                variant="outline"
+                size="sm"
+                onClick={() => loadPreset(p.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  deletePreset(p.id);
+                }}
+                title="Click to load, right-click to delete"
+              >
+                {p.name}
+              </Button>
+            ))}
             <Button variant="outline" onClick={savePreset}>
               <Save className="h-4 w-4 mr-2" />
               Save Preset
@@ -309,7 +301,12 @@ export function ScannerPage() {
               value={criteria.optionTypes}
               onValueChange={(value: string) => {
                 if (value) {
-                  setCriteria({ ...criteria, optionTypes: value as OptionTypeFilter });
+                  const optionType = value as OptionTypeFilter;
+                  setCriteria((prev) => ({
+                    ...STRATEGY_DEFAULTS[optionType],
+                    specificSymbol: prev.specificSymbol,
+                    targetAssetClasses: prev.targetAssetClasses,
+                  }));
                 }
               }}
               className="justify-start"
