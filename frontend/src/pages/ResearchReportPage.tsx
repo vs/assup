@@ -17,6 +17,7 @@ import { ArrowLeft } from "lucide-react";
 import { PriceVolumeChart } from "@/components/research/PriceVolumeChart";
 import { RsiChart } from "@/components/research/RsiChart";
 import { SourceCard, SkippedSourceCard } from "@/components/research/SourceCard";
+import { ReportHighlights } from "@/components/research/ReportHighlights";
 
 import { timeAgo } from "@/utils/format";
 
@@ -181,6 +182,11 @@ export function ResearchReportPage() {
             <p className="text-sm text-muted-foreground">{report.summary}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Highlights */}
+      {report && analyses.length > 0 && (
+        <ReportHighlights report={report} analyses={analyses} />
       )}
 
       {/* Full Report (markdown) */}
