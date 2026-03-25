@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/api";
 import type {
   WheelListResponse,
   WheelTickerSummary,
   WheelSuggestion,
   WheelMatchedTrade,
+  SparklinePoint,
 } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,9 @@ import {
   ErrorAlert,
   PageLoadingSkeleton,
 } from "@/components/common";
+import { Sparkline } from "@/components/Sparkline";
+import { ChartModal } from "@/components/ChartModal";
+import { useSparklines } from "@/hooks";
 import { useNavigate } from "react-router-dom";
 import { Plus, Trash2, ChevronDown, ChevronUp, Search } from "lucide-react";
 import {
@@ -68,6 +72,13 @@ export function WheelPage() {
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newSymbol, setNewSymbol] = useState("");
+  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+
+  const sparklineSymbols = useMemo(
+    () => data?.tickers.map((t) => t.symbol) ?? [],
+    [data?.tickers]
+  );
+  const { getSparklineState } = useSparklines(sparklineSymbols);
 
   const loadData = useCallback(async () => {
     try {
@@ -287,19 +298,26 @@ export function WheelPage() {
 
       {/* Ticker Cards */}
       <div className="space-y-4">
-        {data?.tickers.map((ticker) => (
-          <WheelTickerCard
-            key={ticker.symbol}
-            ticker={ticker}
-            isExpanded={expandedTicker === ticker.symbol}
-            onToggle={() =>
-              setExpandedTicker(
-                expandedTicker === ticker.symbol ? null : ticker.symbol
-              )
-            }
-            onRemove={() => handleRemoveTicker(ticker.symbol)}
-          />
-        ))}
+        {data?.tickers.map((ticker) => {
+          const sparkline = getSparklineState(ticker.symbol);
+          return (
+            <WheelTickerCard
+              key={ticker.symbol}
+              ticker={ticker}
+              isExpanded={expandedTicker === ticker.symbol}
+              onToggle={() =>
+                setExpandedTicker(
+                  expandedTicker === ticker.symbol ? null : ticker.symbol
+                )
+              }
+              onRemove={() => handleRemoveTicker(ticker.symbol)}
+              sparklineData={sparkline.data}
+              sparklineLoading={sparkline.loading}
+              sparklineError={sparkline.error}
+              onChartClick={() => setChartSymbol(ticker.symbol)}
+            />
+          );
+        })}
         {data?.tickers.length === 0 && (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
@@ -308,6 +326,12 @@ export function WheelPage() {
           </Card>
         )}
       </div>
+
+      <ChartModal
+        symbol={chartSymbol}
+        open={chartSymbol !== null}
+        onClose={() => setChartSymbol(null)}
+      />
     </div>
   );
 }
@@ -336,11 +360,19 @@ function WheelTickerCard({
   isExpanded,
   onToggle,
   onRemove,
+  sparklineData,
+  sparklineLoading,
+  sparklineError,
+  onChartClick,
 }: {
   ticker: WheelTickerSummary;
   isExpanded: boolean;
   onToggle: () => void;
   onRemove: () => void;
+  sparklineData: SparklinePoint[];
+  sparklineLoading: boolean;
+  sparklineError: boolean;
+  onChartClick: () => void;
 }) {
   const navigate = useNavigate();
 
@@ -375,6 +407,14 @@ function WheelTickerCard({
             <Badge className={phaseColors[ticker.currentPhase]}>
               {phaseLabels[ticker.currentPhase]}
             </Badge>
+          </div>
+          <div className="mx-4" onClick={(e) => e.stopPropagation()}>
+            <Sparkline
+              data={sparklineData}
+              loading={sparklineLoading}
+              error={sparklineError}
+              onChartClick={onChartClick}
+            />
           </div>
           <div className="flex items-center justify-end gap-8 flex-1">
             {ticker.currentPrice && (
