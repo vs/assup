@@ -134,13 +134,25 @@ export const saCommentsAnalyzer: Analyzer = {
       messages: [{ role: "user", content: userPrompt }],
     });
 
-    const text = message.content[0].type === "text" ? message.content[0].text : "";
+    const textBlock = message.content[0];
+    const text = textBlock?.type === "text" ? textBlock.text : "";
+    if (!text) {
+      throw new Error(`[SA Comments Analyzer] Empty response from Claude for ${symbol}`);
+    }
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     console.log(
       `[SA Comments Analyzer] Response for ${symbol} in ${elapsed}s (${text.length} chars, usage: ${message.usage.input_tokens}in/${message.usage.output_tokens}out)`
     );
 
-    const parsed = JSON.parse(extractJson(text)) as {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(extractJson(text));
+    } catch (e) {
+      throw new Error(
+        `[SA Comments Analyzer] Failed to parse Claude JSON for ${symbol}: ${(e as Error).message}. Raw text (first 500 chars): ${text.slice(0, 500)}`
+      );
+    }
+    parsed = parsed as {
       signal?: string;
       confidence?: number;
       summary?: string;

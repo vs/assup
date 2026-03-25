@@ -10,8 +10,6 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 
-// Reset the module-level singleton between tests
-// by resetting the module cache
 import { saCommentsAnalyzer } from "../../analyzers/sa-comments.analyzer.js";
 
 const MOCK_RESPONSE = {
@@ -121,5 +119,31 @@ describe("saCommentsAnalyzer", () => {
     expect(result.details.contrarianView).toBe(
       "Valuation stretched relative to near-term earnings"
     );
+  });
+
+  it("handles markdown-fenced JSON response from Claude", async () => {
+    const fenced = "```json\n" + JSON.stringify(MOCK_RESPONSE) + "\n```";
+    mockCreate.mockResolvedValue({
+      content: [{ type: "text", text: fenced }],
+      usage: { input_tokens: 100, output_tokens: 200 },
+    });
+
+    const result = await saCommentsAnalyzer.analyze({
+      articles: [
+        {
+          title: "AAPL Bull Case",
+          comments: [{ content: "Love this stock", likes: 4 }],
+        },
+      ],
+      totalComments: 1,
+      symbol: "AAPL",
+    });
+
+    expect(result.signal).toBe("bullish");
+    expect(result.confidence).toBe(0.7);
+    expect(result.summary).toBe(
+      "Community sentiment is positive with focus on AI growth catalysts."
+    );
+    expect(result.details.keyIdeas).toHaveLength(2);
   });
 });
