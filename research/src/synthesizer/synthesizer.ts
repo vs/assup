@@ -56,10 +56,19 @@ The fullReport should have these markdown sections:
 ## Recommendation
 ## Technical Picture
 ## Sentiment & Analyst View
+## Bull Case
+## Bear Case
 ## Options Landscape (if options data available)
 ## Catalysts & Risks
 ## Macro Context (if macro data available)
-## Conclusion`;
+## Conclusion
+
+For Bull Case and Bear Case sections:
+- Synthesize arguments from ALL available sources (analyst ratings, SA comments, technical signals, options flow, fundamentals)
+- Cite specific data points (e.g., "SA commenters highlight 37% CAGR EPS growth", "Revenue growth at 65.4%", "Wall Street consensus: Buy at 4.72")
+- Include both consensus and contrarian viewpoints from SA comments when available
+- Be specific about price targets, catalysts, and risks mentioned by analysts and commenters
+- Each case should have 3-5 bullet points with concrete supporting evidence`;
 
 function buildUserPrompt(input: SynthesizerInput): string {
   let prompt = `Analyze ${input.symbol} and provide a trading recommendation.\n\n`;
