@@ -15,7 +15,8 @@ import {
   ErrorAlert,
   PageLoadingSkeleton,
 } from "@/components/common";
-import { Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Trash2, ChevronDown, ChevronUp, Search } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -341,6 +342,8 @@ function WheelTickerCard({
   onToggle: () => void;
   onRemove: () => void;
 }) {
+  const navigate = useNavigate();
+
   const phaseLabels: Record<WheelTickerSummary["currentPhase"], string> = {
     csp_open: "CSP Open",
     holding_shares: "Holding Shares",
@@ -410,6 +413,18 @@ function WheelTickerCard({
             </div>
           </div>
           <div className="flex items-center gap-2 ml-6">
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Scan options"
+              onClick={(e) => {
+                e.stopPropagation();
+                const optionType = ticker.currentPhase === "holding_shares" || ticker.currentPhase === "cc_open" ? "CALL" : "PUT";
+                navigate(`/scanner?symbol=${ticker.symbol}&optionType=${optionType}`);
+              }}
+            >
+              <Search className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"

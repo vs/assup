@@ -88,16 +88,17 @@ function normalizePresetCriteria(criteria: ScannerCriteria): ScannerCriteria {
 export function ScannerPage() {
   const [searchParams] = useSearchParams();
   const [criteria, setCriteria] = useState<ScannerCriteria>(() => {
-    // Check URL for pre-selected symbol or asset class
+    const optionType = searchParams.get("optionType") as OptionTypeFilter | null;
+    const base = optionType && STRATEGY_DEFAULTS[optionType] ? STRATEGY_DEFAULTS[optionType] : DEFAULT_CRITERIA;
     const symbol = searchParams.get("symbol");
     if (symbol) {
-      return { ...DEFAULT_CRITERIA, specificSymbol: symbol.toUpperCase() };
+      return { ...base, specificSymbol: symbol.toUpperCase() };
     }
     const assetClassId = searchParams.get("assetClassId");
     if (assetClassId) {
-      return { ...DEFAULT_CRITERIA, targetAssetClasses: [assetClassId] };
+      return { ...base, targetAssetClasses: [assetClassId] };
     }
-    return DEFAULT_CRITERIA;
+    return base;
   });
   const [presets, setPresets] = useState<ScannerPreset[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
