@@ -10,6 +10,7 @@ const DAILY_SOURCES = [
   "options",
   "events",
   "seeking_alpha",
+  "sa_comments",
   "sec_filings",
   "analyst_consensus",
 ];
