@@ -51,7 +51,6 @@ services:
       - PORT=3002
       - DATABASE_URL=postgresql://research:${RESEARCH_DB_PASSWORD:-research_dev}@research-db:5432/research
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - SEEKING_ALPHA_API_KEY=${SEEKING_ALPHA_API_KEY}
       - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY}
       - MARKET_DATA_PROVIDER=${MARKET_DATA_PROVIDER:-polygon}
       - SYNTHESIZER_MODE=${SYNTHESIZER_MODE:-claude-cli}
