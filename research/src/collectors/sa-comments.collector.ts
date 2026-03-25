@@ -29,15 +29,17 @@ export const saCommentsCollector: Collector = {
     let articlesRaw: Array<{ id: string; attributes: { title: string; publishOn: string } }> = [];
     try {
       const res = await globalThis.fetch(
-        `${SA_BASE_URL}/symbols/analysis?ticker_slug=${symbol}`,
+        `${SA_BASE_URL}/symbols/analysis?ticker_slug=${encodeURIComponent(symbol)}`,
         { headers },
       );
-      if (res.ok) {
+      if (!res.ok) {
+        console.warn(`[sa_comments] Articles fetch failed for ${symbol}: HTTP ${res.status}`);
+      } else {
         const json = await res.json();
         articlesRaw = (json.data ?? []).slice(0, MAX_ARTICLES);
       }
-    } catch {
-      // Analysis endpoint failure → empty articles
+    } catch (err) {
+      console.warn(`[sa_comments] Failed to fetch articles for ${symbol}:`, (err as Error).message);
     }
 
     // Fetch comments for each article
@@ -80,13 +82,14 @@ async function fetchCommentIds(
 ): Promise<string[]> {
   try {
     const res = await globalThis.fetch(
-      `${SA_BASE_URL}/articles/comment-maps?article_id=${articleId}`,
+      `${SA_BASE_URL}/articles/comment-maps?article_id=${encodeURIComponent(articleId)}`,
       { headers },
     );
     if (!res.ok) return [];
     const json = await res.json();
     return (json.data ?? []).map((d: { id: string }) => d.id);
-  } catch {
+  } catch (err) {
+    console.warn(`[sa_comments] Failed to fetch comment IDs for article ${articleId}:`, (err as Error).message);
     return [];
   }
 }
@@ -98,7 +101,7 @@ async function fetchComments(
 ): Promise<Array<{ id: string; content: string; createdAt: string; likes: number }>> {
   try {
     const res = await globalThis.fetch(
-      `${SA_BASE_URL}/articles/comments?article_id=${articleId}&comment_ids=${commentIds.join(",")}`,
+      `${SA_BASE_URL}/articles/comments?article_id=${encodeURIComponent(articleId)}&comment_ids=${commentIds.map(encodeURIComponent).join(",")}`,
       { headers },
     );
     if (!res.ok) return [];
@@ -111,7 +114,8 @@ async function fetchComments(
         likes: d.attributes.likes_count,
       }),
     );
-  } catch {
+  } catch (err) {
+    console.warn(`[sa_comments] Failed to fetch comments for article ${articleId}:`, (err as Error).message);
     return [];
   }
 }

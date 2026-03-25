@@ -230,4 +230,24 @@ describe("saCommentsCollector", () => {
     const data = (result as CollectedData).data as any;
     expect(data.articles).toHaveLength(1);
   });
+
+  it("handles fetch throwing a network error (returns empty articles, no throw)", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network failure"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await saCommentsCollector.collect("AAPL");
+    expect(result).not.toHaveProperty("_tag");
+    expect(result.source).toBe("sa_comments");
+
+    const data = (result as CollectedData).data as any;
+    expect(data.symbol).toBe("AAPL");
+    expect(data.articles).toEqual([]);
+    expect(data.articleCount).toBe(0);
+    expect(data.totalComments).toBe(0);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[sa_comments] Failed to fetch articles for AAPL:",
+      "Network failure",
+    );
+  });
 });
