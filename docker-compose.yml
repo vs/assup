@@ -19,54 +19,6 @@ services:
     networks:
       - assup-default
 
-  research-db:
-    image: postgres:16-alpine
-    container_name: assup-research-db
-    environment:
-      POSTGRES_USER: research
-      POSTGRES_PASSWORD: ${RESEARCH_DB_PASSWORD:-research_dev}
-      POSTGRES_DB: research
-    ports:
-      - "5433:5432"
-    volumes:
-      - assup-research-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U research -d research"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - assup-default
-
-  research:
-    build:
-      context: .
-      dockerfile: research/Dockerfile
-    image: assup-research
-    container_name: assup-research
-    ports:
-      - "3002:3002"
-    environment:
-      - PORT=3002
-      - DATABASE_URL=postgresql://research:${RESEARCH_DB_PASSWORD:-research_dev}@research-db:5432/research
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY}
-      - MARKET_DATA_PROVIDER=${MARKET_DATA_PROVIDER:-polygon}
-      - SYNTHESIZER_MODE=${SYNTHESIZER_MODE:-claude-cli}
-      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
-    depends_on:
-      research-db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/api/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - assup-default
-
   backend:
     build:
       context: .
@@ -79,7 +31,12 @@ services:
       - IB_HOST=host.docker.internal
       - IB_PORT=7496
       - DATABASE_URL=postgresql://assup:${DB_PASSWORD:-assup_dev}@postgres:5432/assup
-      - RESEARCH_API_URL=http://research:3002
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY:-}
+      - MARKET_DATA_PROVIDER=${MARKET_DATA_PROVIDER:-polygon}
+      - SYNTHESIZER_MODE=${SYNTHESIZER_MODE:-api}
+      - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-false}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -116,4 +73,3 @@ networks:
 volumes:
   assup-postgres-data:
     external: true
-  assup-research-data:

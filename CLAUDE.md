@@ -19,11 +19,10 @@
 - **Real-time Updates:** Server-sent events (SSE) for live position and allocation updates.
 
 ## Architecture & Tech Stack
-- **Backend:** Node.js with TypeScript, Express
+- **Backend:** Node.js with TypeScript, Express. Includes integrated research pipeline with Polygon.io for market data and Anthropic Claude for report synthesis.
 - **Frontend:** Vite + React 19 (TypeScript), shadcn/ui, Tailwind CSS v4
 - **Database:** PostgreSQL 16 with Prisma ORM
 - **IBKR API:** `@stoqey/ib` library for TWS connectivity
-- **Research:** Separate Express microservice with own PostgreSQL database, Polygon.io for market data, Anthropic Claude for report synthesis, Vitest for unit tests
 - **Desktop:** Tauri (Rust) wrapping the frontend
 - **Containerization:** Docker & Docker Compose
 - **Monorepo:** npm workspaces with shared types in `packages/shared`
@@ -34,7 +33,7 @@
 │   ├── prisma/        # Database schema and migrations
 │   └── src/
 │       ├── routes/    # API endpoints (15 route files)
-│       ├── services/  # Business logic (IBKR, allocation, import, profit, tax, wheel, etc.)
+│       ├── services/  # Business logic (IBKR, allocation, import, profit, tax, wheel, research, etc.)
 │       └── middleware/
 ├── frontend/          # React SPA
 │   └── src/
@@ -42,15 +41,6 @@
 │       ├── components/
 │       ├── hooks/
 │       └── pages/
-├── research/          # Research microservice
-│   ├── prisma/        # Research database schema
-│   └── src/
-│       ├── routes/    # Research API endpoints
-│       ├── services/  # Collection, pipeline, scheduler, screener
-│       ├── collectors/ # Data collectors (technical, options, SEC, social, etc.)
-│       ├── analyzers/ # Signal analysis modules
-│       ├── providers/ # Market data providers (Polygon)
-│       └── synthesizer/ # AI report synthesis
 ├── desktop/           # Tauri desktop application
 │   └── src-tauri/     # Rust backend
 ├── packages/
@@ -73,7 +63,7 @@
 | `/api/exchange-rates` | CNB exchange rate management |
 | `/api/taxes` | Tax calculations, lot tracing, CSV export |
 | `/api/wheel` | Wheel strategy tracking |
-| `/api/research` | Research service proxy (reports, analysis, macro, tickers) |
+| `/api/research` | Research pipeline (reports, analysis, macro, tickers) |
 | `/api/historical-data` | Historical price data for charts |
 | `/api/settings` | User preferences |
 | `/api/updates/stream` | SSE endpoint for real-time updates |
@@ -92,11 +82,9 @@
 docker-compose up --build
 docker-compose exec backend npx prisma migrate deploy
 docker-compose exec backend npm run db:seed
-docker-compose exec research npx prisma migrate deploy
 ```
 - Frontend: http://localhost:8080
 - Backend: http://localhost:3000
-- Research: http://localhost:3002
 
 ### Development Mode
 
@@ -109,7 +97,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 **Start PostgreSQL:**
 ```bash
-docker-compose up -d postgres research-db
+docker-compose up -d postgres
 ```
 
 **Backend:**
@@ -119,7 +107,8 @@ npm install
 export DATABASE_URL="postgresql://assup:assup_dev@localhost:5432/assup"
 export IB_HOST=127.0.0.1
 export IB_PORT=7496
-export RESEARCH_API_URL=http://localhost:3002
+export ANTHROPIC_API_KEY=<your-key>
+export MARKET_DATA_API_KEY=<your-polygon-key>
 npm run db:migrate
 npm run db:seed
 npm run dev
@@ -129,17 +118,6 @@ npm run dev
 ```bash
 cd frontend
 npm install
-npm run dev
-```
-
-**Research service:**
-```bash
-cd research
-npm install
-export DATABASE_URL="postgresql://research:research_dev@localhost:5433/research"
-export ANTHROPIC_API_KEY=<your-key>
-export MARKET_DATA_API_KEY=<your-polygon-key>
-npm run db:migrate
 npm run dev
 ```
 
@@ -163,13 +141,12 @@ Key models in Prisma:
 - `WheelSuggestionDismissal` - Dismissed wheel strategy suggestions
 - `WheelSummaryCache` - Precomputed wheel strategy summaries
 
-### Research Database
-Separate PostgreSQL instance with its own Prisma schema:
-- `Ticker` - Symbols being tracked for research
+### Research Models (in main database)
+- `ResearchTicker` - Symbols being tracked for research
 - `DataCollection` - Raw collected market data per source
 - `Analysis` - Analysis results with signal, confidence, and details
 - `Report` - Synthesized research reports with recommendations
-- `Job` - Async job tracking for long-running operations
+- `ResearchJob` - Async job tracking for long-running research operations
 - `ScreenerConfig` - Stock screener configurations and schedules
 - `MacroSnapshot` - Macro regime analysis snapshots
 
