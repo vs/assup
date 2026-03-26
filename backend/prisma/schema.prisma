@@ -20,6 +20,7 @@ model AssetClass {
   // Relations
   allocationTargets   AllocationTarget[]
   securityAssignments SecurityAssignment[]
+  wheelScanConfigs    WheelScanConfig[]
 
   @@map("asset_classes")
 }
@@ -447,4 +448,67 @@ model MacroSnapshot {
   details    Json     @db.JsonB
 
   @@map("macro_snapshot")
+}
+
+// === Wheel Scanner Models ===
+
+// Wheel Scan Config - per-asset-class scan configuration
+model WheelScanConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  assetClassId   String   @map("asset_class_id") @db.Uuid
+  searchKeywords String[] @map("search_keywords")
+  seedTickers    String[] @map("seed_tickers")
+  minPrice       Float    @default(15) @map("min_price") @db.DoublePrecision
+  maxPrice       Float    @default(500) @map("max_price") @db.DoublePrecision
+  minMarketCap   Float    @default(2000000000) @map("min_market_cap") @db.DoublePrecision
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  assetClass AssetClass @relation(fields: [assetClassId], references: [id], onDelete: Cascade)
+
+  @@unique([assetClassId])
+  @@map("wheel_scan_configs")
+}
+
+// Wheel Scan - execution tracking
+model WheelScan {
+  id               String    @id @default(uuid()) @db.Uuid
+  status           String    @db.VarChar(20)
+  totalCandidates  Int       @default(0) @map("total_candidates")
+  scoredCandidates Int       @default(0) @map("scored_candidates")
+  reportsTriggered Int       @default(0) @map("reports_triggered")
+  startedAt        DateTime? @map("started_at") @db.Timestamptz
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz
+  errorMessage     String?   @map("error_message") @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  results WheelScanResult[]
+
+  @@index([status])
+  @@map("wheel_scans")
+}
+
+// Wheel Scan Result - individual scored candidates
+model WheelScanResult {
+  id              String   @id @default(uuid()) @db.Uuid
+  scanId          String   @map("scan_id") @db.Uuid
+  symbol          String   @db.VarChar(20)
+  assetClassId    String   @map("asset_class_id") @db.Uuid
+  source          String   @db.VarChar(20)
+  compositeScore  Float    @map("composite_score") @db.DoublePrecision
+  ivRank          Float?   @map("iv_rank") @db.DoublePrecision
+  putLiquidity    Float?   @map("put_liquidity") @db.DoublePrecision
+  premiumYield    Float?   @map("premium_yield") @db.DoublePrecision
+  marketCap       Float?   @map("market_cap") @db.DoublePrecision
+  lastPrice       Float?   @map("last_price") @db.DoublePrecision
+  allocationNeed  Float?   @map("allocation_need") @db.DoublePrecision
+  reportTriggered Boolean  @default(false) @map("report_triggered")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  scan WheelScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@index([scanId])
+  @@index([compositeScore])
+  @@map("wheel_scan_results")
 }
