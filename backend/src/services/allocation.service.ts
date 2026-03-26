@@ -4,6 +4,8 @@
 
 import { prisma } from "../db/index.js";
 import { assignmentService, AssignmentMap, getSecurityKey } from "./assignment.service.js";
+import { ibkrService, Position as IBPosition } from "./ibkr.js";
+import { isIgnorablePositionError } from "../utils/index.js";
 import {
   getOptionsNotionalSign,
   type AssetClassAllocation,
@@ -361,3 +363,63 @@ class AllocationService {
 }
 
 export const allocationService = new AllocationService();
+
+/**
+ * Get underinvested asset classes based on active allocation profile and current positions.
+ * Returns classes where current allocation is more than 1% below target, sorted by largest shortfall first.
+ */
+export async function getUnderinvestedClasses() {
+  const activeProfile = await prisma.allocationProfile.findFirst({
+    where: { isActive: true },
+    include: {
+      targets: { include: { assetClass: true } },
+    },
+  });
+
+  if (!activeProfile) {
+    return [];
+  }
+
+  let rawPositions: IBPosition[] = [];
+  if (ibkrService.isConnected()) {
+    try {
+      rawPositions = await ibkrService.getPositions();
+    } catch (err: unknown) {
+      if (!isIgnorablePositionError(err)) {
+        throw err;
+      }
+    }
+  }
+
+  const assignmentMap = await assignmentService.getAssignmentMap();
+  const { values, totalValue } = allocationService.calculateValuesByAssetClass(
+    rawPositions.map((p) => ({
+      symbol: p.contract.symbol || "",
+      secType: p.contract.secType || "",
+      pos: p.pos,
+      avgCost: p.avgCost,
+    })),
+    assignmentMap
+  );
+
+  return activeProfile.targets
+    .map((t) => {
+      const currentValue = values[t.assetClassId]?.current || 0;
+      const currentPct = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+      const diff = currentPct - t.targetPercentage;
+
+      return {
+        id: t.assetClassId,
+        name: t.assetClass.name,
+        color: t.assetClass.color,
+        targetPercentage: t.targetPercentage,
+        currentPercentage: currentPct,
+        difference: diff,
+        currentValue,
+        targetValue: totalValue * (t.targetPercentage / 100),
+        shortfall: totalValue * (t.targetPercentage / 100) - currentValue,
+      };
+    })
+    .filter((c) => c.difference < -1)
+    .sort((a, b) => a.difference - b.difference);
+}

@@ -11,7 +11,7 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
-import { allocationService } from "../services/allocation.service.js";
+import { allocationService, getUnderinvestedClasses } from "../services/allocation.service.js";
 import { sseService } from "../services/sse.js";
 import {
   scannerPresetCreateSchema,
@@ -665,69 +665,6 @@ function parseExpirationDate(expiration: string): Date {
   }
 
   return new Date(year, month, day);
-}
-
-/**
- * Helper to calculate underinvested asset classes
- */
-async function getUnderinvestedClasses() {
-  // Get active allocation profile
-  const activeProfile = await prisma.allocationProfile.findFirst({
-    where: { isActive: true },
-    include: {
-      targets: { include: { assetClass: true } },
-    },
-  });
-
-  if (!activeProfile) {
-    return [];
-  }
-
-  // Get current positions if connected
-  let rawPositions: IBPosition[] = [];
-  if (ibkrService.isConnected()) {
-    try {
-      rawPositions = await ibkrService.getPositions();
-    } catch (err: unknown) {
-      if (!isIgnorablePositionError(err)) {
-        throw err;
-      }
-    }
-  }
-
-  // Calculate allocation using the service
-  const assignmentMap = await assignmentService.getAssignmentMap();
-  const { values, totalValue } = allocationService.calculateValuesByAssetClass(
-    rawPositions.map((p) => ({
-      symbol: p.contract.symbol || "",
-      secType: p.contract.secType || "",
-      pos: p.pos,
-      avgCost: p.avgCost,
-    })),
-    assignmentMap
-  );
-
-  // Find underinvested classes
-  return activeProfile.targets
-    .map((t) => {
-      const currentValue = values[t.assetClassId]?.current || 0;
-      const currentPct = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
-      const diff = currentPct - t.targetPercentage;
-
-      return {
-        id: t.assetClassId,
-        name: t.assetClass.name,
-        color: t.assetClass.color,
-        targetPercentage: t.targetPercentage,
-        currentPercentage: currentPct,
-        difference: diff,
-        currentValue,
-        targetValue: totalValue * (t.targetPercentage / 100),
-        shortfall: totalValue * (t.targetPercentage / 100) - currentValue,
-      };
-    })
-    .filter((c) => c.difference < -1)
-    .sort((a, b) => a.difference - b.difference);
 }
 
 export default router;
