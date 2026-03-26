@@ -1,49 +1,212 @@
 /**
- * Research API proxy routes
- * Proxies requests to the external research microservice
+ * Research API routes
+ * Direct service calls (replaces HTTP proxy to research microservice)
  */
 
 import { Router } from "express";
+import { execFile, spawn } from "node:child_process";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { researchService } from "../services/research.service.js";
 import { prisma } from "../db/index.js";
+import { tickerService } from "../services/research/ticker.service.js";
+import { jobService } from "../services/research/job.service.js";
+import { pipelineService } from "../services/research/pipeline.service.js";
+import { screenerService } from "../services/research/screener.service.js";
+import { schedulerService } from "../services/research/scheduler.service.js";
+import {
+  getAuthStatus,
+  setOAuthToken,
+  deleteOAuthToken,
+} from "../services/research/auth.service.js";
+import {
+  addTickersSchema,
+  tickerParamsSchema,
+  updateTickerSchema,
+  tickerListQuerySchema,
+} from "../services/research/schemas/ticker.schema.js";
+import {
+  createScreenerSchema,
+  updateScreenerSchema,
+  screenerIdParamsSchema,
+  screenerResultsQuerySchema,
+} from "../services/research/schemas/screener.schema.js";
+import { validate } from "../services/research/middleware/validate.js";
+import { NotFoundError } from "../services/research/errors/AppError.js";
 
 const router = Router();
 
-// ── Static routes (must come before :symbol) ────────────────────────
+// ── Helper: test Claude CLI ─────────────────────────────────────────
+
+function testCli(prompt: string): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("claude", ["--output-format", "json"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: "CLI timed out after 30s" });
+    }, 30_000);
+
+    child.stdout.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0 && stdout.trim()) {
+        resolve({ ok: true });
+      } else {
+        resolve({
+          ok: false,
+          error: stderr.trim() || `CLI exited with code ${code}`,
+        });
+      }
+    });
+
+    child.on("error", (err: Error) => {
+      clearTimeout(timeout);
+      resolve({ ok: false, error: err.message });
+    });
+
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// STATIC ROUTES (must come before :symbol)
+// ══════════════════════════════════════════════════════════════════════
+
+// ── Macro ────────────────────────────────────────────────────────────
 
 /**
  * GET /api/research/macro
- * Get macro regime analysis
+ * Get latest macro regime snapshot
  */
 router.get(
   "/macro",
   asyncHandler(async (_req, res) => {
-    const result = await researchService.getMacro();
-    res.json(result);
+    const snapshot = await prisma.macroSnapshot.findFirst({
+      orderBy: { analyzedAt: "desc" },
+    });
+    if (!snapshot) {
+      res.json(null);
+      return;
+    }
+    res.json(snapshot);
   })
 );
 
 /**
- * GET /api/research/tickers
- * List tracked tickers (query: page, limit)
+ * GET /api/research/macro/history
+ * Paginated macro snapshot history
  */
 router.get(
-  "/tickers",
+  "/macro/history",
   asyncHandler(async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(
-      500,
-      Math.max(1, parseInt(req.query.limit as string, 10) || 100)
+      100,
+      Math.max(1, parseInt(req.query.limit as string, 10) || 20)
     );
-    const result = await researchService.listTickers(page, limit);
+
+    const [snapshots, total] = await Promise.all([
+      prisma.macroSnapshot.findMany({
+        orderBy: { analyzedAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.macroSnapshot.count(),
+    ]);
+
+    res.json({ snapshots, total });
+  })
+);
+
+// ── Tickers ──────────────────────────────────────────────────────────
+
+/**
+ * GET /api/research/tickers
+ * List tracked tickers with optional filters
+ */
+router.get(
+  "/tickers",
+  validate({ query: tickerListQuerySchema }),
+  asyncHandler(async (req, res) => {
+    const { status, source, page, limit } = req.query as unknown as {
+      status?: string;
+      source?: string;
+      page: number;
+      limit: number;
+    };
+    const result = await tickerService.list({ status, source, page, limit });
     res.json(result);
   })
 );
 
 /**
+ * GET /api/research/tickers/:symbol
+ * Get a single ticker
+ */
+router.get(
+  "/tickers/:symbol",
+  validate({ params: tickerParamsSchema }),
+  asyncHandler(async (req, res) => {
+    const ticker = await tickerService.get(req.params.symbol);
+    res.json(ticker);
+  })
+);
+
+/**
+ * POST /api/research/tickers
+ * Add tickers for tracking
+ */
+router.post(
+  "/tickers",
+  validate({ body: addTickersSchema }),
+  asyncHandler(async (req, res) => {
+    const { symbols, source } = req.body;
+    const result = await tickerService.add(symbols, source);
+    res.status(201).json(result);
+  })
+);
+
+/**
+ * PATCH /api/research/tickers/:symbol
+ * Update ticker status
+ */
+router.patch(
+  "/tickers/:symbol",
+  validate({ params: tickerParamsSchema, body: updateTickerSchema }),
+  asyncHandler(async (req, res) => {
+    const ticker = await tickerService.update(req.params.symbol, req.body);
+    res.json(ticker);
+  })
+);
+
+/**
+ * DELETE /api/research/tickers/:symbol
+ * Remove a ticker
+ */
+router.delete(
+  "/tickers/:symbol",
+  validate({ params: tickerParamsSchema }),
+  asyncHandler(async (req, res) => {
+    await tickerService.remove(req.params.symbol);
+    res.status(204).end();
+  })
+);
+
+// ── Sync Watchlist ───────────────────────────────────────────────────
+
+/**
  * POST /api/research/sync-watchlist
- * Push all watchlist symbols to the research service
+ * Push all watchlist symbols to research tickers
  */
 router.post(
   "/sync-watchlist",
@@ -59,17 +222,28 @@ router.post(
       return;
     }
 
-    // Chunk into batches of 100 (research service limit)
-    let totalSynced = 0;
-    let totalSkipped = 0;
-    for (let i = 0; i < symbols.length; i += 100) {
-      const batch = symbols.slice(i, i + 100);
-      const result = await researchService.syncTickers(batch);
-      totalSynced += result.added.length;
-      totalSkipped += result.skipped.length;
-    }
+    const result = await tickerService.add(symbols, "external");
+    res.json({
+      synced: result.added.length,
+      skipped: result.skipped.length,
+    });
+  })
+);
 
-    res.json({ synced: totalSynced, skipped: totalSkipped });
+// ── Jobs ─────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/research/jobs
+ * List jobs with optional status filter
+ */
+router.get(
+  "/jobs",
+  asyncHandler(async (req, res) => {
+    const status = req.query.status as string | undefined;
+    const rawLimit = parseInt(req.query.limit as string, 10) || 50;
+    const limit = Math.min(100, Math.max(1, rawLimit));
+    const jobs = await jobService.list({ status, limit });
+    res.json(jobs);
   })
 );
 
@@ -80,10 +254,13 @@ router.post(
 router.get(
   "/jobs/:jobId",
   asyncHandler(async (req, res) => {
-    const result = await researchService.getJob(req.params.jobId);
-    res.json(result);
+    const job = await jobService.get(req.params.jobId);
+    if (!job) throw new NotFoundError("Job", req.params.jobId);
+    res.json(job);
   })
 );
+
+// ── Claude Status ────────────────────────────────────────────────────
 
 /**
  * GET /api/research/claude-status
@@ -92,10 +269,46 @@ router.get(
 router.get(
   "/claude-status",
   asyncHandler(async (_req, res) => {
-    const result = await researchService.getClaudeStatus();
-    res.json(result);
+    // Check if claude CLI is installed
+    const versionResult = await new Promise<{
+      ok: boolean;
+      version?: string;
+      error?: string;
+    }>((resolve) => {
+      execFile("claude", ["--version"], (err, stdout, stderr) => {
+        if (err) {
+          resolve({ ok: false, error: err.message });
+        } else {
+          resolve({ ok: true, version: stdout.trim() || stderr.trim() });
+        }
+      });
+    });
+
+    if (!versionResult.ok) {
+      res.json({
+        available: false,
+        mode: "none",
+        error: `Claude CLI not found: ${versionResult.error}`,
+      });
+      return;
+    }
+
+    // Test with a simple prompt
+    const testResult = await testCli("Reply with exactly: ok");
+    if (!testResult.ok) {
+      res.json({
+        available: false,
+        mode: "cli",
+        error: `Claude CLI not authenticated: ${testResult.error}`,
+      });
+      return;
+    }
+
+    res.json({ available: true, mode: "cli" });
   })
 );
+
+// ── Auth ─────────────────────────────────────────────────────────────
 
 /**
  * GET /api/research/auth/status
@@ -104,8 +317,8 @@ router.get(
 router.get(
   "/auth/status",
   asyncHandler(async (_req, res) => {
-    const result = await researchService.getAuthStatus();
-    res.json(result);
+    const status = await getAuthStatus();
+    res.json(status);
   })
 );
 
@@ -116,8 +329,25 @@ router.get(
 router.put(
   "/auth/token",
   asyncHandler(async (req, res) => {
-    const result = await researchService.setAuthToken(req.body.token);
-    res.json(result);
+    const { token } = req.body;
+    if (!token || typeof token !== "string") {
+      res.status(400).json({ error: "Token is required" });
+      return;
+    }
+
+    // Validate by testing the CLI with the token
+    const testResult = await testCli("Reply with exactly: ok");
+    if (!testResult.ok) {
+      res.status(400).json({
+        error: "Token validation failed",
+        detail: testResult.error,
+      });
+      return;
+    }
+
+    await setOAuthToken(token);
+    const status = await getAuthStatus();
+    res.json(status);
   })
 );
 
@@ -128,23 +358,157 @@ router.put(
 router.delete(
   "/auth/token",
   asyncHandler(async (_req, res) => {
-    const result = await researchService.deleteAuthToken();
-    res.json(result);
+    await deleteOAuthToken();
+    const status = await getAuthStatus();
+    res.json(status);
   })
 );
 
-// ── Dynamic :symbol routes ──────────────────────────────────────────
+// ── Screener ─────────────────────────────────────────────────────────
+
+/**
+ * GET /api/research/screener/configs
+ * List all screener configs
+ */
+router.get(
+  "/screener/configs",
+  asyncHandler(async (_req, res) => {
+    const configs = await screenerService.listConfigs();
+    res.json(configs);
+  })
+);
+
+/**
+ * POST /api/research/screener/configs
+ * Create a new screener config
+ */
+router.post(
+  "/screener/configs",
+  validate({ body: createScreenerSchema }),
+  asyncHandler(async (req, res) => {
+    const config = await screenerService.createConfig(req.body);
+    await schedulerService.refreshScreenerSchedules();
+    res.status(201).json(config);
+  })
+);
+
+/**
+ * GET /api/research/screener/configs/:id
+ * Get a screener config by ID
+ */
+router.get(
+  "/screener/configs/:id",
+  validate({ params: screenerIdParamsSchema }),
+  asyncHandler(async (req, res) => {
+    const config = await screenerService.getConfig(req.params.id);
+    res.json(config);
+  })
+);
+
+/**
+ * PATCH /api/research/screener/configs/:id
+ * Update a screener config
+ */
+router.patch(
+  "/screener/configs/:id",
+  validate({ params: screenerIdParamsSchema, body: updateScreenerSchema }),
+  asyncHandler(async (req, res) => {
+    const config = await screenerService.updateConfig(req.params.id, req.body);
+    await schedulerService.refreshScreenerSchedules();
+    res.json(config);
+  })
+);
+
+/**
+ * DELETE /api/research/screener/configs/:id
+ * Delete a screener config
+ */
+router.delete(
+  "/screener/configs/:id",
+  validate({ params: screenerIdParamsSchema }),
+  asyncHandler(async (req, res) => {
+    await screenerService.deleteConfig(req.params.id);
+    await schedulerService.refreshScreenerSchedules();
+    res.status(204).end();
+  })
+);
+
+/**
+ * POST /api/research/screener/configs/:id/run
+ * Run a screener config immediately
+ */
+router.post(
+  "/screener/configs/:id/run",
+  validate({ params: screenerIdParamsSchema }),
+  asyncHandler(async (req, res) => {
+    const configId = req.params.id;
+
+    // Verify config exists
+    await screenerService.getConfig(configId);
+
+    const job = await jobService.create("screener", undefined);
+
+    // Run in background
+    screenerService.runScreener(configId).then(
+      async (result) => {
+        await jobService.complete(job.id, result as unknown as Record<string, unknown>);
+      },
+      async (err) => {
+        await jobService.fail(job.id, (err as Error).message);
+      }
+    );
+
+    res.status(202).json({ jobId: job.id });
+  })
+);
+
+/**
+ * GET /api/research/screener/results
+ * Get recent screener-discovered tickers
+ */
+router.get(
+  "/screener/results",
+  validate({ query: screenerResultsQuerySchema }),
+  asyncHandler(async (req, res) => {
+    const { page, limit } = req.query as unknown as { page: number; limit: number };
+    const results = await screenerService.getResults({ page, limit });
+    res.json(results);
+  })
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// DYNAMIC :symbol ROUTES (must come AFTER static routes)
+// ══════════════════════════════════════════════════════════════════════
 
 /**
  * GET /api/research/:symbol/data
- * Get raw collection data for a symbol
+ * Get raw collection data for a symbol (latest per source)
  */
 router.get(
   "/:symbol/data",
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-    const result = await researchService.getCollectionData(symbol);
-    res.json(result);
+
+    const ticker = await prisma.researchTicker.findUnique({
+      where: { symbol },
+    });
+    if (!ticker) throw new NotFoundError("Ticker", symbol);
+
+    const collections: Array<{
+      source: string;
+      data: unknown;
+      collectedAt: Date;
+    }> = await prisma.$queryRaw`
+      SELECT dc.source, dc.data, dc.collected_at AS "collectedAt"
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY collected_at DESC) AS rn
+        FROM data_collection
+        WHERE ticker_id = ${ticker.id}::uuid AND status = 'ok'
+      ) dc
+      WHERE dc.rn = 1
+    `;
+
+    res.json({ symbol, collections });
   })
 );
 
@@ -156,14 +520,26 @@ router.get(
   "/:symbol",
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-    const result = await researchService.getReport(symbol);
-    res.json(result);
+
+    const ticker = await prisma.researchTicker.findUnique({
+      where: { symbol },
+    });
+    if (!ticker) throw new NotFoundError("Ticker", symbol);
+
+    const report = await prisma.researchReport.findFirst({
+      where: { tickerId: ticker.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!report) throw new NotFoundError("Report", symbol);
+
+    res.json({ ...report, symbol });
   })
 );
 
 /**
  * GET /api/research/:symbol/history
- * Get report history for a symbol (query: page, limit)
+ * Paginated report history for a symbol
  */
 router.get(
   "/:symbol/history",
@@ -174,35 +550,96 @@ router.get(
       100,
       Math.max(1, parseInt(req.query.limit as string, 10) || 20)
     );
-    const result = await researchService.getReportHistory(symbol, page, limit);
-    res.json(result);
+
+    const ticker = await prisma.researchTicker.findUnique({
+      where: { symbol },
+    });
+    if (!ticker) throw new NotFoundError("Ticker", symbol);
+
+    const [reports, total] = await Promise.all([
+      prisma.researchReport.findMany({
+        where: { tickerId: ticker.id },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.researchReport.count({
+        where: { tickerId: ticker.id },
+      }),
+    ]);
+
+    res.json({ reports, total });
   })
 );
 
 /**
  * POST /api/research/:symbol/generate
- * Generate a new report for a symbol (body: { force?: boolean })
+ * Generate a new report for a symbol
  * Returns 202 with jobId
  */
 router.post(
   "/:symbol/generate",
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-    const result = await researchService.generateReport(symbol, req.body);
-    res.status(202).json(result);
+    const options = req.body || {};
+
+    const jobId = await pipelineService.generateReport(symbol, options);
+    res.status(202).json({ jobId });
   })
 );
 
 /**
  * GET /api/research/:symbol/analysis
- * Get analysis summary for a symbol
+ * Get latest analysis per source + skipped collections
  */
 router.get(
   "/:symbol/analysis",
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-    const result = await researchService.getAnalysis(symbol);
-    res.json(result);
+
+    const ticker = await prisma.researchTicker.findUnique({
+      where: { symbol },
+    });
+    if (!ticker) throw new NotFoundError("Ticker", symbol);
+
+    const analyses: Array<{
+      id: string;
+      tickerId: string;
+      source: string;
+      analyzedAt: Date;
+      signal: string;
+      confidence: number;
+      summary: string;
+      details: unknown;
+    }> = await prisma.$queryRaw`
+      SELECT a.id, a.ticker_id AS "tickerId", a.source,
+             a.analyzed_at AS "analyzedAt", a.signal, a.confidence,
+             a.summary, a.details
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY analyzed_at DESC) AS rn
+        FROM analysis
+        WHERE ticker_id = ${ticker.id}::uuid
+      ) a
+      WHERE a.rn = 1
+    `;
+
+    const skippedCollections: Array<{
+      source: string;
+      status: string;
+      skipReason: string;
+      collectedAt: Date;
+    }> = await prisma.$queryRaw`
+      SELECT dc.source, dc.status, dc.skip_reason AS "skipReason",
+             dc.collected_at AS "collectedAt"
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY collected_at DESC) AS rn
+        FROM data_collection
+        WHERE ticker_id = ${ticker.id}::uuid
+      ) dc
+      WHERE dc.rn = 1 AND dc.status = 'skipped'
+    `;
+
+    res.json({ symbol, analyses, skippedCollections });
   })
 );
 
