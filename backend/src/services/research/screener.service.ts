@@ -1,10 +1,10 @@
 import type { Prisma, ScreenerConfig } from "@prisma/client";
-import { prisma } from "../db/index.js";
-import { getMarketDataProvider } from "../providers/index.js";
-import type { TickerSearchResult } from "../providers/types.js";
+import { prisma } from "./db.js";
+import { getMarketDataProvider } from "./providers/index.js";
+import type { TickerSearchResult } from "./providers/types.js";
 import { tickerService } from "./ticker.service.js";
 import { pipelineService } from "./pipeline.service.js";
-import { NotFoundError } from "../errors/AppError.js";
+import { NotFoundError } from "./errors/AppError.js";
 
 interface ScreenerCriteria {
   // Provider-level filters
@@ -135,14 +135,14 @@ class ScreenerService {
     const where = { source: "screener" };
 
     const [tickers, total] = await Promise.all([
-      prisma.ticker.findMany({
+      prisma.researchTicker.findMany({
         where,
         orderBy: { addedAt: "desc" },
         skip: (options.page - 1) * options.limit,
         take: options.limit,
         select: { symbol: true, addedAt: true, status: true },
       }),
-      prisma.ticker.count({ where }),
+      prisma.researchTicker.count({ where }),
     ]);
 
     return { tickers, total };

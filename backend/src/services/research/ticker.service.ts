@@ -1,5 +1,5 @@
-import { prisma } from "../db/index.js";
-import { NotFoundError } from "../errors/AppError.js";
+import { prisma } from "./db.js";
+import { NotFoundError } from "./errors/AppError.js";
 
 class TickerService {
   async list(filters: {
@@ -13,20 +13,20 @@ class TickerService {
     if (filters.source) where.source = filters.source;
 
     const [tickers, total] = await Promise.all([
-      prisma.ticker.findMany({
+      prisma.researchTicker.findMany({
         where,
         orderBy: { addedAt: "desc" },
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
       }),
-      prisma.ticker.count({ where }),
+      prisma.researchTicker.count({ where }),
     ]);
 
     return { tickers, total };
   }
 
   async get(symbol: string) {
-    const ticker = await prisma.ticker.findUnique({
+    const ticker = await prisma.researchTicker.findUnique({
       where: { symbol },
     });
     if (!ticker) throw new NotFoundError("Ticker", symbol);
@@ -38,13 +38,13 @@ class TickerService {
     const skipped = [];
 
     for (const symbol of symbols) {
-      const existing = await prisma.ticker.findUnique({
+      const existing = await prisma.researchTicker.findUnique({
         where: { symbol },
       });
 
       if (existing) {
         if (existing.status === "removed") {
-          const updated = await prisma.ticker.update({
+          const updated = await prisma.researchTicker.update({
             where: { symbol },
             data: { status: "active", source },
           });
@@ -56,7 +56,7 @@ class TickerService {
       }
 
       try {
-        const ticker = await prisma.ticker.create({
+        const ticker = await prisma.researchTicker.create({
           data: { symbol, source },
         });
         results.push(ticker);
@@ -78,24 +78,24 @@ class TickerService {
   }
 
   async update(symbol: string, data: { status: string }) {
-    const ticker = await prisma.ticker.findUnique({
+    const ticker = await prisma.researchTicker.findUnique({
       where: { symbol },
     });
     if (!ticker) throw new NotFoundError("Ticker", symbol);
 
-    return prisma.ticker.update({
+    return prisma.researchTicker.update({
       where: { symbol },
       data,
     });
   }
 
   async remove(symbol: string) {
-    const ticker = await prisma.ticker.findUnique({
+    const ticker = await prisma.researchTicker.findUnique({
       where: { symbol },
     });
     if (!ticker) throw new NotFoundError("Ticker", symbol);
 
-    await prisma.ticker.delete({ where: { symbol } });
+    await prisma.researchTicker.delete({ where: { symbol } });
   }
 }
 

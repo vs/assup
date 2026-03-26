@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
-import { getOAuthToken } from "../services/auth.service.js";
+import { getOAuthToken } from "../auth.service.js";
 
 interface SynthesizerInput {
   symbol: string;

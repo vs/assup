@@ -1,9 +1,9 @@
-import { prisma } from "../db/index.js";
+import { prisma } from "./db.js";
 import { collectionService } from "./collection.service.js";
 import { jobService } from "./job.service.js";
-import { synthesize, type SynthesizerMode } from "../synthesizer/synthesizer.js";
+import { synthesize, type SynthesizerMode } from "./synthesizer/synthesizer.js";
 import { macroService } from "./macro.service.js";
-import { NotFoundError } from "../errors/AppError.js";
+import { NotFoundError } from "./errors/AppError.js";
 
 class PipelineService {
   /**
@@ -14,7 +14,7 @@ class PipelineService {
     symbol: string,
     options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6"; mode?: SynthesizerMode } = {}
   ): Promise<string> {
-    const ticker = await prisma.ticker.findUnique({ where: { symbol } });
+    const ticker = await prisma.researchTicker.findUnique({ where: { symbol } });
     if (!ticker) throw new NotFoundError("Ticker", symbol);
 
     const job = await jobService.create("generate_report", symbol);
@@ -103,7 +103,7 @@ class PipelineService {
 
       // Step 5: Store report
       await jobService.updateProgress(jobId, "Storing report...");
-      const report = await prisma.report.create({
+      const report = await prisma.researchReport.create({
         data: {
           tickerId,
           recommendation: result.recommendation,

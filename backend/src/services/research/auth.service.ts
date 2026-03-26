@@ -1,4 +1,4 @@
-import { prisma } from "../db/index.js";
+import { prisma } from "./db.js";
 
 const TOKEN_KEY = "claude_oauth_token";
 

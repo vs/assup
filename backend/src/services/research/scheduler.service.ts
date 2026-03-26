@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { prisma } from "../db/index.js";
+import { prisma } from "./db.js";
 import { collectionService } from "./collection.service.js";
 import { macroService } from "./macro.service.js";
 import { pipelineService } from "./pipeline.service.js";
@@ -150,7 +150,7 @@ class SchedulerService {
     const startTime = Date.now();
     console.log("[Scheduler] Starting daily collection...");
 
-    const tickers = await prisma.ticker.findMany({
+    const tickers = await prisma.researchTicker.findMany({
       where: { status: "active" },
       select: { id: true, symbol: true },
     });
@@ -192,7 +192,7 @@ class SchedulerService {
     const startTime = Date.now();
     console.log("[Scheduler] Starting short interest collection...");
 
-    const tickers = await prisma.ticker.findMany({
+    const tickers = await prisma.researchTicker.findMany({
       where: { status: "active" },
       select: { id: true, symbol: true },
     });
@@ -224,7 +224,7 @@ class SchedulerService {
     const startTime = Date.now();
     console.log("[Scheduler] Starting social sentiment collection...");
 
-    const tickers = await prisma.ticker.findMany({
+    const tickers = await prisma.researchTicker.findMany({
       where: { status: "active" },
       select: { id: true, symbol: true },
     });
@@ -256,7 +256,7 @@ class SchedulerService {
     const startTime = Date.now();
     console.log("[Scheduler] Starting report generation...");
 
-    const tickers = await prisma.ticker.findMany({
+    const tickers = await prisma.researchTicker.findMany({
       where: { status: "active" },
       select: { id: true, symbol: true, lastAnalyzed: true },
     });
@@ -267,7 +267,7 @@ class SchedulerService {
     for (const ticker of tickers) {
       if (!ticker.lastAnalyzed) continue;
 
-      const latestReport = await prisma.report.findFirst({
+      const latestReport = await prisma.researchReport.findFirst({
         where: { tickerId: ticker.id },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },

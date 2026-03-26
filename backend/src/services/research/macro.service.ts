@@ -1,8 +1,8 @@
 import type { Prisma } from "@prisma/client";
-import { prisma } from "../db/index.js";
-import { macroCollector } from "../collectors/macro.collector.js";
-import { macroAnalyzer } from "../analyzers/macro.analyzer.js";
-import { isSkipped } from "../collectors/types.js";
+import { prisma } from "./db.js";
+import { macroCollector } from "./collectors/macro.collector.js";
+import { macroAnalyzer } from "./analyzers/macro.analyzer.js";
+import { isSkipped } from "./collectors/types.js";
 
 const FRESHNESS_HOURS = 24;
 

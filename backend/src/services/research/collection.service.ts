@@ -1,8 +1,8 @@
 import type { Prisma } from "@prisma/client";
-import { prisma } from "../db/index.js";
-import { getCollector, getAllCollectors } from "../collectors/registry.js";
-import { getAnalyzer } from "../analyzers/registry.js";
-import { isSkipped } from "../collectors/types.js";
+import { prisma } from "./db.js";
+import { getCollector, getAllCollectors } from "./collectors/registry.js";
+import { getAnalyzer } from "./analyzers/registry.js";
+import { isSkipped } from "./collectors/types.js";
 
 // Prisma's DbNull representation for writing explicit null to JSON columns
 const DbNull = "DbNull" as unknown as Prisma.NullTypes.DbNull;
@@ -128,7 +128,7 @@ class CollectionService {
     }
 
     // Update ticker's lastAnalyzed timestamp
-    await prisma.ticker.update({
+    await prisma.researchTicker.update({
       where: { id: tickerId },
       data: { lastAnalyzed: new Date() },
     });
