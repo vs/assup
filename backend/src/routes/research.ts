@@ -94,10 +94,7 @@ router.get(
     const snapshot = await prisma.macroSnapshot.findFirst({
       orderBy: { analyzedAt: "desc" },
     });
-    if (!snapshot) {
-      res.json(null);
-      return;
-    }
+    if (!snapshot) throw new NotFoundError("Macro snapshot");
     res.json(snapshot);
   })
 );
@@ -444,19 +441,20 @@ router.post(
     const configId = req.params.id;
 
     // Verify config exists
-    await screenerService.getConfig(configId);
+    const config = await screenerService.getConfig(configId);
 
-    const job = await jobService.create("screener", undefined);
+    const job = await jobService.create("screener_run", config.name.slice(0, 20));
 
     // Run in background
-    screenerService.runScreener(configId).then(
-      async (result) => {
+    (async () => {
+      try {
+        await jobService.start(job.id);
+        const result = await screenerService.runScreener(configId);
         await jobService.complete(job.id, result as unknown as Record<string, unknown>);
-      },
-      async (err) => {
+      } catch (err) {
         await jobService.fail(job.id, (err as Error).message);
       }
-    );
+    })();
 
     res.status(202).json({ jobId: job.id });
   })
@@ -639,7 +637,29 @@ router.get(
       WHERE dc.rn = 1 AND dc.status = 'skipped'
     `;
 
-    res.json({ symbol, analyses, skippedCollections });
+    const collectionStatuses = skippedCollections;
+    res.json({ symbol, analyses, collectionStatuses, lastUpdated: ticker.lastAnalyzed });
+  })
+);
+
+/**
+ * GET /api/research/:symbol/analysis/:source
+ * Get latest analysis for a specific source
+ */
+router.get(
+  "/:symbol/analysis/:source",
+  asyncHandler(async (req, res) => {
+    const symbol = req.params.symbol.toUpperCase();
+    const { source } = req.params;
+    const ticker = await prisma.researchTicker.findUnique({ where: { symbol } });
+    if (!ticker) throw new NotFoundError("Ticker", symbol);
+
+    const analysis = await prisma.analysis.findFirst({
+      where: { tickerId: ticker.id, source },
+      orderBy: { analyzedAt: "desc" },
+    });
+    if (!analysis) throw new NotFoundError("Analysis", `${symbol}/${source}`);
+    res.json(analysis);
   })
 );
 
