@@ -333,3 +333,118 @@ model CorporateAction {
   @@index([actionType])
   @@map("corporate_actions")
 }
+
+// ============================================================
+// Research models (merged from research microservice)
+// ============================================================
+
+// Research Tickers - symbols being tracked for research
+model ResearchTicker {
+  id           String    @id @default(uuid()) @db.Uuid
+  symbol       String    @unique @db.VarChar(20)
+  secType      String    @default("STK") @map("sec_type") @db.VarChar(10)
+  status       String    @default("active") @db.VarChar(20)
+  source       String    @default("manual") @map("source") @db.VarChar(20)
+  addedAt      DateTime  @default(now()) @map("added_at") @db.Timestamptz()
+  lastAnalyzed DateTime? @map("last_analyzed") @db.Timestamptz()
+
+  dataCollections DataCollection[]
+  analyses        Analysis[]
+  reports         ResearchReport[]
+
+  @@map("research_ticker")
+}
+
+// Data Collections - raw collected market data per source
+model DataCollection {
+  id          String    @id @default(uuid()) @db.Uuid
+  tickerId    String    @map("ticker_id") @db.Uuid
+  source      String    @db.VarChar(30)
+  collectedAt DateTime  @default(now()) @map("collected_at") @db.Timestamptz()
+  status      String    @default("ok") @db.VarChar(10)
+  data        Json?     @db.JsonB
+  skipReason  String?   @map("skip_reason")
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz()
+
+  ticker ResearchTicker @relation(fields: [tickerId], references: [id], onDelete: Cascade)
+
+  @@index([tickerId, source])
+  @@index([expiresAt])
+  @@map("data_collection")
+}
+
+// Analysis - analysis results with signal, confidence, and details
+model Analysis {
+  id         String   @id @default(uuid()) @db.Uuid
+  tickerId   String   @map("ticker_id") @db.Uuid
+  source     String   @db.VarChar(30)
+  analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz()
+  signal     String   @db.VarChar(10)
+  confidence Float
+  summary    String
+  details    Json     @db.JsonB
+
+  ticker ResearchTicker @relation(fields: [tickerId], references: [id], onDelete: Cascade)
+
+  @@index([tickerId, source])
+  @@map("analysis")
+}
+
+// Research Reports - synthesized research reports with recommendations
+model ResearchReport {
+  id             String   @id @default(uuid()) @db.Uuid
+  tickerId       String   @map("ticker_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  recommendation String   @db.VarChar(20)
+  confidence     Float
+  summary        String
+  fullReport     String   @map("full_report")
+  analysisIds    String[] @map("analysis_ids") @db.Uuid
+
+  ticker ResearchTicker @relation(fields: [tickerId], references: [id], onDelete: Cascade)
+
+  @@index([tickerId])
+  @@map("research_report")
+}
+
+// Research Jobs - async job tracking for long-running operations
+model ResearchJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String    @db.VarChar(50)
+  symbol      String?   @db.VarChar(20)
+  status      String    @default("queued") @db.VarChar(20)
+  progress    String?
+  result      Json?     @db.JsonB
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  startedAt   DateTime? @map("started_at") @db.Timestamptz()
+  completedAt DateTime? @map("completed_at") @db.Timestamptz()
+
+  @@index([status])
+  @@index([symbol])
+  @@map("research_job")
+}
+
+// Screener Config - stock screener configurations and schedules
+model ScreenerConfig {
+  id       String    @id @default(uuid()) @db.Uuid
+  name     String    @db.VarChar(100)
+  criteria Json      @db.JsonB
+  schedule String    @db.VarChar(50)
+  enabled  Boolean   @default(true)
+  lastRun  DateTime? @map("last_run") @db.Timestamptz()
+
+  @@map("screener_config")
+}
+
+// Macro Snapshot - macro regime analysis snapshots
+model MacroSnapshot {
+  id         String   @id @default(uuid()) @db.Uuid
+  analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz()
+  regime     String   @db.VarChar(20)
+  confidence Float
+  summary    String
+  details    Json     @db.JsonB
+
+  @@map("macro_snapshot")
+}
