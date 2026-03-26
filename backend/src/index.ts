@@ -23,6 +23,9 @@ import taxesRouter from "./routes/taxes.js";
 import wheelRouter from "./routes/wheel.js";
 import researchRouter from "./routes/research.js";
 import { scanJobService } from "./services/scanJob.service.js";
+import { initCollectors } from "./services/research/collectors/index.js";
+import { initAnalyzers } from "./services/research/analyzers/index.js";
+import { schedulerService } from "./services/research/scheduler.service.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -187,7 +190,28 @@ app.post("/api/updates/refresh", async (req: Request, res: Response) => {
 // Global error handler - must be last middleware
 app.use(errorHandler);
 
+// Initialize research subsystem
+initCollectors();
+initAnalyzers();
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   scanJobService.init();
+
+  // Start research scheduler if enabled
+  if (process.env.SCHEDULER_ENABLED === "true") {
+    schedulerService.start();
+    console.log("Research scheduler started");
+  }
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  schedulerService.stop();
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  schedulerService.stop();
+  process.exit(0);
 });
