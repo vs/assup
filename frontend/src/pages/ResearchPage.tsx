@@ -58,6 +58,107 @@ const regimeConfig: Record<
   },
 };
 
+// --- Fear Score ---
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+
+/** Linearly map value from [inLow, inHigh] to [outLow, outHigh], clamped. */
+function linearMap(v: number, inLow: number, inHigh: number, outLow: number, outHigh: number): number {
+  return clamp(outLow + ((v - inLow) / (inHigh - inLow)) * (outHigh - outLow), Math.min(outLow, outHigh), Math.max(outLow, outHigh));
+}
+
+interface FearScoreResult {
+  score: number;
+  label: string;
+  components: { name: string; display: string }[];
+}
+
+function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | null {
+  const signals: { score: number; weight: number; name: string; display: string }[] = [];
+
+  // VIX level: 0 (greed) at ≤12, 50 at 20, 100 (fear) at ≥35
+  if (details.vix != null) {
+    const s = details.vix <= 20
+      ? linearMap(details.vix, 12, 20, 0, 50)
+      : linearMap(details.vix, 20, 35, 50, 100);
+    signals.push({ score: s, weight: 0.4, name: "VIX", display: `${details.vix.toFixed(1)}` });
+  }
+
+  // VIX vs SMA20: 0 when 15%+ below, 50 at parity, 100 when 15%+ above
+  if (details.vix != null && details.vixSma20 != null && details.vixSma20 > 0) {
+    const pctDiff = ((details.vix - details.vixSma20) / details.vixSma20) * 100;
+    const s = linearMap(pctDiff, -15, 15, 0, 100);
+    signals.push({ score: s, weight: 0.2, name: "VIX/SMA", display: `${pctDiff >= 0 ? "+" : ""}${pctDiff.toFixed(1)}%` });
+  }
+
+  // S&P vs SMA200: 0 when 10%+ above, 50 at parity, 100 when 10%+ below (inverted)
+  if (details.sp500Price != null && details.sp500Sma200 != null && details.sp500Sma200 > 0) {
+    const pctAbove = ((details.sp500Price - details.sp500Sma200) / details.sp500Sma200) * 100;
+    const s = linearMap(pctAbove, 10, -10, 0, 100);
+    signals.push({ score: s, weight: 0.25, name: "S&P/SMA", display: `${pctAbove >= 0 ? "+" : ""}${pctAbove.toFixed(1)}%` });
+  }
+
+  // Put/Call ratio: 0 at ≤0.5, 50 at 0.85, 100 at ≥1.5
+  if (details.putCallRatio != null) {
+    const s = details.putCallRatio <= 0.85
+      ? linearMap(details.putCallRatio, 0.5, 0.85, 0, 50)
+      : linearMap(details.putCallRatio, 0.85, 1.5, 50, 100);
+    signals.push({ score: s, weight: 0.15, name: "P/C", display: details.putCallRatio.toFixed(2) });
+  }
+
+  if (signals.length === 0) return null;
+
+  const totalWeight = signals.reduce((sum, s) => sum + s.weight, 0);
+  const score = signals.reduce((sum, s) => sum + s.score * s.weight, 0) / totalWeight;
+
+  const label =
+    score < 20 ? "Extreme Greed" :
+    score < 40 ? "Greed" :
+    score < 60 ? "Neutral" :
+    score < 80 ? "Fear" :
+    "Extreme Fear";
+
+  return {
+    score: Math.round(score),
+    label,
+    components: signals.map((s) => ({ name: s.name, display: s.display })),
+  };
+}
+
+function FearGauge({ details }: { details: MacroAnalysis["details"] }) {
+  const result = computeFearScore(details);
+  if (!result) return <span className="text-xs text-muted-foreground">No data</span>;
+
+  const labelColor =
+    result.score < 20 ? "text-green-600" :
+    result.score < 40 ? "text-green-500" :
+    result.score < 60 ? "text-amber-500" :
+    result.score < 80 ? "text-orange-500" :
+    "text-red-600";
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 min-w-[160px]">
+        <span className={`text-sm font-bold tabular-nums ${labelColor}`}>{result.score}</span>
+        <div className="relative flex-1 h-2 rounded-full overflow-hidden" style={{ background: "linear-gradient(to right, #22c55e, #eab308, #f97316, #ef4444)" }}>
+          <div
+            className="absolute top-[-1px] w-[3px] h-[10px] bg-white rounded-full border border-gray-500"
+            style={{ left: `${result.score}%`, transform: "translateX(-50%)" }}
+          />
+        </div>
+        <span className={`text-xs font-medium whitespace-nowrap ${labelColor}`}>{result.label}</span>
+      </div>
+      <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground">
+        {result.components.map((c) => (
+          <span key={c.name}>{c.name}: <span className="font-medium">{c.display}</span></span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // --- Macro Banner ---
 
 function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
@@ -87,20 +188,9 @@ function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
             >
               {config.label}
             </Badge>
-            <span className="text-sm font-medium">
-              {Math.round(macro.confidence * 100)}% confidence
-            </span>
+            <FearGauge details={macro.details} />
           </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            {macro.details.vix != null && (
-              <span>
-                VIX: <span className="font-medium">{macro.details.vix}</span> (
-                {macro.details.vixTrend})
-              </span>
-            )}
-            <span>S&P 500: {macro.details.sp500Trend}</span>
-            <span>Updated {timeAgo(macro.analyzedAt)}</span>
-          </div>
+          <span className="text-sm text-muted-foreground">Updated {timeAgo(macro.analyzedAt)}</span>
         </div>
         {macro.summary && (
           <p className="text-sm mt-2 text-muted-foreground">{macro.summary}</p>
