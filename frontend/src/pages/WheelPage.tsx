@@ -402,7 +402,7 @@ function WheelTickerCard({
         onClick={onToggle}
       >
         <div className="flex items-center">
-          <div className="flex items-center gap-3 min-w-[140px]">
+          <div className="flex items-center gap-3 w-[200px] shrink-0">
             <CardTitle className="text-lg">{ticker.symbol}</CardTitle>
             <Badge className={phaseColors[ticker.currentPhase]}>
               {phaseLabels[ticker.currentPhase]}
