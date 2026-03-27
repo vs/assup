@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { spawn } from "node:child_process";
+import { getOAuthToken } from "../auth.service.js";
 import type { Analyzer, AnalysisOutput } from "./types.js";
 
 const ANALYSIS_PROMPT = `You are analyzing Seeking Alpha article comments for investment insights.
@@ -39,6 +41,64 @@ function getClient(): Anthropic {
     client = new Anthropic();
   }
   return client;
+}
+
+async function callClaudeViaCLI(
+  systemPrompt: string,
+  userPrompt: string,
+  model = "claude-sonnet-4-6"
+): Promise<string> {
+  const args = [
+    "--print",
+    "--output-format", "text",
+    "--system-prompt", systemPrompt,
+    "--model", model,
+    "--dangerously-skip-permissions",
+    "--no-session-persistence",
+  ];
+
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
+
+  const oauthToken = await getOAuthToken();
+  if (oauthToken) {
+    env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+    delete env.ANTHROPIC_API_KEY;
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn("claude", args, {
+      env,
+      timeout: 3 * 60 * 1000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let out = "";
+    let err = "";
+
+    child.stdout.on("data", (data: Buffer) => { out += data.toString(); });
+    child.stderr.on("data", (data: Buffer) => { err += data.toString(); });
+
+    child.on("error", (e) => reject(new Error(`Claude CLI failed to start: ${e.message}`)));
+
+    child.on("close", (code, signal) => {
+      if (signal === "SIGTERM") {
+        reject(new Error("Claude CLI timed out"));
+      } else if (signal) {
+        reject(new Error(`Claude CLI killed with signal ${signal}`));
+      } else if (code !== 0) {
+        reject(new Error(`Claude CLI failed (exit ${code}): ${err || "(no stderr)"}`));
+      } else if (!out.trim()) {
+        reject(new Error(`Claude CLI returned empty output. stderr: ${err || "(none)"}`));
+      } else {
+        resolve(out);
+      }
+    });
+
+    child.stdin.on("error", () => {});
+    child.stdin.write(userPrompt);
+    child.stdin.end();
+  });
 }
 
 function extractJson(text: string): string {
@@ -119,7 +179,6 @@ export const saCommentsAnalyzer: Analyzer = {
       };
     }
 
-    const anthropic = getClient();
     const userPrompt = buildUserPrompt(articles, symbol, totalComments);
 
     console.log(
@@ -127,22 +186,33 @@ export const saCommentsAnalyzer: Analyzer = {
     );
     const start = Date.now();
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: ANALYSIS_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    });
+    let text: string;
+    if (process.env.ANTHROPIC_API_KEY) {
+      const anthropic = getClient();
+      const message = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2048,
+        system: ANALYSIS_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+      });
 
-    const textBlock = message.content[0];
-    const text = textBlock?.type === "text" ? textBlock.text : "";
-    if (!text) {
-      throw new Error(`[SA Comments Analyzer] Empty response from Claude for ${symbol}`);
+      const textBlock = message.content[0];
+      text = textBlock?.type === "text" ? textBlock.text : "";
+      if (!text) {
+        throw new Error(`[SA Comments Analyzer] Empty response from Claude for ${symbol}`);
+      }
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      console.log(
+        `[SA Comments Analyzer] SDK response for ${symbol} in ${elapsed}s (${text.length} chars, usage: ${message.usage.input_tokens}in/${message.usage.output_tokens}out)`
+      );
+    } else {
+      console.log(`[SA Comments Analyzer] Using Claude CLI (no ANTHROPIC_API_KEY)`);
+      text = await callClaudeViaCLI(ANALYSIS_PROMPT, userPrompt);
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      console.log(
+        `[SA Comments Analyzer] CLI response for ${symbol} in ${elapsed}s (${text.length} chars)`
+      );
     }
-    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    console.log(
-      `[SA Comments Analyzer] Response for ${symbol} in ${elapsed}s (${text.length} chars, usage: ${message.usage.input_tokens}in/${message.usage.output_tokens}out)`
-    );
 
     let parsed: any;
     try {

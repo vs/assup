@@ -55,6 +55,7 @@ Output format (respond with ONLY this JSON, no markdown fences):
 The fullReport should have these markdown sections:
 ## Recommendation
 ## Technical Picture
+## Fundamentals & Valuation (if fundamentals data available)
 ## Sentiment & Analyst View
 ## Bull Case
 ## Bear Case
@@ -286,8 +287,15 @@ export async function synthesize(
       ? { model: optionsOrModel }
       : optionsOrModel ?? {};
 
-  const mode = options.mode ?? (process.env.SYNTHESIZER_MODE as SynthesizerMode) ?? "claude-cli";
+  let mode = options.mode ?? (process.env.SYNTHESIZER_MODE as SynthesizerMode) ?? "claude-cli";
   const model = options.model ?? "claude-sonnet-4-6";
+
+  // OAuth tokens only work with the CLI, not the Anthropic API SDK.
+  // Fall back to CLI whenever there's no real API key, regardless of configured mode.
+  if (mode !== "claude-cli" && !process.env.ANTHROPIC_API_KEY) {
+    console.warn(`[Synthesizer] No ANTHROPIC_API_KEY set — falling back to claude-cli mode (was: ${mode})`);
+    mode = "claude-cli";
+  }
 
   if (mode === "claude-cli") {
     return synthesizeWithClaude(input, model);

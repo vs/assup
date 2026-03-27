@@ -10,6 +10,10 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 
+vi.mock("../../../services/research/auth.service.js", () => ({
+  getOAuthToken: vi.fn().mockResolvedValue(null),
+}));
+
 import { saCommentsAnalyzer } from "../../../services/research/analyzers/sa-comments.analyzer.js";
 
 const MOCK_RESPONSE = {
@@ -36,12 +40,19 @@ const MOCK_RESPONSE = {
 };
 
 describe("saCommentsAnalyzer", () => {
+  const originalKey = process.env.ANTHROPIC_API_KEY;
+
   beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
     mockCreate.mockReset();
     mockCreate.mockResolvedValue({
       content: [{ type: "text", text: JSON.stringify(MOCK_RESPONSE) }],
       usage: { input_tokens: 100, output_tokens: 200 },
     });
+  });
+
+  afterEach(() => {
+    process.env.ANTHROPIC_API_KEY = originalKey;
   });
 
   it("returns neutral for empty articles / zero comments", async () => {
