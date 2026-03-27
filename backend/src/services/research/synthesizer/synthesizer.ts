@@ -150,11 +150,24 @@ function parseAndValidate(text: string): SynthesizerOutput {
 }
 
 let client: Anthropic | null = null;
+let clientToken: string | null = null;
 
-function getClient(): Anthropic {
-  if (!client) {
+async function getClient(): Promise<Anthropic> {
+  const oauthToken = await getOAuthToken();
+  const currentToken = oauthToken ?? null;
+  // Recreate client if token changed
+  if (client && clientToken === currentToken) {
+    return client;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    client = new Anthropic();
+  } else if (oauthToken) {
+    client = new Anthropic({ apiKey: undefined, authToken: oauthToken });
+  } else {
+    // Will fail with a clear error about missing credentials
     client = new Anthropic();
   }
+  clientToken = currentToken;
   return client;
 }
 
@@ -162,7 +175,7 @@ async function synthesizeWithSDK(
   input: SynthesizerInput,
   model: "claude-sonnet-4-6" | "claude-opus-4-6" = "claude-sonnet-4-6"
 ): Promise<SynthesizerOutput> {
-  const anthropic = getClient();
+  const anthropic = await getClient();
   const sources = input.analyses.map((a) => a.source).join(", ");
   console.log(`[Synthesizer] SDK call for ${input.symbol} (model=${model}, sources=${sources})`);
   const start = Date.now();
