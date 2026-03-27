@@ -64,6 +64,7 @@
 | `/api/taxes` | Tax calculations, lot tracing, CSV export |
 | `/api/wheel` | Wheel strategy tracking |
 | `/api/research` | Research pipeline (reports, analysis, macro, tickers) |
+| `/api/wheel-scanner` | Wheel strategy candidate scanner (configs, scans, results) |
 | `/api/historical-data` | Historical price data for charts |
 | `/api/settings` | User preferences |
 | `/api/updates/stream` | SSE endpoint for real-time updates |
