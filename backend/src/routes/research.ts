@@ -339,6 +339,16 @@ router.put(
       return;
     }
 
+    // Validate by testing the CLI with the provided token
+    const testResult = await testCli("Reply with exactly: ok", token);
+    if (!testResult.ok) {
+      res.status(400).json({
+        error: "Token validation failed",
+        detail: testResult.error,
+      });
+      return;
+    }
+
     await setOAuthToken(token);
     const status = await getAuthStatus();
     res.json(status);
