@@ -126,6 +126,7 @@ export function ResearchPage() {
 
   // Generate state
   const [generatingSymbol, setGeneratingSymbol] = useState<string | null>(null);
+  const [generateProgress, setGenerateProgress] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -197,6 +198,7 @@ export function ResearchPage() {
 
   async function handleGenerate(symbol: string) {
     setGeneratingSymbol(symbol);
+    setGenerateProgress(null);
     setError(null);
     try {
       const researchSettings = await settingsApi
@@ -210,10 +212,14 @@ export function ResearchPage() {
       });
 
       // Poll job status until complete
-      const maxAttempts = 60; // 5 minutes at 5s intervals
+      const maxAttempts = 150; // 5 minutes at 2s intervals
       for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 5000));
+        await new Promise((r) => setTimeout(r, 2000));
         const job = await researchApi.getJob(jobId);
+
+        if (job.progress) {
+          setGenerateProgress(job.progress);
+        }
 
         if (job.status === "completed") {
           const report = await researchApi.getReport(symbol);
@@ -236,6 +242,7 @@ export function ResearchPage() {
       );
     } finally {
       setGeneratingSymbol(null);
+      setGenerateProgress(null);
     }
   }
 
@@ -338,7 +345,11 @@ export function ResearchPage() {
                         )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell max-w-xs">
-                        {report ? (
+                        {generatingSymbol === ticker.symbol && generateProgress ? (
+                          <span className="text-sm text-blue-600 animate-pulse">
+                            {generateProgress}
+                          </span>
+                        ) : report ? (
                           <span className="text-sm text-muted-foreground">
                             {truncate(report.summary, 80)}
                           </span>
@@ -372,6 +383,7 @@ export function ResearchPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="w-[120px]"
                             onClick={() => handleGenerate(ticker.symbol)}
                             disabled={generatingSymbol === ticker.symbol}
                             title="Generate report"
