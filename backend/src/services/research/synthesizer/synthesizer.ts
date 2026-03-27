@@ -162,7 +162,7 @@ async function getClient(): Promise<Anthropic> {
   if (process.env.ANTHROPIC_API_KEY) {
     client = new Anthropic();
   } else if (oauthToken) {
-    client = new Anthropic({ apiKey: undefined, authToken: oauthToken });
+    client = new Anthropic({ apiKey: null, authToken: oauthToken });
   } else {
     // Will fail with a clear error about missing credentials
     client = new Anthropic();
