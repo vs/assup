@@ -21,7 +21,7 @@ import {
   TimeInForce,
 } from "@stoqey/ib";
 import type { ImportedTrade } from "@prisma/client";
-import { Subscription } from "rxjs";
+import { Subscription, lastValueFrom } from "rxjs";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -1133,17 +1133,16 @@ class IBKRService {
         ? { ...contract, exchange: "SMART" }
         : contract;
 
-      // Note: getMarketDataSnapshot (snapshot=true) does NOT support generic ticks —
-      // TWS returns error 321. We request only standard ticks here.
-      // Generic tick data (HV, IV, shortable, fundamentals, dividends) is not
-      // available in snapshot mode and requires a streaming subscription.
-      const marketData = await this.api.getMarketDataSnapshot(
-        mdContract,
-        "",
-        false
+      // Use Observable-based getMarketData with snapshot=true instead of
+      // getMarketDataSnapshot — the latter does NOT support generic ticks
+      // (TWS error 321). The Observable API supports them and completes
+      // after collecting data (up to 11s).
+      const update = await lastValueFrom(
+        this.api.getMarketData(mdContract, genericTickList, true, false)
       );
+      const marketData = update.all;
 
-      if (!marketData) return null;
+      if (!marketData || marketData.size === 0) return null;
 
       // Standard ticks
       const bidTick = marketData.get(1);
