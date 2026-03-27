@@ -1133,9 +1133,13 @@ class IBKRService {
         ? { ...contract, exchange: "SMART" }
         : contract;
 
+      // Note: getMarketDataSnapshot (snapshot=true) does NOT support generic ticks —
+      // TWS returns error 321. We request only standard ticks here.
+      // Generic tick data (HV, IV, shortable, fundamentals, dividends) is not
+      // available in snapshot mode and requires a streaming subscription.
       const marketData = await this.api.getMarketDataSnapshot(
         mdContract,
-        genericTickList,
+        "",
         false
       );
 
