@@ -12,6 +12,7 @@ import { socialAnalyzer } from "./social.analyzer.js";
 import { analystConsensusAnalyzer } from "./analyst-consensus.analyzer.js";
 import { macroAnalyzer } from "./macro.analyzer.js";
 import { saCommentsAnalyzer } from "./sa-comments.analyzer.js";
+import { fundamentalsAnalyzer } from "./fundamentals.analyzer.js";
 
 export function initAnalyzers(): void {
   registerAnalyzer(technicalAnalyzer);
@@ -23,8 +24,9 @@ export function initAnalyzers(): void {
   registerAnalyzer(socialAnalyzer);
   registerAnalyzer(analystConsensusAnalyzer);
   registerAnalyzer(saCommentsAnalyzer);
+  registerAnalyzer(fundamentalsAnalyzer);
   registerAnalyzer(macroAnalyzer); // Used separately by macro service, not per-ticker analysis
   console.log(
-    "Registered analyzers: technical, seeking_alpha, events, options, sec_filings, short_interest, social, analyst_consensus, sa_comments, macro"
+    "Registered analyzers: technical, seeking_alpha, events, options, sec_filings, short_interest, social, analyst_consensus, sa_comments, fundamentals, macro"
   );
 }

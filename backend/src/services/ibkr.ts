@@ -6,6 +6,8 @@ import {
   OpenOrder,
   Bar,
   Contract,
+  ContractDescription,
+  ContractDetails,
   BarSizeSetting,
   WhatToShow,
   OptionType,
@@ -69,6 +71,21 @@ interface TickerData {
   last?: number;
   close?: number;
   delta?: number;
+}
+
+export type FundamentalReportType = "ReportSnapshot" | "ReportRatios" | "RESC";
+
+export interface EnhancedMarketData extends TickerData {
+  historicalVolatility?: number;
+  impliedVolatility?: number;
+  shortableShares?: number;
+  shortableIndicator?: number; // >2.5 = available, 1.5-2.5 = limited, <1.5 = not available
+  fundamentalRatios?: string; // pipe-delimited string from tick 258
+  ibDividends?: string; // tick 456 string
+  callVolume?: number;
+  putVolume?: number;
+  callOpenInterest?: number;
+  putOpenInterest?: number;
 }
 
 class IBKRService {
@@ -1062,6 +1079,179 @@ class IBKRService {
     }
 
     console.log(`Order ${orderId} cancel confirmation timeout - assuming cancelled`);
+  }
+
+  /**
+   * Get fundamental data (XML) from IBKR Thomson Reuters feed.
+   * Requires market data subscription. Returns raw XML string.
+   * @param symbol Stock ticker
+   * @param reportType ReportSnapshot | ReportRatios | RESC (analyst estimates)
+   */
+  async getFundamentalData(symbol: string, reportType: FundamentalReportType): Promise<string> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const contract: Contract = {
+      symbol,
+      secType: SecType.STK,
+      exchange: "SMART",
+      currency: "USD",
+    };
+
+    try {
+      const xml = await this.api.getFundamentalData(contract, reportType);
+      return xml;
+    } catch (err) {
+      const error = err as { code?: number; message?: string };
+      if (error.code === 200 || error.message?.includes("No security definition")) {
+        return "";
+      }
+      // Error 430 = no fundamental data available, 10358 = fundamentals not allowed
+      if (error.code === 430 || error.code === 10358 || error.message?.includes("No data of type") || error.message?.includes("not allowed")) {
+        return "";
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Get enhanced market data with generic tick types for extended info.
+   * Generic ticks: 104=HV, 106=IV, 236=shortable, 258=fundamental ratios, 456=dividends
+   * Additional: 100=call volume/OI, 101=put volume/OI
+   */
+  async getEnhancedMarketData(
+    contract: Contract,
+    genericTickList = "104,106,236,258,456"
+  ): Promise<EnhancedMarketData | null> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    try {
+      const mdContract = contract.secType === SecType.OPT
+        ? { ...contract, exchange: "SMART" }
+        : contract;
+
+      const marketData = await this.api.getMarketDataSnapshot(
+        mdContract,
+        genericTickList,
+        false
+      );
+
+      if (!marketData) return null;
+
+      // Standard ticks
+      const bidTick = marketData.get(1);
+      const askTick = marketData.get(2);
+      const lastTick = marketData.get(4);
+      const closeTick = marketData.get(9);
+
+      // Generic ticks — use TickType enum values
+      // 104 → tick type 23 (OPTION_HISTORICAL_VOL)
+      const hv = marketData.get(23)?.value;
+      // 106 → tick type 24 (OPTION_IMPLIED_VOL)
+      const iv = marketData.get(24)?.value;
+      // 236 → tick type 46 (SHORTABLE) and type 89 (SHORTABLE_SHARES)
+      const shortableIndicator = marketData.get(46)?.value;
+      const shortableShares = marketData.get(89)?.value;
+      // 258 → tick type 47 (FUNDAMENTAL_RATIOS) — string value
+      const fundamentalRatiosTick = marketData.get(47);
+      // 456 → tick type 59 (IB_DIVIDENDS) — string value
+      const dividendsTick = marketData.get(59);
+      // 100/101 → call/put volume and OI
+      const callVolume = marketData.get(29)?.value;  // OPTION_CALL_VOLUME
+      const putVolume = marketData.get(30)?.value;   // OPTION_PUT_VOLUME
+      const callOI = marketData.get(27)?.value;      // OPTION_CALL_OPEN_INTEREST
+      const putOI = marketData.get(28)?.value;       // OPTION_PUT_OPEN_INTEREST
+
+      let delta: number | undefined;
+      if (contract.secType === SecType.OPT) {
+        const modelDelta = marketData.get(10041);
+        const delayedModelDelta = marketData.get(10047);
+        delta = modelDelta?.value ?? delayedModelDelta?.value;
+      }
+
+      return {
+        contract,
+        bid: bidTick?.value,
+        ask: askTick?.value,
+        last: lastTick?.value,
+        close: closeTick?.value,
+        delta,
+        historicalVolatility: typeof hv === "number" ? hv : undefined,
+        impliedVolatility: typeof iv === "number" ? iv : undefined,
+        shortableShares: typeof shortableShares === "number" ? shortableShares : undefined,
+        shortableIndicator: typeof shortableIndicator === "number" ? shortableIndicator : undefined,
+        fundamentalRatios: typeof fundamentalRatiosTick?.value === "string" ? fundamentalRatiosTick.value : undefined,
+        ibDividends: typeof dividendsTick?.value === "string" ? dividendsTick.value : undefined,
+        callVolume: typeof callVolume === "number" ? callVolume : undefined,
+        putVolume: typeof putVolume === "number" ? putVolume : undefined,
+        callOpenInterest: typeof callOI === "number" ? callOI : undefined,
+        putOpenInterest: typeof putOI === "number" ? putOI : undefined,
+      };
+    } catch (err) {
+      const error = err as { code?: number; message?: string };
+      if (
+        error.code === 10091 ||  // Subscription required
+        error.code === 200 ||    // No security definition
+        error.code === 321 ||    // Snapshot not applicable to generic ticks
+        error.code === 10358 ||  // Fundamentals data not allowed
+        error.message?.includes("additional subscription") ||
+        error.message?.includes("No security definition") ||
+        error.message?.includes("not applicable to generic ticks") ||
+        error.message?.includes("not allowed")
+      ) {
+        return null;
+      }
+      console.error(`Failed to get enhanced market data for ${contract.symbol}:`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Search for symbols matching a pattern.
+   * Returns matching contract descriptions.
+   */
+  async searchSymbols(pattern: string): Promise<ContractDescription[]> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    try {
+      const results = await this.api.getMatchingSymbols(pattern);
+      return results;
+    } catch (err) {
+      console.error(`Failed to search symbols for "${pattern}":`, err);
+      return [];
+    }
+  }
+
+  /**
+   * Get contract details including sector/industry classification.
+   * Returns full ContractDetails array for the given symbol.
+   */
+  async getContractInfo(symbol: string, secType: SecType = SecType.STK): Promise<ContractDetails[]> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const contract: Contract = {
+      symbol,
+      secType,
+      exchange: "SMART",
+      currency: "USD",
+    };
+
+    try {
+      return await this.api.getContractDetails(contract);
+    } catch (err) {
+      const error = err as { code?: number; message?: string };
+      if (error.code === 200 || error.message?.includes("No security definition")) {
+        return [];
+      }
+      throw err;
+    }
   }
 
   async disconnect() {

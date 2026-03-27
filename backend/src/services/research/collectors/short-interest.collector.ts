@@ -1,55 +1,8 @@
+import { SecType } from "@stoqey/ib";
+import { ibkrService } from "../../ibkr.js";
 import type { Collector, CollectionResult } from "./types.js";
 
-const POLYGON_BASE_URL = "https://api.polygon.io";
-const STALENESS_MINUTES = 7 * 24 * 60; // 10080 minutes (7 days)
-
-interface ShortInterestEntry {
-  shortInterest: number;
-  shortPercentOfFloat: number;
-  settlementDate: string;
-  avgDailyVolume: number;
-}
-
-interface PolygonShortInterestResponse {
-  results: Array<{
-    short_volume?: number;
-    short_exempt_volume?: number;
-    short_interest?: number;
-    short_percent_of_float?: number;
-    settlement_date?: string;
-    date?: string;
-    avg_daily_volume?: number;
-    shares_short?: number;
-    float_shares?: number;
-    days_to_cover?: number;
-  }>;
-  status: string;
-}
-
-function computeDaysToCover(shortInterest: number, avgDailyVolume: number): number {
-  if (avgDailyVolume <= 0) return 0;
-  return shortInterest / avgDailyVolume;
-}
-
-function computeShortInterestTrend(
-  entries: ShortInterestEntry[]
-): "increasing" | "decreasing" | "stable" | "unknown" {
-  if (entries.length < 2) return "unknown";
-
-  const latest = entries[0];
-  const previous = entries[1];
-
-  if (previous.shortPercentOfFloat === 0) return "unknown";
-
-  const changePercent =
-    ((latest.shortPercentOfFloat - previous.shortPercentOfFloat) /
-      previous.shortPercentOfFloat) *
-    100;
-
-  if (changePercent > 5) return "increasing";
-  if (changePercent < -5) return "decreasing";
-  return "stable";
-}
+const STALENESS_MINUTES = 7 * 24 * 60; // 7 days
 
 export const shortInterestCollector: Collector = {
   source: "short_interest",
@@ -57,88 +10,65 @@ export const shortInterestCollector: Collector = {
   stalenessMinutes: STALENESS_MINUTES,
 
   async collect(symbol: string): Promise<CollectionResult> {
-    const apiKey = process.env.MARKET_DATA_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        "MARKET_DATA_API_KEY not configured — required for Polygon short interest data"
-      );
-    }
-
-    // Polygon's short interest endpoint — may not be available on all tiers
-    const url = new URL(
-      `/v3/reference/tickers/${symbol}/short-interest`,
-      POLYGON_BASE_URL
-    );
-    url.searchParams.set("apiKey", apiKey);
-    url.searchParams.set("limit", "10");
-    url.searchParams.set("order", "desc");
-    url.searchParams.set("sort", "settlement_date");
-
-    const response = await globalThis.fetch(url.toString(), {
-      headers: { Accept: "application/json" },
-    });
-
-    if (!response.ok) {
-      if (response.status === 403 || response.status === 404) {
-        return {
-          _tag: "skipped",
-          source: "short_interest",
-          reason: `Polygon API returned ${response.status} (endpoint not available on your plan)`,
-          expiresAt: new Date(Date.now() + STALENESS_MINUTES * 60 * 1000),
-        };
-      }
-      const body = await response.text();
-      throw new Error(
-        `Polygon short interest API returned ${response.status} for ${symbol}: ${body}`
-      );
-    }
-
-    const result = (await response.json()) as PolygonShortInterestResponse;
-
-    if (!result.results || result.results.length === 0) {
-      throw new Error(
-        `No short interest data returned by Polygon for ${symbol}. ` +
-          `This endpoint may not be available on your Polygon plan or for this ticker.`
-      );
-    }
-
-    const entries: ShortInterestEntry[] = result.results.map((r) => {
-      const settlementDate = r.settlement_date ?? r.date;
-      if (!settlementDate) {
-        throw new Error(
-          `Short interest entry missing settlement_date for ${symbol}. ` +
-            `Check Polygon API response format.`
-        );
-      }
+    if (!ibkrService.isConnected()) {
       return {
-        shortInterest: r.short_interest ?? r.shares_short ?? 0,
-        shortPercentOfFloat: r.short_percent_of_float ?? 0,
-        settlementDate,
-        avgDailyVolume: r.avg_daily_volume ?? 0,
+        _tag: "skipped",
+        source: "short_interest",
+        reason: "IBKR not connected — short interest collector requires TWS",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // retry in 1h
       };
-    });
+    }
 
-    const latest = entries[0];
-    const daysToCover = computeDaysToCover(latest.shortInterest, latest.avgDailyVolume);
-    const shortInterestTrend = computeShortInterestTrend(entries);
+    const contract = {
+      symbol,
+      secType: SecType.STK,
+      exchange: "SMART",
+      currency: "USD",
+    };
 
-    const shortInterestChange =
-      entries.length >= 2
-        ? latest.shortPercentOfFloat - entries[1].shortPercentOfFloat
-        : null;
+    // Fetch shortable data (tick 236) and basic market data for avg volume
+    const enhanced = await ibkrService.getEnhancedMarketData(contract, "236");
+    const marketData = await ibkrService.getMarketData(contract);
 
+    const shortableShares = enhanced?.shortableShares ?? 0;
+    const shortableIndicator = enhanced?.shortableIndicator ?? 0;
+
+    // AVG_VOLUME tick (type 21) from regular market data snapshot
+    // getMarketData doesn't request generic ticks, so avg volume may not be available.
+    // Use last price as a proxy indicator that data is flowing.
+    const lastPrice = marketData?.last ?? marketData?.close ?? 0;
+
+    if (shortableShares === 0 && shortableIndicator === 0 && lastPrice === 0) {
+      return {
+        _tag: "skipped",
+        source: "short_interest",
+        reason: `No shortable/market data available from IBKR for ${symbol}`,
+        expiresAt: new Date(Date.now() + STALENESS_MINUTES * 60 * 1000),
+      };
+    }
+
+    // IBKR shortable indicator: >2.5 = easy to borrow, 1.5-2.5 = limited, <1.5 = not shortable
+    const isShortable = shortableIndicator > 2.5;
+    const isLimited = shortableIndicator >= 1.5 && shortableIndicator <= 2.5;
+
+    // We don't have short % of float or historical trend from IBKR,
+    // so we provide what's available and set unknowns to reflect that.
+    // The analyzer handles missing data gracefully.
     return {
       source: "short_interest",
       data: {
         symbol,
-        shortInterestShares: latest.shortInterest,
-        shortPercentOfFloat: latest.shortPercentOfFloat,
-        daysToCover,
-        shortInterestTrend,
-        shortInterestChange,
-        settlementDate: latest.settlementDate,
-        avgDailyVolume: latest.avgDailyVolume,
-        historicalEntries: entries,
+        shortInterestShares: shortableShares, // shares available to short (proxy)
+        shortPercentOfFloat: 0, // Not available from IBKR
+        daysToCover: 0, // Cannot calculate without short interest volume
+        shortInterestTrend: "unknown" as const,
+        shortInterestChange: null,
+        settlementDate: new Date().toISOString().split("T")[0],
+        avgDailyVolume: 0,
+        shortableIndicator,
+        shortableStatus: isShortable ? "available" : isLimited ? "limited" : "not_shortable",
+        sharesAvailable: shortableShares,
+        historicalEntries: [],
         fetchedAt: new Date().toISOString(),
       },
       expiresAt: new Date(Date.now() + STALENESS_MINUTES * 60 * 1000),

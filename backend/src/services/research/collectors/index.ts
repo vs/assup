@@ -13,6 +13,7 @@ import { socialCollector } from "./social.collector.js";
 import { analystConsensusCollector } from "./analyst-consensus.collector.js";
 import { macroCollector } from "./macro.collector.js";
 import { saCommentsCollector } from "./sa-comments.collector.js";
+import { fundamentalsCollector } from "./fundamentals.collector.js";
 
 export function initCollectors(): void {
   registerCollector(technicalCollector);
@@ -24,8 +25,9 @@ export function initCollectors(): void {
   registerCollector(socialCollector);
   registerCollector(analystConsensusCollector);
   registerCollector(saCommentsCollector);
+  registerCollector(fundamentalsCollector);
   registerCollector(macroCollector); // Used separately by macro service, not per-ticker collection
   console.log(
-    "Registered collectors: technical, seeking_alpha, events, options, sec_filings, short_interest, social, analyst_consensus, sa_comments, macro"
+    "Registered collectors: technical, seeking_alpha, events, options, sec_filings, short_interest, social, analyst_consensus, sa_comments, fundamentals, macro"
   );
 }
