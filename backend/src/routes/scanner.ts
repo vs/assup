@@ -20,13 +20,7 @@ import {
   scannerCriteriaSchema,
 } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
-import { isIgnorablePositionError } from "../utils/index.js";
-
-/**
- * US Market hours in Eastern Time (minutes from midnight)
- */
-const US_MARKET_OPEN_MINUTES = 9 * 60 + 30;  // 9:30 AM ET
-const US_MARKET_CLOSE_MINUTES = 16 * 60;      // 4:00 PM ET
+import { isIgnorablePositionError, isMarketOpen, parseExpirationDate } from "../utils/index.js";
 
 const router = Router();
 
@@ -313,22 +307,6 @@ async function scanOptionsForSymbols(
 
   const totalSymbols = symbols.length;
   console.log(`\n=== Starting Options Scan for ${totalSymbols} symbols ===\n`);
-
-  // Check if US stock market is currently open
-  // Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday (excluding holidays)
-  const isMarketOpen = (): boolean => {
-    const now = new Date();
-    const etTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const day = etTime.getDay();
-    const hours = etTime.getHours();
-    const minutes = etTime.getMinutes();
-    const timeInMinutes = hours * 60 + minutes;
-
-    // Weekend check (0 = Sunday, 6 = Saturday)
-    if (day === 0 || day === 6) return false;
-
-    return timeInMinutes >= US_MARKET_OPEN_MINUTES && timeInMinutes < US_MARKET_CLOSE_MINUTES;
-  };
 
   // Use Live data during market hours, Frozen (last close) outside market hours
   const marketOpen = isMarketOpen();
@@ -640,31 +618,6 @@ async function scanOptionsForSymbols(
       console.warn("Could not switch back to delayed market data:", err);
     }
   }
-}
-
-/**
- * Parse expiration date string (format: YYYYMMDD or YYMMDD)
- */
-function parseExpirationDate(expiration: string): Date {
-  let year: number;
-  let month: number;
-  let day: number;
-
-  if (expiration.length === 8) {
-    // YYYYMMDD
-    year = parseInt(expiration.substring(0, 4), 10);
-    month = parseInt(expiration.substring(4, 6), 10) - 1; // Month is 0-indexed
-    day = parseInt(expiration.substring(6, 8), 10);
-  } else if (expiration.length === 6) {
-    // YYMMDD
-    year = 2000 + parseInt(expiration.substring(0, 2), 10);
-    month = parseInt(expiration.substring(2, 4), 10) - 1;
-    day = parseInt(expiration.substring(4, 6), 10);
-  } else {
-    throw new Error(`Invalid expiration format: ${expiration}`);
-  }
-
-  return new Date(year, month, day);
 }
 
 export default router;

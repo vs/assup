@@ -13,8 +13,10 @@ import { ibkrService } from "../services/ibkr.js";
 import { sseService } from "../services/sse.js";
 import { scannerCriteriaSchema } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
+import { isMarketOpen, parseExpirationDate } from "../utils/index.js";
 import { z } from "zod";
 import type { OptionOpportunity } from "@assup/shared";
+import { Prisma } from "@prisma/client";
 
 const router = Router();
 
@@ -172,7 +174,7 @@ async function executeJobScan(
   }
 
   // Get asset class assignments
-  const assignmentWhere: any = {
+  const assignmentWhere: Prisma.SecurityAssignmentWhereInput = {
     symbol: { in: uniqueSymbols },
     secType: "STK",
   };
@@ -212,19 +214,6 @@ async function executeJobScan(
   );
 
   // Check market hours for data type
-  const isMarketOpen = (): boolean => {
-    const now = new Date();
-    const etTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const day = etTime.getDay();
-    const hours = etTime.getHours();
-    const minutes = etTime.getMinutes();
-    const timeInMinutes = hours * 60 + minutes;
-    if (day === 0 || day === 6) return false;
-    const marketOpen = 9 * 60 + 30;
-    const marketClose = 16 * 60;
-    return timeInMinutes >= marketOpen && timeInMinutes < marketClose;
-  };
-
   const marketDataType = isMarketOpen() ? 1 : 2;
   try {
     ibkrService.setMarketDataType(marketDataType as 1 | 2);
@@ -405,24 +394,6 @@ async function executeJobScan(
       console.warn("Could not switch back to delayed market data:", err);
     }
   }
-}
-
-function parseExpirationDate(expiration: string): Date {
-  let year: number, month: number, day: number;
-
-  if (expiration.length === 8) {
-    year = parseInt(expiration.substring(0, 4), 10);
-    month = parseInt(expiration.substring(4, 6), 10) - 1;
-    day = parseInt(expiration.substring(6, 8), 10);
-  } else if (expiration.length === 6) {
-    year = 2000 + parseInt(expiration.substring(0, 2), 10);
-    month = parseInt(expiration.substring(2, 4), 10) - 1;
-    day = parseInt(expiration.substring(4, 6), 10);
-  } else {
-    throw new Error(`Invalid expiration format: ${expiration}`);
-  }
-
-  return new Date(year, month, day);
 }
 
 export default router;

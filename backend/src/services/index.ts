@@ -11,3 +11,4 @@ export { positionService } from "./position.service.js";
 export { importService } from "./import.service.js";
 export { profitService } from "./profit.service.js";
 export { wheelService } from "./wheel.service.js";
+export { wheelScannerService } from "./wheelScanner.service.js";

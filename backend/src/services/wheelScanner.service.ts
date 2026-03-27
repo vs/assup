@@ -13,6 +13,7 @@ import {
 } from "./wheelScanner.scoring.js";
 import { pipelineService } from "./research/pipeline.service.js";
 import { getUnderinvestedClasses } from "./allocation.service.js";
+import { sleep } from "../utils/market.js";
 
 interface CandidateInfo {
   symbol: string;
@@ -34,10 +35,6 @@ const TOP_N_PER_CLASS = 3;
 const REPORT_FRESHNESS_DAYS = 7;
 const IBKR_BATCH_SIZE = 3;
 const IBKR_BATCH_DELAY_MS = 2000;
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 class WheelScannerService {
   /** Trigger a new scan. Returns scan ID. Runs in background. */
@@ -127,6 +124,10 @@ class WheelScannerService {
 
           for (const r of results) {
             if (candidates.some((c) => c.symbol === r.symbol)) continue;
+
+            // Apply price and market cap filters from config
+            if (r.lastPrice != null && (r.lastPrice < config.minPrice || r.lastPrice > config.maxPrice)) continue;
+            if (r.marketCap != null && r.marketCap < config.minMarketCap) continue;
 
             candidates.push({
               symbol: r.symbol,
@@ -426,8 +427,7 @@ class WheelScannerService {
     total: number
   ) {
     try {
-      sseService.broadcast("scanner", {
-        subtype: "wheel-scan",
+      sseService.broadcast("wheel_scanner", {
         scanId,
         phase,
         current,
