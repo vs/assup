@@ -22,6 +22,7 @@ import exchangeRatesRouter from "./routes/exchangeRates.js";
 import taxesRouter from "./routes/taxes.js";
 import wheelRouter from "./routes/wheel.js";
 import researchRouter from "./routes/research.js";
+import wheelScannerRouter from "./routes/wheelScanner.js";
 import { scanJobService } from "./services/scanJob.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
 import { initAnalyzers } from "./services/research/analyzers/index.js";
@@ -92,6 +93,7 @@ app.use("/api/exchange-rates", exchangeRatesRouter);
 app.use("/api/taxes", taxesRouter);
 app.use("/api/wheel", wheelRouter);
 app.use("/api/research", researchRouter);
+app.use("/api/wheel-scanner", wheelScannerRouter);
 
 app.get("/api/health", asyncHandler(async (req, res) => {
   const assetClassCount = await prisma.assetClass.count();

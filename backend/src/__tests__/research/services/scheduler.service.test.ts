@@ -62,8 +62,8 @@ describe("schedulerService", () => {
     it("schedules 4 core cron jobs", () => {
       schedulerService.start();
 
-      // 4 core jobs: daily collection, short interest, social, report generation
-      expect(mockSchedule).toHaveBeenCalledTimes(4);
+      // 5 core jobs: daily collection, short interest, social, report generation, weekly wheel scan
+      expect(mockSchedule).toHaveBeenCalledTimes(5);
 
       // Verify cron expressions
       expect(mockSchedule).toHaveBeenCalledWith(

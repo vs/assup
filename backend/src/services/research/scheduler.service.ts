@@ -4,6 +4,7 @@ import { collectionService } from "./collection.service.js";
 import { macroService } from "./macro.service.js";
 import { pipelineService } from "./pipeline.service.js";
 import { screenerService } from "./screener.service.js";
+import { wheelScannerService } from "../wheelScanner.service.js";
 
 const DAILY_SOURCES = [
   "technical",
@@ -69,6 +70,16 @@ class SchedulerService {
       cron.schedule("30 18 * * 1-5", () => {
         this.runReportGeneration().catch((err) => {
           console.error("[Scheduler] Report generation top-level error:", err);
+        });
+      }, { timezone: "America/New_York" })
+    );
+
+    // Weekly wheel scan: Saturday 10 AM ET
+    this.jobs.push(
+      cron.schedule("0 10 * * 6", () => {
+        console.log("[Scheduler] Running weekly wheel scan...");
+        wheelScannerService.startScan().catch((err) => {
+          console.error("[Scheduler] Wheel scan top-level error:", err);
         });
       }, { timezone: "America/New_York" })
     );
