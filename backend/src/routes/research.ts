@@ -14,6 +14,7 @@ import { screenerService } from "../services/research/screener.service.js";
 import { schedulerService } from "../services/research/scheduler.service.js";
 import {
   getAuthStatus,
+  getOAuthToken,
   setOAuthToken,
   deleteOAuthToken,
 } from "../services/research/auth.service.js";
@@ -36,10 +37,15 @@ const router = Router();
 
 // ── Helper: test Claude CLI ─────────────────────────────────────────
 
-function testCli(prompt: string): Promise<{ ok: boolean; error?: string }> {
+function testCli(prompt: string, oauthToken?: string): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
+    const env = { ...process.env };
+    if (oauthToken) {
+      env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+    }
     const child = spawn("claude", ["--output-format", "json"], {
       stdio: ["pipe", "pipe", "pipe"],
+      env,
     });
 
     let stdout = "";
@@ -290,8 +296,9 @@ router.get(
       return;
     }
 
-    // Test with a simple prompt
-    const testResult = await testCli("Reply with exactly: ok");
+    // Test with a simple prompt using stored token if available
+    const storedToken = await getOAuthToken();
+    const testResult = await testCli("Reply with exactly: ok", storedToken ?? undefined);
     if (!testResult.ok) {
       res.json({
         available: false,
@@ -332,8 +339,8 @@ router.put(
       return;
     }
 
-    // Validate by testing the CLI with the token
-    const testResult = await testCli("Reply with exactly: ok");
+    // Validate by testing the CLI with the provided token
+    const testResult = await testCli("Reply with exactly: ok", token);
     if (!testResult.ok) {
       res.status(400).json({
         error: "Token validation failed",
