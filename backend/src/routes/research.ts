@@ -9,6 +9,7 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { prisma } from "../db/index.js";
 import { tickerService } from "../services/research/ticker.service.js";
 import { jobService } from "../services/research/job.service.js";
+import { macroService } from "../services/research/macro.service.js";
 import { pipelineService } from "../services/research/pipeline.service.js";
 import { screenerService } from "../services/research/screener.service.js";
 import { schedulerService } from "../services/research/scheduler.service.js";
@@ -101,6 +102,18 @@ router.get(
       orderBy: { analyzedAt: "desc" },
     });
     if (!snapshot) throw new NotFoundError("Macro snapshot");
+    res.json(snapshot);
+  })
+);
+
+/**
+ * POST /api/research/macro/refresh
+ * Collect fresh macro data and return updated snapshot
+ */
+router.post(
+  "/macro/refresh",
+  asyncHandler(async (_req, res) => {
+    const snapshot = await macroService.collectAndAnalyze(true);
     res.json(snapshot);
   })
 );

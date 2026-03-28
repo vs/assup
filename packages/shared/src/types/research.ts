@@ -83,6 +83,7 @@ export interface MacroAnalysis {
     vixTrend: string;
     vixSma20: number | null;
     sp500Price: number | null;
+    sp500Index: number | null;
     sp500Sma200: number | null;
     sp500Trend: string;
     putCallRatio: number | null;

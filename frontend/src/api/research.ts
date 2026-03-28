@@ -35,6 +35,8 @@ export const researchApi = {
 
   // Macro
   getMacro: () => request<MacroAnalysis>("/api/research/macro"),
+  refreshMacro: () =>
+    request<MacroAnalysis>("/api/research/macro/refresh", { method: "POST" }),
 
   // Tickers
   listTickers: (page = 1, limit = 100) =>

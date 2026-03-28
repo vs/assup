@@ -9,6 +9,7 @@ interface MacroDetails {
   vixTrend: VixTrend;
   vixSma20: number | null;
   sp500Price: number | null;
+  sp500Index: number | null;
   sp500Sma200: number | null;
   sp500Trend: Sp500Trend;
   putCallRatio: number | null;
@@ -41,6 +42,7 @@ export const macroAnalyzer: Analyzer = {
     const vix = (rawData.vix as number) ?? null;
     const vixSma20 = (rawData.vixSma20 as number) ?? null;
     const sp500Price = (rawData.sp500Price as number) ?? null;
+    const sp500Index = (rawData.sp500Index as number) ?? null;
     const sp500Sma200 = (rawData.sp500Sma200 as number) ?? null;
     const putCallRatio = (rawData.putCallRatio as number) ?? null;
 
@@ -155,6 +157,7 @@ export const macroAnalyzer: Analyzer = {
       vixTrend,
       vixSma20,
       sp500Price,
+      sp500Index,
       sp500Sma200,
       sp500Trend,
       putCallRatio,

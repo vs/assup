@@ -1,5 +1,6 @@
 import type { Collector, CollectedData } from "./types.js";
 import { getMarketDataProvider } from "../providers/index.js";
+import { fetchTvQuotes } from "../providers/tradingview.js";
 
 const STALENESS_MINUTES = 24 * 60; // 24 hours
 
@@ -24,36 +25,47 @@ export const macroCollector: Collector = {
       .toISOString()
       .split("T")[0];
 
-    // Use Promise.allSettled so partial data is still useful
-    const [vixQuoteResult, vixHistResult, spyQuoteResult, spyHistResult] =
+    // Fetch real index values (SPX, VIX) from TradingView
+    // and historical data from IBKR (SPY for SMA200, VIX for SMA20)
+    const [tvResult, vixHistResult, spyHistResult] =
       await Promise.allSettled([
-        provider.getQuote("VIX"),
+        fetchTvQuotes(["SP:SPX", "CBOE:VIX"]),
         provider.getHistoricalOHLCV("VIX", vixFrom, today, "day"),
-        provider.getQuote("SPY"),
         provider.getHistoricalOHLCV("SPY", spyFrom, today, "day"),
       ]);
 
-    const vixQuote =
-      vixQuoteResult.status === "fulfilled" ? vixQuoteResult.value : null;
+    const tvQuotes =
+      tvResult.status === "fulfilled" ? tvResult.value : null;
     const vixHist =
       vixHistResult.status === "fulfilled" ? vixHistResult.value : null;
-    const spyQuote =
-      spyQuoteResult.status === "fulfilled" ? spyQuoteResult.value : null;
     const spyHist =
       spyHistResult.status === "fulfilled" ? spyHistResult.value : null;
 
-    // If BOTH VIX and SPY fail entirely, throw an error
-    const vixFailed = !vixQuote && (!vixHist || vixHist.length === 0);
-    const spyFailed = !spyQuote && (!spyHist || spyHist.length === 0);
+    // Extract TradingView index values
+    const tvSpx = tvQuotes?.["SP:SPX"] ?? null;
+    const tvVix = tvQuotes?.["CBOE:VIX"] ?? null;
+
+    const vixLevel = tvVix?.close ?? (vixHist && vixHist.length > 0
+      ? vixHist[vixHist.length - 1].close
+      : null);
+
+    const sp500Index = tvSpx?.close ?? null;
+
+    // SPY price from historical for SMA calculation (sp500Price stays SPY-based)
+    const sp500Price = spyHist && spyHist.length > 0
+      ? spyHist[spyHist.length - 1].close
+      : null;
+
+    // If we have no data from any source, throw
+    const vixFailed = vixLevel === null && (!vixHist || vixHist.length === 0);
+    const spyFailed = sp500Index === null && sp500Price === null;
 
     if (vixFailed && spyFailed) {
       const errors: string[] = [];
-      if (vixQuoteResult.status === "rejected")
-        errors.push(`VIX quote: ${vixQuoteResult.reason}`);
+      if (tvResult.status === "rejected")
+        errors.push(`TradingView: ${tvResult.reason}`);
       if (vixHistResult.status === "rejected")
         errors.push(`VIX hist: ${vixHistResult.reason}`);
-      if (spyQuoteResult.status === "rejected")
-        errors.push(`SPY quote: ${spyQuoteResult.reason}`);
       if (spyHistResult.status === "rejected")
         errors.push(`SPY hist: ${spyHistResult.reason}`);
       throw new Error(
@@ -68,23 +80,12 @@ export const macroCollector: Collector = {
       vixSma20 = last20.reduce((sum, d) => sum + d.close, 0) / 20;
     }
 
-    // Compute SPY 200-day SMA
+    // Compute SPY 200-day SMA (used for trend analysis)
     let sp500Sma200: number | null = null;
     if (spyHist && spyHist.length >= 200) {
       const last200 = spyHist.slice(-200);
       sp500Sma200 = last200.reduce((sum, d) => sum + d.close, 0) / 200;
     }
-
-    // Extract current values
-    const vixLevel =
-      vixQuote?.last ?? (vixHist && vixHist.length > 0
-        ? vixHist[vixHist.length - 1].close
-        : null);
-
-    const sp500Price =
-      spyQuote?.last ?? (spyHist && spyHist.length > 0
-        ? spyHist[spyHist.length - 1].close
-        : null);
 
     return {
       source: "macro",
@@ -92,10 +93,11 @@ export const macroCollector: Collector = {
         vix: vixLevel,
         vixSma20,
         vixHistory: vixHist,
+        sp500Index,
         sp500Price,
         sp500Sma200,
         spyHistory: spyHist,
-        putCallRatio: null, // Not available from the provider initially
+        putCallRatio: null,
         putCallRatioNote:
           "Put/call ratio is not currently available from the market data provider",
         fetchedAt: new Date().toISOString(),

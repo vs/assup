@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ListRestart, Eye, Zap, AlertTriangle } from "lucide-react";
+import { ListRestart, Eye, Zap, AlertTriangle, RefreshCw } from "lucide-react";
 import { timeAgo } from "@/utils/format";
 
 // --- Helpers ---
@@ -83,21 +83,25 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
     const s = details.vix <= 20
       ? linearMap(details.vix, 12, 20, 0, 50)
       : linearMap(details.vix, 20, 35, 50, 100);
-    signals.push({ score: s, weight: 0.4, name: "VIX", display: `${details.vix.toFixed(1)}` });
+    signals.push({ score: s, weight: 0.4, name: "VIX", display: `${details.vix.toFixed(1)}${details.vixSma20 != null ? ` (SMA ${details.vixSma20.toFixed(1)})` : ""}` });
   }
 
   // VIX vs SMA20: 0 when 15%+ below, 50 at parity, 100 when 15%+ above
   if (details.vix != null && details.vixSma20 != null && details.vixSma20 > 0) {
     const pctDiff = ((details.vix - details.vixSma20) / details.vixSma20) * 100;
     const s = linearMap(pctDiff, -15, 15, 0, 100);
-    signals.push({ score: s, weight: 0.2, name: "VIX/SMA", display: `${pctDiff >= 0 ? "+" : ""}${pctDiff.toFixed(1)}%` });
+    signals.push({ score: s, weight: 0.2, name: "", display: "" }); // weight participates but no separate display
   }
 
   // S&P vs SMA200: 0 when 10%+ above, 50 at parity, 100 when 10%+ below (inverted)
   if (details.sp500Price != null && details.sp500Sma200 != null && details.sp500Sma200 > 0) {
     const pctAbove = ((details.sp500Price - details.sp500Sma200) / details.sp500Sma200) * 100;
     const s = linearMap(pctAbove, 10, -10, 0, 100);
-    signals.push({ score: s, weight: 0.25, name: "S&P/SMA", display: `${pctAbove >= 0 ? "+" : ""}${pctAbove.toFixed(1)}%` });
+    // Show real S&P 500 index value if available, fall back to SPY price
+    const displayPrice = details.sp500Index != null
+      ? details.sp500Index.toLocaleString("en-US", { maximumFractionDigits: 0 })
+      : details.sp500Price.toFixed(0);
+    signals.push({ score: s, weight: 0.25, name: "S&P 500", display: `${displayPrice} (${pctAbove >= 0 ? "+" : ""}${pctAbove.toFixed(1)}% SMA)` });
   }
 
   // Put/Call ratio: 0 at ≤0.5, 50 at 0.85, 100 at ≥1.5
@@ -123,7 +127,7 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
   return {
     score: Math.round(score),
     label,
-    components: signals.map((s) => ({ name: s.name, display: s.display })),
+    components: signals.filter((s) => s.name).map((s) => ({ name: s.name, display: s.display })),
   };
 }
 
@@ -151,14 +155,8 @@ function FearGauge({ details }: { details: MacroAnalysis["details"] }) {
         <span className={`text-xs font-medium whitespace-nowrap ${labelColor}`}>{result.label}</span>
       </div>
       <div className="hidden lg:flex items-center gap-3 text-xs text-muted-foreground">
-        {details.vix != null && (
-          <span>VIX: <span className="font-medium">{details.vix.toFixed(1)}</span></span>
-        )}
-        {details.sp500Price != null && (
-          <span>SPY: <span className="font-medium">{details.sp500Price.toFixed(0)}</span></span>
-        )}
         {result.components.map((c) => (
-          <span key={c.name} className="text-muted-foreground/70">{c.name}: {c.display}</span>
+          <span key={c.name}>{c.name}: <span className="font-medium">{c.display}</span></span>
         ))}
       </div>
     </div>
@@ -167,15 +165,40 @@ function FearGauge({ details }: { details: MacroAnalysis["details"] }) {
 
 // --- Macro Banner ---
 
-function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
+function MacroBanner({
+  macro,
+  onRefresh,
+}: {
+  macro: MacroAnalysis | null;
+  onRefresh: () => void;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   if (!macro) {
     return (
       <Card className="border-dashed">
-        <CardContent className="py-3 px-4">
+        <CardContent className="py-3 px-4 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            No macro data available. Generate a macro analysis to see the market
-            regime.
+            No macro data available.
           </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing..." : "Generate"}
+          </Button>
         </CardContent>
       </Card>
     );
@@ -196,7 +219,19 @@ function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
             </Badge>
             <FearGauge details={macro.details} />
           </div>
-          <span className="text-sm text-muted-foreground">Updated {timeAgo(macro.analyzedAt)}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Updated {timeAgo(macro.analyzedAt)}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh macro data"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
         </div>
         {macro.summary && (
           <p className="text-sm mt-2 text-muted-foreground">{macro.summary}</p>
@@ -383,7 +418,13 @@ export function ResearchPage() {
       )}
 
       {/* Macro Regime Banner */}
-      <MacroBanner macro={macro} />
+      <MacroBanner
+        macro={macro}
+        onRefresh={async () => {
+          const snapshot = await researchApi.refreshMacro();
+          setMacro(snapshot);
+        }}
+      />
 
       {/* Tickers Table */}
       <Card>
