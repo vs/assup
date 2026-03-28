@@ -19,19 +19,6 @@ import { ReportHighlights } from "@/components/research/ReportHighlights";
 
 import { timeAgo } from "@/utils/format";
 
-function extractSupportResistance(analyses: AnalysisResult[]): {
-  support: number | null;
-  resistance: number | null;
-} {
-  const tech = analyses.find((a) => a.source === "technical");
-  if (!tech) return { support: null, resistance: null };
-  const details = tech.details as Record<string, unknown>;
-  return {
-    support: (details.support as number) ?? null,
-    resistance: (details.resistance as number) ?? null,
-  };
-}
-
 // --- Page Component ---
 
 export function ResearchReportPage() {
@@ -83,8 +70,6 @@ export function ResearchReportPage() {
   }
 
   if (loading) return <PageLoadingSkeleton />;
-
-  const { support, resistance } = extractSupportResistance(analyses);
 
   // Sort analyses by confidence descending
   const sortedAnalyses = [...analyses].sort(
