@@ -8,7 +8,6 @@ interface MacroDetails {
   vix: number | null;
   vixTrend: VixTrend;
   vixSma20: number | null;
-  sp500Price: number | null;
   sp500Index: number | null;
   sp500Sma200: number | null;
   sp500Trend: Sp500Trend;
@@ -46,7 +45,6 @@ export const macroAnalyzer: Analyzer = {
   async analyze(rawData: Record<string, unknown>): Promise<AnalysisOutput> {
     const vix = (rawData.vix as number) ?? null;
     const vixSma20 = (rawData.vixSma20 as number) ?? null;
-    const sp500Price = (rawData.sp500Price as number) ?? null;
     const sp500Index = (rawData.sp500Index as number) ?? null;
     const sp500Sma200 = (rawData.sp500Sma200 as number) ?? null;
     const sp500Rsi = (rawData.sp500Rsi as number) ?? null;
@@ -56,7 +54,7 @@ export const macroAnalyzer: Analyzer = {
     const putCallRatio = (rawData.putCallRatio as number) ?? null;
 
     const vixTrend = determineVixTrend(vix, vixSma20);
-    const sp500Trend = determineSp500Trend(sp500Price, sp500Sma200);
+    const sp500Trend = determineSp500Trend(sp500Index, sp500Sma200);
 
     // Safe haven spread: HYG change - TLT change
     // Negative = money flowing from high-yield to treasuries = fear
@@ -92,26 +90,26 @@ export const macroAnalyzer: Analyzer = {
       signals.push("VIX trending lower (declining fear)");
     }
 
-    // SPY relative to 200-day SMA
-    if (sp500Price !== null && sp500Sma200 !== null) {
+    // S&P 500 relative to 200-day SMA
+    if (sp500Index !== null && sp500Sma200 !== null) {
       signalCount++;
       if (sp500Trend === "above_sma200") {
         score += 1;
         const pctAbove = (
-          ((sp500Price - sp500Sma200) / sp500Sma200) *
+          ((sp500Index - sp500Sma200) / sp500Sma200) *
           100
         ).toFixed(1);
         signals.push(
-          `SPY at ${sp500Price.toFixed(2)}, ${pctAbove}% above 200-SMA (${sp500Sma200.toFixed(2)})`
+          `S&P 500 at ${sp500Index.toFixed(0)}, ${pctAbove}% above 200-SMA (${sp500Sma200.toFixed(0)})`
         );
       } else {
         score -= 1;
         const pctBelow = (
-          ((sp500Sma200 - sp500Price) / sp500Sma200) *
+          ((sp500Sma200 - sp500Index) / sp500Sma200) *
           100
         ).toFixed(1);
         signals.push(
-          `SPY at ${sp500Price.toFixed(2)}, ${pctBelow}% below 200-SMA (${sp500Sma200.toFixed(2)})`
+          `S&P 500 at ${sp500Index.toFixed(0)}, ${pctBelow}% below 200-SMA (${sp500Sma200.toFixed(0)})`
         );
       }
     }
@@ -214,7 +212,6 @@ export const macroAnalyzer: Analyzer = {
       vix,
       vixTrend,
       vixSma20,
-      sp500Price,
       sp500Index,
       sp500Sma200,
       sp500Trend,

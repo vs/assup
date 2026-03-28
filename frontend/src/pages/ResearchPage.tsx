@@ -94,12 +94,10 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
   }
 
   // S&P vs SMA200: 0 when 10%+ above, 50 at parity, 100 when 10%+ below (inverted)
-  if (details.sp500Price != null && details.sp500Sma200 != null && details.sp500Sma200 > 0) {
-    const pctAbove = ((details.sp500Price - details.sp500Sma200) / details.sp500Sma200) * 100;
+  if (details.sp500Index != null && details.sp500Sma200 != null && details.sp500Sma200 > 0) {
+    const pctAbove = ((details.sp500Index - details.sp500Sma200) / details.sp500Sma200) * 100;
     const s = linearMap(pctAbove, 10, -10, 0, 100);
-    const displayPrice = details.sp500Index != null
-      ? details.sp500Index.toLocaleString("en-US", { maximumFractionDigits: 0 })
-      : details.sp500Price.toFixed(0);
+    const displayPrice = details.sp500Index.toLocaleString("en-US", { maximumFractionDigits: 0 });
     signals.push({ score: s, weight: 0.15, name: "S&P 500", display: `${displayPrice} (${pctAbove >= 0 ? "+" : ""}${pctAbove.toFixed(1)}% SMA)` });
   }
 

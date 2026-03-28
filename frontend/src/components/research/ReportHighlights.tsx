@@ -213,7 +213,7 @@ function MacroCard({ a }: { a: AnalysisResult }) {
       <div className="space-y-1">
         <Row label="Regime" value={<Badge className={signalBg(regimeColor)}>{trendLabel(regime)}</Badge>} />
         <Row label="VIX" value={`${fmt(d.vix)} (${trendLabel(d.vixTrend as string)})`} />
-        <Row label="S&P 500" value={`$${fmt(d.sp500Price, 0)}`} />
+        <Row label="S&P 500" value={`${fmt(d.sp500Index, 0)}`} />
         <Row label="vs SMA 200" value={trendLabel(d.sp500Trend as string)} />
       </div>
     </HighlightCard>

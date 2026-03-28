@@ -230,7 +230,7 @@ function MacroRenderer({ data }: { data: Record<string, unknown> }) {
     <div className="space-y-1">
       <KeyValue label="VIX" value={data.vix != null ? fmt(data.vix as number, 1) : undefined} />
       <KeyValue label="VIX Trend" value={data.vixTrend as string | undefined} />
-      <KeyValue label="S&P 500" value={data.sp500Price != null ? fmt(data.sp500Price as number) : undefined} />
+      <KeyValue label="S&P 500" value={data.sp500Index != null ? fmt(data.sp500Index as number, 0) : undefined} />
       <KeyValue label="S&P 500 Trend" value={data.sp500Trend as string | undefined} />
       <KeyValue label="Put/Call Ratio" value={data.putCallRatio != null ? fmt(data.putCallRatio as number, 3) : undefined} />
       <KeyValue label="Regime" value={data.regime as string | undefined} />
