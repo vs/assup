@@ -86,6 +86,11 @@ export interface MacroAnalysis {
     sp500Index: number | null;
     sp500Sma200: number | null;
     sp500Trend: string;
+    sp500Rsi: number | null;
+    sp500Change: number | null;
+    hygChange: number | null;
+    tltChange: number | null;
+    safeHavenSpread: number | null;
     putCallRatio: number | null;
     regime: MarketRegime;
   };
