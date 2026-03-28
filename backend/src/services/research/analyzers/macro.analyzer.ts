@@ -6,6 +6,7 @@ type Regime = "risk_on" | "risk_off" | "neutral";
 
 interface MacroDetails {
   vix: number | null;
+  vixChange: number | null;
   vixTrend: VixTrend;
   vixSma20: number | null;
   sp500Index: number | null;
@@ -44,6 +45,7 @@ export const macroAnalyzer: Analyzer = {
 
   async analyze(rawData: Record<string, unknown>): Promise<AnalysisOutput> {
     const vix = (rawData.vix as number) ?? null;
+    const vixChange = (rawData.vixChange as number) ?? null;
     const vixSma20 = (rawData.vixSma20 as number) ?? null;
     const sp500Index = (rawData.sp500Index as number) ?? null;
     const sp500Sma200 = (rawData.sp500Sma200 as number) ?? null;
@@ -210,6 +212,7 @@ export const macroAnalyzer: Analyzer = {
 
     const details: MacroDetails = {
       vix,
+      vixChange,
       vixTrend,
       vixSma20,
       sp500Index,

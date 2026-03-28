@@ -33,6 +33,7 @@ export const macroCollector: Collector = {
       source: "macro",
       data: {
         vix: vixLevel,
+        vixChange: tvVix?.change ?? null,
         vixSma20: tvVix?.sma20 ?? null,
         sp500Index,
         sp500Sma200: tvSpx?.sma200 ?? null,

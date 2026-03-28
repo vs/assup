@@ -80,6 +80,7 @@ export interface MacroAnalysis {
   analyzedAt: string;
   details: {
     vix: number | null;
+    vixChange: number | null;
     vixTrend: string;
     vixSma20: number | null;
     sp500Index: number | null;
