@@ -12,7 +12,9 @@ import {
   PageLoadingSkeleton,
   PageHeader,
   RecommendationBadge,
+  SortableHead,
 } from "@/components/common";
+import { useTableSort } from "@/hooks/useTableSort";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -24,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ListRestart, Eye, Zap, AlertTriangle, RefreshCw } from "lucide-react";
+import { ListRestart, Eye, Zap, AlertTriangle, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { timeAgo } from "@/utils/format";
 
 // --- Helpers ---
@@ -72,24 +74,18 @@ function linearMap(v: number, inLow: number, inHigh: number, outLow: number, out
 interface FearScoreResult {
   score: number;
   label: string;
-  components: { name: string; display: string }[];
+  components: { name: string; display: string; change?: number | null }[];
 }
 
 function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | null {
-  const signals: { score: number; weight: number; name: string; display: string }[] = [];
-
-  // Arrow helper: ↑ positive, ↓ negative, → flat
-  const arrow = (v: number, threshold = 0.01) => v > threshold ? "\u2191" : v < -threshold ? "\u2193" : "\u2192";
-
-  // VIX trend arrow from vixTrend field
-  const vixArrow = details.vixTrend === "rising" ? "\u2191" : details.vixTrend === "falling" ? "\u2193" : "\u2192";
+  const signals: { score: number; weight: number; name: string; display: string; change?: number | null }[] = [];
 
   // VIX level: 0 (greed) at ≤12, 50 at 20, 100 (fear) at ≥35
   if (details.vix != null) {
     const s = details.vix <= 20
       ? linearMap(details.vix, 12, 20, 0, 50)
       : linearMap(details.vix, 20, 35, 50, 100);
-    signals.push({ score: s, weight: 0.30, name: "VIX", display: `${details.vix.toFixed(1)} ${vixArrow}` });
+    signals.push({ score: s, weight: 0.30, name: "VIX", display: details.vix.toFixed(1), change: details.vixChange });
   }
 
   // VIX vs SMA20: 0 when 15%+ below, 50 at parity, 100 when 15%+ above
@@ -104,27 +100,25 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
     const pctAbove = ((details.sp500Index - details.sp500Sma200) / details.sp500Sma200) * 100;
     const s = linearMap(pctAbove, 10, -10, 0, 100);
     const displayPrice = details.sp500Index.toLocaleString("en-US", { maximumFractionDigits: 0 });
-    const spArrow = details.sp500Change != null ? arrow(details.sp500Change, 0.1) : "";
-    signals.push({ score: s, weight: 0.15, name: "S&P 500", display: `${displayPrice} ${spArrow}` });
+    signals.push({ score: s, weight: 0.15, name: "S&P 500", display: displayPrice, change: details.sp500Change });
   }
 
   // S&P 500 RSI: RSI 70→30 maps to 0→100 fear (high RSI = greed, low RSI = fear)
   if (details.sp500Rsi != null) {
-    const rsiArrow = details.sp500Rsi > 55 ? "\u2191" : details.sp500Rsi < 45 ? "\u2193" : "\u2192";
     const s = linearMap(details.sp500Rsi, 70, 30, 0, 100);
-    signals.push({ score: s, weight: 0.10, name: "RSI", display: `${details.sp500Rsi.toFixed(0)} ${rsiArrow}` });
+    signals.push({ score: s, weight: 0.10, name: "RSI", display: details.sp500Rsi.toFixed(0) });
   }
 
   // Safe haven demand: HYG-TLT spread. +3→-3 maps to 0→100 fear
   if (details.safeHavenSpread != null) {
     const s = linearMap(details.safeHavenSpread, 3, -3, 0, 100);
-    signals.push({ score: s, weight: 0.15, name: "HYG/TLT", display: `${details.safeHavenSpread >= 0 ? "+" : ""}${details.safeHavenSpread.toFixed(1)}% ${arrow(details.safeHavenSpread, 0.1)}` });
+    signals.push({ score: s, weight: 0.15, name: "HYG/TLT", display: `${details.safeHavenSpread >= 0 ? "+" : ""}${details.safeHavenSpread.toFixed(1)}%` });
   }
 
   // Market momentum: SPX daily change. +2→-2 maps to 0→100 fear
   if (details.sp500Change != null) {
     const s = linearMap(details.sp500Change, 2, -2, 0, 100);
-    signals.push({ score: s, weight: 0.10, name: "Momentum", display: `${details.sp500Change >= 0 ? "+" : ""}${details.sp500Change.toFixed(1)}% ${arrow(details.sp500Change, 0.1)}` });
+    signals.push({ score: s, weight: 0.10, name: "Momentum", display: `${details.sp500Change >= 0 ? "+" : ""}${details.sp500Change.toFixed(1)}%` });
   }
 
   // Put/Call ratio: 0 at ≤0.5, 50 at 0.85, 100 at ≥1.5
@@ -150,8 +144,29 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
   return {
     score: Math.round(score),
     label,
-    components: signals.filter((s) => s.name).map((s) => ({ name: s.name, display: s.display })),
+    components: signals.filter((s) => s.name).map((s) => ({ name: s.name, display: s.display, change: s.change })),
   };
+}
+
+function DailyChangeArrow({ change }: { change: number }) {
+  const threshold = 0.05;
+  if (Math.abs(change) < threshold) {
+    return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
+  }
+  if (change > 0) {
+    return (
+      <span className="inline-flex items-center text-green-600">
+        <TrendingUp className="h-3.5 w-3.5" />
+        <span className="text-xs font-medium ml-0.5">+{change.toFixed(1)}%</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center text-red-600">
+      <TrendingDown className="h-3.5 w-3.5" />
+      <span className="text-xs font-medium ml-0.5">{change.toFixed(1)}%</span>
+    </span>
+  );
 }
 
 function FearGauge({ details }: { details: MacroAnalysis["details"] }) {
@@ -167,19 +182,22 @@ function FearGauge({ details }: { details: MacroAnalysis["details"] }) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2 min-w-[160px]">
-        <span className={`text-sm font-bold tabular-nums ${labelColor}`}>{result.score}</span>
-        <div className="relative flex-1 h-2 rounded-full overflow-hidden" style={{ background: "linear-gradient(to right, #22c55e, #eab308, #f97316, #ef4444)" }}>
+      <div className="flex items-center gap-2 min-w-[180px]">
+        <span className={`text-lg font-bold tabular-nums ${labelColor}`}>{result.score}</span>
+        <div className="relative flex-1 h-2.5 rounded-full overflow-hidden" style={{ background: "linear-gradient(to right, #22c55e, #eab308, #f97316, #ef4444)" }}>
           <div
-            className="absolute top-[-1px] w-[3px] h-[10px] bg-white rounded-full border border-gray-500"
+            className="absolute top-[-1px] w-[3px] h-[12px] bg-white rounded-full border border-gray-500"
             style={{ left: `${result.score}%`, transform: "translateX(-50%)" }}
           />
         </div>
-        <span className={`text-xs font-medium whitespace-nowrap ${labelColor}`}>{result.label}</span>
+        <span className={`text-sm font-semibold whitespace-nowrap ${labelColor}`}>{result.label}</span>
       </div>
-      <div className="hidden lg:flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="hidden lg:flex items-center gap-4 text-sm text-muted-foreground">
         {result.components.map((c) => (
-          <span key={c.name}>{c.name}: <span className="font-medium">{c.display}</span></span>
+          <span key={c.name} className="flex items-center gap-1">
+            {c.name}: <span className="font-semibold">{c.display}</span>
+            {c.change != null && <DailyChangeArrow change={c.change} />}
+          </span>
         ))}
       </div>
     </div>
@@ -231,12 +249,12 @@ function MacroBanner({
 
   return (
     <Card className={`${config.bg} ${config.border} border`}>
-      <CardContent className="py-3 px-4">
+      <CardContent className="py-4 px-5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <Badge
               variant="outline"
-              className={`${config.text} ${config.border} font-semibold`}
+              className={`${config.text} ${config.border} font-semibold text-sm px-3 py-0.5`}
             >
               {config.label}
             </Badge>
@@ -397,6 +415,33 @@ export function ResearchPage() {
     }
   }
 
+  const recOrder: Record<string, number> = { buy: 0, wheel: 1, hold: 2, avoid: 3, sell: 4 };
+
+  const getColumnValue = useCallback(
+    (ticker: ResearchTicker, column: string): string | number => {
+      const report = reports[ticker.symbol];
+      switch (column) {
+        case "symbol":
+          return ticker.symbol;
+        case "recommendation":
+          return report ? (recOrder[report.recommendation] ?? 99) : 99;
+        case "confidence":
+          return report ? report.confidence : -1;
+        case "updated":
+          return report
+            ? new Date(report.createdAt).getTime()
+            : ticker.lastAnalyzed
+              ? new Date(ticker.lastAnalyzed).getTime()
+              : 0;
+        default:
+          return "";
+      }
+    },
+    [reports],
+  );
+
+  const { sorted: sortedTickers, ...sortProps } = useTableSort(tickers, getColumnValue);
+
   if (loading) return <PageLoadingSkeleton />;
 
   return (
@@ -461,18 +506,18 @@ export function ResearchPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead>Recommendation</TableHead>
-                  <TableHead>Confidence</TableHead>
+                  <SortableHead column="symbol" {...sortProps}>Symbol</SortableHead>
+                  <SortableHead column="recommendation" {...sortProps}>Recommendation</SortableHead>
+                  <SortableHead column="confidence" {...sortProps}>Confidence</SortableHead>
                   <TableHead className="hidden md:table-cell">
                     Summary
                   </TableHead>
-                  <TableHead>Last Updated</TableHead>
+                  <SortableHead column="updated" {...sortProps}>Last Updated</SortableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tickers.map((ticker) => {
+                {sortedTickers.map((ticker) => {
                   const report = reports[ticker.symbol];
                   return (
                     <TableRow key={ticker.id}>
