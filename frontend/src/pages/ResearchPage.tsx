@@ -78,12 +78,18 @@ interface FearScoreResult {
 function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | null {
   const signals: { score: number; weight: number; name: string; display: string }[] = [];
 
+  // Arrow helper: ↑ positive, ↓ negative, → flat
+  const arrow = (v: number, threshold = 0.01) => v > threshold ? "\u2191" : v < -threshold ? "\u2193" : "\u2192";
+
+  // VIX trend arrow from vixTrend field
+  const vixArrow = details.vixTrend === "rising" ? "\u2191" : details.vixTrend === "falling" ? "\u2193" : "\u2192";
+
   // VIX level: 0 (greed) at ≤12, 50 at 20, 100 (fear) at ≥35
   if (details.vix != null) {
     const s = details.vix <= 20
       ? linearMap(details.vix, 12, 20, 0, 50)
       : linearMap(details.vix, 20, 35, 50, 100);
-    signals.push({ score: s, weight: 0.30, name: "VIX", display: `${details.vix.toFixed(1)}${details.vixSma20 != null ? ` (SMA ${details.vixSma20.toFixed(1)})` : ""}` });
+    signals.push({ score: s, weight: 0.30, name: "VIX", display: `${details.vix.toFixed(1)} ${vixArrow}` });
   }
 
   // VIX vs SMA20: 0 when 15%+ below, 50 at parity, 100 when 15%+ above
@@ -98,25 +104,27 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
     const pctAbove = ((details.sp500Index - details.sp500Sma200) / details.sp500Sma200) * 100;
     const s = linearMap(pctAbove, 10, -10, 0, 100);
     const displayPrice = details.sp500Index.toLocaleString("en-US", { maximumFractionDigits: 0 });
-    signals.push({ score: s, weight: 0.15, name: "S&P 500", display: `${displayPrice} (${pctAbove >= 0 ? "+" : ""}${pctAbove.toFixed(1)}% SMA)` });
+    const spArrow = details.sp500Change != null ? arrow(details.sp500Change, 0.1) : "";
+    signals.push({ score: s, weight: 0.15, name: "S&P 500", display: `${displayPrice} ${spArrow}` });
   }
 
   // S&P 500 RSI: RSI 70→30 maps to 0→100 fear (high RSI = greed, low RSI = fear)
   if (details.sp500Rsi != null) {
+    const rsiArrow = details.sp500Rsi > 55 ? "\u2191" : details.sp500Rsi < 45 ? "\u2193" : "\u2192";
     const s = linearMap(details.sp500Rsi, 70, 30, 0, 100);
-    signals.push({ score: s, weight: 0.10, name: "RSI", display: details.sp500Rsi.toFixed(0) });
+    signals.push({ score: s, weight: 0.10, name: "RSI", display: `${details.sp500Rsi.toFixed(0)} ${rsiArrow}` });
   }
 
   // Safe haven demand: HYG-TLT spread. +3→-3 maps to 0→100 fear
   if (details.safeHavenSpread != null) {
     const s = linearMap(details.safeHavenSpread, 3, -3, 0, 100);
-    signals.push({ score: s, weight: 0.15, name: "HYG/TLT", display: `${details.safeHavenSpread >= 0 ? "+" : ""}${details.safeHavenSpread.toFixed(1)}%` });
+    signals.push({ score: s, weight: 0.15, name: "HYG/TLT", display: `${details.safeHavenSpread >= 0 ? "+" : ""}${details.safeHavenSpread.toFixed(1)}% ${arrow(details.safeHavenSpread, 0.1)}` });
   }
 
   // Market momentum: SPX daily change. +2→-2 maps to 0→100 fear
   if (details.sp500Change != null) {
     const s = linearMap(details.sp500Change, 2, -2, 0, 100);
-    signals.push({ score: s, weight: 0.10, name: "Momentum", display: `${details.sp500Change >= 0 ? "+" : ""}${details.sp500Change.toFixed(1)}%` });
+    signals.push({ score: s, weight: 0.10, name: "Momentum", display: `${details.sp500Change >= 0 ? "+" : ""}${details.sp500Change.toFixed(1)}% ${arrow(details.sp500Change, 0.1)}` });
   }
 
   // Put/Call ratio: 0 at ≤0.5, 50 at 0.85, 100 at ≥1.5
@@ -248,9 +256,6 @@ function MacroBanner({
             </Button>
           </div>
         </div>
-        {macro.summary && (
-          <p className="text-sm mt-2 text-muted-foreground">{macro.summary}</p>
-        )}
       </CardContent>
     </Card>
   );
