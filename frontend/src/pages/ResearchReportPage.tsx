@@ -125,7 +125,6 @@ export function ResearchReportPage() {
               allow_symbol_change={false}
               style="1"
               studies={[
-                "Volume@tv-basicstudies",
                 "RSI@tv-basicstudies",
                 "MAExp@tv-basicstudies",
               ] as never}
@@ -137,6 +136,24 @@ export function ResearchReportPage() {
             />
           </div>
         </CardContent>
+        {(() => {
+          const tech = analyses.find((a) => a.source === "technical");
+          if (!tech) return null;
+          const d = tech.details as Record<string, unknown>;
+          const support = d.support as number | undefined;
+          const resistance = d.resistance as number | undefined;
+          if (support == null && resistance == null) return null;
+          return (
+            <div className="flex items-center gap-4 px-4 py-2 border-t text-xs text-muted-foreground">
+              {support != null && (
+                <span>Support: <span className="font-medium text-green-600">${support.toFixed(2)}</span></span>
+              )}
+              {resistance != null && (
+                <span>Resistance: <span className="font-medium text-red-500">${resistance.toFixed(2)}</span></span>
+              )}
+            </div>
+          );
+        })()}
       </Card>
 
       {/* Summary */}

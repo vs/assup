@@ -128,3 +128,7 @@
     @apply bg-background text-foreground;
   }
 }
+
+.tradingview-widget-copyright {
+  display: none !important;
+}
