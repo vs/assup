@@ -8,28 +8,16 @@ import type {
   AnalysisResult,
   CollectionStatus,
   CollectionDataEntry,
-  OHLCV,
 } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton } from "@/components/common";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
-import { PriceVolumeChart } from "@/components/research/PriceVolumeChart";
-import { RsiChart } from "@/components/research/RsiChart";
+import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { SourceCard, SkippedSourceCard } from "@/components/research/SourceCard";
 import { ReportHighlights } from "@/components/research/ReportHighlights";
 
 import { timeAgo } from "@/utils/format";
-
-function extractOhlcv(
-  collections: CollectionDataEntry[],
-): OHLCV[] {
-  const techCollection = collections.find((c) => c.source === "technical");
-  if (!techCollection) return [];
-  const data = techCollection.data as Record<string, unknown>;
-  const ohlcv = data.ohlcv as OHLCV[] | undefined;
-  return ohlcv ?? [];
-}
 
 function extractSupportResistance(analyses: AnalysisResult[]): {
   support: number | null;
@@ -96,7 +84,6 @@ export function ResearchReportPage() {
 
   if (loading) return <PageLoadingSkeleton />;
 
-  const ohlcv = extractOhlcv(collections);
   const { support, resistance } = extractSupportResistance(analyses);
 
   // Sort analyses by confidence descending
@@ -139,40 +126,33 @@ export function ResearchReportPage() {
         )}
       </div>
 
-      {/* Charts */}
-      {ohlcv.length > 0 && (
-        <Card>
-          <CardContent className="py-4 px-2 space-y-2">
-            <div className="flex items-center gap-4 px-2 mb-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-3 h-0.5 bg-blue-500" /> SMA 50
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-3 h-0.5 bg-orange-500" /> SMA
-                200
-              </span>
-              {support != null && (
-                <span className="flex items-center gap-1">
-                  <span className="inline-block w-3 h-0.5 bg-green-500 border-dashed" />{" "}
-                  Support ${support.toFixed(2)}
-                </span>
-              )}
-              {resistance != null && (
-                <span className="flex items-center gap-1">
-                  <span className="inline-block w-3 h-0.5 bg-red-500 border-dashed" />{" "}
-                  Resistance ${resistance.toFixed(2)}
-                </span>
-              )}
-            </div>
-            <PriceVolumeChart
-              ohlcv={ohlcv}
-              support={support}
-              resistance={resistance}
+      {/* TradingView Chart */}
+      <Card>
+        <CardContent className="p-0">
+          <div style={{ height: 500 }}>
+            <AdvancedRealTimeChart
+              symbol={symbol}
+              theme="light"
+              autosize
+              interval="D"
+              range="12M"
+              hide_side_toolbar={false}
+              allow_symbol_change={false}
+              style="1"
+              studies={[
+                "Volume@tv-basicstudies",
+                "RSI@tv-basicstudies",
+                "MAExp@tv-basicstudies",
+              ] as never}
+              {...{
+                studies_overrides: {
+                  "moving average exponential.length": 200,
+                },
+              }}
             />
-            <RsiChart ohlcv={ohlcv} />
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Summary */}
       {report && (
