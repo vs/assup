@@ -150,9 +150,15 @@ function FearGauge({ details }: { details: MacroAnalysis["details"] }) {
         </div>
         <span className={`text-xs font-medium whitespace-nowrap ${labelColor}`}>{result.label}</span>
       </div>
-      <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="hidden lg:flex items-center gap-3 text-xs text-muted-foreground">
+        {details.vix != null && (
+          <span>VIX: <span className="font-medium">{details.vix.toFixed(1)}</span></span>
+        )}
+        {details.sp500Price != null && (
+          <span>SPY: <span className="font-medium">{details.sp500Price.toFixed(0)}</span></span>
+        )}
         {result.components.map((c) => (
-          <span key={c.name}>{c.name}: <span className="font-medium">{c.display}</span></span>
+          <span key={c.name} className="text-muted-foreground/70">{c.name}: {c.display}</span>
         ))}
       </div>
     </div>
