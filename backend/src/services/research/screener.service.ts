@@ -5,6 +5,7 @@ import type { TickerSearchResult } from "./providers/types.js";
 import { tickerService } from "./ticker.service.js";
 import { pipelineService } from "./pipeline.service.js";
 import { NotFoundError } from "./errors/AppError.js";
+import { fetchTvIndicators } from "./providers/tradingview.js";
 
 interface ScreenerCriteria {
   // Provider-level filters
@@ -18,6 +19,12 @@ interface ScreenerCriteria {
   maxMarketCap?: number;
   minPrice?: number;
   maxPrice?: number;
+
+  // Technical pre-filter via TradingView indicators
+  minRecommendation?: number; // Recommend.All: -1 (strong sell) to 1 (strong buy)
+  minRsi?: number;
+  maxRsi?: number;
+  aboveSma200?: boolean; // close > SMA200
 
   // Control
   maxResults?: number; // default 20, max 50
@@ -85,9 +92,65 @@ class ScreenerService {
     // Post-filter by marketCap and price
     const filtered = postFilter(searchResults, criteria);
 
+    // Technical pre-filter via TradingView indicators (if any technical criteria set)
+    const hasTechFilter =
+      criteria.minRecommendation != null ||
+      criteria.minRsi != null ||
+      criteria.maxRsi != null ||
+      criteria.aboveSma200 != null;
+
+    let techFiltered = filtered;
+    if (hasTechFilter && filtered.length > 0) {
+      try {
+        const symbols = filtered.map((r) => r.symbol);
+        const indicators = await fetchTvIndicators(symbols);
+
+        techFiltered = filtered.filter((r) => {
+          // Find the indicator row — may be keyed with exchange prefix
+          const ind =
+            Object.values(indicators).find((_, idx) => {
+              const key = Object.keys(indicators)[idx];
+              return key.endsWith(`:${r.symbol}`);
+            }) ?? indicators[r.symbol];
+          if (!ind) return true; // keep if no data (don't exclude unknowns)
+
+          if (
+            criteria.minRecommendation != null &&
+            (ind.recommendAll == null ||
+              ind.recommendAll < criteria.minRecommendation)
+          )
+            return false;
+          if (
+            criteria.minRsi != null &&
+            (ind.rsi == null || ind.rsi < criteria.minRsi)
+          )
+            return false;
+          if (
+            criteria.maxRsi != null &&
+            (ind.rsi == null || ind.rsi > criteria.maxRsi)
+          )
+            return false;
+          if (
+            criteria.aboveSma200 &&
+            (ind.close == null ||
+              ind.sma200 == null ||
+              ind.close <= ind.sma200)
+          )
+            return false;
+
+          return true;
+        });
+      } catch (err) {
+        console.warn(
+          "[Screener] TV indicator fetch failed, skipping tech filter:",
+          (err as Error).message
+        );
+      }
+    }
+
     // Cap at maxResults (default 20, max 50)
     const maxResults = Math.min(criteria.maxResults ?? 20, 50);
-    const capped = filtered.slice(0, maxResults);
+    const capped = techFiltered.slice(0, maxResults);
 
     // Extract discovered symbols
     const discovered = capped.map((r) => r.symbol);
