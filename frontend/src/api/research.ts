@@ -53,6 +53,16 @@ export const researchApi = {
       }
     ),
 
+  // Add tickers
+  addTickers: (data: { symbols: string[]; source?: string }) =>
+    request<{ added: { symbol: string }[]; skipped: string[] }>(
+      "/api/research/tickers",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+
   // Collection data (OHLCV, raw source data)
   getCollectionData: (symbol: string) =>
     request<CollectionDataResponse>(`/api/research/${symbol}/data`),
