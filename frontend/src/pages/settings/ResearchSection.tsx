@@ -169,8 +169,8 @@ export function ResearchSection() {
     setSaSaveSuccess(false);
     setError(null);
     try {
-      const result = await researchApi.setSACredentials(saEmail.trim(), saPassword);
-      setSaStatus(result);
+      await researchApi.setSACredentials(saEmail.trim(), saPassword);
+      setSaStatus(await researchApi.getSAAuthStatus());
       setSaEmail("");
       setSaPassword("");
       setSaTestResult(null);
@@ -187,8 +187,8 @@ export function ResearchSection() {
     setSaRemoving(true);
     setError(null);
     try {
-      const result = await researchApi.deleteSACredentials();
-      setSaStatus(result);
+      await researchApi.deleteSACredentials();
+      setSaStatus(await researchApi.getSAAuthStatus());
       setSaTestResult(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove SA credentials");
