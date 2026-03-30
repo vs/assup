@@ -26,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Zap, AlertTriangle, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Eye, Zap, AlertTriangle, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight } from "lucide-react";
 import { timeAgo } from "@/utils/format";
 
 // --- Helpers ---
@@ -231,6 +231,89 @@ function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
   );
 }
 
+// --- Ticker Row ---
+
+function TickerRow({
+  ticker,
+  report,
+  generatingSymbol,
+  generateProgress,
+  onView,
+  onGenerate,
+}: {
+  ticker: ResearchTicker;
+  report: ResearchReport | undefined;
+  generatingSymbol: string | null;
+  generateProgress: string | null;
+  onView: () => void;
+  onGenerate: () => void;
+}) {
+  return (
+    <TableRow>
+      <TableCell className="font-semibold">{ticker.symbol}</TableCell>
+      <TableCell>
+        {report ? (
+          <RecommendationBadge recommendation={report.recommendation} />
+        ) : (
+          <span className="text-sm text-muted-foreground">No report</span>
+        )}
+      </TableCell>
+      <TableCell>
+        {report ? (
+          <span className="text-sm">{Math.round(report.confidence * 100)}%</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">--</span>
+        )}
+      </TableCell>
+      <TableCell className="hidden md:table-cell max-w-xs">
+        {generatingSymbol === ticker.symbol && generateProgress ? (
+          <span className="text-sm text-blue-600 animate-pulse">{generateProgress}</span>
+        ) : report ? (
+          <span className="text-sm text-muted-foreground">{truncate(report.summary, 80)}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">--</span>
+        )}
+      </TableCell>
+      <TableCell>
+        <span className="text-sm text-muted-foreground">
+          {report
+            ? timeAgo(report.createdAt)
+            : ticker.lastAnalyzed
+              ? timeAgo(ticker.lastAnalyzed)
+              : "Never"}
+        </span>
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onView}
+            disabled={!report && !ticker.lastAnalyzed}
+            title="View report"
+          >
+            <Eye className="h-4 w-4 mr-1" />
+            View
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-[120px]"
+            onClick={onGenerate}
+            disabled={generatingSymbol === ticker.symbol}
+            title="Generate report"
+          >
+            <Zap
+              className={`h-4 w-4 mr-1 ${generatingSymbol === ticker.symbol ? "animate-pulse" : ""}`}
+            />
+            {generatingSymbol === ticker.symbol ? "Generating..." : "Generate"}
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 // --- Main Page ---
 
 export function ResearchPage() {
@@ -244,6 +327,9 @@ export function ResearchPage() {
   // Generate state
   const [generatingSymbol, setGeneratingSymbol] = useState<string | null>(null);
   const [generateProgress, setGenerateProgress] = useState<string | null>(null);
+
+  // Collapse state for tickers without reports
+  const [showPending, setShowPending] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -407,91 +493,55 @@ export function ResearchPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedTickers.map((ticker) => {
-                  const report = reports[ticker.symbol];
-                  return (
-                    <TableRow key={ticker.id}>
-                      <TableCell className="font-semibold">
-                        {ticker.symbol}
-                      </TableCell>
-                      <TableCell>
-                        {report ? (
-                          <RecommendationBadge
-                            recommendation={report.recommendation}
-                          />
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            No report
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {report ? (
-                          <span className="text-sm">
-                            {Math.round(report.confidence * 100)}%
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            --
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell max-w-xs">
-                        {generatingSymbol === ticker.symbol && generateProgress ? (
-                          <span className="text-sm text-blue-600 animate-pulse">
-                            {generateProgress}
-                          </span>
-                        ) : report ? (
-                          <span className="text-sm text-muted-foreground">
-                            {truncate(report.summary, 80)}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            --
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {report
-                            ? timeAgo(report.createdAt)
-                            : ticker.lastAnalyzed
-                              ? timeAgo(ticker.lastAnalyzed)
-                              : "Never"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => navigate(`/research/${ticker.symbol}`)}
-                            disabled={!report && !ticker.lastAnalyzed}
-                            title="View report"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-[120px]"
-                            onClick={() => handleGenerate(ticker.symbol)}
-                            disabled={generatingSymbol === ticker.symbol}
-                            title="Generate report"
-                          >
-                            <Zap
-                              className={`h-4 w-4 mr-1 ${generatingSymbol === ticker.symbol ? "animate-pulse" : ""}`}
-                            />
-                            {generatingSymbol === ticker.symbol
-                              ? "Generating..."
-                              : "Generate"}
-                          </Button>
+                {sortedTickers
+                  .filter((t) => reports[t.symbol])
+                  .map((ticker) => {
+                    const report = reports[ticker.symbol];
+                    return (
+                      <TickerRow
+                        key={ticker.id}
+                        ticker={ticker}
+                        report={report}
+                        generatingSymbol={generatingSymbol}
+                        generateProgress={generateProgress}
+                        onView={() => navigate(`/research/${ticker.symbol}`)}
+                        onGenerate={() => handleGenerate(ticker.symbol)}
+                      />
+                    );
+                  })}
+                {sortedTickers.some((t) => !reports[t.symbol]) && (
+                  <>
+                    <TableRow
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setShowPending((v) => !v)}
+                    >
+                      <TableCell colSpan={6}>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {showPending ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                          {sortedTickers.filter((t) => !reports[t.symbol]).length} tickers without reports
                         </div>
                       </TableCell>
                     </TableRow>
-                  );
-                })}
+                    {showPending &&
+                      sortedTickers
+                        .filter((t) => !reports[t.symbol])
+                        .map((ticker) => (
+                          <TickerRow
+                            key={ticker.id}
+                            ticker={ticker}
+                            report={undefined}
+                            generatingSymbol={generatingSymbol}
+                            generateProgress={generateProgress}
+                            onView={() => navigate(`/research/${ticker.symbol}`)}
+                            onGenerate={() => handleGenerate(ticker.symbol)}
+                          />
+                        ))}
+                  </>
+                )}
               </TableBody>
             </Table>
           )}
