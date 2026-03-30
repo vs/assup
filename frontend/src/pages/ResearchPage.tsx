@@ -26,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ListRestart, Eye, Zap, AlertTriangle, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Eye, Zap, AlertTriangle, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { timeAgo } from "@/utils/format";
 
 // --- Helpers ---
@@ -206,44 +206,8 @@ function FearGauge({ details }: { details: MacroAnalysis["details"] }) {
 
 // --- Macro Banner ---
 
-function MacroBanner({
-  macro,
-  onRefresh,
-}: {
-  macro: MacroAnalysis | null;
-  onRefresh: () => void;
-}) {
-  const [refreshing, setRefreshing] = useState(false);
-
-  async function handleRefresh() {
-    setRefreshing(true);
-    try {
-      await onRefresh();
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  if (!macro) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="py-3 px-4 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            No macro data available.
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Refreshing..." : "Generate"}
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
+function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
+  if (!macro) return null;
 
   const config = regimeConfig[macro.regime];
 
@@ -260,19 +224,7 @@ function MacroBanner({
             </Badge>
             <FearGauge details={macro.details} />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Updated {timeAgo(macro.analyzedAt)}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              title="Refresh macro data"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
+          <span className="text-sm text-muted-foreground">Updated {timeAgo(macro.analyzedAt)}</span>
         </div>
       </CardContent>
     </Card>
@@ -289,10 +241,6 @@ export function ResearchPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync state
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<string | null>(null);
-
   // Generate state
   const [generatingSymbol, setGeneratingSymbol] = useState<string | null>(null);
   const [generateProgress, setGenerateProgress] = useState<string | null>(null);
@@ -301,9 +249,11 @@ export function ResearchPage() {
     setLoading(true);
     setError(null);
     try {
-      const [tickerData, macroData] = await Promise.allSettled([
+      // Auto-sync watchlist tickers, refresh macro, and load tickers in parallel
+      const [, , tickerData] = await Promise.allSettled([
+        researchApi.syncWatchlist(),
+        researchApi.refreshMacro().then(setMacro),
         researchApi.listTickers(),
-        researchApi.getMacro(),
       ]);
 
       if (tickerData.status === "fulfilled") {
@@ -327,11 +277,6 @@ export function ResearchPage() {
             : "Failed to load tickers"
         );
       }
-
-      if (macroData.status === "fulfilled") {
-        setMacro(macroData.value);
-      }
-      // Macro data may simply not exist yet -- that's fine
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load research data"
@@ -344,26 +289,6 @@ export function ResearchPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  async function handleSync() {
-    setSyncing(true);
-    setSyncResult(null);
-    setError(null);
-    try {
-      const result = await researchApi.syncWatchlist();
-      setSyncResult(
-        `Synced ${result.synced} ticker${result.synced !== 1 ? "s" : ""}, skipped ${result.skipped}`
-      );
-      // Refresh tickers after sync
-      await fetchData();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to sync watchlist"
-      );
-    } finally {
-      setSyncing(false);
-    }
-  }
 
   async function handleGenerate(symbol: string) {
     setGeneratingSymbol(symbol);
@@ -449,47 +374,12 @@ export function ResearchPage() {
       <PageHeader
         title="Research"
         subtitle="AI-powered analysis and recommendations for tracked securities."
-        loading={loading}
-        onRefresh={fetchData}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            <ListRestart
-              className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`}
-            />
-            {syncing ? "Syncing..." : "Sync Watchlist"}
-          </Button>
-        }
       />
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      {syncResult && (
-        <div className="rounded-md border border-green-500/20 bg-green-500/10 px-4 py-2 text-sm text-green-700 flex items-center justify-between">
-          <span>{syncResult}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2"
-            onClick={() => setSyncResult(null)}
-          >
-            Dismiss
-          </Button>
-        </div>
-      )}
-
       {/* Macro Regime Banner */}
-      <MacroBanner
-        macro={macro}
-        onRefresh={async () => {
-          const snapshot = await researchApi.refreshMacro();
-          setMacro(snapshot);
-        }}
-      />
+      <MacroBanner macro={macro} />
 
       {/* Tickers Table */}
       <Card>
@@ -499,7 +389,7 @@ export function ResearchPage() {
               <AlertTriangle className="h-8 w-8 mx-auto mb-3 opacity-50" />
               <p className="font-medium">No tickers tracked yet</p>
               <p className="text-sm mt-1">
-                Click "Sync Watchlist" to import tickers from your watchlists.
+                Add symbols to a watchlist and they will appear here automatically.
               </p>
             </div>
           ) : (
