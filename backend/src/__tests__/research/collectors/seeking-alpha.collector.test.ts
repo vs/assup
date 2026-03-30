@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+
+vi.mock("../../../services/research/collectors/sa-browser.js", () => ({
+  fetchSAJson: vi.fn(),
+}));
+
 import { seekingAlphaCollector } from "../../../services/research/collectors/seeking-alpha.collector.js";
+import { fetchSAJson } from "../../../services/research/collectors/sa-browser.js";
+
+const mockFetchSA = vi.mocked(fetchSAJson);
 
 describe("seekingAlphaCollector", () => {
   afterEach(() => {
@@ -7,32 +15,23 @@ describe("seekingAlphaCollector", () => {
   });
 
   it("collects ratings and metrics", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation((url: string | URL | Request) => {
-      const urlStr = typeof url === "string" ? url : url.toString();
-      if (urlStr.includes("/rating/periods")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            data: [{ attributes: { ratings: { sellSideRating: 4.5 } }, meta: { period: 0, is_locked: true } }],
-          }),
-        } as Response);
+    mockFetchSA.mockImplementation(async (url: string) => {
+      if (url.includes("/rating/periods")) {
+        return {
+          data: [{ attributes: { ratings: { sellSideRating: 4.5 } }, meta: { period: 0, is_locked: true } }],
+        };
       }
-      if (urlStr.includes("/metrics")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            data: [
-              { attributes: { value: 25.5 }, relationships: { metric_type: { data: { id: "13" } } } },
-            ],
-            included: [
-              { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
-            ],
-          }),
-        } as Response);
+      if (url.includes("/metrics")) {
+        return {
+          data: [
+            { attributes: { value: 25.5 }, relationships: { metric_type: { data: { id: "13" } } } },
+          ],
+          included: [
+            { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
+          ],
+        };
       }
-      return Promise.resolve({ ok: false, status: 404 } as Response);
+      return null;
     });
 
     const result = await seekingAlphaCollector.collect("AAPL");
@@ -45,18 +44,13 @@ describe("seekingAlphaCollector", () => {
   });
 
   it("succeeds when only ratings available", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation((url: string | URL | Request) => {
-      const urlStr = typeof url === "string" ? url : url.toString();
-      if (urlStr.includes("/rating/periods")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            data: [{ attributes: { ratings: { sellSideRating: 3.0 } }, meta: { period: 0 } }],
-          }),
-        } as Response);
+    mockFetchSA.mockImplementation(async (url: string) => {
+      if (url.includes("/rating/periods")) {
+        return {
+          data: [{ attributes: { ratings: { sellSideRating: 3.0 } }, meta: { period: 0 } }],
+        };
       }
-      return Promise.resolve({ ok: false, status: 500 } as Response);
+      return null;
     });
 
     const result = await seekingAlphaCollector.collect("AAPL");
@@ -65,28 +59,20 @@ describe("seekingAlphaCollector", () => {
   });
 
   it("flattens metrics correctly with multiple fields", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation((url: string | URL | Request) => {
-      const urlStr = typeof url === "string" ? url : url.toString();
-      if (urlStr.includes("/rating/periods")) {
-        return Promise.resolve({ ok: false, status: 500 } as Response);
+    mockFetchSA.mockImplementation(async (url: string) => {
+      if (url.includes("/metrics")) {
+        return {
+          data: [
+            { attributes: { value: 20.1 }, relationships: { metric_type: { data: { id: "13" } } } },
+            { attributes: { value: 0.65 }, relationships: { metric_type: { data: { id: "36" } } } },
+          ],
+          included: [
+            { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
+            { id: "36", type: "metric_type", attributes: { field: "revenue_growth" } },
+          ],
+        };
       }
-      if (urlStr.includes("/metrics")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            data: [
-              { attributes: { value: 20.1 }, relationships: { metric_type: { data: { id: "13" } } } },
-              { attributes: { value: 0.65 }, relationships: { metric_type: { data: { id: "36" } } } },
-            ],
-            included: [
-              { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
-              { id: "36", type: "metric_type", attributes: { field: "revenue_growth" } },
-            ],
-          }),
-        } as Response);
-      }
-      return Promise.resolve({ ok: false, status: 404 } as Response);
+      return null;
     });
 
     const result = await seekingAlphaCollector.collect("NVDA");
@@ -96,20 +82,18 @@ describe("seekingAlphaCollector", () => {
   });
 
   it("throws when both endpoints fail", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 500 } as Response);
+    mockFetchSA.mockResolvedValue(null);
     await expect(seekingAlphaCollector.collect("AAPL")).rejects.toThrow("No Seeking Alpha data");
   });
 
   it("uses lowercase symbol slug in URLs", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve({ data: [{ attributes: { ratings: { sellSideRating: 4.0 } }, meta: { period: 0 } }] }),
-    } as Response);
+    mockFetchSA.mockResolvedValue({
+      data: [{ attributes: { ratings: { sellSideRating: 4.0 } }, meta: { period: 0 } }],
+    });
 
     await seekingAlphaCollector.collect("AAPL");
 
-    const urls = fetchSpy.mock.calls.map((c) => (c[0] as string));
+    const urls = mockFetchSA.mock.calls.map((c) => c[0] as string);
     expect(urls[0]).toContain("/symbols/aapl/");
     expect(urls[1]).toContain("filter[slugs]=aapl");
   });

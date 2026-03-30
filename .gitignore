@@ -55,3 +55,6 @@ tmp/
 # Worktrees
 .worktrees/
 .playwright-mcp/
+
+# Seeking Alpha browser session
+backend/.sa-session/

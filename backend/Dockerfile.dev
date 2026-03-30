@@ -1,6 +1,10 @@
 # Development Dockerfile - includes devDependencies and uses tsx watch
 FROM node:20-alpine
 
+# Install Chromium for Seeking Alpha headless browser scraping
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV CHROME_PATH=/usr/bin/chromium-browser
+
 WORKDIR /app
 
 # Copy root package files for workspace

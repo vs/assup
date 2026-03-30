@@ -31,6 +31,10 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Install Chromium for Seeking Alpha headless browser scraping
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV CHROME_PATH=/usr/bin/chromium-browser
+
 # Copy root package files and lockfile
 COPY package.json package-lock.json ./
 COPY tsconfig.base.json ./
