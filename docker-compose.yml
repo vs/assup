@@ -37,6 +37,8 @@ services:
       - SYNTHESIZER_MODE=${SYNTHESIZER_MODE:-api}
       - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-false}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - SA_EMAIL=${SA_EMAIL:-}
+      - SA_PASSWORD=${SA_PASSWORD:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

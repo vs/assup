@@ -84,4 +84,28 @@ export const researchApi = {
       "/api/research/auth/token",
       { method: "DELETE" }
     ),
+
+  // Seeking Alpha Auth
+  getSAAuthStatus: () =>
+    request<{ configured: boolean; source: string; maskedEmail?: string }>(
+      "/api/research/sa-auth/status"
+    ),
+
+  setSACredentials: (email: string, password: string) =>
+    request<{ configured: boolean; source: string; maskedEmail?: string }>(
+      "/api/research/sa-auth/credentials",
+      { method: "PUT", body: JSON.stringify({ email, password }) }
+    ),
+
+  deleteSACredentials: () =>
+    request<{ configured: boolean; source: string }>(
+      "/api/research/sa-auth/credentials",
+      { method: "DELETE" }
+    ),
+
+  testSAConnection: () =>
+    request<{ ok: boolean; hasData: boolean; premium: boolean }>(
+      "/api/research/sa-auth/test",
+      { method: "POST" }
+    ),
 };

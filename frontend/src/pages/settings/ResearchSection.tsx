@@ -27,6 +27,12 @@ interface AuthStatus {
   maskedToken?: string;
 }
 
+interface SAAuthStatus {
+  configured: boolean;
+  source: string;
+  maskedEmail?: string;
+}
+
 const defaultSettings: ResearchSettings = {
   synthesizerMode: "claude-cli",
 };
@@ -48,21 +54,37 @@ export function ResearchSection() {
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Seeking Alpha state
+  const [saStatus, setSaStatus] = useState<SAAuthStatus | null>(null);
+  const [saEmail, setSaEmail] = useState("");
+  const [saPassword, setSaPassword] = useState("");
+  const [saSaving, setSaSaving] = useState(false);
+  const [saRemoving, setSaRemoving] = useState(false);
+  const [saTesting, setSaTesting] = useState(false);
+  const [saSaveSuccess, setSaSaveSuccess] = useState(false);
+  const [saTestResult, setSaTestResult] = useState<{
+    ok: boolean;
+    hasData: boolean;
+    premium: boolean;
+  } | null>(null);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [savedSettings, auth, claude] = await Promise.all([
+      const [savedSettings, auth, claude, saAuth] = await Promise.all([
         settingsApi
           .get<ResearchSettings>("research")
           .then((r) => r.value)
           .catch(() => defaultSettings),
         researchApi.getAuthStatus().catch(() => null),
         researchApi.getClaudeStatus().catch(() => null),
+        researchApi.getSAAuthStatus().catch(() => null),
       ]);
       setSettings(savedSettings);
       setAuthStatus(auth);
       setConnectionStatus(claude);
+      setSaStatus(saAuth);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -133,6 +155,53 @@ export function ResearchSection() {
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleSaveSACredentials = async () => {
+    if (!saEmail.trim() || !saPassword) return;
+    setSaSaving(true);
+    setSaSaveSuccess(false);
+    setError(null);
+    try {
+      const result = await researchApi.setSACredentials(saEmail.trim(), saPassword);
+      setSaStatus(result);
+      setSaEmail("");
+      setSaPassword("");
+      setSaTestResult(null);
+      setSaSaveSuccess(true);
+      setTimeout(() => setSaSaveSuccess(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save SA credentials");
+    } finally {
+      setSaSaving(false);
+    }
+  };
+
+  const handleRemoveSACredentials = async () => {
+    setSaRemoving(true);
+    setError(null);
+    try {
+      const result = await researchApi.deleteSACredentials();
+      setSaStatus(result);
+      setSaTestResult(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove SA credentials");
+    } finally {
+      setSaRemoving(false);
+    }
+  };
+
+  const handleTestSAConnection = async () => {
+    setSaTesting(true);
+    setSaTestResult(null);
+    try {
+      const result = await researchApi.testSAConnection();
+      setSaTestResult(result);
+    } catch (err) {
+      setSaTestResult({ ok: false, hasData: false, premium: false });
+    } finally {
+      setSaTesting(false);
     }
   };
 
@@ -313,6 +382,131 @@ export function ResearchSection() {
               Unable to check status. Is the research service running?
             </p>
           )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Seeking Alpha
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTestSAConnection}
+              disabled={saTesting}
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-2 ${saTesting ? "animate-spin" : ""}`}
+              />
+              Test Connection
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {saStatus && (
+            <div className="flex items-center gap-3">
+              {saStatus.configured ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p>
+                      Credentials configured
+                      <span className="text-muted-foreground ml-1">
+                        ({saStatus.source === "database" ? "saved in database" : "from environment"})
+                      </span>
+                    </p>
+                    {saStatus.maskedEmail && (
+                      <p className="text-sm text-muted-foreground font-mono">
+                        {saStatus.maskedEmail}
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                  <p>No Seeking Alpha credentials configured</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {saTestResult && (
+            <div className="flex items-center gap-3">
+              {saTestResult.ok ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <div>
+                    <p>Connection successful — data is accessible</p>
+                    <p className="text-sm text-muted-foreground">
+                      {saTestResult.premium
+                        ? "Premium access — full ratings unlocked"
+                        : "Guest access — some ratings may be limited"}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-5 w-5 text-red-500" />
+                  <p>Connection failed — could not fetch data from Seeking Alpha</p>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="sa-email">Email</Label>
+            <Input
+              id="sa-email"
+              type="email"
+              placeholder="your@email.com"
+              value={saEmail}
+              onChange={(e) => setSaEmail(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sa-password">Password</Label>
+            <Input
+              id="sa-password"
+              type="password"
+              placeholder="••••••••"
+              value={saPassword}
+              onChange={(e) => setSaPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSaveSACredentials()}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveSACredentials}
+              disabled={saSaving || !saEmail.trim() || !saPassword}
+            >
+              {saSaving ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              {saSaving ? "Saving..." : "Save"}
+            </Button>
+            {saStatus?.source === "database" && (
+              <Button
+                variant="outline"
+                onClick={handleRemoveSACredentials}
+                disabled={saRemoving}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Remove
+              </Button>
+            )}
+          </div>
+          {saSaveSuccess && (
+            <p className="text-sm text-green-600">Credentials saved</p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            Optional. Providing Seeking Alpha credentials unlocks premium ratings and
+            analyst data. Without credentials, public data is still collected.
+          </p>
         </CardContent>
       </Card>
     </div>
