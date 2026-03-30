@@ -214,17 +214,14 @@ function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
   return (
     <Card className={`${config.bg} ${config.border} border`}>
       <CardContent className="py-4 px-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Badge
-              variant="outline"
-              className={`${config.text} ${config.border} font-semibold text-sm px-3 py-0.5`}
-            >
-              {config.label}
-            </Badge>
-            <FearGauge details={macro.details} />
-          </div>
-          <span className="text-sm text-muted-foreground">Updated {timeAgo(macro.analyzedAt)}</span>
+        <div className="flex items-center gap-4">
+          <Badge
+            variant="outline"
+            className={`${config.text} ${config.border} font-semibold text-sm px-3 py-0.5`}
+          >
+            {config.label}
+          </Badge>
+          <FearGauge details={macro.details} />
         </div>
       </CardContent>
     </Card>
