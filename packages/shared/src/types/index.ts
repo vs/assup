@@ -16,3 +16,4 @@ export * from "./profit.js";
 export * from "./taxes.js";
 export * from "./wheel.js";
 export * from "./research.js";
+export * from "./wheelScanner.js";
