@@ -13,6 +13,39 @@ let page: Page | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let ready = false;
 
+// PX block tracking
+let pxBlocked = false;
+let pxBlockedAt: Date | null = null;
+let lastSuccessAt: Date | null = null;
+
+export interface SABrowserStatus {
+  blocked: boolean;
+  blockedAt: string | null;
+  lastSuccessAt: string | null;
+}
+
+export function getBrowserStatus(): SABrowserStatus {
+  return {
+    blocked: pxBlocked,
+    blockedAt: pxBlockedAt?.toISOString() ?? null,
+    lastSuccessAt: lastSuccessAt?.toISOString() ?? null,
+  };
+}
+
+function markBlocked(): void {
+  if (!pxBlocked) {
+    pxBlocked = true;
+    pxBlockedAt = new Date();
+    console.warn("[sa-browser] Marked as blocked by PerimeterX captcha");
+  }
+}
+
+function markSuccess(): void {
+  pxBlocked = false;
+  pxBlockedAt = null;
+  lastSuccessAt = new Date();
+}
+
 function resetIdleTimer(): void {
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => void closeBrowser(), IDLE_TIMEOUT_MS);
@@ -207,6 +240,7 @@ export async function fetchSAJson(url: string, _retry = false): Promise<unknown 
         return fetchSAJson(url, true);
       }
       console.warn("[sa-browser] PerimeterX challenge persists after retry");
+      markBlocked();
       return null;
     }
 
@@ -222,6 +256,7 @@ export async function fetchSAJson(url: string, _retry = false): Promise<unknown 
           return fetchSAJson(url, true);
         }
         console.warn("[sa-browser] PerimeterX challenge persists after retry");
+        markBlocked();
         return null;
       }
 
@@ -230,6 +265,7 @@ export async function fetchSAJson(url: string, _retry = false): Promise<unknown 
       return null;
     }
 
+    markSuccess();
     return result;
   } catch (err) {
     console.warn(`[sa-browser] evaluate() failed for ${url}:`, (err as Error).message);

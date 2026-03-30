@@ -87,9 +87,12 @@ export const researchApi = {
 
   // Seeking Alpha Auth
   getSAAuthStatus: () =>
-    request<{ configured: boolean; source: string; maskedEmail?: string }>(
-      "/api/research/sa-auth/status"
-    ),
+    request<{
+      configured: boolean;
+      source: string;
+      maskedEmail?: string;
+      browser: { blocked: boolean; blockedAt: string | null; lastSuccessAt: string | null };
+    }>("/api/research/sa-auth/status"),
 
   setSACredentials: (email: string, password: string) =>
     request<{ configured: boolean; source: string; maskedEmail?: string }>(

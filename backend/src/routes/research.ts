@@ -24,7 +24,7 @@ import {
   setSACredentials,
   deleteSACredentials,
 } from "../services/research/sa-auth.service.js";
-import { fetchSAJson, closeBrowser as closeSABrowser } from "../services/research/collectors/sa-browser.js";
+import { fetchSAJson, closeBrowser as closeSABrowser, getBrowserStatus as getSABrowserStatus } from "../services/research/collectors/sa-browser.js";
 import {
   addTickersSchema,
   tickerParamsSchema,
@@ -397,7 +397,8 @@ router.get(
   "/sa-auth/status",
   asyncHandler(async (_req, res) => {
     const status = await getSAAuthStatus();
-    res.json(status);
+    const browser = getSABrowserStatus();
+    res.json({ ...status, browser });
   })
 );
 

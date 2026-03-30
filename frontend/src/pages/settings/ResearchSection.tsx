@@ -31,6 +31,11 @@ interface SAAuthStatus {
   configured: boolean;
   source: string;
   maskedEmail?: string;
+  browser: {
+    blocked: boolean;
+    blockedAt: string | null;
+    lastSuccessAt: string | null;
+  };
 }
 
 const defaultSettings: ResearchSettings = {
@@ -430,6 +435,24 @@ export function ResearchSection() {
                   <p>No Seeking Alpha credentials configured</p>
                 </>
               )}
+            </div>
+          )}
+
+          {saStatus?.browser?.blocked && (
+            <div className="flex items-center gap-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3">
+              <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
+              <div>
+                <p className="font-medium">Seeking Alpha is blocking requests (captcha)</p>
+                <p className="text-sm text-muted-foreground">
+                  SA data will be skipped during report generation until the block clears.
+                  {saStatus.browser.blockedAt && (
+                    <> Blocked since {new Date(saStatus.browser.blockedAt).toLocaleString()}.</>
+                  )}
+                  {saStatus.browser.lastSuccessAt && (
+                    <> Last successful fetch: {new Date(saStatus.browser.lastSuccessAt).toLocaleString()}.</>
+                  )}
+                </p>
+              </div>
             </div>
           )}
 
