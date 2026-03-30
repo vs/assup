@@ -184,9 +184,110 @@ export function groupOptionTrades(
   }
 
   // Now use the merged groups for processing
-  const groups = new Map<string, OptionTradeInput[]>();
+  const mergedGroups = new Map<string, OptionTradeInput[]>();
   for (const group of completeGroups) {
-    groups.set(group.key, group.trades);
+    mergedGroups.set(group.key, group.trades);
+  }
+
+  // Split groups that contain multiple open/close cycles into separate groups.
+  // This ensures each sell/buy cycle gets its own OptionTradeGroup for correct month attribution.
+  // Example: sell Feb 12, buy Feb 24, sell Mar 6, buy Mar 9 on the same contract
+  // must produce two separate groups (one per cycle), not one combined group.
+  const groups = new Map<string, OptionTradeInput[]>();
+
+  for (const [key, groupTrades] of mergedGroups) {
+    const sorted = [...groupTrades].sort((a, b) => a.tradeDate.getTime() - b.tradeDate.getTime());
+
+    // Classify trades into opens and closes
+    const opens: OptionTradeInput[] = [];
+    const closes: OptionTradeInput[] = [];
+    for (const trade of sorted) {
+      if (trade.openClose === "O") {
+        opens.push(trade);
+      } else if (trade.openClose === "C") {
+        closes.push(trade);
+      } else {
+        if (opens.length === 0 && closes.length === 0) {
+          opens.push(trade);
+        } else if (opens.length > 0 && opens[0].buySell === trade.buySell) {
+          opens.push(trade);
+        } else {
+          closes.push(trade);
+        }
+      }
+    }
+
+    const openQtyTotal = opens.reduce((sum, t) => sum + Math.abs(t.quantity), 0);
+    const closeQtyTotal = closes.reduce((sum, t) => sum + Math.abs(t.quantity), 0);
+    const needsSplit = closes.length > 1 || (closes.length === 1 && openQtyTotal > closeQtyTotal + 0.001);
+
+    if (!needsSplit || opens.length === 0) {
+      // Single cycle or no cycles - keep as is
+      groups.set(key, groupTrades);
+      continue;
+    }
+
+    // Multiple cycles - FIFO match each close against opens, emit separate groups
+    const openSlots = opens.map(t => ({ trade: t, remaining: Math.abs(t.quantity) }));
+    let cycleIdx = 0;
+
+    for (const close of closes) {
+      let remaining = Math.abs(close.quantity);
+      const cycleOpens: OptionTradeInput[] = [];
+
+      for (const slot of openSlots) {
+        if (remaining <= 0.001) break;
+        if (slot.remaining <= 0.001) continue;
+
+        const matched = Math.min(remaining, slot.remaining);
+        const fraction = matched / Math.abs(slot.trade.quantity);
+
+        if (Math.abs(fraction - 1) < 0.001) {
+          // Whole open trade consumed
+          cycleOpens.push(slot.trade);
+        } else {
+          // Partial - create virtual trade with prorated values
+          cycleOpens.push({
+            ...slot.trade,
+            id: `${slot.trade.id}:split:${cycleIdx}`,
+            quantity: slot.trade.quantity > 0 ? matched : -matched,
+            proceeds: slot.trade.proceeds * fraction,
+            commission: slot.trade.commission * fraction,
+            costBasis: slot.trade.costBasis !== null ? slot.trade.costBasis * fraction : null,
+            realizedPnl: slot.trade.realizedPnl !== null ? slot.trade.realizedPnl * fraction : null,
+          });
+        }
+
+        slot.remaining -= matched;
+        remaining -= matched;
+      }
+
+      groups.set(`${key}:cycle:${cycleIdx}`, [...cycleOpens, close]);
+      cycleIdx++;
+    }
+
+    // Remaining unmatched opens become an open position group
+    const remainingOpens: OptionTradeInput[] = [];
+    for (const slot of openSlots) {
+      if (slot.remaining <= 0.001) continue;
+      const fraction = slot.remaining / Math.abs(slot.trade.quantity);
+      if (Math.abs(fraction - 1) < 0.001) {
+        remainingOpens.push(slot.trade);
+      } else {
+        remainingOpens.push({
+          ...slot.trade,
+          id: `${slot.trade.id}:split:remain`,
+          quantity: slot.trade.quantity > 0 ? slot.remaining : -slot.remaining,
+          proceeds: slot.trade.proceeds * fraction,
+          commission: slot.trade.commission * fraction,
+          costBasis: slot.trade.costBasis !== null ? slot.trade.costBasis * fraction : null,
+          realizedPnl: slot.trade.realizedPnl !== null ? slot.trade.realizedPnl * fraction : null,
+        });
+      }
+    }
+    if (remainingOpens.length > 0) {
+      groups.set(`${key}:remain`, remainingOpens);
+    }
   }
 
   // Create trade groups
