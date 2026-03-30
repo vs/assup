@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getApiBase } from "@/lib/apiConfig";
 
-type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job";
+type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job" | "wheel_scanner";
 
 // Singleton SSE connection manager
 class SSEManager {
