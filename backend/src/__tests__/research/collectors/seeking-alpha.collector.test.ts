@@ -81,9 +81,12 @@ describe("seekingAlphaCollector", () => {
     expect(data.metrics).toEqual({ pe_nongaap_fy1: 20.1, revenue_growth: 0.65 });
   });
 
-  it("throws when both endpoints fail", async () => {
+  it("returns null ratings and metrics when both endpoints fail", async () => {
     mockFetchSA.mockResolvedValue(null);
-    await expect(seekingAlphaCollector.collect("AAPL")).rejects.toThrow("No Seeking Alpha data");
+    const result = await seekingAlphaCollector.collect("AAPL");
+    const data = (result as any).data;
+    expect(data.ratings).toBeNull();
+    expect(data.metrics).toBeNull();
   });
 
   it("uses lowercase symbol slug in URLs", async () => {

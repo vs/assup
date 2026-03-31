@@ -32,16 +32,12 @@ export const seekingAlphaCollector: Collector = {
     // Flatten metrics into a simple { field: value } map
     const metrics = flattenMetrics(metricsRaw);
 
-    if (!ratings && !metrics) {
-      throw new Error(`No Seeking Alpha data returned for ${symbol}`);
-    }
-
     return {
       source: "seeking_alpha",
       data: {
         symbol,
-        ratings,
-        metrics,
+        ratings: ratings ?? null,
+        metrics: metrics ?? null,
         fetchedAt: new Date().toISOString(),
       },
       expiresAt: new Date(Date.now() + this.stalenessMinutes * 60 * 1000),

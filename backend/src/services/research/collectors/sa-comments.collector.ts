@@ -4,7 +4,7 @@ import { fetchSAJson } from "./sa-browser.js";
 const SA_API_BASE = "https://seekingalpha.com/api/v3";
 const MAX_ARTICLES = 3;
 const MAX_COMMENTS_PER_ARTICLE = 20;
-const LOOKBACK_DAYS = 7;
+const LOOKBACK_DAYS = 90;
 
 export const saCommentsCollector: Collector = {
   source: "sa_comments",
@@ -17,7 +17,7 @@ export const saCommentsCollector: Collector = {
     let articlesRaw: Array<{ id: string; attributes: { title: string; publishOn: string; commentCount: number } }> = [];
     try {
       const json = await fetchSAJson(
-        `${SA_API_BASE}/feed?any_primary[]=${encodeURIComponent(symbol)}&filter[since]=${since}&include=author&models[]=Article&page[size]=${MAX_ARTICLES}`,
+        `${SA_API_BASE}/feed?any_primary[]=${encodeURIComponent(symbol)}&filter[since]=${since}&include=author&models[]=Article&page[size]=10`,
       ) as { data?: Array<{ id: string; attributes: { title: string; publishOn: string; commentCount: number } }> } | null;
 
       if (json?.data) {
