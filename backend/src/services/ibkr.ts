@@ -20,6 +20,8 @@ import {
   OrderType,
   TimeInForce,
 } from "@stoqey/ib";
+import type { ScannerSubscription } from "@stoqey/ib";
+import { ScanCode, Instrument, LocationCode } from "@stoqey/ib";
 import type { ImportedTrade } from "@prisma/client";
 import { Subscription, lastValueFrom } from "rxjs";
 
@@ -86,6 +88,31 @@ export interface EnhancedMarketData extends TickerData {
   putVolume?: number;
   callOpenInterest?: number;
   putOpenInterest?: number;
+}
+
+export interface MarketScannerParams {
+  scanCode: string;
+  instrument?: string;        // default "STK"
+  locationCode?: string;      // default "STK.US.MAJOR"
+  numberOfRows?: number;      // default 50
+  abovePrice?: number;
+  belowPrice?: number;
+  aboveVolume?: number;
+  marketCapAbove?: number;
+  marketCapBelow?: number;
+  averageOptionVolumeAbove?: number;
+  stockTypeFilter?: string;   // "CORP", "ADR", "ETF", "REIT"
+}
+
+export interface ScannerResult {
+  rank: number;
+  symbol: string;
+  conId: number;
+  exchange: string;
+  secType: string;
+  longName?: string;
+  industry?: string;
+  category?: string;
 }
 
 class IBKRService {
@@ -1255,6 +1282,103 @@ class IBKRService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Run a TWS market scanner to discover symbols matching criteria.
+   * Uses the IBKR scanner subscription API to find stocks by various metrics
+   * (most active, high option volume, top gainers, etc.)
+   */
+  async runMarketScanner(params: MarketScannerParams): Promise<ScannerResult[]> {
+    if (!this.isConnected()) {
+      throw new Error("Not connected to TWS");
+    }
+
+    // Resolve scanCode string to the numeric ScanCode enum.
+    // ScanCode is a numeric enum where keys are the string names (e.g., HOT_BY_OPT_VOLUME = 40).
+    const scanCodeValue = ScanCode[params.scanCode as keyof typeof ScanCode];
+    if (scanCodeValue === undefined) {
+      throw new Error(
+        `Invalid scanCode "${params.scanCode}". Valid values include: ${Object.keys(ScanCode).filter((k) => isNaN(Number(k))).join(", ")}`
+      );
+    }
+
+    // Instrument and LocationCode are string enums - cast directly
+    const instrumentValue = (params.instrument ?? "STK") as unknown as Instrument;
+    const locationValue = (params.locationCode ?? "STK.US.MAJOR") as unknown as LocationCode;
+
+    const subscription: ScannerSubscription = {
+      scanCode: scanCodeValue,
+      instrument: instrumentValue,
+      locationCode: locationValue,
+      numberOfRows: params.numberOfRows ?? 50,
+      abovePrice: params.abovePrice,
+      belowPrice: params.belowPrice,
+      aboveVolume: params.aboveVolume,
+      marketCapAbove: params.marketCapAbove,
+      marketCapBelow: params.marketCapBelow,
+      averageOptionVolumeAbove: params.averageOptionVolumeAbove,
+      stockTypeFilter: params.stockTypeFilter,
+    };
+
+    return new Promise<ScannerResult[]>((resolve, reject) => {
+      let results: ScannerResult[] = [];
+      let resolved = false;
+      let timeoutId: ReturnType<typeof setTimeout>;
+
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        sub.unsubscribe();
+        resolve(results);
+      };
+
+      const sub = this.api!.getMarketScanner(subscription).subscribe({
+        next: (update) => {
+          const rows = update.all;
+          if (!rows || rows.size === 0) return;
+
+          results = [];
+          rows.forEach((item) => {
+            const details = item.contract;
+            const contract = details.contract;
+            results.push({
+              rank: item.rank,
+              symbol: contract.symbol ?? "",
+              conId: contract.conId ?? 0,
+              exchange: contract.primaryExch ?? contract.exchange ?? "",
+              secType: typeof contract.secType === "string"
+                ? contract.secType
+                : String(contract.secType ?? ""),
+              longName: details.longName,
+              industry: details.industry,
+              category: details.category,
+            });
+          });
+
+          // Scanner emits updates; resolve after first complete emission
+          finish();
+        },
+        error: (err) => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeoutId);
+            sub.unsubscribe();
+            reject(err);
+          }
+        },
+        complete: finish,
+      });
+
+      // 30-second timeout safety net
+      timeoutId = setTimeout(() => {
+        if (!resolved) {
+          console.warn("Market scanner timed out after 30s");
+          finish();
+        }
+      }, 30_000);
+    });
   }
 
   async disconnect() {
