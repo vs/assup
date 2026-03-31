@@ -115,16 +115,21 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
     }
   }, []);
 
-  function handleConfigChange(updated: WheelScanConfig) {
+  function handleConfigChange(prevAssetClassId: string, updated: WheelScanConfig) {
     setConfigs((prev) =>
-      prev.map((c) => (c.assetClassId === updated.assetClassId ? updated : c))
+      prev.map((c) => (c.assetClassId === prevAssetClassId ? updated : c))
     );
   }
 
-  async function handleConfigDelete(id: string) {
+  async function handleConfigDelete(config: WheelScanConfig) {
+    // If it's a new unsaved placeholder, just remove from local state
+    if (config.id.startsWith("new-")) {
+      setConfigs((prev) => prev.filter((c) => c.id !== config.id));
+      return;
+    }
     try {
-      await wheelScannerApi.configs.delete(id);
-      setConfigs((prev) => prev.filter((c) => c.id !== id));
+      await wheelScannerApi.configs.delete(config.id);
+      setConfigs((prev) => prev.filter((c) => c.id !== config.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete config");
     }
@@ -137,7 +142,7 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
 
     const placeholder: WheelScanConfig = {
       id: `new-${Date.now()}`,
-      assetClassId: available[0].id,
+      assetClassId: "",
       searchKeywords: [],
       seedTickers: [],
       minPrice: 15,
@@ -166,8 +171,9 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
     : 0;
 
   const acMap = new Map(assetClasses.map((ac) => [ac.id, ac]));
-  const configuredIds = new Set(configs.map((c) => c.assetClassId));
+  const configuredIds = new Set(configs.map((c) => c.assetClassId).filter(Boolean));
   const hasAvailableClasses = assetClasses.some((ac) => !configuredIds.has(ac.id));
+  const hasSavedConfigs = configs.some((c) => !c.id.startsWith("new-"));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -209,9 +215,10 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
                     key={config.id}
                     config={config}
                     assetClasses={assetClasses}
+                    configuredAssetClassIds={configuredIds}
                     isNew={config.id.startsWith("new-")}
-                    onChange={handleConfigChange}
-                    onDelete={handleConfigDelete}
+                    onChange={(updated) => handleConfigChange(config.assetClassId, updated)}
+                    onDelete={() => handleConfigDelete(config)}
                   />
                 ))}
               </div>
@@ -229,7 +236,7 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
               </Button>
               <Button
                 onClick={handleStartScan}
-                disabled={configs.length === 0}
+                disabled={!hasSavedConfigs}
               >
                 <Radar className="h-4 w-4 mr-1.5" />
                 Run Scan

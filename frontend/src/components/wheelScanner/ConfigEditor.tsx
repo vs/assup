@@ -16,14 +16,16 @@ import { X, Trash2 } from "lucide-react";
 interface ConfigEditorProps {
   config: WheelScanConfig;
   assetClasses: AssetClass[];
+  configuredAssetClassIds: Set<string>;
   isNew?: boolean;
   onChange: (config: WheelScanConfig) => void;
-  onDelete: (id: string) => void;
+  onDelete: () => void;
 }
 
 export function ConfigEditor({
   config,
   assetClasses,
+  configuredAssetClassIds,
   isNew,
   onChange,
   onDelete,
@@ -35,6 +37,7 @@ export function ConfigEditor({
   const save = useCallback(
     async (updated: Partial<WheelScanConfig>) => {
       const merged = { ...config, ...updated };
+      if (!merged.assetClassId) return; // Can't save without asset class
       setSaving(true);
       try {
         const saved = await wheelScannerApi.configs.upsert({
@@ -46,14 +49,20 @@ export function ConfigEditor({
           minMarketCap: merged.minMarketCap,
           enabled: merged.enabled,
         });
-        onChange(saved);
+        // Preserve assetClass relation from local state (backend upsert doesn't include it)
+        const ac = assetClasses.find((a) => a.id === saved.assetClassId);
+        const enriched: WheelScanConfig = {
+          ...saved,
+          assetClass: ac ? { id: ac.id, name: ac.name, color: ac.color } : config.assetClass,
+        };
+        onChange(enriched);
       } catch (err) {
         console.error("Failed to save config:", err);
       } finally {
         setSaving(false);
       }
     },
-    [config, onChange]
+    [config, assetClasses, onChange]
   );
 
   function addTicker(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -98,14 +107,23 @@ export function ConfigEditor({
         <div className="flex items-center gap-2">
           {isNew ? (
             <Select
-              value={config.assetClassId}
-              onValueChange={(id) => save({ assetClassId: id })}
+              value={config.assetClassId || undefined}
+              onValueChange={(id) => {
+                const ac = assetClasses.find((a) => a.id === id);
+                onChange({
+                  ...config,
+                  assetClassId: id,
+                  assetClass: ac ? { id: ac.id, name: ac.name, color: ac.color } : undefined,
+                });
+              }}
             >
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Select asset class..." />
               </SelectTrigger>
               <SelectContent>
-                {assetClasses.map((ac) => (
+                {assetClasses
+                  .filter((ac) => !configuredAssetClassIds.has(ac.id) || ac.id === config.assetClassId)
+                  .map((ac) => (
                   <SelectItem key={ac.id} value={ac.id}>
                     <div className="flex items-center gap-2">
                       <div
@@ -141,7 +159,7 @@ export function ConfigEditor({
           variant="ghost"
           size="icon"
           className="h-7 w-7 text-muted-foreground hover:text-destructive"
-          onClick={() => onDelete(config.id)}
+          onClick={onDelete}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
