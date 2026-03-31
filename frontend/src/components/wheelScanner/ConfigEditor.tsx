@@ -30,7 +30,7 @@ export function ConfigEditor({
   onChange,
   onDelete,
 }: ConfigEditorProps) {
-  const [tickerInput, setTickerInput] = useState("");
+  const [keywordInput, setKeywordInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   const save = useCallback(
@@ -64,21 +64,21 @@ export function ConfigEditor({
     [config, assetClasses, onChange]
   );
 
-  function addTicker(e: React.KeyboardEvent<HTMLInputElement>) {
+  function addKeyword(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const val = tickerInput.trim().toUpperCase();
-    if (!val || config.seedTickers.includes(val)) {
-      setTickerInput("");
+    const val = keywordInput.trim().toLowerCase();
+    if (!val || config.searchKeywords.includes(val)) {
+      setKeywordInput("");
       return;
     }
-    const updated = [...config.seedTickers, val];
-    setTickerInput("");
-    save({ seedTickers: updated });
+    const updated = [...config.searchKeywords, val];
+    setKeywordInput("");
+    save({ searchKeywords: updated });
   }
 
-  function removeTicker(ticker: string) {
-    save({ seedTickers: config.seedTickers.filter((t) => t !== ticker) });
+  function removeKeyword(keyword: string) {
+    save({ searchKeywords: config.searchKeywords.filter((k) => k !== keyword) });
   }
 
   const assetClass = assetClasses.find((ac) => ac.id === config.assetClassId);
@@ -147,17 +147,17 @@ export function ConfigEditor({
         </Button>
       </div>
 
-      {/* Tickers */}
+      {/* Keywords */}
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          Tickers
+          Keywords
         </label>
         <div className="flex flex-wrap items-center gap-1.5">
-          {config.seedTickers.map((t) => (
-            <Badge key={t} variant="secondary" className="gap-1 pr-1">
-              {t}
+          {config.searchKeywords.map((k) => (
+            <Badge key={k} variant="secondary" className="gap-1 pr-1">
+              {k}
               <button
-                onClick={() => removeTicker(t)}
+                onClick={() => removeKeyword(k)}
                 className="ml-0.5 hover:text-destructive"
               >
                 <X className="h-3 w-3" />
@@ -165,11 +165,11 @@ export function ConfigEditor({
             </Badge>
           ))}
           <Input
-            className="h-7 w-24 text-sm"
-            placeholder="Add..."
-            value={tickerInput}
-            onChange={(e) => setTickerInput(e.target.value)}
-            onKeyDown={addTicker}
+            className="h-7 w-40 text-sm"
+            placeholder="e.g. semiconductor, solar"
+            value={keywordInput}
+            onChange={(e) => setKeywordInput(e.target.value)}
+            onKeyDown={addKeyword}
           />
         </div>
       </div>

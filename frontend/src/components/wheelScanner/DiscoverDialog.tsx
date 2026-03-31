@@ -174,7 +174,7 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
   const configuredIds = new Set(configs.map((c) => c.assetClassId).filter(Boolean));
   const hasAvailableClasses = assetClasses.some((ac) => !configuredIds.has(ac.id));
   const hasUsableConfigs = configs.some(
-    (c) => !c.id.startsWith("new-") && c.seedTickers.length > 0
+    (c) => !c.id.startsWith("new-") && c.searchKeywords.length > 0
   );
 
   return (
@@ -239,7 +239,7 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
               <div className="flex items-center gap-3">
                 {!hasUsableConfigs && configs.length > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    Add tickers to at least one config
+                    Add keywords to at least one config
                   </span>
                 )}
                 <Button
