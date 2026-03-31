@@ -69,18 +69,39 @@ class WheelScannerService {
     // 1. Get underinvested classes
     const underinvested = await getUnderinvestedClasses();
 
-    // 2. Get scan configs for underinvested classes
-    const configs = await prisma.wheelScanConfig.findMany({
-      where: {
-        enabled: true,
-        assetClassId: { in: underinvested.map((u) => u.id) },
-      },
-    });
-
-    if (configs.length === 0) {
+    if (underinvested.length === 0) {
       await prisma.wheelScan.update({
         where: { id: scanId },
-        data: { status: "completed", completedAt: new Date() },
+        data: {
+          status: "completed",
+          completedAt: new Date(),
+          errorMessage: "No underinvested asset classes found. Check that you have an active allocation profile with targets set.",
+        },
+      });
+      return;
+    }
+
+    // 2. Get scan configs for underinvested classes
+    const allConfigs = await prisma.wheelScanConfig.findMany({
+      where: { enabled: true },
+    });
+
+    const configs = allConfigs.filter((c) =>
+      underinvested.some((u) => u.id === c.assetClassId)
+    );
+
+    if (configs.length === 0) {
+      const underNames = underinvested.map((u) => u.name).join(", ");
+      const configNames = allConfigs.length > 0
+        ? "Your configs are for other asset classes."
+        : "No scan configs exist.";
+      await prisma.wheelScan.update({
+        where: { id: scanId },
+        data: {
+          status: "completed",
+          completedAt: new Date(),
+          errorMessage: `No scan configs match underinvested classes. Underinvested: ${underNames}. ${configNames}`,
+        },
       });
       return;
     }

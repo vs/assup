@@ -278,8 +278,13 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
             </div>
 
             {scan.results.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                No candidates found. Try adjusting your search configs.
+              <div className="text-center py-6 text-muted-foreground space-y-2">
+                <p>No candidates found.</p>
+                {scan.errorMessage ? (
+                  <p className="text-sm">{scan.errorMessage}</p>
+                ) : (
+                  <p className="text-sm">Try adding seed tickers or search keywords to your configs.</p>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
