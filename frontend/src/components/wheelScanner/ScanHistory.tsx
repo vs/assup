@@ -32,7 +32,7 @@ export function ScanHistory({ assetClasses, refreshTrigger }: ScanHistoryProps) 
       setLoading(true);
       const [scanData, tickerData] = await Promise.all([
         wheelScannerApi.scans.list(10),
-        researchApi.listTickers(1, 1000),
+        researchApi.listTickers(1, 100),
       ]);
       setScans(scanData);
       setTrackedSymbols(new Set(tickerData.tickers.map((t) => t.symbol)));

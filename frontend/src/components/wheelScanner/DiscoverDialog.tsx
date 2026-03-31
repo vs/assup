@@ -54,7 +54,7 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
         const [cfgs, acs, tickers] = await Promise.all([
           wheelScannerApi.configs.list(),
           assetClassesApi.list(),
-          researchApi.listTickers(1, 1000),
+          researchApi.listTickers(1, 100),
         ]);
         setConfigs(cfgs);
         setAssetClasses(acs);
