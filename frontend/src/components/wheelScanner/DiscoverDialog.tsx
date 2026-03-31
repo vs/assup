@@ -173,7 +173,9 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
   const acMap = new Map(assetClasses.map((ac) => [ac.id, ac]));
   const configuredIds = new Set(configs.map((c) => c.assetClassId).filter(Boolean));
   const hasAvailableClasses = assetClasses.some((ac) => !configuredIds.has(ac.id));
-  const hasSavedConfigs = configs.some((c) => !c.id.startsWith("new-"));
+  const hasUsableConfigs = configs.some(
+    (c) => !c.id.startsWith("new-") && (c.seedTickers.length > 0 || c.searchKeywords.length > 0)
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -236,7 +238,8 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
               </Button>
               <Button
                 onClick={handleStartScan}
-                disabled={!hasSavedConfigs}
+                disabled={!hasUsableConfigs}
+                title={!hasUsableConfigs ? "Add seed tickers or search keywords to at least one config" : undefined}
               >
                 <Radar className="h-4 w-4 mr-1.5" />
                 Run Scan
