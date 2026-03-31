@@ -11,7 +11,7 @@ import { tickerService } from "../services/research/ticker.service.js";
 import { jobService } from "../services/research/job.service.js";
 import { macroService } from "../services/research/macro.service.js";
 import { pipelineService } from "../services/research/pipeline.service.js";
-import { screenerService } from "../services/research/screener.service.js";
+import { marketScannerService } from "../services/research/market-scanner.service.js";
 import { schedulerService } from "../services/research/scheduler.service.js";
 import {
   getAuthStatus,
@@ -31,12 +31,7 @@ import {
   updateTickerSchema,
   tickerListQuerySchema,
 } from "../services/research/schemas/ticker.schema.js";
-import {
-  createScreenerSchema,
-  updateScreenerSchema,
-  screenerIdParamsSchema,
-  screenerResultsQuerySchema,
-} from "../services/research/schemas/screener.schema.js";
+import { z } from "zod";
 import { validate } from "../services/research/middleware/validate.js";
 import { NotFoundError } from "../services/research/errors/AppError.js";
 
@@ -468,95 +463,140 @@ router.post(
   })
 );
 
-// ── Screener ─────────────────────────────────────────────────────────
+// ── Scanner ──────────────────────────────────────────────────────────
+
+const technicalFilterSchema = z.object({
+  enabled: z.boolean(),
+  trendPeriodYears: z.number().int().min(1).max(10).optional(),
+  minSma200SlopeMonths: z.number().int().min(1).max(24).optional(),
+  maxRsi: z.number().min(1).max(100).optional(),
+  requireAboveSma200: z.boolean().optional(),
+  require50Above200: z.boolean().optional(),
+});
+
+const createPresetSchema = z.object({
+  name: z.string().min(1).max(100),
+  scanCode: z.string().min(1),
+  locationCode: z.string().max(40).optional(),
+  filters: z.record(z.unknown()).optional(),
+  technicalFilter: technicalFilterSchema.optional(),
+  schedule: z.string().min(1).max(50),
+  enabled: z.boolean().optional(),
+});
+
+const updatePresetSchema = createPresetSchema.partial();
+
+const presetIdParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const scannerResultsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const adhocScanSchema = z.object({
+  scanCode: z.string().min(1),
+  locationCode: z.string().max(40).optional(),
+  numberOfRows: z.number().int().min(1).max(100).optional(),
+  abovePrice: z.number().positive().optional(),
+  belowPrice: z.number().positive().optional(),
+  aboveVolume: z.number().int().positive().optional(),
+  marketCapAbove: z.number().positive().optional(),
+  marketCapBelow: z.number().positive().optional(),
+  averageOptionVolumeAbove: z.number().int().positive().optional(),
+  stockTypeFilter: z.string().optional(),
+  technicalFilter: technicalFilterSchema.optional(),
+});
 
 /**
- * GET /api/research/screener/configs
- * List all screener configs
+ * GET /api/research/scanner/presets
+ * List all scanner presets
  */
 router.get(
-  "/screener/configs",
+  "/scanner/presets",
   asyncHandler(async (_req, res) => {
-    const configs = await screenerService.listConfigs();
-    res.json(configs);
+    const presets = await marketScannerService.listPresets();
+    res.json(presets);
   })
 );
 
 /**
- * POST /api/research/screener/configs
- * Create a new screener config
+ * POST /api/research/scanner/presets
+ * Create a new scanner preset
  */
 router.post(
-  "/screener/configs",
-  validate({ body: createScreenerSchema }),
+  "/scanner/presets",
+  validate({ body: createPresetSchema }),
   asyncHandler(async (req, res) => {
-    const config = await screenerService.createConfig(req.body);
-    await schedulerService.refreshScreenerSchedules();
-    res.status(201).json(config);
+    const preset = await marketScannerService.createPreset(req.body);
+    await schedulerService.refreshScannerSchedules();
+    res.status(201).json(preset);
   })
 );
 
 /**
- * GET /api/research/screener/configs/:id
- * Get a screener config by ID
+ * GET /api/research/scanner/presets/:id
+ * Get a scanner preset by ID
  */
 router.get(
-  "/screener/configs/:id",
-  validate({ params: screenerIdParamsSchema }),
+  "/scanner/presets/:id",
+  validate({ params: presetIdParamsSchema }),
   asyncHandler(async (req, res) => {
-    const config = await screenerService.getConfig(req.params.id);
-    res.json(config);
+    const preset = await marketScannerService.getPreset(req.params.id);
+    res.json(preset);
   })
 );
 
 /**
- * PATCH /api/research/screener/configs/:id
- * Update a screener config
+ * PATCH /api/research/scanner/presets/:id
+ * Update a scanner preset
  */
 router.patch(
-  "/screener/configs/:id",
-  validate({ params: screenerIdParamsSchema, body: updateScreenerSchema }),
+  "/scanner/presets/:id",
+  validate({ params: presetIdParamsSchema, body: updatePresetSchema }),
   asyncHandler(async (req, res) => {
-    const config = await screenerService.updateConfig(req.params.id, req.body);
-    await schedulerService.refreshScreenerSchedules();
-    res.json(config);
+    const preset = await marketScannerService.updatePreset(req.params.id, req.body);
+    await schedulerService.refreshScannerSchedules();
+    res.json(preset);
   })
 );
 
 /**
- * DELETE /api/research/screener/configs/:id
- * Delete a screener config
+ * DELETE /api/research/scanner/presets/:id
+ * Delete a scanner preset
  */
 router.delete(
-  "/screener/configs/:id",
-  validate({ params: screenerIdParamsSchema }),
+  "/scanner/presets/:id",
+  validate({ params: presetIdParamsSchema }),
   asyncHandler(async (req, res) => {
-    await screenerService.deleteConfig(req.params.id);
-    await schedulerService.refreshScreenerSchedules();
+    await marketScannerService.deletePreset(req.params.id);
+    await schedulerService.refreshScannerSchedules();
     res.status(204).end();
   })
 );
 
 /**
- * POST /api/research/screener/configs/:id/run
- * Run a screener config immediately
+ * POST /api/research/scanner/presets/:id/run
+ * Run a scanner preset asynchronously
+ * Returns 202 with jobId
  */
 router.post(
-  "/screener/configs/:id/run",
-  validate({ params: screenerIdParamsSchema }),
+  "/scanner/presets/:id/run",
+  validate({ params: presetIdParamsSchema }),
   asyncHandler(async (req, res) => {
-    const configId = req.params.id;
+    const presetId = req.params.id;
 
-    // Verify config exists
-    const config = await screenerService.getConfig(configId);
+    // Verify preset exists
+    const preset = await marketScannerService.getPreset(presetId);
 
-    const job = await jobService.create("screener_run", config.name.slice(0, 20));
+    const job = await jobService.create("scanner_run", preset.name.slice(0, 20));
 
     // Run in background
     (async () => {
       try {
         await jobService.start(job.id);
-        const result = await screenerService.runScreener(configId);
+        const result = await marketScannerService.runPreset(presetId);
         await jobService.complete(job.id, result as unknown as Record<string, unknown>);
       } catch (err) {
         await jobService.fail(job.id, (err as Error).message);
@@ -568,16 +608,60 @@ router.post(
 );
 
 /**
- * GET /api/research/screener/results
- * Get recent screener-discovered tickers
+ * POST /api/research/scanner/scan
+ * Run an ad-hoc scan synchronously
+ * Returns results directly
+ */
+router.post(
+  "/scanner/scan",
+  validate({ body: adhocScanSchema }),
+  asyncHandler(async (req, res) => {
+    const { technicalFilter, ...scanParams } = req.body;
+    const result = await marketScannerService.runAdhoc(scanParams, technicalFilter);
+    res.json(result);
+  })
+);
+
+/**
+ * GET /api/research/scanner/results
+ * Get paginated scanner-discovered tickers
  */
 router.get(
-  "/screener/results",
-  validate({ query: screenerResultsQuerySchema }),
+  "/scanner/results",
+  validate({ query: scannerResultsQuerySchema }),
   asyncHandler(async (req, res) => {
     const { page, limit } = req.query as unknown as { page: number; limit: number };
-    const results = await screenerService.getResults({ page, limit });
+    const results = await marketScannerService.getResults(page, limit);
     res.json(results);
+  })
+);
+
+/**
+ * GET /api/research/scanner/scan-codes
+ * Reference data: available scan codes with labels
+ */
+router.get(
+  "/scanner/scan-codes",
+  asyncHandler(async (_req, res) => {
+    res.json([
+      { code: "HOT_BY_OPT_VOLUME", label: "Hot by Option Volume", description: "Stocks with unusually high options trading volume" },
+      { code: "HIGH_OPT_IMP_VOLAT", label: "High Option Implied Volatility", description: "Stocks with high implied volatility in options" },
+      { code: "TOP_OPT_IMP_VOLAT_GAIN", label: "Top Option IV Gainers", description: "Stocks with the largest implied volatility increase" },
+      { code: "HIGH_DIVIDEND_YIELD", label: "High Dividend Yield", description: "Stocks with the highest dividend yield" },
+      { code: "MOST_ACTIVE", label: "Most Active", description: "Most actively traded stocks by volume" },
+      { code: "TOP_PERC_GAIN", label: "Top % Gainers", description: "Stocks with the highest percentage price gain" },
+      { code: "TOP_PERC_LOSE", label: "Top % Losers", description: "Stocks with the highest percentage price decline" },
+      { code: "HIGH_VS_52W_HL", label: "Near 52-Week High", description: "Stocks trading near their 52-week high" },
+      { code: "LOW_VS_52W_HL", label: "Near 52-Week Low", description: "Stocks trading near their 52-week low" },
+      { code: "HOT_BY_VOLUME", label: "Hot by Volume", description: "Stocks with unusually high trading volume" },
+      { code: "OPT_VOLUME_MOST_ACTIVE", label: "Most Active Options", description: "Stocks with the most active options contracts" },
+      { code: "HIGH_OPT_OPEN_INTEREST_PUT_CALL_RATIO", label: "High Put/Call OI Ratio", description: "Stocks with high put-to-call open interest ratio" },
+      { code: "LOW_OPT_IMP_VOLAT", label: "Low Option Implied Volatility", description: "Stocks with low implied volatility in options" },
+      { code: "HIGH_PE_RATIO", label: "High P/E Ratio", description: "Stocks with the highest price-to-earnings ratio" },
+      { code: "LOW_PE_RATIO", label: "Low P/E Ratio", description: "Stocks with the lowest price-to-earnings ratio" },
+      { code: "HIGH_RETURN_ON_EQUITY", label: "High Return on Equity", description: "Stocks with the highest return on equity" },
+      { code: "HIGH_GROWTH_RATE", label: "High Growth Rate", description: "Stocks with the highest earnings growth rate" },
+    ]);
   })
 );
 
