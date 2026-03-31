@@ -31,7 +31,6 @@ export function ConfigEditor({
   onDelete,
 }: ConfigEditorProps) {
   const [tickerInput, setTickerInput] = useState("");
-  const [keywordInput, setKeywordInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   const save = useCallback(
@@ -80,23 +79,6 @@ export function ConfigEditor({
 
   function removeTicker(ticker: string) {
     save({ seedTickers: config.seedTickers.filter((t) => t !== ticker) });
-  }
-
-  function addKeyword(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    const val = keywordInput.trim();
-    if (!val || config.searchKeywords.includes(val)) {
-      setKeywordInput("");
-      return;
-    }
-    const updated = [...config.searchKeywords, val];
-    setKeywordInput("");
-    save({ searchKeywords: updated });
-  }
-
-  function removeKeyword(kw: string) {
-    save({ searchKeywords: config.searchKeywords.filter((k) => k !== kw) });
   }
 
   const assetClass = assetClasses.find((ac) => ac.id === config.assetClassId);
@@ -165,10 +147,10 @@ export function ConfigEditor({
         </Button>
       </div>
 
-      {/* Seed Tickers */}
+      {/* Tickers */}
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          Seed Tickers
+          Tickers
         </label>
         <div className="flex flex-wrap items-center gap-1.5">
           {config.seedTickers.map((t) => (
@@ -188,33 +170,6 @@ export function ConfigEditor({
             value={tickerInput}
             onChange={(e) => setTickerInput(e.target.value)}
             onKeyDown={addTicker}
-          />
-        </div>
-      </div>
-
-      {/* Search Keywords */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          Search Keywords
-        </label>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {config.searchKeywords.map((kw) => (
-            <Badge key={kw} variant="outline" className="gap-1 pr-1">
-              {kw}
-              <button
-                onClick={() => removeKeyword(kw)}
-                className="ml-0.5 hover:text-destructive"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-          <Input
-            className="h-7 w-32 text-sm"
-            placeholder="Add..."
-            value={keywordInput}
-            onChange={(e) => setKeywordInput(e.target.value)}
-            onKeyDown={addKeyword}
           />
         </div>
       </div>
