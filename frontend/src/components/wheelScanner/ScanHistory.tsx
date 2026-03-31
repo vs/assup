@@ -40,6 +40,10 @@ export function ScanHistory({ assetClasses, refreshTrigger }: ScanHistoryProps) 
       if (scanData.some((s) => s.status === "running")) {
         setCollapsed(false);
       }
+      // Auto-expand most recent scan
+      if (scanData.length > 0) {
+        setExpandedScanId(scanData[0].id);
+      }
     } catch {
       // Silent fail for history
     } finally {

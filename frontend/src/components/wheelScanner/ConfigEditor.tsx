@@ -58,6 +58,7 @@ export function ConfigEditor({
 
   function addTicker(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
+    e.preventDefault();
     const val = tickerInput.trim().toUpperCase();
     if (!val || config.seedTickers.includes(val)) {
       setTickerInput("");
@@ -74,6 +75,7 @@ export function ConfigEditor({
 
   function addKeyword(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
+    e.preventDefault();
     const val = keywordInput.trim();
     if (!val || config.searchKeywords.includes(val)) {
       setKeywordInput("");
@@ -206,15 +208,15 @@ export function ConfigEditor({
           <Input
             type="number"
             className="h-7 w-20 text-sm"
-            value={config.minPrice}
-            onChange={(e) => save({ minPrice: Number(e.target.value) })}
+            defaultValue={config.minPrice}
+            onBlur={(e) => save({ minPrice: Number(e.target.value) })}
           />
           <span className="text-muted-foreground">–</span>
           <Input
             type="number"
             className="h-7 w-20 text-sm"
-            value={config.maxPrice}
-            onChange={(e) => save({ maxPrice: Number(e.target.value) })}
+            defaultValue={config.maxPrice}
+            onBlur={(e) => save({ maxPrice: Number(e.target.value) })}
           />
         </div>
         <div className="flex items-center gap-1.5">
@@ -222,8 +224,8 @@ export function ConfigEditor({
           <Input
             type="number"
             className="h-7 w-28 text-sm"
-            value={config.minMarketCap / 1e9}
-            onChange={(e) =>
+            defaultValue={config.minMarketCap / 1e9}
+            onBlur={(e) =>
               save({ minMarketCap: Number(e.target.value) * 1e9 })
             }
           />

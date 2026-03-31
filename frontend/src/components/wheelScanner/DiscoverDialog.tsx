@@ -117,7 +117,7 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
 
   function handleConfigChange(updated: WheelScanConfig) {
     setConfigs((prev) =>
-      prev.map((c) => (c.id === updated.id ? updated : c))
+      prev.map((c) => (c.assetClassId === updated.assetClassId ? updated : c))
     );
   }
 
