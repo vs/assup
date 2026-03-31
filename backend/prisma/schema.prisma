@@ -426,16 +426,19 @@ model ResearchJob {
   @@map("research_job")
 }
 
-// Screener Config - stock screener configurations and schedules
-model ScreenerConfig {
-  id       String    @id @default(uuid()) @db.Uuid
-  name     String    @db.VarChar(100)
-  criteria Json      @db.JsonB
-  schedule String    @db.VarChar(50)
-  enabled  Boolean   @default(true)
-  lastRun  DateTime? @map("last_run") @db.Timestamptz()
+// Market Scanner Preset - TWS market scanner configurations and schedules
+model MarketScannerPreset {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String    @db.VarChar(100)
+  scanCode        String    @map("scan_code") @db.VarChar(60)
+  locationCode    String    @default("STK.US.MAJOR") @map("location_code") @db.VarChar(40)
+  filters         Json      @default("{}") @db.JsonB
+  technicalFilter Json      @default("{}") @map("technical_filter") @db.JsonB
+  schedule        String    @db.VarChar(50)
+  enabled         Boolean   @default(true)
+  lastRun         DateTime? @map("last_run") @db.Timestamptz()
 
-  @@map("screener_config")
+  @@map("market_scanner_preset")
 }
 
 // Macro Snapshot - macro regime analysis snapshots

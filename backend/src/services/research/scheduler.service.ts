@@ -123,7 +123,7 @@ class SchedulerService {
     this.screenerJobs = [];
 
     // Load all enabled screener configs
-    const configs = await prisma.screenerConfig.findMany({
+    const configs = await prisma.marketScannerPreset.findMany({
       where: { enabled: true },
     });
 
