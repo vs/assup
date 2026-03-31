@@ -191,9 +191,29 @@ class WheelScannerService {
           batch.map((c) => this.scoreCandidate(c, shortfallMap))
         );
 
-        for (const result of batchResults) {
+        for (let j = 0; j < batchResults.length; j++) {
+          const result = batchResults[j];
           if (result.status === "fulfilled" && result.value) {
             results.push(result.value);
+          } else {
+            // Fall back to basic scoring when IBKR scoring fails
+            const c = batch[j];
+            const shortfall = shortfallMap.get(c.assetClassId) ?? 0;
+            const score = computeCompositeScore({
+              ivRank: 0,
+              putLiquidity: 0,
+              premiumYield: 0,
+              marketCap: scoreMarketCap(c.marketCap ?? 0),
+              priceRange: scorePriceRange(c.lastPrice ?? 0),
+              allocationNeed: scoreAllocationNeed(shortfall),
+            });
+            results.push({
+              candidate: c,
+              score,
+              ivRank: null,
+              putLiquidity: null,
+              premiumYield: null,
+            });
           }
         }
 
