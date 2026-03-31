@@ -226,7 +226,7 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
               </div>
             )}
 
-            <div className="flex justify-between">
+            <div className="flex items-center justify-between">
               <Button
                 variant="outline"
                 size="sm"
@@ -236,14 +236,20 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
                 <Plus className="h-4 w-4 mr-1.5" />
                 Add Config
               </Button>
-              <Button
-                onClick={handleStartScan}
-                disabled={!hasUsableConfigs}
-                title={!hasUsableConfigs ? "Add tickers to at least one config" : undefined}
-              >
-                <Radar className="h-4 w-4 mr-1.5" />
-                Run Scan
-              </Button>
+              <div className="flex items-center gap-3">
+                {!hasUsableConfigs && configs.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    Add tickers to at least one config
+                  </span>
+                )}
+                <Button
+                  onClick={handleStartScan}
+                  disabled={!hasUsableConfigs}
+                >
+                  <Radar className="h-4 w-4 mr-1.5" />
+                  Run Scan
+                </Button>
+              </div>
             </div>
           </div>
         )}
