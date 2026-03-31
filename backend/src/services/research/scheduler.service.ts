@@ -3,7 +3,7 @@ import { prisma } from "./db.js";
 import { collectionService } from "./collection.service.js";
 import { macroService } from "./macro.service.js";
 import { pipelineService } from "./pipeline.service.js";
-import { screenerService } from "./screener.service.js";
+import { marketScannerService } from "./market-scanner.service.js";
 import { wheelScannerService } from "../wheelScanner.service.js";
 
 const DAILY_SOURCES = [
@@ -29,7 +29,7 @@ async function processBatched<T>(
 
 class SchedulerService {
   private jobs: cron.ScheduledTask[] = [];
-  private screenerJobs: cron.ScheduledTask[] = [];
+  private scannerJobs: cron.ScheduledTask[] = [];
 
   /**
    * Start all scheduled cron jobs.
@@ -84,9 +84,9 @@ class SchedulerService {
       }, { timezone: "America/New_York" })
     );
 
-    // Load screener schedules
-    this.refreshScreenerSchedules().catch((err) => {
-      console.error("[Scheduler] Failed to load screener schedules:", (err as Error).message);
+    // Load scanner schedules
+    this.refreshScannerSchedules().catch((err) => {
+      console.error("[Scheduler] Failed to load scanner schedules:", (err as Error).message);
     });
 
     console.log("[Scheduler] All jobs scheduled.");
@@ -102,55 +102,55 @@ class SchedulerService {
     }
     this.jobs = [];
 
-    for (const job of this.screenerJobs) {
+    for (const job of this.scannerJobs) {
       job.stop();
     }
-    this.screenerJobs = [];
+    this.scannerJobs = [];
 
     console.log("[Scheduler] All jobs stopped.");
   }
 
   /**
-   * Load enabled screener configs and create cron jobs for each.
-   * Stops any existing screener jobs before reloading.
-   * Call this after creating/updating/deleting screener configs.
+   * Load enabled scanner presets and create cron jobs for each.
+   * Stops any existing scanner jobs before reloading.
+   * Call this after creating/updating/deleting scanner presets.
    */
-  async refreshScreenerSchedules(): Promise<void> {
-    // Stop existing screener cron jobs
-    for (const job of this.screenerJobs) {
+  async refreshScannerSchedules(): Promise<void> {
+    // Stop existing scanner cron jobs
+    for (const job of this.scannerJobs) {
       job.stop();
     }
-    this.screenerJobs = [];
+    this.scannerJobs = [];
 
-    // Load all enabled screener configs
-    const configs = await prisma.marketScannerPreset.findMany({
+    // Load all enabled scanner presets
+    const presets = await prisma.marketScannerPreset.findMany({
       where: { enabled: true },
     });
 
     // Create a cron job for each
-    for (const config of configs) {
-      if (!cron.validate(config.schedule)) {
-        console.warn(`[Scheduler] Invalid cron expression for screener "${config.name}": ${config.schedule}`);
+    for (const preset of presets) {
+      if (!cron.validate(preset.schedule)) {
+        console.warn(`[Scheduler] Invalid cron expression for scanner "${preset.name}": ${preset.schedule}`);
         continue;
       }
 
       const task = cron.schedule(
-        config.schedule,
+        preset.schedule,
         async () => {
-          console.log(`[Scheduler] Running screener: ${config.name}`);
+          console.log(`[Scheduler] Running scanner: ${preset.name}`);
           try {
-            const result = await screenerService.runScreener(config.id);
-            console.log(`[Scheduler] Screener "${config.name}" found ${result.discovered.length} tickers, added ${result.added.length}`);
+            const result = await marketScannerService.runPreset(preset.id);
+            console.log(`[Scheduler] Scanner "${preset.name}" found ${result.discovered.length} tickers, added ${result.added.length}`);
           } catch (err) {
-            console.error(`[Scheduler] Screener "${config.name}" failed:`, (err as Error).message);
+            console.error(`[Scheduler] Scanner "${preset.name}" failed:`, (err as Error).message);
           }
         },
         { timezone: "America/New_York" }
       );
-      this.screenerJobs.push(task);
+      this.scannerJobs.push(task);
     }
 
-    console.log(`[Scheduler] Loaded ${this.screenerJobs.length} screener schedules`);
+    console.log(`[Scheduler] Loaded ${this.scannerJobs.length} scanner schedules`);
   }
 
   /**
