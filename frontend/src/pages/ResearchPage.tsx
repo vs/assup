@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { researchApi, settingsApi, assetClassesApi } from "@/api";
+import { researchApi, settingsApi } from "@/api";
 import type {
   ResearchTicker,
   ResearchReport,
   MacroAnalysis,
   MarketRegime,
-  AssetClass,
 } from "@assup/shared";
 import {
   ErrorAlert,
@@ -29,8 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Eye, Zap, AlertTriangle, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, Radar } from "lucide-react";
 import { timeAgo } from "@/utils/format";
-import { DiscoverDialog } from "@/components/wheelScanner/DiscoverDialog";
-import { ScanHistory } from "@/components/wheelScanner/ScanHistory";
+import { ScannerDialog } from "@/components/research/ScannerDialog";
 
 // --- Helpers ---
 
@@ -330,8 +328,6 @@ export function ResearchPage() {
 
   // Discover dialog
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
-  const [scanHistoryRefresh, setScanHistoryRefresh] = useState(0);
 
   // Collapse state for tickers without reports
   const [showPending, setShowPending] = useState(false);
@@ -341,11 +337,10 @@ export function ResearchPage() {
     setError(null);
     try {
       // Auto-sync watchlist tickers, refresh macro, and load tickers in parallel
-      const [, , tickerData, acData] = await Promise.allSettled([
+      const [, , tickerData] = await Promise.allSettled([
         researchApi.syncWatchlist(),
         researchApi.refreshMacro().then(setMacro),
         researchApi.listTickers(),
-        assetClassesApi.list(),
       ]);
 
       if (tickerData.status === "fulfilled") {
@@ -370,9 +365,6 @@ export function ResearchPage() {
         );
       }
 
-      if (acData.status === "fulfilled") {
-        setAssetClasses(acData.value);
-      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load research data"
@@ -487,20 +479,11 @@ export function ResearchPage() {
       {/* Macro Regime Banner */}
       <MacroBanner macro={macro} />
 
-      {/* Scan History */}
-      <ScanHistory
-        assetClasses={assetClasses}
-        refreshTrigger={scanHistoryRefresh}
-      />
-
-      {/* Discover Dialog */}
-      <DiscoverDialog
+      {/* Scanner Dialog */}
+      <ScannerDialog
         open={discoverOpen}
         onOpenChange={setDiscoverOpen}
-        onTickersAdded={() => {
-          setScanHistoryRefresh((n) => n + 1);
-          fetchData();
-        }}
+        onTickersAdded={() => fetchData()}
       />
 
       {/* Tickers Table */}
