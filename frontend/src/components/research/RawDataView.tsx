@@ -218,10 +218,87 @@ function EventsRenderer({ data }: { data: Record<string, unknown> }) {
 }
 
 function SeekingAlphaRenderer({ data }: { data: Record<string, unknown> }) {
+  const metrics = data.metrics as Record<string, number> | null;
+
+  const metricLabels: Record<string, string> = {
+    pe_nongaap_fy1: "Fwd P/E",
+    dividend_yield: "Div Yield",
+    div_yield_fwd: "Fwd Div Yield",
+    revenue_growth: "Rev Growth",
+    marketcap: "Market Cap",
+    short_interest_shares_outstanding: "Short % of S/O",
+  };
+
+  function metricFmt(field: string, val: number): string {
+    if (field === "marketcap") {
+      if (val >= 1e12) return `$${(val / 1e12).toFixed(1)}T`;
+      if (val >= 1e9) return `$${(val / 1e9).toFixed(1)}B`;
+      if (val >= 1e6) return `$${(val / 1e6).toFixed(0)}M`;
+      return `$${val.toLocaleString()}`;
+    }
+    if (field.includes("yield") || field.includes("growth") || field.includes("interest"))
+      return `${(val * 100).toFixed(2)}%`;
+    return val.toFixed(2);
+  }
+
+  if (!metrics || Object.keys(metrics).length === 0) {
+    return <p className="text-muted-foreground">No Seeking Alpha metrics available.</p>;
+  }
+
   return (
-    <pre className="whitespace-pre-wrap break-words bg-muted/30 rounded p-2 max-h-48 overflow-y-auto">
-      {JSON.stringify(data, null, 2)}
-    </pre>
+    <div className="space-y-3">
+      <div>
+        <p className="font-medium text-muted-foreground mb-1">Metrics</p>
+        <div className="space-y-0.5">
+          {Object.entries(metrics).map(([field, val]) => (
+            <KeyValue key={field} label={metricLabels[field] ?? field} value={metricFmt(field, val)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SACommentsRenderer({ data }: { data: Record<string, unknown> }) {
+  const articles = data.articles as Array<{
+    id: string;
+    title: string;
+    publishedAt: string;
+    comments: Array<{ id: string; content: string; createdAt: string; likes: number }>;
+  }> | undefined;
+
+  if (!articles || articles.length === 0) {
+    return <p className="text-muted-foreground">No Seeking Alpha articles or comments found.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {articles.map((article) => (
+        <div key={article.id}>
+          <div className="flex items-baseline justify-between gap-2 mb-1">
+            <p className="font-medium leading-tight">{article.title}</p>
+            <span className="text-muted-foreground whitespace-nowrap shrink-0">
+              {new Date(article.publishedAt).toLocaleDateString()}
+            </span>
+          </div>
+          {article.comments.length === 0 ? (
+            <p className="text-muted-foreground italic">No comments</p>
+          ) : (
+            <div className="space-y-1 ml-2 border-l-2 border-border/50 pl-2">
+              {article.comments.map((c) => (
+                <div key={c.id} className="bg-muted/30 rounded px-2 py-1">
+                  <p className="line-clamp-3">{c.content}</p>
+                  <div className="flex items-center gap-3 mt-0.5 text-muted-foreground">
+                    {c.likes > 0 && <span>{c.likes} likes</span>}
+                    <span>{new Date(c.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -257,6 +334,7 @@ const renderers: Record<string, React.ComponentType<{ data: Record<string, unkno
   short_interest: ShortInterestRenderer,
   events: EventsRenderer,
   seeking_alpha: SeekingAlphaRenderer,
+  sa_comments: SACommentsRenderer,
   macro: MacroRenderer,
 };
 

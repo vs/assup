@@ -20,14 +20,9 @@ export const seekingAlphaCollector: Collector = {
   async collect(symbol: string): Promise<CollectionResult> {
     const slug = symbol.toLowerCase();
 
-    const [ratings, metricsRaw] = await Promise.all([
-      fetchSAJson(
-        `${SA_API_BASE}/symbols/${encodeURIComponent(slug)}/rating/periods?filter[periods][]=0`,
-      ),
-      fetchSAJson(
-        `${SA_API_BASE}/metrics?filter[fields]=${METRIC_FIELDS}&filter[slugs]=${encodeURIComponent(slug)}&minified=false`,
-      ),
-    ]);
+    const metricsRaw = await fetchSAJson(
+      `${SA_API_BASE}/metrics?filter[fields]=${METRIC_FIELDS}&filter[slugs]=${encodeURIComponent(slug)}&minified=false`,
+    );
 
     // Flatten metrics into a simple { field: value } map
     const metrics = flattenMetrics(metricsRaw);
@@ -36,7 +31,6 @@ export const seekingAlphaCollector: Collector = {
       source: "seeking_alpha",
       data: {
         symbol,
-        ratings: ratings ?? null,
         metrics: metrics ?? null,
         fetchedAt: new Date().toISOString(),
       },
