@@ -27,10 +27,6 @@ export const seekingAlphaAnalyzer: Analyzer = {
         const pct = (metrics.div_yield_fwd * 100).toFixed(1);
         signals.push(`Fwd Dividend Yield: ${pct}%`);
       }
-      if (metrics.short_interest_shares_outstanding != null) {
-        const pct = (metrics.short_interest_shares_outstanding * 100).toFixed(1);
-        signals.push(`Short Interest: ${pct}%`);
-      }
       if (metrics.marketcap != null) {
         const b = metrics.marketcap / 1e9;
         signals.push(`Market Cap: $${b.toFixed(1)}B`);

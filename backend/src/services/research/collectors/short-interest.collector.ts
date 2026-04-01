@@ -1,5 +1,6 @@
 import type { Collector, CollectionResult } from "./types.js";
 import { fetchSAJson } from "./sa-browser.js";
+import { flattenSAMetrics } from "./sa-utils.js";
 
 const SA_API_BASE = "https://seekingalpha.com/api/v3";
 const STALENESS_MINUTES = 24 * 60; // 24 hours
@@ -20,7 +21,7 @@ export const shortInterestCollector: Collector = {
       `${SA_API_BASE}/metrics?filter[fields]=${METRIC_FIELDS}&filter[slugs]=${encodeURIComponent(slug)}&minified=false`,
     );
 
-    const metrics = flattenMetrics(raw);
+    const metrics = flattenSAMetrics(raw);
 
     if (!metrics || metrics.short_interest_shares_outstanding == null) {
       return {
@@ -47,29 +48,3 @@ export const shortInterestCollector: Collector = {
     };
   },
 };
-
-/** Flatten the SA v3 metrics response into { field: value } */
-function flattenMetrics(raw: unknown): Record<string, number> | null {
-  if (!raw || typeof raw !== "object") return null;
-  const json = raw as {
-    data?: Array<{ attributes: { value: number }; relationships: { metric_type: { data: { id: string } } } }>;
-    included?: Array<{ id: string; type: string; attributes: { field: string } }>;
-  };
-  if (!json.data || !json.included) return null;
-
-  const typeMap = new Map<string, string>();
-  for (const inc of json.included) {
-    if (inc.type === "metric_type") {
-      typeMap.set(inc.id, inc.attributes.field);
-    }
-  }
-
-  const result: Record<string, number> = {};
-  for (const item of json.data) {
-    const field = typeMap.get(item.relationships.metric_type.data.id);
-    if (field) {
-      result[field] = item.attributes.value;
-    }
-  }
-  return Object.keys(result).length > 0 ? result : null;
-}
