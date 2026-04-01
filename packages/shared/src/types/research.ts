@@ -96,15 +96,69 @@ export interface MacroAnalysis {
   };
 }
 
-// === Screener ===
+// === Market Scanner ===
 
-export interface ScreenerConfig {
+export interface TechnicalFilterConfig {
+  enabled: boolean;
+  trendPeriodYears?: number;
+  minSma200SlopeMonths?: number;
+  maxRsi?: number;
+  requireAboveSma200?: boolean;
+  require50Above200?: boolean;
+}
+
+export interface MarketScannerPreset {
   id: string;
   name: string;
-  criteria: Record<string, unknown>;
+  scanCode: string;
+  locationCode: string;
+  filters: Record<string, unknown>;
+  technicalFilter: TechnicalFilterConfig;
   schedule: string;
   enabled: boolean;
   lastRun: string | null;
+}
+
+export interface ScanCodeInfo {
+  code: string;
+  label: string;
+  description: string;
+}
+
+export interface TechnicalScore {
+  symbol: string;
+  passed: boolean;
+  score: number;
+  details: {
+    aboveSma200: boolean;
+    sma200SlopePositive: boolean;
+    sma50Above200: boolean;
+    rsi14: number | null;
+    currentPrice: number | null;
+    sma200: number | null;
+    sma50: number | null;
+  };
+}
+
+export interface ScannerResultItem {
+  rank: number;
+  symbol: string;
+  conId: number;
+  exchange: string;
+  secType: string;
+  longName?: string;
+  industry?: string;
+  category?: string;
+  technical?: TechnicalScore;
+}
+
+export interface MarketScanResult {
+  discovered: ScannerResultItem[];
+  scored: ScannerResultItem[];
+  qualified: string[];
+  added: string[];
+  skipped: string[];
+  reportsQueued: number;
 }
 
 // === Collection Status ===
