@@ -22,7 +22,6 @@ export type AnalysisSource =
   | "sec_filings"
   | "short_interest"
   | "social"
-  | "analyst_consensus"
   | "macro";
 
 export interface AnalysisResult {
