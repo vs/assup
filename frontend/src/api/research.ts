@@ -11,6 +11,9 @@ import type {
   ReportHistoryResponse,
   TickerListResponse,
   CollectionDataResponse,
+  MarketScannerPreset,
+  ScanCodeInfo,
+  MarketScanResult,
 } from "@assup/shared";
 
 export const researchApi = {
@@ -120,5 +123,41 @@ export const researchApi = {
     request<{ ok: boolean; hasData: boolean; premium: boolean }>(
       "/api/research/sa-auth/test",
       { method: "POST" }
+    ),
+
+  // Market Scanner
+  listScannerPresets: () =>
+    request<MarketScannerPreset[]>("/api/research/scanner/presets"),
+
+  createScannerPreset: (data: Omit<MarketScannerPreset, "id" | "lastRun">) =>
+    request<MarketScannerPreset>("/api/research/scanner/presets", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateScannerPreset: (id: string, data: Partial<MarketScannerPreset>) =>
+    request<MarketScannerPreset>(`/api/research/scanner/presets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  deleteScannerPreset: (id: string) =>
+    request<void>(`/api/research/scanner/presets/${id}`, { method: "DELETE" }),
+
+  runScannerPreset: (id: string) =>
+    request<{ jobId: string }>(`/api/research/scanner/presets/${id}/run`, { method: "POST" }),
+
+  runAdhocScan: (params: Record<string, unknown>) =>
+    request<MarketScanResult>("/api/research/scanner/scan", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
+  getScanCodes: () =>
+    request<ScanCodeInfo[]>("/api/research/scanner/scan-codes"),
+
+  getScannerResults: (page = 1, limit = 20) =>
+    request<{ tickers: Array<{ symbol: string; addedAt: string; status: string }>; total: number }>(
+      `/api/research/scanner/results${buildQuery({ page, limit })}`
     ),
 };
