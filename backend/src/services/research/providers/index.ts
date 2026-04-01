@@ -14,36 +14,91 @@ export type {
   TickerSearchResult,
 } from "./types.js";
 
-let provider: MarketDataProvider | null = null;
+let cachedProvider: MarketDataProvider | null = null;
+
+function getIBKRProvider(): MarketDataProvider | null {
+  if (ibkrService.isConnected()) {
+    return createIBKRProvider();
+  }
+  return null;
+}
+
+function getPolygonProvider(): MarketDataProvider | null {
+  if (process.env.MARKET_DATA_API_KEY) {
+    return createPolygonProvider();
+  }
+  return null;
+}
+
+function createFallbackProvider(primary: MarketDataProvider, fallback: MarketDataProvider): MarketDataProvider {
+  return {
+    name: `${primary.name}→${fallback.name}`,
+    async getQuote(symbol) {
+      try { return await primary.getQuote(symbol); }
+      catch { return fallback.getQuote(symbol); }
+    },
+    async getHistoricalOHLCV(symbol, from, to, timespan) {
+      try { return await primary.getHistoricalOHLCV(symbol, from, to, timespan); }
+      catch { return fallback.getHistoricalOHLCV(symbol, from, to, timespan); }
+    },
+    async getOptionsChain(symbol, expirations) {
+      try { return await primary.getOptionsChain(symbol, expirations); }
+      catch { return fallback.getOptionsChain(symbol, expirations); }
+    },
+    async getEarningsCalendar(symbol) {
+      try { return await primary.getEarningsCalendar(symbol); }
+      catch { return fallback.getEarningsCalendar(symbol); }
+    },
+    async getDividendCalendar(symbol) {
+      try { return await primary.getDividendCalendar(symbol); }
+      catch { return fallback.getDividendCalendar(symbol); }
+    },
+    async getAnalystRatings(symbol) {
+      try { return await primary.getAnalystRatings(symbol); }
+      catch { return fallback.getAnalystRatings(symbol); }
+    },
+    async searchTickers(criteria) {
+      try { return await primary.searchTickers(criteria); }
+      catch { return fallback.searchTickers(criteria); }
+    },
+  };
+}
 
 export function getMarketDataProvider(): MarketDataProvider {
-  if (!provider) {
-    const providerName = process.env.MARKET_DATA_PROVIDER || "auto";
-    switch (providerName) {
-      case "ibkr":
-        provider = createIBKRProvider();
-        break;
-      case "polygon":
-        provider = createPolygonProvider();
-        break;
-      case "auto": {
-        if (ibkrService.isConnected()) {
-          provider = createIBKRProvider();
-        } else if (process.env.MARKET_DATA_API_KEY) {
-          provider = createPolygonProvider();
-        } else {
-          throw new Error(
-            "No market data provider available: IBKR not connected and MARKET_DATA_API_KEY not set"
-          );
-        }
-        break;
+  if (cachedProvider) return cachedProvider;
+
+  const providerName = process.env.MARKET_DATA_PROVIDER || "auto";
+
+  switch (providerName) {
+    case "ibkr":
+      cachedProvider = createIBKRProvider();
+      break;
+    case "polygon":
+      cachedProvider = createPolygonProvider();
+      break;
+    case "auto": {
+      const ibkr = getIBKRProvider();
+      const polygon = getPolygonProvider();
+
+      if (ibkr && polygon) {
+        cachedProvider = createFallbackProvider(ibkr, polygon);
+      } else if (ibkr) {
+        cachedProvider = ibkr;
+      } else if (polygon) {
+        cachedProvider = polygon;
+      } else {
+        throw new Error(
+          "No market data provider available: IBKR not connected and MARKET_DATA_API_KEY not set"
+        );
       }
-      default:
-        throw new Error(`Unknown market data provider: ${providerName}`);
+      break;
     }
-    console.log(`Market data provider: ${provider.name}`);
+    default:
+      throw new Error(`Unknown market data provider: ${providerName}`);
   }
-  return provider;
+
+  console.log(`Market data provider: ${cachedProvider.name}`);
+  return cachedProvider;
 }
 
 /**
@@ -51,5 +106,5 @@ export function getMarketDataProvider(): MarketDataProvider {
  * re-evaluates availability (useful when IBKR connection state changes).
  */
 export function resetMarketDataProvider(): void {
-  provider = null;
+  cachedProvider = null;
 }
