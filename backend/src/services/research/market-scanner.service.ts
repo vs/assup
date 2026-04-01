@@ -8,51 +8,12 @@ import type { MarketScannerParams, ScannerResult } from "../ibkr.js";
 import { tickerService } from "./ticker.service.js";
 import { pipelineService } from "./pipeline.service.js";
 import { NotFoundError } from "./errors/AppError.js";
-
-// ── Types ────────────────────────────────────────────────────────────
-
-export interface TechnicalFilterConfig {
-  enabled: boolean;
-  trendPeriodYears?: number; // default 3
-  minSma200SlopeMonths?: number; // default 6
-  maxRsi?: number; // default 40
-  requireAboveSma200?: boolean; // default true
-  require50Above200?: boolean; // default false
-}
-
-export interface TechnicalScore {
-  symbol: string;
-  passed: boolean;
-  score: number; // 0-100
-  details: {
-    aboveSma200: boolean;
-    sma200SlopePositive: boolean;
-    sma50Above200: boolean;
-    rsi14: number | null;
-    currentPrice: number | null;
-    sma200: number | null;
-    sma50: number | null;
-  };
-}
-
-export interface ScanResult {
-  symbol: string;
-  rank: number;
-  conId: number;
-  exchange: string;
-  longName?: string;
-  industry?: string;
-  category?: string;
-  technical?: TechnicalScore;
-}
-
-interface RunResult {
-  discovered: string[];
-  added: string[];
-  skipped: string[];
-  reportsQueued: number;
-  technicalScores: TechnicalScore[];
-}
+import type {
+  MarketScanResult,
+  ScannerResultItem,
+  TechnicalScore,
+  TechnicalFilterConfig,
+} from "@assup/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -119,7 +80,7 @@ class MarketScannerService {
    * 5. Queue report generation for newly added tickers
    * 6. Update lastRun timestamp
    */
-  async runPreset(presetId: string): Promise<RunResult> {
+  async runPreset(presetId: string): Promise<MarketScanResult> {
     const preset = await prisma.marketScannerPreset.findUnique({
       where: { id: presetId },
     });
@@ -158,7 +119,7 @@ class MarketScannerService {
   async runAdhoc(
     params: MarketScannerParams,
     techConfig?: TechnicalFilterConfig
-  ): Promise<RunResult> {
+  ): Promise<MarketScanResult> {
     return this.executeAndProcess(params, techConfig);
   }
 
@@ -168,7 +129,7 @@ class MarketScannerService {
   private async executeAndProcess(
     params: MarketScannerParams,
     techConfig?: TechnicalFilterConfig
-  ): Promise<RunResult> {
+  ): Promise<MarketScanResult> {
     console.log(
       `[MarketScanner] Running scan: scanCode=${params.scanCode}, location=${params.locationCode ?? "STK.US.MAJOR"}`
     );
@@ -179,26 +140,46 @@ class MarketScannerService {
       `[MarketScanner] TWS scanner returned ${scannerResults.length} candidates`
     );
 
+    // Map raw scanner results to ScannerResultItem[]
+    const discovered: ScannerResultItem[] = scannerResults.map((r) => ({
+      rank: r.rank,
+      symbol: r.symbol,
+      conId: r.conId,
+      exchange: r.exchange,
+      secType: r.secType,
+      longName: r.longName,
+      industry: r.industry,
+      category: r.category,
+    }));
+
     const symbols = scannerResults.map((r) => r.symbol);
 
     // Step 2: Apply technical filter (if enabled)
-    let technicalScores: TechnicalScore[] = [];
-    let filteredSymbols = symbols;
+    let scored: ScannerResultItem[] = discovered;
+    let qualified: string[] = symbols;
 
     if (techConfig?.enabled) {
-      technicalScores = await this.applyTechnicalFilter(symbols, techConfig);
-      filteredSymbols = technicalScores
+      const technicalScores = await this.applyTechnicalFilter(symbols, techConfig);
+      const scoreMap = new Map(technicalScores.map((s) => [s.symbol, s]));
+
+      // Attach technical scores to discovered items
+      scored = discovered.map((item) => ({
+        ...item,
+        technical: scoreMap.get(item.symbol),
+      }));
+
+      qualified = technicalScores
         .filter((s) => s.passed)
         .map((s) => s.symbol);
 
       console.log(
-        `[MarketScanner] Technical filter: ${filteredSymbols.length}/${symbols.length} passed`
+        `[MarketScanner] Technical filter: ${qualified.length}/${symbols.length} passed`
       );
     }
 
-    // Step 3: Add discovered tickers
+    // Step 3: Add discovered tickers (only qualified ones)
     const { added, skipped } = await tickerService.add(
-      filteredSymbols,
+      qualified,
       "scanner"
     );
     const addedSymbols = added.map((t) => t.symbol);
@@ -221,11 +202,12 @@ class MarketScannerService {
     }
 
     return {
-      discovered: filteredSymbols,
+      discovered,
+      scored,
+      qualified,
       added: addedSymbols,
       skipped,
       reportsQueued,
-      technicalScores,
     };
   }
 
@@ -401,7 +383,9 @@ class MarketScannerService {
   }
 
   async listPresets(): Promise<MarketScannerPreset[]> {
-    return prisma.marketScannerPreset.findMany();
+    return prisma.marketScannerPreset.findMany({
+      orderBy: { name: "asc" },
+    });
   }
 
   async updatePreset(

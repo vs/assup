@@ -148,13 +148,16 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     setScanningMessage("Running market scan...");
 
     try {
-      const filters: Record<string, unknown> = {};
-      if (minPrice) filters.priceAbove = Number(minPrice);
-      if (maxPrice) filters.priceBelow = Number(maxPrice);
-      if (minVolume) filters.volumeAbove = Number(minVolume);
-      if (minMarketCap) filters.marketCapAbove = Number(minMarketCap);
-      if (maxMarketCap) filters.marketCapBelow = Number(maxMarketCap);
-      if (stockType) filters.stockType = stockType;
+      const params: Record<string, unknown> = {
+        scanCode,
+        locationCode,
+      };
+      if (minPrice) params.abovePrice = Number(minPrice);
+      if (maxPrice) params.belowPrice = Number(maxPrice);
+      if (minVolume) params.aboveVolume = Number(minVolume);
+      if (minMarketCap) params.marketCapAbove = Number(minMarketCap);
+      if (maxMarketCap) params.marketCapBelow = Number(maxMarketCap);
+      if (stockType) params.stockTypeFilter = stockType;
 
       const technicalFilter: TechnicalFilterConfig = {
         enabled: techEnabled,
@@ -165,12 +168,9 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
         }),
       };
 
-      const result = await researchApi.runAdhocScan({
-        scanCode,
-        locationCode,
-        filters,
-        technicalFilter,
-      });
+      params.technicalFilter = technicalFilter;
+
+      const result = await researchApi.runAdhocScan(params);
 
       setResults(result);
       // Pre-select all qualified symbols
@@ -765,8 +765,8 @@ function ResultRow({
       </TableCell>
       <TableCell>
         {score != null ? (
-          <span className={`text-sm font-medium ${score >= 3 ? "text-green-600" : score >= 2 ? "text-amber-600" : "text-red-600"}`}>
-            {score}/4
+          <span className={`text-sm font-medium ${score >= 60 ? "text-green-600" : score >= 40 ? "text-amber-600" : "text-red-600"}`}>
+            {score}/100
           </span>
         ) : (
           <span className="text-sm text-muted-foreground">--</span>

@@ -53,12 +53,12 @@ export function ScannerPresetEditor({
   const [name, setName] = useState(preset?.name ?? "");
   const [scanCode, setScanCode] = useState(preset?.scanCode ?? "");
   const [locationCode, setLocationCode] = useState(preset?.locationCode ?? "STK.US.MAJOR");
-  const [minPrice, setMinPrice] = useState<string>(String(filters.priceAbove ?? ""));
-  const [maxPrice, setMaxPrice] = useState<string>(String(filters.priceBelow ?? ""));
-  const [minVolume, setMinVolume] = useState<string>(String(filters.volumeAbove ?? ""));
+  const [minPrice, setMinPrice] = useState<string>(String(filters.abovePrice ?? ""));
+  const [maxPrice, setMaxPrice] = useState<string>(String(filters.belowPrice ?? ""));
+  const [minVolume, setMinVolume] = useState<string>(String(filters.aboveVolume ?? ""));
   const [minMarketCap, setMinMarketCap] = useState<string>(String(filters.marketCapAbove ?? ""));
   const [maxMarketCap, setMaxMarketCap] = useState<string>(String(filters.marketCapBelow ?? ""));
-  const [stockType, setStockType] = useState<string>(String(filters.stockType ?? ""));
+  const [stockType, setStockType] = useState<string>(String(filters.stockTypeFilter ?? ""));
 
   const existingTech = preset?.technicalFilter ?? {
     enabled: false,
@@ -95,12 +95,12 @@ export function ScannerPresetEditor({
     setError(null);
 
     const builtFilters: Record<string, unknown> = {};
-    if (minPrice) builtFilters.priceAbove = Number(minPrice);
-    if (maxPrice) builtFilters.priceBelow = Number(maxPrice);
-    if (minVolume) builtFilters.volumeAbove = Number(minVolume);
+    if (minPrice) builtFilters.abovePrice = Number(minPrice);
+    if (maxPrice) builtFilters.belowPrice = Number(maxPrice);
+    if (minVolume) builtFilters.aboveVolume = Number(minVolume);
     if (minMarketCap) builtFilters.marketCapAbove = Number(minMarketCap);
     if (maxMarketCap) builtFilters.marketCapBelow = Number(maxMarketCap);
-    if (stockType) builtFilters.stockType = stockType;
+    if (stockType) builtFilters.stockTypeFilter = stockType;
 
     const technicalFilter: TechnicalFilterConfig = {
       enabled: techEnabled,
@@ -220,7 +220,7 @@ export function ScannerPresetEditor({
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Stock Type</label>
-            <Select value={stockType} onValueChange={setStockType}>
+            <Select value={stockType || "__all__"} onValueChange={(v) => setStockType(v === "__all__" ? "" : v)}>
               <SelectTrigger className="w-full h-8">
                 <SelectValue placeholder="All" />
               </SelectTrigger>
