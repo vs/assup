@@ -13,6 +13,7 @@ const DAILY_SOURCES = [
   "seeking_alpha",
   "sa_comments",
   "sec_filings",
+  "short_interest",
 ];
 
 async function processBatched<T>(
@@ -42,15 +43,6 @@ class SchedulerService {
       cron.schedule("0 18 * * 1-5", () => {
         this.runDailyCollection().catch((err) => {
           console.error("[Scheduler] Daily collection top-level error:", err);
-        });
-      }, { timezone: "America/New_York" })
-    );
-
-    // Bi-weekly short interest: 1st and 15th at 6 PM ET
-    this.jobs.push(
-      cron.schedule("0 18 1,15 * *", () => {
-        this.runShortInterestCollection().catch((err) => {
-          console.error("[Scheduler] Short interest collection top-level error:", err);
         });
       }, { timezone: "America/New_York" })
     );
@@ -192,38 +184,6 @@ class SchedulerService {
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[Scheduler] Daily collection finished in ${elapsed}s.`);
-  }
-
-  /**
-   * Bi-weekly short interest collection for all active tickers.
-   * Runs on the 1st and 15th of each month at 6 PM ET.
-   */
-  private async runShortInterestCollection(): Promise<void> {
-    const startTime = Date.now();
-    console.log("[Scheduler] Starting short interest collection...");
-
-    const tickers = await prisma.researchTicker.findMany({
-      where: { status: "active" },
-      select: { id: true, symbol: true },
-    });
-
-    console.log(`[Scheduler] Found ${tickers.length} active tickers for short interest.`);
-
-    await processBatched(tickers, 5, async (ticker) => {
-      try {
-        await collectionService.collectSource(ticker.id, ticker.symbol, "short_interest");
-        await collectionService.analyzeSource(ticker.id, "short_interest");
-        console.log(`[Scheduler] Short interest complete for ${ticker.symbol}`);
-      } catch (err) {
-        console.error(
-          `[Scheduler] Short interest failed for ${ticker.symbol}:`,
-          (err as Error).message
-        );
-      }
-    });
-
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[Scheduler] Short interest collection finished in ${elapsed}s.`);
   }
 
   /**
