@@ -145,13 +145,6 @@ describe("PolygonProvider", () => {
     });
   });
 
-  describe("getAnalystRatings", () => {
-    it("returns empty array (not supported by Polygon)", async () => {
-      const result = await provider.getAnalystRatings("AAPL");
-      expect(result).toEqual([]);
-    });
-  });
-
   describe("searchTickers", () => {
     it("returns enriched results with snapshot data", async () => {
       let callCount = 0;

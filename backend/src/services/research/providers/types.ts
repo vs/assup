@@ -49,14 +49,6 @@ export interface DividendEvent {
   frequency: string | null;
 }
 
-export interface AnalystRating {
-  firm: string;
-  rating: string;
-  priceTarget: number | null;
-  date: string;
-  action: string;  // upgrade, downgrade, initiate, reiterate
-}
-
 export interface TickerSearchResult {
   symbol: string;
   name: string;
@@ -88,9 +80,6 @@ export interface MarketDataProvider {
   // Events
   getEarningsCalendar(symbol: string): Promise<EarningsEvent[]>;
   getDividendCalendar(symbol: string): Promise<DividendEvent[]>;
-
-  // Analyst
-  getAnalystRatings(symbol: string): Promise<AnalystRating[]>;
 
   // Screener
   searchTickers(criteria: {

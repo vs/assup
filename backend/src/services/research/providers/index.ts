@@ -10,7 +10,6 @@ export type {
   OptionsChainEntry,
   EarningsEvent,
   DividendEvent,
-  AnalystRating,
   TickerSearchResult,
 } from "./types.js";
 
@@ -52,10 +51,6 @@ function createFallbackProvider(primary: MarketDataProvider, fallback: MarketDat
     async getDividendCalendar(symbol) {
       try { return await primary.getDividendCalendar(symbol); }
       catch { return fallback.getDividendCalendar(symbol); }
-    },
-    async getAnalystRatings(symbol) {
-      try { return await primary.getAnalystRatings(symbol); }
-      catch { return fallback.getAnalystRatings(symbol); }
     },
     async searchTickers(criteria) {
       try { return await primary.searchTickers(criteria); }

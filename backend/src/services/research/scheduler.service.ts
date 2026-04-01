@@ -13,7 +13,6 @@ const DAILY_SOURCES = [
   "seeking_alpha",
   "sa_comments",
   "sec_filings",
-  "analyst_consensus",
 ];
 
 async function processBatched<T>(

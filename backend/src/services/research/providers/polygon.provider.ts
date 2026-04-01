@@ -5,7 +5,6 @@ import type {
   OptionsChainEntry,
   EarningsEvent,
   DividendEvent,
-  AnalystRating,
   TickerSearchResult,
 } from "./types.js";
 
@@ -190,12 +189,6 @@ class PolygonProvider implements MarketDataProvider {
       amount: r.cash_amount,
       frequency: freqMap[r.frequency] || null,
     }));
-  }
-
-  async getAnalystRatings(_symbol: string): Promise<AnalystRating[]> {
-    // Polygon doesn't have analyst ratings — return empty
-    // This will be filled by the analyst_consensus collector from another source
-    return [];
   }
 
   async searchTickers(criteria: {

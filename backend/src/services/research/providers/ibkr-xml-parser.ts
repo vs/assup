@@ -4,7 +4,7 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   textNodeName: "#text",
-  isArray: (name) => ["FYEstimate", "FYActual", "Recommendation"].includes(name),
+  isArray: (name) => ["FYEstimate", "FYActual"].includes(name),
 });
 
 function safeNum(val: unknown): number | null {
@@ -59,68 +59,6 @@ export function parseReportSnapshot(xml: string): ParsedReportSnapshot {
   }
 
   return { companyName, exchange, sector, industry, earningsDates };
-}
-
-export interface ParsedRESC {
-  analysts: Array<{
-    firm: string;
-    rating: string;
-    priceTarget: number | null;
-    date: string;
-  }>;
-  consensusRating: number | null; // 1=strong buy ... 5=strong sell
-  targetPrice: number | null;
-  buyCount: number;
-  holdCount: number;
-  sellCount: number;
-}
-
-/**
- * Parse IBKR RESC XML (Thomson Reuters Estimates & Recommendations).
- */
-export function parseRESC(xml: string): ParsedRESC {
-  const empty: ParsedRESC = { analysts: [], consensusRating: null, targetPrice: null, buyCount: 0, holdCount: 0, sellCount: 0 };
-  if (!xml) return empty;
-
-  const doc = parser.parse(xml);
-  const resc = doc?.RESC ?? doc?.ResearchEstimates;
-  if (!resc) return empty;
-
-  // Consensus data
-  const consensus = resc?.Consensus ?? resc?.ConsEstimate ?? {};
-  const targetPrice = safeNum(consensus?.TargetPrice ?? consensus?.["@_targetPrice"]);
-  const consensusRating = safeNum(consensus?.Rating ?? consensus?.["@_rating"]);
-
-  // Individual recommendations
-  const analysts: ParsedRESC["analysts"] = [];
-  const recs = resc?.Recommendations?.Recommendation ?? resc?.BrokerRatings?.Recommendation ?? [];
-  const recArr = Array.isArray(recs) ? recs : [recs];
-  let buyCount = 0, holdCount = 0, sellCount = 0;
-
-  for (const rec of recArr) {
-    if (!rec) continue;
-    const firm = rec?.["@_broker"] ?? rec?.Broker ?? rec?.["@_firm"] ?? "Unknown";
-    const rating = String(rec?.["@_rating"] ?? rec?.Rating ?? rec?.["#text"] ?? "");
-    const pt = safeNum(rec?.["@_targetPrice"] ?? rec?.TargetPrice);
-    const date = rec?.["@_date"] ?? rec?.Date ?? "";
-
-    // Count buy/hold/sell (ratings are typically 1-5 scale or text)
-    const ratingNum = safeNum(rating);
-    if (ratingNum !== null) {
-      if (ratingNum <= 2) buyCount++;
-      else if (ratingNum <= 3) holdCount++;
-      else sellCount++;
-    } else {
-      const lowerRating = rating.toLowerCase();
-      if (lowerRating.includes("buy") || lowerRating.includes("overweight") || lowerRating.includes("outperform")) buyCount++;
-      else if (lowerRating.includes("sell") || lowerRating.includes("underweight") || lowerRating.includes("underperform")) sellCount++;
-      else holdCount++;
-    }
-
-    analysts.push({ firm: String(firm), rating, priceTarget: pt, date: String(date) });
-  }
-
-  return { analysts, consensusRating, targetPrice, buyCount, holdCount, sellCount };
 }
 
 export interface ParsedFundamentalRatios {

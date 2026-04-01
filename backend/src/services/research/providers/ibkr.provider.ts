@@ -7,12 +7,10 @@ import type {
   OptionsChainEntry,
   EarningsEvent,
   DividendEvent,
-  AnalystRating,
   TickerSearchResult,
 } from "./types.js";
 import {
   parseReportSnapshot,
-  parseRESC,
   parseDividendTick,
 } from "./ibkr-xml-parser.js";
 
@@ -192,24 +190,6 @@ class IBKRProvider implements MarketDataProvider {
       }
 
       return events;
-    } catch {
-      return [];
-    }
-  }
-
-  async getAnalystRatings(symbol: string): Promise<AnalystRating[]> {
-    try {
-      const xml = await ibkrService.getFundamentalData(symbol, "RESC");
-      if (!xml) return [];
-
-      const parsed = parseRESC(xml);
-      return parsed.analysts.map((a) => ({
-        firm: a.firm,
-        rating: a.rating,
-        priceTarget: a.priceTarget,
-        date: a.date,
-        action: "reiterate",
-      }));
     } catch {
       return [];
     }
