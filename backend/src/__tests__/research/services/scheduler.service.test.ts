@@ -37,9 +37,15 @@ vi.mock("../../../services/research/pipeline.service.js", () => ({
   },
 }));
 
-vi.mock("../../../services/research/screener.service.js", () => ({
-  screenerService: {
-    runScreener: vi.fn(),
+vi.mock("../../../services/research/market-scanner.service.js", () => ({
+  marketScannerService: {
+    runPreset: vi.fn(),
+  },
+}));
+
+vi.mock("../../../services/wheelScanner.service.js", () => ({
+  wheelScannerService: {
+    startScan: vi.fn(),
   },
 }));
 
@@ -54,8 +60,8 @@ describe("schedulerService", () => {
     // Re-setup mocks after clearAllMocks (mockReset:true resets return values)
     mockSchedule.mockReturnValue({ stop: vi.fn() });
     mockValidate.mockReturnValue(true);
-    // refreshScreenerSchedules is called inside start(), mock findMany for that
-    vi.mocked(prisma.screenerConfig.findMany).mockResolvedValue([]);
+    // refreshScannerSchedules is called inside start(), mock findMany for that
+    vi.mocked((prisma as any).marketScannerPreset.findMany).mockResolvedValue([]);
   });
 
   describe("start", () => {
@@ -107,13 +113,16 @@ describe("schedulerService", () => {
     });
   });
 
-  describe("refreshScreenerSchedules", () => {
-    it("loads enabled configs and creates cron jobs", async () => {
-      vi.mocked(prisma.screenerConfig.findMany).mockResolvedValue([
+  describe("refreshScannerSchedules", () => {
+    it("loads enabled presets and creates cron jobs", async () => {
+      vi.mocked((prisma as any).marketScannerPreset.findMany).mockResolvedValue([
         {
           id: "cfg-1",
           name: "Growth",
-          criteria: {},
+          scanCode: "TOP_PERC_GAIN",
+          locationCode: "STK.US.MAJOR",
+          filters: {},
+          technicalFilter: { enabled: false },
           schedule: "0 9 * * 1-5",
           enabled: true,
           lastRun: null,
@@ -123,7 +132,10 @@ describe("schedulerService", () => {
         {
           id: "cfg-2",
           name: "Value",
-          criteria: {},
+          scanCode: "HIGH_DIVIDEND_YIELD_IB",
+          locationCode: "STK.US.MAJOR",
+          filters: {},
+          technicalFilter: { enabled: false },
           schedule: "0 10 * * 1-5",
           enabled: true,
           lastRun: null,
@@ -132,18 +144,18 @@ describe("schedulerService", () => {
         },
       ] as any);
 
-      await schedulerService.refreshScreenerSchedules();
+      await schedulerService.refreshScannerSchedules();
 
       // findMany called with enabled: true filter
-      expect(prisma.screenerConfig.findMany).toHaveBeenCalledWith({
+      expect((prisma as any).marketScannerPreset.findMany).toHaveBeenCalledWith({
         where: { enabled: true },
       });
 
-      // validate called for each config
+      // validate called for each preset
       expect(mockValidate).toHaveBeenCalledWith("0 9 * * 1-5");
       expect(mockValidate).toHaveBeenCalledWith("0 10 * * 1-5");
 
-      // schedule called for each valid config
+      // schedule called for each valid preset
       expect(mockSchedule).toHaveBeenCalledWith(
         "0 9 * * 1-5",
         expect.any(Function),
@@ -156,16 +168,19 @@ describe("schedulerService", () => {
       );
     });
 
-    it("skips invalid cron expressions for screener configs", async () => {
+    it("skips invalid cron expressions for scanner presets", async () => {
       mockValidate
         .mockReturnValueOnce(true)
         .mockReturnValueOnce(false);
 
-      vi.mocked(prisma.screenerConfig.findMany).mockResolvedValue([
+      vi.mocked((prisma as any).marketScannerPreset.findMany).mockResolvedValue([
         {
           id: "cfg-1",
           name: "Valid",
-          criteria: {},
+          scanCode: "TOP_PERC_GAIN",
+          locationCode: "STK.US.MAJOR",
+          filters: {},
+          technicalFilter: { enabled: false },
           schedule: "0 9 * * 1-5",
           enabled: true,
           lastRun: null,
@@ -175,7 +190,10 @@ describe("schedulerService", () => {
         {
           id: "cfg-2",
           name: "Invalid",
-          criteria: {},
+          scanCode: "TOP_PERC_GAIN",
+          locationCode: "STK.US.MAJOR",
+          filters: {},
+          technicalFilter: { enabled: false },
           schedule: "not-a-cron",
           enabled: true,
           lastRun: null,
@@ -184,7 +202,7 @@ describe("schedulerService", () => {
         },
       ] as any);
 
-      await schedulerService.refreshScreenerSchedules();
+      await schedulerService.refreshScannerSchedules();
 
       // validate called for both
       expect(mockValidate).toHaveBeenCalledTimes(2);

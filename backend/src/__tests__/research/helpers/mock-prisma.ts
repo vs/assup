@@ -37,7 +37,7 @@ export function createMockPrisma() {
       create: vi.fn(),
       count: vi.fn(),
     },
-    screenerConfig: {
+    marketScannerPreset: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
