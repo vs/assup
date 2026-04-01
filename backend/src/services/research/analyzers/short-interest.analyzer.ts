@@ -1,16 +1,9 @@
 import type { Analyzer, AnalysisOutput } from "./types.js";
 
-interface ShortInterestHistoricalEntry {
-  shortInterest: number;
-  shortPercentOfFloat: number;
-  settlementDate: string;
-  avgDailyVolume: number;
-}
-
-function classifyShortLevel(shortPercentOfFloat: number): "low" | "moderate" | "high" | "extreme" {
-  if (shortPercentOfFloat >= 20) return "extreme";
-  if (shortPercentOfFloat >= 10) return "high";
-  if (shortPercentOfFloat >= 5) return "moderate";
+function classifyShortLevel(shortPercentOfSO: number): "low" | "moderate" | "high" | "extreme" {
+  if (shortPercentOfSO >= 15) return "extreme";
+  if (shortPercentOfSO >= 8) return "high";
+  if (shortPercentOfSO >= 4) return "moderate";
   return "low";
 }
 
@@ -18,63 +11,60 @@ export const shortInterestAnalyzer: Analyzer = {
   source: "short_interest",
 
   async analyze(rawData: Record<string, unknown>): Promise<AnalysisOutput> {
-    const shortPercentOfFloat = (rawData.shortPercentOfFloat as number) ?? 0;
+    const shortPercentOfSORaw = (rawData.shortPercentOfSO as number) ?? 0;
     const daysToCover = (rawData.daysToCover as number) ?? 0;
     const shortInterestTrend =
       (rawData.shortInterestTrend as "increasing" | "decreasing" | "stable" | "unknown") ??
       "unknown";
     const shortInterestChange = (rawData.shortInterestChange as number | null) ?? null;
-    const shortInterestShares = (rawData.shortInterestShares as number) ?? 0;
-    const historicalEntries =
-      (rawData.historicalEntries as ShortInterestHistoricalEntry[]) ?? [];
 
-    // Early return when data is missing — avoids false "low short interest" signals
-    if (shortPercentOfFloat === 0 && daysToCover === 0) {
+    // SA gives decimal (0.05 = 5%), convert to percentage for analysis
+    const shortPercentOfSO = shortPercentOfSORaw * 100;
+
+    // Early return when data is missing
+    if (shortPercentOfSO === 0) {
       return {
         signal: "neutral",
         confidence: 0.1,
         summary: "Insufficient short interest data for meaningful analysis.",
         details: {
-          shortPercentOfFloat,
+          shortPercentOfSO,
           daysToCover,
           shortInterestTrend,
           shortInterestChange,
-          shortInterestShares,
           shortLevel: "low",
-          historicalEntryCount: historicalEntries.length,
         },
       };
     }
 
-    const shortLevel = classifyShortLevel(shortPercentOfFloat);
+    const shortLevel = classifyShortLevel(shortPercentOfSO);
 
     let score = 0;
     const signals: string[] = [];
 
-    // --- Short % of float analysis ---
+    // --- Short % of S/O analysis ---
     if (shortLevel === "extreme") {
-      // Extreme short interest: bearish sentiment from market, but short squeeze potential
       score -= 1;
       signals.push(
-        `Extreme short interest: ${shortPercentOfFloat.toFixed(1)}% of float`
+        `Extreme short interest: ${shortPercentOfSO.toFixed(1)}% of S/O`
       );
     } else if (shortLevel === "high") {
       score -= 1;
       signals.push(
-        `High short interest: ${shortPercentOfFloat.toFixed(1)}% of float`
+        `High short interest: ${shortPercentOfSO.toFixed(1)}% of S/O`
       );
     } else if (shortLevel === "low") {
       score += 1;
       signals.push(
-        `Low short interest: ${shortPercentOfFloat.toFixed(1)}% of float`
+        `Low short interest: ${shortPercentOfSO.toFixed(1)}% of S/O`
       );
     } else {
       signals.push(
-        `Moderate short interest: ${shortPercentOfFloat.toFixed(1)}% of float`
+        `Moderate short interest: ${shortPercentOfSO.toFixed(1)}% of S/O`
       );
     }
 
-    // --- Days to cover analysis ---
+    // --- Days to cover analysis (only if available) ---
     if (daysToCover > 10) {
       score -= 1;
       signals.push(
@@ -101,12 +91,11 @@ export const shortInterestAnalyzer: Analyzer = {
     }
 
     // --- Short squeeze potential ---
-    // High short % + decreasing trend = potential squeeze (bullish)
     if (
       (shortLevel === "high" || shortLevel === "extreme") &&
       shortInterestTrend === "decreasing"
     ) {
-      score += 2; // Strong bullish signal — squeeze potential
+      score += 2;
       signals.push(
         "Short squeeze potential: high short interest with decreasing trend"
       );
@@ -120,37 +109,26 @@ export const shortInterestAnalyzer: Analyzer = {
       );
     }
 
-    // Determine signal
     let signal: "bullish" | "bearish" | "neutral";
     if (score >= 2) signal = "bullish";
     else if (score <= -2) signal = "bearish";
     else signal = "neutral";
 
-    // Confidence based on data quality and signal strength
-    let confidence = Math.min(Math.abs(score) / 5, 1);
+    // Confidence: with real SA data we can be more confident
+    const confidence = Math.min(Math.abs(score) / 4 + 0.3, 1);
 
-    // Reduce confidence if we have limited historical data
-    if (historicalEntries.length < 2) {
-      confidence = Math.max(confidence * 0.5, 0.1);
-    }
-
-    const summary =
-      signals.length > 0
-        ? signals.join(". ") + "."
-        : "No short interest data available for analysis.";
+    const summary = signals.join(". ") + ".";
 
     return {
       signal,
       confidence,
       summary,
       details: {
-        shortPercentOfFloat,
+        shortPercentOfSO,
         daysToCover,
         shortInterestTrend,
         shortInterestChange,
-        shortInterestShares,
         shortLevel,
-        historicalEntryCount: historicalEntries.length,
       },
     };
   },
