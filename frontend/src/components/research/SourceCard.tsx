@@ -20,7 +20,6 @@ const SOURCE_LABELS: Record<string, string> = {
   options: "Options Flow",
   social: "Social Sentiment",
   sec_filings: "SEC Filings",
-  analyst_consensus: "Analyst Consensus",
   seeking_alpha: "Seeking Alpha",
   short_interest: "Short Interest",
   events: "Events & Catalysts",

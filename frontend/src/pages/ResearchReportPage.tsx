@@ -251,7 +251,6 @@ function EventsPanel({
 // --- Additional Info Section ---
 
 const ADDITIONAL_SOURCE_LABELS: Record<string, string> = {
-  analyst_consensus: "Individual Analyst Ratings",
   seeking_alpha: "Seeking Alpha Details",
   sa_comments: "Seeking Alpha Community Discussion",
   sec_filings: "SEC Filings & Insider Activity",
@@ -321,7 +320,6 @@ function AdditionalInfoSection({
   collections: Map<string, CollectionDataEntry>;
 }) {
   const sourcesToShow = [
-    "analyst_consensus",
     "seeking_alpha",
     "sa_comments",
     "sec_filings",
@@ -452,7 +450,6 @@ export function ResearchReportPage() {
   const social = getAnalysis(analyses, "social");
   const seekingAlpha = getAnalysis(analyses, "seeking_alpha");
   const shortInterest = getAnalysis(analyses, "short_interest");
-  const analyst = getAnalysis(analyses, "analyst_consensus");
   const saComments = getAnalysis(analyses, "sa_comments");
   const options = getAnalysis(analyses, "options");
 
@@ -460,7 +457,6 @@ export function ResearchReportPage() {
   const socialD = det(social);
   const saD = det(seekingAlpha);
   const shortD = det(shortInterest);
-  const analystD = det(analyst);
   const optD = det(options);
   const saCommentsD = det(saComments);
 
@@ -506,6 +502,30 @@ export function ResearchReportPage() {
               confidence={report.confidence}
             />
           )}
+          <div className="flex items-center gap-1.5">
+            <a
+              href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="opacity-50 hover:opacity-100 transition-opacity"
+              title="View on TradingView"
+            >
+              <svg viewBox="0 0 36 28" className="h-5 w-5" fill="currentColor">
+                <path d="M14 22H7V6h7v16zm8-12h-7v12h7V10zm8 4h-7v8h7v-8z" />
+              </svg>
+            </a>
+            <a
+              href={`https://seekingalpha.com/symbol/${symbol}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="opacity-50 hover:opacity-100 transition-opacity"
+              title="View on Seeking Alpha"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.5 5h3.5l-4.5 5h3l-5 5 2-3.5H7L10.5 7z" />
+              </svg>
+            </a>
+          </div>
         </div>
         {report && (
           <span className="text-sm text-muted-foreground ml-auto">
@@ -739,27 +759,6 @@ export function ResearchReportPage() {
               </InfoBullet>
             )}
 
-            {/* Analyst Consensus */}
-            {analyst && (
-              <InfoBullet label="Analysts" signal={analyst.signal}>
-                <div className="flex items-center gap-2 text-xs flex-wrap">
-                  <span className="text-green-600 font-medium">
-                    {(analystD.buyCount as number) ?? 0} Buy
-                  </span>
-                  <span className="text-amber-600 font-medium">
-                    {(analystD.holdCount as number) ?? 0} Hold
-                  </span>
-                  <span className="text-red-600 font-medium">
-                    {(analystD.sellCount as number) ?? 0} Sell
-                  </span>
-                  {analystD.avgPriceTarget != null && (
-                    <span className="text-muted-foreground ml-auto">
-                      Target ${fmt(analystD.avgPriceTarget)}
-                    </span>
-                  )}
-                </div>
-              </InfoBullet>
-            )}
           </CardContent>
         </Card>
       </div>

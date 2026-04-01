@@ -527,8 +527,8 @@ export function ResearchSection() {
             <p className="text-sm text-green-600">Credentials saved</p>
           )}
           <p className="text-sm text-muted-foreground">
-            Optional. Providing Seeking Alpha credentials unlocks premium ratings and
-            analyst data. Without credentials, public data is still collected.
+            Optional. Providing Seeking Alpha credentials unlocks premium metrics and
+            community discussion data. Without credentials, public data is still collected.
           </p>
         </CardContent>
       </Card>

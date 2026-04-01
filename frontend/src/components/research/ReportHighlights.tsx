@@ -8,7 +8,6 @@ import {
   Activity,
   CircleDot,
   Globe,
-  Users,
   DollarSign,
   AlertTriangle,
   MessageSquare,
@@ -220,27 +219,6 @@ function MacroCard({ a }: { a: AnalysisResult }) {
   );
 }
 
-function AnalystCard({ a }: { a: AnalysisResult }) {
-  const d = det(a);
-  const buy = (d.buyCount as number) ?? 0;
-  const hold = (d.holdCount as number) ?? 0;
-  const sell = (d.sellCount as number) ?? 0;
-  return (
-    <HighlightCard icon={Users} title="Analyst Consensus">
-      <div className="space-y-1">
-        <div className="flex gap-3 text-sm">
-          <span className="text-green-600 dark:text-green-400 font-medium">{buy} Buy</span>
-          <span className="text-amber-600 dark:text-amber-400 font-medium">{hold} Hold</span>
-          <span className="text-red-600 dark:text-red-400 font-medium">{sell} Sell</span>
-        </div>
-        {d.avgPriceTarget != null && (
-          <Row label="Price Target" value={`$${fmt(d.avgPriceTarget)}`} />
-        )}
-      </div>
-    </HighlightCard>
-  );
-}
-
 function SeekingAlphaCard({ a }: { a: AnalysisResult }) {
   const d = det(a);
   const metrics = d.metrics as Record<string, number | undefined> | null;
@@ -252,9 +230,6 @@ function SeekingAlphaCard({ a }: { a: AnalysisResult }) {
         )}
         {metrics?.pe_nongaap_fy1 != null && (
           <Row label="Fwd P/E" value={fmt(metrics.pe_nongaap_fy1, 1)} />
-        )}
-        {d.sellSideRating != null && (
-          <Row label="Wall St Rating" value={`${fmt(d.sellSideRating, 1)} / 5`} />
         )}
       </div>
     </HighlightCard>
@@ -373,7 +348,6 @@ export function ReportHighlights({ report, analyses }: ReportHighlightsProps) {
   const technical = getAnalysis(analyses, "technical");
   const options = getAnalysis(analyses, "options");
   const macro = getAnalysis(analyses, "macro");
-  const analyst = getAnalysis(analyses, "analyst_consensus");
   const seekingAlpha = getAnalysis(analyses, "seeking_alpha");
   const shortInterest = getAnalysis(analyses, "short_interest");
   const social = getAnalysis(analyses, "social");
@@ -388,7 +362,6 @@ export function ReportHighlights({ report, analyses }: ReportHighlightsProps) {
       {options && <OptionsCard a={options} />}
       {options && <WheelCard a={options} />}
       {macro && <MacroCard a={macro} />}
-      {analyst && <AnalystCard a={analyst} />}
       {seekingAlpha && <SeekingAlphaCard a={seekingAlpha} />}
       {shortInterest && <ShortInterestCard a={shortInterest} />}
       {social && <SocialCard a={social} />}

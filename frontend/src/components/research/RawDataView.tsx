@@ -131,39 +131,6 @@ function SecFilingsRenderer({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function AnalystConsensusRenderer({ data }: { data: Record<string, unknown> }) {
-  const ratings = data.ratings as Array<Record<string, unknown>> | undefined;
-  const consensus = data as Record<string, unknown>;
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-2">
-        <KeyValue label="Buy" value={String(consensus.buy ?? consensus.strongBuy ?? "--")} />
-        <KeyValue label="Hold" value={String(consensus.hold ?? "--")} />
-        <KeyValue label="Sell" value={String(consensus.sell ?? consensus.strongSell ?? "--")} />
-      </div>
-      {consensus.targetPrice != null && (
-        <KeyValue label="Target Price" value={`$${fmt(consensus.targetPrice as number)}`} />
-      )}
-      {consensus.averageTarget != null && (
-        <KeyValue label="Avg Target" value={`$${fmt(consensus.averageTarget as number)}`} />
-      )}
-      {ratings && ratings.length > 0 && (
-        <div className="space-y-1 mt-2">
-          <p className="font-medium text-muted-foreground">Recent Ratings</p>
-          {ratings.slice(0, 8).map((r, i) => (
-            <div key={i} className="flex items-center gap-2 text-muted-foreground">
-              <span className="font-medium">{String(r.firm ?? r.analyst ?? "--")}</span>
-              <span>{String(r.rating ?? r.action ?? "--")}</span>
-              {r.targetPrice != null && <span className="ml-auto">${fmt(r.targetPrice as number)}</span>}
-              {r.date != null && <span>{String(r.date)}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ShortInterestRenderer({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-1">
@@ -330,7 +297,6 @@ const renderers: Record<string, React.ComponentType<{ data: Record<string, unkno
   options: OptionsRenderer,
   social: SocialRenderer,
   sec_filings: SecFilingsRenderer,
-  analyst_consensus: AnalystConsensusRenderer,
   short_interest: ShortInterestRenderer,
   events: EventsRenderer,
   seeking_alpha: SeekingAlphaRenderer,
