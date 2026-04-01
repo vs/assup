@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type {
   MarketScannerPreset,
   ScanCodeInfo,
@@ -6,7 +6,7 @@ import type {
   ScannerResultItem,
   TechnicalFilterConfig,
 } from "@assup/shared";
-import { researchApi } from "@/api";
+import { researchApi, settingsApi } from "@/api";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +44,7 @@ import {
   Trash2,
   Radar,
   Check,
+  X,
   ArrowLeft,
 } from "lucide-react";
 import { ScannerPresetEditor } from "./ScannerPresetEditor";
@@ -98,12 +99,29 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [addingTickers, setAddingTickers] = useState(false);
 
+  // Per-ticker generation tracking
+  const [generationState, setGenerationState] = useState<
+    Map<string, { jobId?: string; status: "queued" | "generating" | "completed" | "failed"; progress?: string; error?: string }>
+  >(new Map());
+  const [skippedSymbols, setSkippedSymbols] = useState<Set<string>>(new Set());
+  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+
   // Preset editor state
   const [editingPreset, setEditingPreset] = useState<MarketScannerPreset | undefined>(undefined);
   const [showPresetEditor, setShowPresetEditor] = useState(false);
 
   // Scan job polling state
   const [scanningMessage, setScanningMessage] = useState("Scanning...");
+
+  // Cleanup poll timers on unmount or close
+  useEffect(() => {
+    if (!open) {
+      for (const timer of pollTimers.current.values()) {
+        clearInterval(timer);
+      }
+      pollTimers.current.clear();
+    }
+  }, [open]);
 
   // Load scan codes and presets on open
   useEffect(() => {
@@ -112,6 +130,8 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     setError(null);
     setResults(null);
     setSelectedSymbols(new Set());
+    setGenerationState(new Map());
+    setSkippedSymbols(new Set());
     setShowPresetEditor(false);
     setEditingPreset(undefined);
 
@@ -256,18 +276,88 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     }
   }
 
-  // --- Add Tickers ---
+  // --- Add Tickers and generate reports ---
   async function handleAddSelected() {
     if (selectedSymbols.size === 0) return;
     setAddingTickers(true);
     setError(null);
     try {
-      await researchApi.addTickers({
+      const { added, skipped } = await researchApi.addTickers({
         symbols: Array.from(selectedSymbols),
         source: "scanner",
       });
       onTickersAdded();
-      onOpenChange(false);
+
+      // Track skipped symbols
+      setSkippedSymbols(new Set(skipped));
+
+      // Initialize generation state for added tickers
+      const initial = new Map<string, { jobId?: string; status: "queued" | "generating" | "completed" | "failed"; progress?: string; error?: string }>();
+      for (const t of added) {
+        initial.set(t.symbol, { status: "queued" });
+      }
+      setGenerationState(initial);
+
+      // Get research settings for synthesizer mode
+      const researchSettings = await settingsApi
+        .get<{ synthesizerMode: string }>("research")
+        .then((r) => r.value)
+        .catch(() => ({ synthesizerMode: undefined }));
+
+      // Fire off report generation for each added ticker
+      for (const t of added) {
+        try {
+          const { jobId } = await researchApi.generate(t.symbol, {
+            force: true,
+            mode: researchSettings.synthesizerMode,
+          });
+
+          setGenerationState((prev) => {
+            const next = new Map(prev);
+            next.set(t.symbol, { jobId, status: "generating", progress: "Starting..." });
+            return next;
+          });
+
+          // Start polling for this job
+          const timer = setInterval(async () => {
+            try {
+              const job = await researchApi.getJob(jobId);
+              if (job.status === "completed") {
+                clearInterval(timer);
+                pollTimers.current.delete(t.symbol);
+                setGenerationState((prev) => {
+                  const next = new Map(prev);
+                  next.set(t.symbol, { jobId, status: "completed" });
+                  return next;
+                });
+              } else if (job.status === "failed") {
+                clearInterval(timer);
+                pollTimers.current.delete(t.symbol);
+                setGenerationState((prev) => {
+                  const next = new Map(prev);
+                  next.set(t.symbol, { jobId, status: "failed", error: job.error || "Failed" });
+                  return next;
+                });
+              } else {
+                setGenerationState((prev) => {
+                  const next = new Map(prev);
+                  next.set(t.symbol, { jobId, status: "generating", progress: job.progress || "Processing..." });
+                  return next;
+                });
+              }
+            } catch {
+              // Ignore poll errors, will retry on next interval
+            }
+          }, 2000);
+          pollTimers.current.set(t.symbol, timer);
+        } catch {
+          setGenerationState((prev) => {
+            const next = new Map(prev);
+            next.set(t.symbol, { status: "failed", error: "Failed to start generation" });
+            return next;
+          });
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add tickers");
     } finally {
@@ -679,6 +769,8 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
                         isQualified={results.qualified.includes(item.symbol)}
                         isSelected={selectedSymbols.has(item.symbol)}
                         onToggle={() => toggleSymbol(item.symbol)}
+                        genState={generationState.get(item.symbol)}
+                        isSkipped={skippedSymbols.has(item.symbol)}
                       />
                     ))}
                   </TableBody>
@@ -695,28 +787,45 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
                   setStep("configure");
                   setResults(null);
                   setSelectedSymbols(new Set());
+                  setGenerationState(new Map());
+                  setSkippedSymbols(new Set());
+                  for (const timer of pollTimers.current.values()) {
+                    clearInterval(timer);
+                  }
+                  pollTimers.current.clear();
                 }}
               >
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
               </Button>
               <div className="flex items-center gap-2">
-                {selectedSymbols.size > 0 && (
+                {generationState.size === 0 && selectedSymbols.size > 0 && (
                   <span className="text-sm text-muted-foreground">
                     {selectedSymbols.size} selected
                   </span>
                 )}
-                <Button
-                  onClick={handleAddSelected}
-                  disabled={selectedSymbols.size === 0 || addingTickers}
-                >
-                  {addingTickers ? (
-                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4 mr-1.5" />
-                  )}
-                  Add Selected to Research
-                </Button>
+                {generationState.size > 0 && (
+                  <span className="text-sm text-muted-foreground">
+                    {Array.from(generationState.values()).filter((s) => s.status === "completed").length}/{generationState.size} done
+                  </span>
+                )}
+                {generationState.size === 0 ? (
+                  <Button
+                    onClick={handleAddSelected}
+                    disabled={selectedSymbols.size === 0 || addingTickers}
+                  >
+                    {addingTickers ? (
+                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4 mr-1.5" />
+                    )}
+                    Add Selected to Research
+                  </Button>
+                ) : (
+                  <Button onClick={() => onOpenChange(false)}>
+                    Done
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -733,17 +842,23 @@ function ResultRow({
   isQualified,
   isSelected,
   onToggle,
+  genState,
+  isSkipped,
 }: {
   item: ScannerResultItem;
   isQualified: boolean;
   isSelected: boolean;
   onToggle: () => void;
+  genState?: { jobId?: string; status: "queued" | "generating" | "completed" | "failed"; progress?: string; error?: string };
+  isSkipped?: boolean;
 }) {
   const tech = item.technical;
   const rsi = tech?.details.rsi14;
   const aboveSma200 = tech?.details.aboveSma200;
   const score = tech?.score;
   const passed = tech?.passed;
+
+  const hasGeneration = genState || isSkipped;
 
   return (
     <TableRow className={isQualified ? "bg-green-500/5" : passed === false ? "bg-red-500/5" : ""}>
@@ -752,6 +867,7 @@ function ResultRow({
           type="checkbox"
           checked={isSelected}
           onChange={onToggle}
+          disabled={!!hasGeneration}
           className="rounded border-muted-foreground/50"
         />
       </TableCell>
@@ -797,7 +913,23 @@ function ResultRow({
         )}
       </TableCell>
       <TableCell className="text-center">
-        {passed != null ? (
+        {isSkipped ? (
+          <span className="text-xs text-muted-foreground">Already tracked</span>
+        ) : genState?.status === "queued" ? (
+          <span className="text-xs text-muted-foreground">Queued...</span>
+        ) : genState?.status === "generating" ? (
+          <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="truncate max-w-[120px]">{genState.progress || "Processing..."}</span>
+          </span>
+        ) : genState?.status === "completed" ? (
+          <Check className="h-4 w-4 text-green-600 mx-auto" />
+        ) : genState?.status === "failed" ? (
+          <span className="inline-flex items-center gap-1 text-xs text-red-600" title={genState.error}>
+            <X className="h-3.5 w-3.5" />
+            Failed
+          </span>
+        ) : passed != null ? (
           passed ? (
             <Check className="h-4 w-4 text-green-600 mx-auto" />
           ) : (
