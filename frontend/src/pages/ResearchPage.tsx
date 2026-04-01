@@ -26,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Zap, AlertTriangle, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, Radar } from "lucide-react";
+import { Eye, Zap, AlertTriangle, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, Radar, Trash2 } from "lucide-react";
 import { timeAgo } from "@/utils/format";
 import { ScannerDialog } from "@/components/research/ScannerDialog";
 
@@ -238,6 +238,7 @@ function TickerRow({
   generateProgress,
   onView,
   onGenerate,
+  onDelete,
 }: {
   ticker: ResearchTicker;
   report: ResearchReport | undefined;
@@ -245,6 +246,7 @@ function TickerRow({
   generateProgress: string | null;
   onView: () => void;
   onGenerate: () => void;
+  onDelete: () => void;
 }) {
   return (
     <TableRow>
@@ -305,6 +307,16 @@ function TickerRow({
               className={`h-4 w-4 mr-1 ${generatingSymbol === ticker.symbol ? "animate-pulse" : ""}`}
             />
             {generatingSymbol === ticker.symbol ? "Generating..." : "Generate"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+            onClick={onDelete}
+            disabled={generatingSymbol === ticker.symbol}
+            title="Delete ticker"
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </TableCell>
@@ -377,6 +389,39 @@ export function ResearchPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  async function handleDelete(symbol: string) {
+    setError(null);
+    try {
+      const result = await researchApi.deleteTicker(symbol);
+      if (result.action === "deleted") {
+        // Remove ticker entirely from local state
+        setTickers((prev) => prev.filter((t) => t.symbol !== symbol));
+        setReports((prev) => {
+          const next = { ...prev };
+          delete next[symbol];
+          return next;
+        });
+      } else {
+        // Cleared: remove report so ticker moves to "without reports" section
+        setReports((prev) => {
+          const next = { ...prev };
+          delete next[symbol];
+          return next;
+        });
+        // Reset lastAnalyzed in local state
+        setTickers((prev) =>
+          prev.map((t) =>
+            t.symbol === symbol ? { ...t, lastAnalyzed: null } : t
+          )
+        );
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : `Failed to delete ${symbol}`
+      );
+    }
+  }
 
   async function handleGenerate(symbol: string) {
     setGeneratingSymbol(symbol);
@@ -525,6 +570,7 @@ export function ResearchPage() {
                         generateProgress={generateProgress}
                         onView={() => navigate(`/research/${ticker.symbol}`)}
                         onGenerate={() => handleGenerate(ticker.symbol)}
+                        onDelete={() => handleDelete(ticker.symbol)}
                       />
                     );
                   })}
@@ -557,6 +603,7 @@ export function ResearchPage() {
                             generateProgress={generateProgress}
                             onView={() => navigate(`/research/${ticker.symbol}`)}
                             onGenerate={() => handleGenerate(ticker.symbol)}
+                            onDelete={() => handleDelete(ticker.symbol)}
                           />
                         ))}
                   </>

@@ -66,6 +66,13 @@ export const researchApi = {
       }
     ),
 
+  // Delete/clear ticker
+  deleteTicker: (symbol: string) =>
+    request<{ action: "deleted" | "cleared"; inWatchlist: boolean }>(
+      `/api/research/tickers/${symbol}`,
+      { method: "DELETE" }
+    ),
+
   // Collection data (OHLCV, raw source data)
   getCollectionData: (symbol: string) =>
     request<CollectionDataResponse>(`/api/research/${symbol}/data`),

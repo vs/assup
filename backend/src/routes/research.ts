@@ -208,14 +208,40 @@ router.patch(
 
 /**
  * DELETE /api/research/tickers/:symbol
- * Remove a ticker
+ * Remove or clear a ticker depending on watchlist membership.
+ * - If NOT in any watchlist: delete ticker and all related data
+ * - If IN a watchlist: clear reports and analyses but keep ticker and data collections
  */
 router.delete(
   "/tickers/:symbol",
   validate({ params: tickerParamsSchema }),
   asyncHandler(async (req, res) => {
-    await tickerService.remove(req.params.symbol);
-    res.status(204).end();
+    const symbol = req.params.symbol.toUpperCase();
+
+    const ticker = await prisma.researchTicker.findUnique({
+      where: { symbol },
+    });
+    if (!ticker) throw new NotFoundError("Ticker", symbol);
+
+    const inWatchlist = await prisma.watchlistItem.findFirst({
+      where: { symbol },
+    });
+
+    if (!inWatchlist) {
+      // Not in any watchlist — delete everything (cascade handles related records)
+      await prisma.researchTicker.delete({ where: { symbol } });
+      res.json({ action: "deleted", inWatchlist: false });
+    } else {
+      // In a watchlist — clear reports and analyses only, keep data collections
+      await prisma.researchReport.deleteMany({ where: { tickerId: ticker.id } });
+      await prisma.analysis.deleteMany({ where: { tickerId: ticker.id } });
+      // Reset lastAnalyzed so it appears as "no report"
+      await prisma.researchTicker.update({
+        where: { symbol },
+        data: { lastAnalyzed: null },
+      });
+      res.json({ action: "cleared", inWatchlist: true });
+    }
   })
 );
 
