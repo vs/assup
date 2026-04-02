@@ -111,6 +111,7 @@ class PipelineService {
           summary: result.summary,
           fullReport: result.fullReport,
           analysisIds,
+          companyOverview: result.companyOverview ?? undefined,
         },
       });
 
