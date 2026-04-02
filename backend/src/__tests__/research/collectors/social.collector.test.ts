@@ -36,6 +36,8 @@ describe("socialCollector", () => {
     expect(result.data.redditMentionCount).toBe(1);
     expect(result.data.stocktwitsMentionCount).toBe(1);
     expect(result.data.totalMentionCount).toBe(2);
+    // redditEngagement = score (10) + comments (5) = 15
+    expect(result.data.redditEngagement).toBe(15);
   });
 
   it("succeeds when only Reddit works", async () => {

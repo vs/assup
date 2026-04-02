@@ -35,7 +35,7 @@ describe("socialAnalyzer", () => {
       makePost("Squeeze rally coming, buy buy buy!"),
     ];
     const result = await socialAnalyzer.analyze({
-      posts, totalMentionCount: 3, redditMentionCount: 3, stocktwitsMentionCount: 0,
+      posts, redditEngagement: 45, redditMentionCount: 3, stocktwitsMentionCount: 0,
     });
     expect(result.signal).toBe("bullish");
   });
@@ -47,7 +47,7 @@ describe("socialAnalyzer", () => {
       makePost("Weak miss loss baghold!"),
     ];
     const result = await socialAnalyzer.analyze({
-      posts, totalMentionCount: 3, redditMentionCount: 3, stocktwitsMentionCount: 0,
+      posts, redditEngagement: 45, redditMentionCount: 3, stocktwitsMentionCount: 0,
     });
     expect(result.signal).toBe("bearish");
   });
@@ -58,7 +58,7 @@ describe("socialAnalyzer", () => {
       makePost("bearish crash"),
     ];
     const result = await socialAnalyzer.analyze({
-      posts, totalMentionCount: 2, redditMentionCount: 2, stocktwitsMentionCount: 0,
+      posts, redditEngagement: 30, redditMentionCount: 2, stocktwitsMentionCount: 0,
     });
     expect(result.signal).toBe("neutral");
   });
@@ -66,7 +66,7 @@ describe("socialAnalyzer", () => {
   it("returns 0 sentiment for posts with no sentiment words", async () => {
     const posts = [makePost("The company reported earnings today.")];
     const result = await socialAnalyzer.analyze({
-      posts, totalMentionCount: 1, redditMentionCount: 1, stocktwitsMentionCount: 0,
+      posts, redditEngagement: 15, redditMentionCount: 1, stocktwitsMentionCount: 0,
     });
     const details = result.details as Record<string, unknown>;
     expect(details.sentimentScore).toBe(0);
@@ -75,10 +75,10 @@ describe("socialAnalyzer", () => {
   it("confidence scales with mention count", async () => {
     const post = makePost("bullish moon rocket");
     const few = await socialAnalyzer.analyze({
-      posts: [post], totalMentionCount: 1, redditMentionCount: 1, stocktwitsMentionCount: 0,
+      posts: [post], redditEngagement: 15, redditMentionCount: 1, stocktwitsMentionCount: 0,
     });
     const many = await socialAnalyzer.analyze({
-      posts: Array(25).fill(post), totalMentionCount: 25, redditMentionCount: 25, stocktwitsMentionCount: 0,
+      posts: Array(25).fill(post), redditEngagement: 375, redditMentionCount: 25, stocktwitsMentionCount: 0,
     });
     expect(many.confidence).toBeGreaterThan(few.confidence);
   });
@@ -86,7 +86,7 @@ describe("socialAnalyzer", () => {
   it("includes top 5 posts in details", async () => {
     const posts = Array.from({ length: 10 }, (_, i) => makePost(`bullish post ${i}`));
     const result = await socialAnalyzer.analyze({
-      posts, totalMentionCount: 10, redditMentionCount: 10, stocktwitsMentionCount: 0,
+      posts, redditEngagement: 150, redditMentionCount: 10, stocktwitsMentionCount: 0,
     });
     const details = result.details as Record<string, unknown>;
     expect((details.topPosts as unknown[]).length).toBeLessThanOrEqual(5);

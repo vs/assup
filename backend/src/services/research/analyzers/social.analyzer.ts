@@ -96,10 +96,13 @@ export const socialAnalyzer: Analyzer = {
 
   async analyze(rawData: Record<string, unknown>): Promise<AnalysisOutput> {
     const posts = (rawData.posts as SocialPost[]) ?? [];
-    const totalMentionCount = (rawData.totalMentionCount as number) ?? 0;
     const redditMentionCount = (rawData.redditMentionCount as number) ?? 0;
     const stocktwitsMentionCount =
       (rawData.stocktwitsMentionCount as number) ?? 0;
+    // redditEngagement (upvotes + comments) is a better volume proxy than
+    // totalMentionCount which is always capped at ~55 (25 Reddit + 30 ST).
+    const redditEngagement = (rawData.redditEngagement as number) ?? 0;
+    const totalMentionCount = redditEngagement + stocktwitsMentionCount;
 
     if (posts.length === 0) {
       return {
@@ -151,9 +154,9 @@ export const socialAnalyzer: Analyzer = {
       signal = "neutral";
     }
 
-    // Confidence based on mention count and sentiment strength
+    // Confidence based on engagement volume and sentiment strength
     const sentimentStrength = Math.abs(sentimentScore);
-    const mentionFactor = Math.min(totalMentionCount / 25, 1); // More mentions = more confidence
+    const mentionFactor = Math.min(totalMentionCount / 100, 1); // More engagement = more confidence
     const confidence = Math.min(sentimentStrength * 0.6 + mentionFactor * 0.4, 1);
 
     // Build summary

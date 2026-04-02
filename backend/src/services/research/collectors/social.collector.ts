@@ -160,6 +160,14 @@ export const socialCollector: Collector = {
       ...(stocktwitsPosts ?? []),
     ];
 
+    // Engagement score: sum of Reddit upvotes + comments across posts.
+    // This varies meaningfully per ticker, unlike post count which is
+    // always capped at 25 (Reddit) + 30 (StockTwits) = 55.
+    const redditEngagement = (redditPosts ?? []).reduce(
+      (sum, p) => sum + (p.score ?? 0) + (p.comments ?? 0),
+      0,
+    );
+
     return {
       source: "social",
       data: {
@@ -167,6 +175,7 @@ export const socialCollector: Collector = {
         redditMentionCount: redditPosts?.length ?? 0,
         stocktwitsMentionCount: stocktwitsPosts?.length ?? 0,
         totalMentionCount: allPosts.length,
+        redditEngagement,
         posts: allPosts,
         fetchedAt: new Date().toISOString(),
       },
