@@ -1,13 +1,15 @@
+// backend/src/__tests__/research/collectors/short-interest.collector.test.ts
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { shortInterestCollector } from "../../../services/research/collectors/short-interest.collector.js";
 import type { SkippedCollection } from "../../../services/research/collectors/types.js";
 
-vi.mock("../../../services/research/collectors/sa-browser.js", () => ({
-  fetchSAJson: vi.fn(),
+vi.mock("../../../services/research/collectors/sa-rapidapi.js", () => ({
+  fetchSAMetrics: vi.fn(),
 }));
 
-import { fetchSAJson } from "../../../services/research/collectors/sa-browser.js";
-const mockFetchSAJson = fetchSAJson as ReturnType<typeof vi.fn>;
+import { shortInterestCollector } from "../../../services/research/collectors/short-interest.collector.js";
+import { fetchSAMetrics } from "../../../services/research/collectors/sa-rapidapi.js";
+
+const mockFetchMetrics = vi.mocked(fetchSAMetrics);
 
 describe("shortInterestCollector", () => {
   afterEach(() => {
@@ -19,18 +21,8 @@ describe("shortInterestCollector", () => {
     expect(shortInterestCollector.defaultSchedule).toBe("0 18 * * 1-5");
   });
 
-  it("returns collected data with shortPercentOfSO from SA metrics", async () => {
-    mockFetchSAJson.mockResolvedValue({
-      data: [
-        {
-          attributes: { value: 0.042 },
-          relationships: { metric_type: { data: { id: "mt-1" } } },
-        },
-      ],
-      included: [
-        { id: "mt-1", type: "metric_type", attributes: { field: "short_interest_shares_outstanding" } },
-      ],
-    });
+  it("returns collected data with shortPercentOfSO", async () => {
+    mockFetchMetrics.mockResolvedValue({ short_interest_shares_outstanding: 0.042 });
 
     const result = await shortInterestCollector.collect("AAPL");
     expect(result).not.toHaveProperty("_tag");
@@ -42,33 +34,22 @@ describe("shortInterestCollector", () => {
     expect(data.shortInterestTrend).toBe("unknown");
   });
 
-  it("returns SkippedCollection when SA returns null", async () => {
-    mockFetchSAJson.mockResolvedValue(null);
+  it("returns SkippedCollection when fetchSAMetrics returns null", async () => {
+    mockFetchMetrics.mockResolvedValue(null);
     const result = await shortInterestCollector.collect("AAPL");
-    expect(result).toMatchObject({
-      _tag: "skipped",
-      source: "short_interest",
-    });
+    expect(result).toMatchObject({ _tag: "skipped", source: "short_interest" });
     expect((result as SkippedCollection).reason).toContain("Seeking Alpha");
   });
 
-  it("returns SkippedCollection when metric is missing from response", async () => {
-    mockFetchSAJson.mockResolvedValue({
-      data: [],
-      included: [],
-    });
+  it("returns SkippedCollection when metric is missing", async () => {
+    mockFetchMetrics.mockResolvedValue({ pe_nongaap_fy1: 25 });
     const result = await shortInterestCollector.collect("XYZ");
-    expect(result).toMatchObject({
-      _tag: "skipped",
-      source: "short_interest",
-    });
+    expect(result).toMatchObject({ _tag: "skipped", source: "short_interest" });
   });
 
-  it("passes lowercase symbol slug to SA API", async () => {
-    mockFetchSAJson.mockResolvedValue(null);
+  it("passes correct field to fetchSAMetrics", async () => {
+    mockFetchMetrics.mockResolvedValue(null);
     await shortInterestCollector.collect("AAPL");
-    expect(mockFetchSAJson).toHaveBeenCalledWith(
-      expect.stringContaining("[slugs]=aapl"),
-    );
+    expect(mockFetchMetrics).toHaveBeenCalledWith("AAPL", ["short_interest_shares_outstanding"]);
   });
 });

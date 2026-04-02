@@ -1,27 +1,16 @@
+// backend/src/services/research/collectors/short-interest.collector.ts
 import type { Collector, CollectionResult } from "./types.js";
-import { fetchSAJson } from "./sa-browser.js";
-import { flattenSAMetrics } from "./sa-utils.js";
+import { fetchSAMetrics } from "./sa-rapidapi.js";
 
-const SA_API_BASE = "https://seekingalpha.com/api/v3";
-const STALENESS_MINUTES = 24 * 60; // 24 hours
-
-const METRIC_FIELDS = [
-  "short_interest_shares_outstanding",
-].join(",");
+const STALENESS_MINUTES = 24 * 60;
 
 export const shortInterestCollector: Collector = {
   source: "short_interest",
-  defaultSchedule: "0 18 * * 1-5", // Daily weekdays at 6 PM
+  defaultSchedule: "0 18 * * 1-5",
   stalenessMinutes: STALENESS_MINUTES,
 
   async collect(symbol: string): Promise<CollectionResult> {
-    const slug = symbol.toLowerCase();
-
-    const raw = await fetchSAJson(
-      `${SA_API_BASE}/metrics?filter[fields]=${METRIC_FIELDS}&filter[slugs]=${encodeURIComponent(slug)}&minified=false`,
-    );
-
-    const metrics = flattenSAMetrics(raw);
+    const metrics = await fetchSAMetrics(symbol, ["short_interest_shares_outstanding"]);
 
     if (!metrics || metrics.short_interest_shares_outstanding == null) {
       return {
@@ -32,14 +21,12 @@ export const shortInterestCollector: Collector = {
       };
     }
 
-    const shortPercentOfSO = metrics.short_interest_shares_outstanding; // decimal, e.g. 0.05 = 5%
-
     return {
       source: "short_interest",
       data: {
         symbol,
-        shortPercentOfSO,
-        daysToCover: 0, // Not available from SA
+        shortPercentOfSO: metrics.short_interest_shares_outstanding,
+        daysToCover: 0,
         shortInterestTrend: "unknown" as const,
         shortInterestChange: null,
         fetchedAt: new Date().toISOString(),
