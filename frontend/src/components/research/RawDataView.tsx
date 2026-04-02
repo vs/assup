@@ -191,7 +191,6 @@ function SeekingAlphaRenderer({ data }: { data: Record<string, unknown> }) {
     div_yield_fwd: "Fwd Div Yield",
     revenue_growth: "Rev Growth",
     marketcap: "Market Cap",
-    short_interest_shares_outstanding: "Short % of S/O",
   };
 
   function metricFmt(field: string, val: number): string {

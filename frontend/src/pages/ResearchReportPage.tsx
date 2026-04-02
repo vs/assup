@@ -743,7 +743,7 @@ export function ResearchReportPage() {
                         levelColor(shortD.shortLevel as string)
                       }
                     >
-                      {pct(shortD.shortPercentOfSO)}
+                      {typeof shortD.shortPercentOfSO === "number" ? `${shortD.shortPercentOfSO.toFixed(1)}%` : "N/A"}
                     </span>
                   </span>
                   {(shortD.daysToCover as number) > 0 && (
