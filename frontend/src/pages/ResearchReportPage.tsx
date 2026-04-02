@@ -92,11 +92,6 @@ function signalColor(signal: string | undefined) {
   return "text-amber-600";
 }
 
-function levelColor(level: string | undefined) {
-  if (level === "high" || level === "extreme") return "text-red-600";
-  if (level === "moderate") return "text-amber-600";
-  return "text-green-600";
-}
 
 function trendLabel(trend: string | undefined | null): string {
   if (!trend) return "N/A";
@@ -288,6 +283,9 @@ function CompanyInfoPanel({
               {metrics?.dividend_yield != null && (
                 <MetricItem label="Div Yield" value={pct(metrics.dividend_yield)} />
               )}
+              {metrics?.div_yield_fwd != null && (
+                <MetricItem label="Fwd Yield" value={pct(metrics.div_yield_fwd)} />
+              )}
             </div>
           </InfoBullet>
         )}
@@ -378,6 +376,11 @@ function CompanyInfoPanel({
                     (shortD.daysToCover as number) < 2 ? "green" : undefined
                   }
                 />
+              )}
+              {shortD.shortInterestTrend && shortD.shortInterestTrend !== "unknown" && (
+                <span className="text-muted-foreground">
+                  {trendLabel(shortD.shortInterestTrend as string)}
+                </span>
               )}
             </div>
           </InfoBullet>
@@ -522,14 +525,14 @@ function CommentsSection({
                             className="border-l-2 border-orange-200 pl-3 py-1"
                           >
                             <p className="text-xs text-foreground/80">{comment.content}</p>
-                            <div className="flex items-center gap-3 mt-0.5">
-                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <ThumbsUp className="h-3 w-3" />
-                                {comment.likes}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {timeAgo(comment.createdAt)}
-                              </span>
+                            <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                              {comment.likes > 0 && (
+                                <span className="flex items-center gap-1">
+                                  <ThumbsUp className="h-3 w-3" />
+                                  {comment.likes}
+                                </span>
+                              )}
+                              <span>{timeAgo(comment.createdAt)}</span>
                             </div>
                           </div>
                         ))}
@@ -581,13 +584,13 @@ function CommentsSection({
                           r/{post.subreddit}
                         </Badge>
                       )}
-                      {post.score != null && (
+                      {post.score != null && post.score > 0 && (
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
                           <TrendingUp className="h-3 w-3" />
                           {post.score}
                         </span>
                       )}
-                      {post.comments != null && (
+                      {post.comments != null && post.comments > 0 && (
                         <span className="text-xs text-muted-foreground">
                           {post.comments} comment{post.comments !== 1 ? "s" : ""}
                         </span>
