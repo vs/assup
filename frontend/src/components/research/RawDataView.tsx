@@ -134,11 +134,9 @@ function SecFilingsRenderer({ data }: { data: Record<string, unknown> }) {
 function ShortInterestRenderer({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-1">
-      <KeyValue label="Short Interest" value={data.shortInterest != null ? String(data.shortInterest) : undefined} />
-      <KeyValue label="Short % of Float" value={data.shortPercentOfFloat != null ? pct(data.shortPercentOfFloat as number) : undefined} />
-      <KeyValue label="Short Ratio" value={data.shortRatio != null ? fmt(data.shortRatio as number) : undefined} />
-      <KeyValue label="Days to Cover" value={data.daysToCover != null ? fmt(data.daysToCover as number, 1) : undefined} />
-      <KeyValue label="Change" value={data.change != null ? pct(data.change as number) : undefined} />
+      <KeyValue label="Short % of S/O" value={data.shortPercentOfSO != null ? pct(data.shortPercentOfSO as number) : undefined} />
+      <KeyValue label="Days to Cover" value={data.daysToCover != null && (data.daysToCover as number) > 0 ? fmt(data.daysToCover as number, 1) : undefined} />
+      <KeyValue label="Trend" value={data.shortInterestTrend != null && data.shortInterestTrend !== "unknown" ? String(data.shortInterestTrend) : undefined} />
     </div>
   );
 }

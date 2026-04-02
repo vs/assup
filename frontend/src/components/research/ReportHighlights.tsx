@@ -243,9 +243,9 @@ function ShortInterestCard({ a }: { a: AnalysisResult }) {
   return (
     <HighlightCard icon={AlertTriangle} title="Short Interest">
       <div className="space-y-1">
-        <Row label="% of Float" value={<span className={signalColor(levelColor)}>{pct(d.shortPercentOfFloat)}</span>} />
-        <Row label="Days to Cover" value={fmt(d.daysToCover, 1)} />
-        <Row label="Trend" value={trendLabel(d.shortInterestTrend as string)} />
+        <Row label="% of S/O" value={<span className={signalColor(levelColor)}>{pct(d.shortPercentOfSO)}</span>} />
+        {(d.daysToCover as number) > 0 && <Row label="Days to Cover" value={fmt(d.daysToCover, 1)} />}
+        {d.shortInterestTrend !== "unknown" && <Row label="Trend" value={trendLabel(d.shortInterestTrend as string)} />}
         <Row label="Level" value={<Badge className={signalBg(levelColor)}>{trendLabel(level)}</Badge>} />
       </div>
     </HighlightCard>

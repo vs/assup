@@ -736,25 +736,29 @@ export function ResearchReportPage() {
               <InfoBullet label="Short Interest" signal={shortInterest.signal}>
                 <div className="flex flex-wrap gap-x-3 text-xs">
                   <span>
-                    <span className="text-muted-foreground">Float: </span>
+                    <span className="text-muted-foreground">S/O: </span>
                     <span
                       className={
                         `font-medium ` +
                         levelColor(shortD.shortLevel as string)
                       }
                     >
-                      {pct(shortD.shortPercentOfFloat)}
+                      {pct(shortD.shortPercentOfSO)}
                     </span>
                   </span>
-                  <span>
-                    <span className="text-muted-foreground">DTC: </span>
-                    <span className="font-medium">
-                      {fmt(shortD.daysToCover, 1)}
+                  {(shortD.daysToCover as number) > 0 && (
+                    <span>
+                      <span className="text-muted-foreground">DTC: </span>
+                      <span className="font-medium">
+                        {fmt(shortD.daysToCover, 1)}
+                      </span>
                     </span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    {trendLabel(shortD.shortInterestTrend as string)}
-                  </span>
+                  )}
+                  {shortD.shortInterestTrend !== "unknown" && (
+                    <span className="text-muted-foreground">
+                      {trendLabel(shortD.shortInterestTrend as string)}
+                    </span>
+                  )}
                 </div>
               </InfoBullet>
             )}
