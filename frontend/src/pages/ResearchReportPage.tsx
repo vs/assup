@@ -86,11 +86,7 @@ function fmtCap(v: number): string {
   return `$${v.toLocaleString()}`;
 }
 
-function signalColor(signal: string | undefined) {
-  if (signal === "bullish") return "text-green-600";
-  if (signal === "bearish") return "text-red-600";
-  return "text-amber-600";
-}
+
 
 
 function trendLabel(trend: string | undefined | null): string {
@@ -377,7 +373,7 @@ function CompanyInfoPanel({
                   }
                 />
               )}
-              {shortD.shortInterestTrend && shortD.shortInterestTrend !== "unknown" && (
+              {typeof shortD.shortInterestTrend === "string" && shortD.shortInterestTrend !== "unknown" && (
                 <span className="text-muted-foreground">
                   {trendLabel(shortD.shortInterestTrend as string)}
                 </span>
