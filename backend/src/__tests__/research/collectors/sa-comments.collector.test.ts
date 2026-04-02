@@ -5,6 +5,13 @@ vi.mock("../../../services/research/collectors/sa-browser.js", () => ({
   fetchSAJson: vi.fn(),
 }));
 
+// Mock execFile so wget fallback doesn't actually run in tests
+vi.mock("node:child_process", () => ({
+  execFile: vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
+    cb(new Error("wget not available in test"), "", "");
+  }),
+}));
+
 import { saCommentsCollector } from "../../../services/research/collectors/sa-comments.collector.js";
 import { fetchSAJson } from "../../../services/research/collectors/sa-browser.js";
 
