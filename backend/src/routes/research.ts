@@ -20,11 +20,11 @@ import {
   deleteOAuthToken,
 } from "../services/research/auth.service.js";
 import {
-  getSAAuthStatus,
-  setSACredentials,
-  deleteSACredentials,
-} from "../services/research/sa-auth.service.js";
-import { fetchSAJson, closeBrowser as closeSABrowser, getBrowserStatus as getSABrowserStatus } from "../services/research/collectors/sa-browser.js";
+  getSAApiKeyStatus,
+  setSAApiKey,
+  deleteSAApiKey,
+  fetchSAMetrics,
+} from "../services/research/collectors/sa-rapidapi.js";
 import {
   addTickersSchema,
   tickerParamsSchema,
@@ -410,82 +410,45 @@ router.delete(
 
 // ── Seeking Alpha Auth ───────────────────────────────────────────────
 
-/**
- * GET /api/research/sa-auth/status
- * Get Seeking Alpha credentials status
- */
 router.get(
   "/sa-auth/status",
   asyncHandler(async (_req, res) => {
-    const status = await getSAAuthStatus();
-    const browser = getSABrowserStatus();
-    res.json({ ...status, browser });
+    const status = await getSAApiKeyStatus();
+    res.json(status);
   })
 );
 
-/**
- * PUT /api/research/sa-auth/credentials
- * Save Seeking Alpha credentials
- */
 router.put(
   "/sa-auth/credentials",
   asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || typeof email !== "string" || !password || typeof password !== "string") {
-      res.status(400).json({ error: "Email and password are required" });
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== "string") {
+      res.status(400).json({ error: "API key is required" });
       return;
     }
-
-    await setSACredentials(email.trim(), password);
-
-    // Close existing browser session so the next collection uses the new credentials
-    await closeSABrowser();
-
-    const status = await getSAAuthStatus();
+    await setSAApiKey(apiKey.trim());
+    const status = await getSAApiKeyStatus();
     res.json(status);
   })
 );
 
-/**
- * DELETE /api/research/sa-auth/credentials
- * Remove stored Seeking Alpha credentials
- */
 router.delete(
   "/sa-auth/credentials",
   asyncHandler(async (_req, res) => {
-    await deleteSACredentials();
-    await closeSABrowser();
-    const status = await getSAAuthStatus();
+    await deleteSAApiKey();
+    const status = await getSAApiKeyStatus();
     res.json(status);
   })
 );
 
-/**
- * POST /api/research/sa-auth/test
- * Test Seeking Alpha connection by fetching AAPL ratings
- */
 router.post(
   "/sa-auth/test",
   asyncHandler(async (_req, res) => {
-    // Force a fresh browser session to pick up latest credentials
-    await closeSABrowser();
-
-    const ratings = await fetchSAJson(
-      "https://seekingalpha.com/api/v3/symbols/aapl/rating/periods?filter[periods][]=0"
-    );
-
-    if (ratings) {
-      const data = ratings as { data?: Array<{ attributes: { ratings: Record<string, unknown> }; meta: { is_locked?: boolean } }> };
-      const hasRatings = Array.isArray(data.data) && data.data.length > 0;
-      const isLocked = data.data?.[0]?.meta?.is_locked ?? true;
-      res.json({
-        ok: true,
-        hasData: hasRatings,
-        premium: !isLocked,
-      });
-    } else {
-      res.json({ ok: false, hasData: false, premium: false });
-    }
+    const metrics = await fetchSAMetrics("AAPL", ["pe_nongaap_fy1"]);
+    res.json({
+      ok: metrics != null,
+      hasData: metrics != null && Object.keys(metrics).length > 0,
+    });
   })
 );
 
