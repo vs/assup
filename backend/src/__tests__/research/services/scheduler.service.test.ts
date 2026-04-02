@@ -68,17 +68,12 @@ describe("schedulerService", () => {
     it("schedules 4 core cron jobs", () => {
       schedulerService.start();
 
-      // 5 core jobs: daily collection, short interest, social, report generation, weekly wheel scan
-      expect(mockSchedule).toHaveBeenCalledTimes(5);
+      // 4 core jobs: daily collection, social, report generation, weekly wheel scan
+      expect(mockSchedule).toHaveBeenCalledTimes(4);
 
       // Verify cron expressions
       expect(mockSchedule).toHaveBeenCalledWith(
         "0 18 * * 1-5",
-        expect.any(Function),
-        { timezone: "America/New_York" }
-      );
-      expect(mockSchedule).toHaveBeenCalledWith(
-        "0 18 1,15 * *",
         expect.any(Function),
         { timezone: "America/New_York" }
       );
@@ -89,6 +84,11 @@ describe("schedulerService", () => {
       );
       expect(mockSchedule).toHaveBeenCalledWith(
         "30 18 * * 1-5",
+        expect.any(Function),
+        { timezone: "America/New_York" }
+      );
+      expect(mockSchedule).toHaveBeenCalledWith(
+        "0 10 * * 6",
         expect.any(Function),
         { timezone: "America/New_York" }
       );

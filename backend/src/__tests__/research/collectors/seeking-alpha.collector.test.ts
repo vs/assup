@@ -14,90 +14,63 @@ describe("seekingAlphaCollector", () => {
     vi.restoreAllMocks();
   });
 
-  it("collects ratings and metrics", async () => {
-    mockFetchSA.mockImplementation(async (url: string) => {
-      if (url.includes("/rating/periods")) {
-        return {
-          data: [{ attributes: { ratings: { sellSideRating: 4.5 } }, meta: { period: 0, is_locked: true } }],
-        };
-      }
-      if (url.includes("/metrics")) {
-        return {
-          data: [
-            { attributes: { value: 25.5 }, relationships: { metric_type: { data: { id: "13" } } } },
-          ],
-          included: [
-            { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
-          ],
-        };
-      }
-      return null;
+  it("collects metrics", async () => {
+    mockFetchSA.mockResolvedValue({
+      data: [
+        { attributes: { value: 25.5 }, relationships: { metric_type: { data: { id: "13" } } } },
+      ],
+      included: [
+        { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
+      ],
     });
 
     const result = await seekingAlphaCollector.collect("AAPL");
-    expect(result).not.toHaveProperty("_tag");
     expect(result.source).toBe("seeking_alpha");
 
     const data = (result as any).data;
-    expect(data.ratings.data[0].attributes.ratings.sellSideRating).toBe(4.5);
     expect(data.metrics).toEqual({ pe_nongaap_fy1: 25.5 });
-  });
-
-  it("succeeds when only ratings available", async () => {
-    mockFetchSA.mockImplementation(async (url: string) => {
-      if (url.includes("/rating/periods")) {
-        return {
-          data: [{ attributes: { ratings: { sellSideRating: 3.0 } }, meta: { period: 0 } }],
-        };
-      }
-      return null;
-    });
-
-    const result = await seekingAlphaCollector.collect("AAPL");
-    expect((result as any).data.ratings).toBeDefined();
-    expect((result as any).data.metrics).toBeNull();
+    expect(data.symbol).toBe("AAPL");
   });
 
   it("flattens metrics correctly with multiple fields", async () => {
-    mockFetchSA.mockImplementation(async (url: string) => {
-      if (url.includes("/metrics")) {
-        return {
-          data: [
-            { attributes: { value: 20.1 }, relationships: { metric_type: { data: { id: "13" } } } },
-            { attributes: { value: 0.65 }, relationships: { metric_type: { data: { id: "36" } } } },
-          ],
-          included: [
-            { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
-            { id: "36", type: "metric_type", attributes: { field: "revenue_growth" } },
-          ],
-        };
-      }
-      return null;
+    mockFetchSA.mockResolvedValue({
+      data: [
+        { attributes: { value: 20.1 }, relationships: { metric_type: { data: { id: "13" } } } },
+        { attributes: { value: 0.65 }, relationships: { metric_type: { data: { id: "36" } } } },
+      ],
+      included: [
+        { id: "13", type: "metric_type", attributes: { field: "pe_nongaap_fy1" } },
+        { id: "36", type: "metric_type", attributes: { field: "revenue_growth" } },
+      ],
     });
 
     const result = await seekingAlphaCollector.collect("NVDA");
     const data = (result as any).data;
-    expect(data.ratings).toBeNull();
     expect(data.metrics).toEqual({ pe_nongaap_fy1: 20.1, revenue_growth: 0.65 });
   });
 
-  it("returns null ratings and metrics when both endpoints fail", async () => {
+  it("returns null metrics when endpoint fails", async () => {
     mockFetchSA.mockResolvedValue(null);
     const result = await seekingAlphaCollector.collect("AAPL");
     const data = (result as any).data;
-    expect(data.ratings).toBeNull();
     expect(data.metrics).toBeNull();
   });
 
-  it("uses lowercase symbol slug in URLs", async () => {
-    mockFetchSA.mockResolvedValue({
-      data: [{ attributes: { ratings: { sellSideRating: 4.0 } }, meta: { period: 0 } }],
-    });
+  it("uses lowercase symbol slug in URL", async () => {
+    mockFetchSA.mockResolvedValue(null);
 
     await seekingAlphaCollector.collect("AAPL");
 
-    const urls = mockFetchSA.mock.calls.map((c) => c[0] as string);
-    expect(urls[0]).toContain("/symbols/aapl/");
-    expect(urls[1]).toContain("filter[slugs]=aapl");
+    expect(mockFetchSA).toHaveBeenCalledTimes(1);
+    const url = mockFetchSA.mock.calls[0][0] as string;
+    expect(url).toContain("filter[slugs]=aapl");
+  });
+
+  it("includes fetchedAt in returned data", async () => {
+    mockFetchSA.mockResolvedValue(null);
+
+    const result = await seekingAlphaCollector.collect("AAPL");
+    const data = (result as any).data;
+    expect(data.fetchedAt).toBeDefined();
   });
 });

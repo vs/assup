@@ -58,9 +58,11 @@ function setResponse(text: string) {
 describe("synthesizer", () => {
   beforeAll(() => {
     process.env.SYNTHESIZER_MODE = "api";
+    process.env.ANTHROPIC_API_KEY = "test-key";
   });
   afterAll(() => {
     delete process.env.SYNTHESIZER_MODE;
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("returns parsed recommendation from valid JSON response", async () => {
