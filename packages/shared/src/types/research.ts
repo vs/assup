@@ -35,6 +35,15 @@ export interface AnalysisResult {
   details: Record<string, unknown>;
 }
 
+// === Company Overview ===
+
+export interface CompanyOverview {
+  description: string;
+  sector: string;
+  industry: string;
+  marketPosition: string;
+}
+
 // === Report ===
 
 export type Recommendation = "buy" | "sell" | "wheel" | "hold" | "avoid";
@@ -49,6 +58,7 @@ export interface ResearchReport {
   summary: string;
   fullReport: string;
   analysisIds: string[];
+  companyOverview?: CompanyOverview | null;
 }
 
 // === Job ===
