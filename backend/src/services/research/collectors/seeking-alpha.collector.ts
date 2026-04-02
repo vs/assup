@@ -1,8 +1,6 @@
+// backend/src/services/research/collectors/seeking-alpha.collector.ts
 import type { Collector, CollectionResult } from "./types.js";
-import { fetchSAJson } from "./sa-browser.js";
-import { flattenSAMetrics } from "./sa-utils.js";
-
-const SA_API_BASE = "https://seekingalpha.com/api/v3";
+import { fetchSAMetrics } from "./sa-rapidapi.js";
 
 const METRIC_FIELDS = [
   "pe_nongaap_fy1",
@@ -10,7 +8,7 @@ const METRIC_FIELDS = [
   "div_yield_fwd",
   "revenue_growth",
   "marketcap",
-].join(",");
+];
 
 export const seekingAlphaCollector: Collector = {
   source: "seeking_alpha",
@@ -18,14 +16,7 @@ export const seekingAlphaCollector: Collector = {
   stalenessMinutes: 24 * 60,
 
   async collect(symbol: string): Promise<CollectionResult> {
-    const slug = symbol.toLowerCase();
-
-    const metricsRaw = await fetchSAJson(
-      `${SA_API_BASE}/metrics?filter[fields]=${METRIC_FIELDS}&filter[slugs]=${encodeURIComponent(slug)}&minified=false`,
-    );
-
-    // Flatten metrics into a simple { field: value } map
-    const metrics = flattenSAMetrics(metricsRaw);
+    const metrics = await fetchSAMetrics(symbol, METRIC_FIELDS);
 
     return {
       source: "seeking_alpha",
