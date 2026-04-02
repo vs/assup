@@ -429,13 +429,14 @@ export function ResearchPage() {
     setError(null);
     try {
       const researchSettings = await settingsApi
-        .get<{ synthesizerMode: string }>("research")
+        .get<{ synthesizerMode: string; model?: string }>("research")
         .then((r) => r.value)
-        .catch(() => ({ synthesizerMode: undefined }));
+        .catch(() => ({ synthesizerMode: undefined, model: undefined }));
 
       const { jobId } = await researchApi.generate(symbol, {
         force: true,
         mode: researchSettings.synthesizerMode,
+        model: researchSettings.model,
       });
 
       // Poll job status until complete

@@ -300,9 +300,9 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
 
       // Get research settings for synthesizer mode
       const researchSettings = await settingsApi
-        .get<{ synthesizerMode: string }>("research")
+        .get<{ synthesizerMode: string; model?: string }>("research")
         .then((r) => r.value)
-        .catch(() => ({ synthesizerMode: undefined }));
+        .catch(() => ({ synthesizerMode: undefined, model: undefined }));
 
       // Fire off report generation for each added ticker
       for (const t of added) {
@@ -310,6 +310,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
           const { jobId } = await researchApi.generate(t.symbol, {
             force: true,
             mode: researchSettings.synthesizerMode,
+            model: researchSettings.model,
           });
 
           setGenerationState((prev) => {

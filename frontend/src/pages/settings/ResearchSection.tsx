@@ -13,12 +13,25 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { researchApi } from "@/api/research";
 import { settingsApi } from "@/api/settings";
 
+const AVAILABLE_MODELS = [
+  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
+] as const;
+
 interface ResearchSettings {
   synthesizerMode: "claude-cli" | "api";
+  model?: string;
 }
 
 interface AuthStatus {
@@ -107,6 +120,18 @@ export function ResearchSection() {
       ...settings,
       synthesizerMode: useCli ? "claude-cli" : "api",
     };
+    setSettings(newSettings);
+    try {
+      await settingsApi.set("research", newSettings);
+    } catch (err) {
+      setSettings(prev);
+      setError(err instanceof Error ? err.message : "Failed to save");
+    }
+  };
+
+  const handleModelChange = async (model: string) => {
+    const prev = settings;
+    const newSettings: ResearchSettings = { ...settings, model };
     setSettings(newSettings);
     try {
       await settingsApi.set("research", newSettings);
@@ -237,6 +262,37 @@ export function ResearchSection() {
               checked={settings.synthesizerMode === "claude-cli"}
               onCheckedChange={handleModeChange}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Model</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label>Claude Model</Label>
+              <p className="text-sm text-muted-foreground">
+                Model used for report synthesis and analysis
+              </p>
+            </div>
+            <Select
+              value={settings.model || "claude-sonnet-4-6"}
+              onValueChange={handleModelChange}
+            >
+              <SelectTrigger className="w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AVAILABLE_MODELS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
