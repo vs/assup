@@ -110,24 +110,23 @@ export const researchApi = {
     request<{
       configured: boolean;
       source: string;
-      maskedEmail?: string;
-      browser: { blocked: boolean; blockedAt: string | null; lastSuccessAt: string | null };
+      maskedKey?: string;
     }>("/api/research/sa-auth/status"),
 
-  setSACredentials: (email: string, password: string) =>
-    request<{ configured: boolean; source: string; maskedEmail?: string }>(
+  setSAApiKey: (apiKey: string) =>
+    request<{ configured: boolean; source: string; maskedKey?: string }>(
       "/api/research/sa-auth/credentials",
-      { method: "PUT", body: JSON.stringify({ email, password }) }
+      { method: "PUT", body: JSON.stringify({ apiKey }) }
     ),
 
-  deleteSACredentials: () =>
+  deleteSAApiKey: () =>
     request<{ configured: boolean; source: string }>(
       "/api/research/sa-auth/credentials",
       { method: "DELETE" }
     ),
 
   testSAConnection: () =>
-    request<{ ok: boolean; hasData: boolean; premium: boolean }>(
+    request<{ ok: boolean; hasData: boolean }>(
       "/api/research/sa-auth/test",
       { method: "POST" }
     ),

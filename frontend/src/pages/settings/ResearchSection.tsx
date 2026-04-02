@@ -43,12 +43,7 @@ interface AuthStatus {
 interface SAAuthStatus {
   configured: boolean;
   source: string;
-  maskedEmail?: string;
-  browser: {
-    blocked: boolean;
-    blockedAt: string | null;
-    lastSuccessAt: string | null;
-  };
+  maskedKey?: string;
 }
 
 const defaultSettings: ResearchSettings = {
@@ -74,8 +69,7 @@ export function ResearchSection() {
 
   // Seeking Alpha state
   const [saStatus, setSaStatus] = useState<SAAuthStatus | null>(null);
-  const [saEmail, setSaEmail] = useState("");
-  const [saPassword, setSaPassword] = useState("");
+  const [saApiKey, setSaApiKey] = useState("");
   const [saSaving, setSaSaving] = useState(false);
   const [saRemoving, setSaRemoving] = useState(false);
   const [saTesting, setSaTesting] = useState(false);
@@ -83,7 +77,6 @@ export function ResearchSection() {
   const [saTestResult, setSaTestResult] = useState<{
     ok: boolean;
     hasData: boolean;
-    premium: boolean;
   } | null>(null);
 
   const loadData = useCallback(async () => {
@@ -189,20 +182,19 @@ export function ResearchSection() {
   };
 
   const handleSaveSACredentials = async () => {
-    if (!saEmail.trim() || !saPassword) return;
+    if (!saApiKey.trim()) return;
     setSaSaving(true);
     setSaSaveSuccess(false);
     setError(null);
     try {
-      await researchApi.setSACredentials(saEmail.trim(), saPassword);
+      await researchApi.setSAApiKey(saApiKey.trim());
       setSaStatus(await researchApi.getSAAuthStatus());
-      setSaEmail("");
-      setSaPassword("");
+      setSaApiKey("");
       setSaTestResult(null);
       setSaSaveSuccess(true);
       setTimeout(() => setSaSaveSuccess(false), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save SA credentials");
+      setError(err instanceof Error ? err.message : "Failed to save API key");
     } finally {
       setSaSaving(false);
     }
@@ -212,11 +204,11 @@ export function ResearchSection() {
     setSaRemoving(true);
     setError(null);
     try {
-      await researchApi.deleteSACredentials();
+      await researchApi.deleteSAApiKey();
       setSaStatus(await researchApi.getSAAuthStatus());
       setSaTestResult(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove SA credentials");
+      setError(err instanceof Error ? err.message : "Failed to remove API key");
     } finally {
       setSaRemoving(false);
     }
@@ -229,7 +221,7 @@ export function ResearchSection() {
       const result = await researchApi.testSAConnection();
       setSaTestResult(result);
     } catch (err) {
-      setSaTestResult({ ok: false, hasData: false, premium: false });
+      setSaTestResult({ ok: false, hasData: false });
     } finally {
       setSaTesting(false);
     }
@@ -450,7 +442,7 @@ export function ResearchSection() {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Key className="h-5 w-5" />
-              Seeking Alpha
+              Seeking Alpha (RapidAPI)
             </CardTitle>
             <Button
               variant="outline"
@@ -473,14 +465,16 @@ export function ResearchSection() {
                   <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
                   <div className="min-w-0">
                     <p>
-                      Credentials configured
+                      API key configured
                       <span className="text-muted-foreground ml-1">
-                        ({saStatus.source === "database" ? "saved in database" : "from environment"})
+                        ({saStatus.source === "database"
+                          ? "saved in database"
+                          : "from environment"})
                       </span>
                     </p>
-                    {saStatus.maskedEmail && (
+                    {saStatus.maskedKey && (
                       <p className="text-sm text-muted-foreground font-mono">
-                        {saStatus.maskedEmail}
+                        {saStatus.maskedKey}
                       </p>
                     )}
                   </div>
@@ -488,27 +482,9 @@ export function ResearchSection() {
               ) : (
                 <>
                   <XCircle className="h-5 w-5 text-red-500 shrink-0" />
-                  <p>No Seeking Alpha credentials configured</p>
+                  <p>No RapidAPI key configured</p>
                 </>
               )}
-            </div>
-          )}
-
-          {saStatus?.browser?.blocked && (
-            <div className="flex items-center gap-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3">
-              <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
-              <div>
-                <p className="font-medium">Seeking Alpha is blocking requests (captcha)</p>
-                <p className="text-sm text-muted-foreground">
-                  SA data will be skipped during report generation until the block clears.
-                  {saStatus.browser.blockedAt && (
-                    <> Blocked since {new Date(saStatus.browser.blockedAt).toLocaleString()}.</>
-                  )}
-                  {saStatus.browser.lastSuccessAt && (
-                    <> Last successful fetch: {new Date(saStatus.browser.lastSuccessAt).toLocaleString()}.</>
-                  )}
-                </p>
-              </div>
             </div>
           )}
 
@@ -517,49 +493,36 @@ export function ResearchSection() {
               {saTestResult.ok ? (
                 <>
                   <CheckCircle className="h-5 w-5 text-green-500" />
-                  <div>
-                    <p>Connection successful — data is accessible</p>
-                    <p className="text-sm text-muted-foreground">
-                      {saTestResult.premium
-                        ? "Premium access — full ratings unlocked"
-                        : "Guest access — some ratings may be limited"}
-                    </p>
-                  </div>
+                  <p>Connection successful — data is accessible</p>
                 </>
               ) : (
                 <>
                   <XCircle className="h-5 w-5 text-red-500" />
-                  <p>Connection failed — could not fetch data from Seeking Alpha</p>
+                  <p>
+                    Connection failed — could not fetch data from Seeking Alpha
+                  </p>
                 </>
               )}
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="sa-email">Email</Label>
+            <Label htmlFor="sa-api-key">RapidAPI Key</Label>
             <Input
-              id="sa-email"
-              type="email"
-              placeholder="your@email.com"
-              value={saEmail}
-              onChange={(e) => setSaEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="sa-password">Password</Label>
-            <Input
-              id="sa-password"
+              id="sa-api-key"
               type="password"
-              placeholder="••••••••"
-              value={saPassword}
-              onChange={(e) => setSaPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSaveSACredentials()}
+              placeholder="Enter your RapidAPI key"
+              value={saApiKey}
+              onChange={(e) => setSaApiKey(e.target.value)}
+              onKeyDown={(e) =>
+                e.key === "Enter" && handleSaveSACredentials()
+              }
             />
           </div>
           <div className="flex gap-2">
             <Button
               onClick={handleSaveSACredentials}
-              disabled={saSaving || !saEmail.trim() || !saPassword}
+              disabled={saSaving || !saApiKey.trim()}
             >
               {saSaving ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -580,11 +543,11 @@ export function ResearchSection() {
             )}
           </div>
           {saSaveSuccess && (
-            <p className="text-sm text-green-600">Credentials saved</p>
+            <p className="text-sm text-green-600">API key saved</p>
           )}
           <p className="text-sm text-muted-foreground">
-            Optional. Providing Seeking Alpha credentials unlocks premium metrics and
-            community discussion data. Without credentials, public data is still collected.
+            Provide a RapidAPI key for Seeking Alpha data (metrics, articles,
+            comments). Get one at rapidapi.com/apidojo/api/seeking-alpha.
           </p>
         </CardContent>
       </Card>
