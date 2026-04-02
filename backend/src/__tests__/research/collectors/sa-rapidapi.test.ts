@@ -20,6 +20,9 @@ import {
   deleteSAApiKey,
   getSAApiKeyStatus,
   fetchSAMetrics,
+  fetchSAArticles,
+  fetchSACommentIds,
+  fetchSAComments,
 } from "../../../services/research/collectors/sa-rapidapi.js";
 
 const mockPrisma = vi.mocked(prisma);
@@ -152,6 +155,88 @@ describe("sa-rapidapi", () => {
       const result = await fetchSAMetrics("AAPL", ["pe_nongaap_fy1"]);
       expect(result).toBeNull();
       expect(warnSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe("fetchSAArticles", () => {
+    beforeEach(() => {
+      mockPrisma.setting.findUnique.mockResolvedValue({
+        id: "1", key: "sa_rapidapi_key", value: "test-key", updatedAt: new Date(),
+      });
+    });
+
+    it("fetches and returns articles", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: "100", attributes: { title: "Article One", publishOn: "2026-03-01T10:00:00Z", commentCount: 5 } },
+            { id: "200", attributes: { title: "Article Two", publishOn: "2026-03-02T10:00:00Z", commentCount: 0 } },
+          ],
+        }),
+      });
+
+      const result = await fetchSAArticles("AAPL", 90);
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe("100");
+      expect(result[0].attributes.title).toBe("Article One");
+    });
+
+    it("returns empty array when API returns null", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 500 });
+      const result = await fetchSAArticles("AAPL", 90);
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("fetchSACommentIds", () => {
+    beforeEach(() => {
+      mockPrisma.setting.findUnique.mockResolvedValue({
+        id: "1", key: "sa_rapidapi_key", value: "test-key", updatedAt: new Date(),
+      });
+    });
+
+    it("fetches comment IDs", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [{ id: "c1" }, { id: "c2" }] }),
+      });
+
+      const result = await fetchSACommentIds("100");
+      expect(result).toEqual(["c1", "c2"]);
+    });
+
+    it("returns empty array on failure", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 404 });
+      const result = await fetchSACommentIds("100");
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("fetchSAComments", () => {
+    beforeEach(() => {
+      mockPrisma.setting.findUnique.mockResolvedValue({
+        id: "1", key: "sa_rapidapi_key", value: "test-key", updatedAt: new Date(),
+      });
+    });
+
+    it("fetches comments with bracket array syntax", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: "c1", attributes: { content: "Great", createdOn: "2026-03-01T12:00:00Z", likesCount: 5 } },
+          ],
+        }),
+      });
+
+      const result = await fetchSAComments("100", ["c1", "c2"]);
+      expect(result).toHaveLength(1);
+      expect(result[0].attributes.content).toBe("Great");
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain("comment_ids[]=c1");
+      expect(url).toContain("comment_ids[]=c2");
     });
   });
 });
