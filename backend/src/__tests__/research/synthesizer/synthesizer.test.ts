@@ -33,6 +33,12 @@ const validOutput = {
   confidence: 0.75,
   summary: "AAPL looks strong based on technicals.",
   fullReport: "## Recommendation\nBuy AAPL based on strong momentum.",
+  companyOverview: {
+    description: "Apple designs, manufactures, and markets consumer electronics, software, and services worldwide.",
+    sector: "Technology",
+    industry: "Consumer Electronics",
+    marketPosition: "Global leader",
+  },
 };
 
 const baseInput = {
@@ -127,6 +133,20 @@ describe("synthesizer", () => {
     await expect(synthesize(baseInput)).rejects.toThrow(
       "Missing summary or fullReport"
     );
+  });
+
+  it("defaults companyOverview to null when missing from response", async () => {
+    const outputWithoutOverview = {
+      recommendation: "buy",
+      confidence: 0.75,
+      summary: "AAPL looks strong.",
+      fullReport: "## Recommendation\nBuy.",
+    };
+    setResponse(JSON.stringify(outputWithoutOverview));
+
+    const result = await synthesize(baseInput);
+
+    expect(result.companyOverview).toBeNull();
   });
 
   it("accepts all valid recommendation values", async () => {

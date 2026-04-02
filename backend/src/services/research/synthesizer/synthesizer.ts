@@ -23,6 +23,12 @@ interface SynthesizerOutput {
   confidence: number;
   summary: string;
   fullReport: string;
+  companyOverview: {
+    description: string;
+    sector: string;
+    industry: string;
+    marketPosition: string;
+  } | null;
 }
 
 export type SynthesizerMode = "claude-cli" | "api";
@@ -49,7 +55,13 @@ Output format (respond with ONLY this JSON, no markdown fences):
   "recommendation": "buy|sell|wheel|hold|avoid",
   "confidence": 0.0-1.0,
   "summary": "2-3 sentence executive summary",
-  "fullReport": "Full markdown report with sections"
+  "fullReport": "Full markdown report with sections",
+  "companyOverview": {
+    "description": "1-2 sentences about what the company does",
+    "sector": "e.g. Technology, Healthcare, Financials, Energy, Consumer Discretionary",
+    "industry": "e.g. Consumer Electronics, Semiconductors, Biotechnology",
+    "marketPosition": "e.g. Global leader, Major player, Mid-cap challenger, Niche player, Emerging competitor"
+  }
 }
 
 The fullReport should have these markdown sections:
@@ -127,9 +139,9 @@ function extractJson(text: string): string {
 }
 
 function parseAndValidate(text: string): SynthesizerOutput {
-  let parsed: SynthesizerOutput;
+  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(extractJson(text)) as SynthesizerOutput;
+    parsed = JSON.parse(extractJson(text)) as Record<string, unknown>;
   } catch (e) {
     throw new Error(
       `Failed to parse synthesizer JSON output: ${(e as Error).message}. Raw text (first 500 chars): ${text.slice(0, 500)}`
@@ -137,7 +149,7 @@ function parseAndValidate(text: string): SynthesizerOutput {
   }
 
   const validRecs = ["buy", "sell", "wheel", "hold", "avoid"];
-  if (!validRecs.includes(parsed.recommendation)) {
+  if (!validRecs.includes(parsed.recommendation as string)) {
     throw new Error(`Invalid recommendation: ${parsed.recommendation}`);
   }
   if (typeof parsed.confidence !== "number" || parsed.confidence < 0 || parsed.confidence > 1) {
@@ -147,7 +159,29 @@ function parseAndValidate(text: string): SynthesizerOutput {
     throw new Error("Missing summary or fullReport in synthesizer output");
   }
 
-  return parsed;
+  // Normalize companyOverview — accept valid object or default to null
+  let companyOverview: SynthesizerOutput["companyOverview"] = null;
+  if (
+    parsed.companyOverview &&
+    typeof parsed.companyOverview === "object" &&
+    typeof (parsed.companyOverview as Record<string, unknown>).description === "string"
+  ) {
+    const co = parsed.companyOverview as Record<string, string>;
+    companyOverview = {
+      description: co.description ?? "",
+      sector: co.sector ?? "",
+      industry: co.industry ?? "",
+      marketPosition: co.marketPosition ?? "",
+    };
+  }
+
+  return {
+    recommendation: parsed.recommendation as string,
+    confidence: parsed.confidence as number,
+    summary: parsed.summary as string,
+    fullReport: parsed.fullReport as string,
+    companyOverview,
+  };
 }
 
 let client: Anthropic | null = null;
