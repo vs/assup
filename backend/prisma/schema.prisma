@@ -400,7 +400,8 @@ model ResearchReport {
   confidence     Float
   summary        String
   fullReport     String   @map("full_report")
-  analysisIds    String[] @map("analysis_ids") @db.Uuid
+  analysisIds     String[] @map("analysis_ids") @db.Uuid
+  companyOverview Json?    @map("company_overview")
 
   ticker ResearchTicker @relation(fields: [tickerId], references: [id], onDelete: Cascade)
 
