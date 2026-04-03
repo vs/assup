@@ -162,35 +162,39 @@ function createProgressUpdater(jobId: string): ProgressUpdater {
     },
 
     async symbolComplete(symbol: string, assetClass: string, newOpportunities: OptionOpportunity[]) {
-      // Fetch current job state
-      const job = await prisma.scanJob.findUnique({ where: { id: jobId } });
-      if (!job) return;
-
-      const existingOpportunities = (job.opportunities as unknown as OptionOpportunity[]) || [];
-      const allOpportunities = [...existingOpportunities, ...newOpportunities];
-
-      // Calculate best stats
-      let bestAnnualReturn = job.bestAnnualReturn;
-      let bestPremiumPct = job.bestPremiumPct;
+      // Calculate best stats from new opportunities
+      let newBestAnnualReturn: number | null = null;
+      let newBestPremiumPct: number | null = null;
       for (const opp of newOpportunities) {
-        if (!bestAnnualReturn || opp.annualizedReturn > bestAnnualReturn) {
-          bestAnnualReturn = opp.annualizedReturn;
+        if (newBestAnnualReturn === null || opp.annualizedReturn > newBestAnnualReturn) {
+          newBestAnnualReturn = opp.annualizedReturn;
         }
-        if (!bestPremiumPct || opp.premiumPercent > bestPremiumPct) {
-          bestPremiumPct = opp.premiumPercent;
+        if (newBestPremiumPct === null || opp.premiumPercent > newBestPremiumPct) {
+          newBestPremiumPct = opp.premiumPercent;
         }
       }
 
-      await prisma.scanJob.update({
-        where: { id: jobId },
-        data: {
-          scannedSymbols: { increment: 1 },
-          opportunityCount: allOpportunities.length,
-          bestAnnualReturn,
-          bestPremiumPct,
-          opportunities: allOpportunities as any,
-        },
-      });
+      // Atomic JSON append + stats update to avoid read-modify-write race
+      const newOppsJson = JSON.stringify(newOpportunities);
+      await prisma.$executeRaw`
+        UPDATE scan_jobs SET
+          scanned_symbols = scanned_symbols + 1,
+          opportunities = CASE
+            WHEN opportunities IS NULL OR opportunities = '[]'::jsonb
+            THEN ${newOppsJson}::jsonb
+            ELSE opportunities || ${newOppsJson}::jsonb
+          END,
+          opportunity_count = jsonb_array_length(
+            CASE
+              WHEN opportunities IS NULL OR opportunities = '[]'::jsonb
+              THEN ${newOppsJson}::jsonb
+              ELSE opportunities || ${newOppsJson}::jsonb
+            END
+          ),
+          best_annual_return = GREATEST(best_annual_return, ${newBestAnnualReturn}),
+          best_premium_pct = GREATEST(best_premium_pct, ${newBestPremiumPct})
+        WHERE id = ${jobId}::uuid
+      `;
 
       // Broadcast progress
       const updatedJob = await prisma.scanJob.findUnique({ where: { id: jobId } });
