@@ -133,9 +133,9 @@ class IBKRProvider implements MarketDataProvider {
           bid: md?.bid ?? 0,
           ask: md?.ask ?? 0,
           last: md?.last ?? 0,
-          volume: 0, // Not available from snapshot
+          volume: md?.volume ?? 0,
           openInterest: 0,
-          impliedVolatility: null,
+          impliedVolatility: md?.impliedVolatility ?? null,
           delta: md?.delta ?? null,
           gamma: null,
           theta: null,

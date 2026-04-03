@@ -73,6 +73,8 @@ interface TickerData {
   last?: number;
   close?: number;
   delta?: number;
+  volume?: number;
+  impliedVolatility?: number;
 }
 
 export type FundamentalReportType = "ReportSnapshot" | "ReportRatios" | "RESC";
@@ -636,30 +638,40 @@ class IBKRService {
         ? { ...contract, exchange: "SMART" }
         : contract;
 
-      // Request only delayed data (generic tick list empty means delayed for users without real-time subscription)
-      const marketData = await this.api.getMarketDataSnapshot(mdContract, "", false);
+      // For options, request generic ticks for IV and open interest
+      const genericTicks = contract.secType === SecType.OPT ? "106,101" : "";
+      const marketData = await this.api.getMarketDataSnapshot(mdContract, genericTicks, false);
 
       if (!marketData) {
         return null;
       }
 
-      // Extract bid, ask, last, close from the market data map
-      // TickType values: BID=1, ASK=2, LAST=4, CLOSE=9
+      // Extract bid, ask, last, close, volume from the market data map
+      // TickType values: BID=1, ASK=2, LAST=4, VOLUME=8, CLOSE=9
       const bidTick = marketData.get(1); // BID
       const askTick = marketData.get(2); // ASK
       const lastTick = marketData.get(4); // LAST
+      const volumeTick = marketData.get(8); // VOLUME
       const closeTick = marketData.get(9); // CLOSE
 
-      // Extract delta for options (IBApiNext tick types)
+      // Extract delta and IV for options (IBApiNext tick types)
       // MODEL_OPTION_DELTA=10041, DELAYED_MODEL_OPTION_DELTA=10047
       // BID_OPTION_DELTA=10005, DELAYED_BID_OPTION_DELTA=10011
+      // MODEL_OPTION_IV=10044, DELAYED_MODEL_OPTION_IV=10050
+      // OPTION_IMPLIED_VOL=24
       let delta: number | undefined;
+      let impliedVolatility: number | undefined;
       if (contract.secType === SecType.OPT) {
         const modelDelta = marketData.get(10041); // MODEL_OPTION_DELTA
         const delayedModelDelta = marketData.get(10047); // DELAYED_MODEL_OPTION_DELTA
         const bidDelta = marketData.get(10005); // BID_OPTION_DELTA
         const delayedBidDelta = marketData.get(10011); // DELAYED_BID_OPTION_DELTA
         delta = modelDelta?.value ?? delayedModelDelta?.value ?? bidDelta?.value ?? delayedBidDelta?.value;
+
+        const modelIV = marketData.get(10044); // MODEL_OPTION_IV
+        const delayedModelIV = marketData.get(10050); // DELAYED_MODEL_OPTION_IV
+        const optionIV = marketData.get(24); // OPTION_IMPLIED_VOL
+        impliedVolatility = modelIV?.value ?? delayedModelIV?.value ?? optionIV?.value;
       }
 
       return {
@@ -668,7 +680,9 @@ class IBKRService {
         ask: askTick?.value,
         last: lastTick?.value,
         close: closeTick?.value,
+        volume: volumeTick?.value,
         delta,
+        impliedVolatility,
       };
     } catch (err) {
       // Check if it's a subscription error or no security definition error
@@ -1222,15 +1236,28 @@ class IBKRService {
       };
     } catch (err) {
       const error = err as { code?: number; message?: string };
+
+      // If fundamentals tick (258) caused the error, retry without it
+      // so we still get volatility, option activity, and shortable data
+      if (
+        (error.code === 10358 || error.message?.includes("not allowed")) &&
+        genericTickList.includes("258")
+      ) {
+        const ticksWithoutFundamentals = genericTickList
+          .split(",")
+          .filter((t) => t.trim() !== "258")
+          .join(",");
+        console.log(`Retrying enhanced market data for ${contract.symbol} without tick 258 (fundamentals not allowed)`);
+        return this.getEnhancedMarketData(contract, ticksWithoutFundamentals);
+      }
+
       if (
         error.code === 10091 ||  // Subscription required
         error.code === 200 ||    // No security definition
         error.code === 321 ||    // Snapshot not applicable to generic ticks
-        error.code === 10358 ||  // Fundamentals data not allowed
         error.message?.includes("additional subscription") ||
         error.message?.includes("No security definition") ||
-        error.message?.includes("not applicable to generic ticks") ||
-        error.message?.includes("not allowed")
+        error.message?.includes("not applicable to generic ticks")
       ) {
         return null;
       }
