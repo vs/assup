@@ -182,7 +182,7 @@ class IBKRService {
           // Skip error 200 (no security definition) and 10091 (additional subscription required)
           // as these are expected during options scanning and handled gracefully
           const code = Number(err.code);
-          if (code && code < 2000 && code !== 200 && code !== 10091) {
+          if (code && code < 2000 && code !== 200 && code !== 321 && code !== 10091) {
             console.error(`TWS Error ${err.code}: ${err.error?.message}`);
           }
         },
@@ -691,8 +691,10 @@ class IBKRService {
       if (
         error.code === 10091 || // Subscription required
         error.code === 200 ||    // No security definition found
+        error.code === 321 ||    // Snapshot not applicable to generic ticks
         error.message?.includes("additional subscription") ||
-        error.message?.includes("No security definition")
+        error.message?.includes("No security definition") ||
+        error.message?.includes("not applicable to generic ticks")
       ) {
         // Silently skip - these are expected for options without proper subscriptions or invalid contracts
         return null;
