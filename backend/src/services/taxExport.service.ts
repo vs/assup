@@ -20,19 +20,78 @@ class TaxExportService {
    * Generate XLSX export for tax reporting
    */
   async generateExport(year: number): Promise<Buffer> {
-    const summary = await taxCalculationService.getSummary(year);
+    // Fetch all detail data once (getSummary would re-fetch all of these internally)
+    const [stockTrades, optionTrades, dividends, interest, rates] = await Promise.all([
+      taxCalculationService.getStockTrades(year),
+      taxCalculationService.getOptionTrades(year),
+      taxCalculationService.getDividends(year),
+      taxCalculationService.getInterest(year),
+      cnbExchangeRateService.getRatesForYear(year),
+    ]);
 
-    if (!summary.canExport) {
+    // Build summary from the already-fetched detail data
+    const missingRecords = [
+      ...stockTrades.trades
+        .filter((t) => t.status === "missing_buy")
+        .map((t) => ({
+          symbol: t.symbol,
+          tradeDate: t.dateClosed,
+          quantity: t.quantity,
+          proceeds: t.proceedsUsd,
+          type: "stock" as const,
+          description: `Sold ${t.quantity} shares, no buy record found`,
+        })),
+      ...optionTrades.trades
+        .filter((t) => t.status === "missing_open")
+        .map((t) => ({
+          symbol: t.symbol,
+          tradeDate: t.dateClosed,
+          quantity: t.quantity,
+          proceeds: t.proceedsUsd,
+          type: "option" as const,
+          description: `Closed ${t.description}, no open record found`,
+        })),
+    ];
+
+    if (missingRecords.length > 0) {
       throw new Error(
-        `Cannot export: ${summary.missingRecords.length} missing trade records`
+        `Cannot export: ${missingRecords.length} missing trade records`
       );
     }
 
-    const stockTrades = await taxCalculationService.getStockTrades(year);
-    const optionTrades = await taxCalculationService.getOptionTrades(year);
-    const dividends = await taxCalculationService.getDividends(year);
-    const interest = await taxCalculationService.getInterest(year);
-    const rates = await cnbExchangeRateService.getRatesForYear(year);
+    const summary: TaxSummary = {
+      year,
+      securities: {
+        income: stockTrades.totals.income,
+        expenses: stockTrades.totals.expenses,
+        profit: stockTrades.totals.profit,
+        tradeCount: stockTrades.trades.length,
+        exemptCount: stockTrades.trades.filter((t) => t.isExempt).length,
+      },
+      derivatives: {
+        income: optionTrades.totals.income,
+        expenses: optionTrades.totals.expenses,
+        profit: optionTrades.totals.profit,
+        tradeCount: optionTrades.trades.length,
+      },
+      dividends: {
+        gross: dividends.totals.gross,
+        withholdingTax: dividends.totals.withholdingTax,
+        net: dividends.totals.net,
+        byCountry: dividends.byCountry,
+      },
+      interest: {
+        total: interest.total,
+        count: interest.interest.length,
+      },
+      valueTest: {
+        grossProceedsCzk: stockTrades.grossProceedsCzk,
+        thresholdCzk: 100_000,
+        isExempt: stockTrades.grossProceedsCzk < 100_000,
+      },
+      missingRecords: [],
+      canExport: true,
+    };
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Assup Tax Export";
