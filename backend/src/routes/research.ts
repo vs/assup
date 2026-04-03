@@ -37,6 +37,11 @@ import { NotFoundError } from "../services/research/errors/AppError.js";
 
 const router = Router();
 
+// ── Claude status cache (avoid spawning CLI on every page load) ─────
+
+let claudeStatusCache: { result: unknown; expiresAt: number } | null = null;
+const CLAUDE_STATUS_TTL = 5 * 60 * 1000; // 5 minutes
+
 // ── Helper: test Claude CLI ─────────────────────────────────────────
 
 function testCli(prompt: string, oauthToken?: string): Promise<{ ok: boolean; error?: string }> {
@@ -312,13 +317,19 @@ router.get(
 router.get(
   "/claude-status",
   asyncHandler(async (_req, res) => {
+    // Return cached result if fresh (CLI spawn + test prompt is slow)
+    if (claudeStatusCache && Date.now() < claudeStatusCache.expiresAt) {
+      res.json(claudeStatusCache.result);
+      return;
+    }
+
     // Check if claude CLI is installed
     const versionResult = await new Promise<{
       ok: boolean;
       version?: string;
       error?: string;
     }>((resolve) => {
-      execFile("claude", ["--version"], (err, stdout, stderr) => {
+      execFile("claude", ["--version"], { timeout: 10_000 }, (err, stdout, stderr) => {
         if (err) {
           resolve({ ok: false, error: err.message });
         } else {
@@ -328,11 +339,13 @@ router.get(
     });
 
     if (!versionResult.ok) {
-      res.json({
+      const result = {
         available: false,
         mode: "none",
         error: `Claude CLI not found: ${versionResult.error}`,
-      });
+      };
+      claudeStatusCache = { result, expiresAt: Date.now() + CLAUDE_STATUS_TTL };
+      res.json(result);
       return;
     }
 
@@ -340,15 +353,19 @@ router.get(
     const storedToken = await getOAuthToken();
     const testResult = await testCli("Reply with exactly: ok", storedToken ?? undefined);
     if (!testResult.ok) {
-      res.json({
+      const result = {
         available: false,
         mode: "cli",
         error: `Claude CLI not authenticated: ${testResult.error}`,
-      });
+      };
+      claudeStatusCache = { result, expiresAt: Date.now() + CLAUDE_STATUS_TTL };
+      res.json(result);
       return;
     }
 
-    res.json({ available: true, mode: "cli" });
+    const result = { available: true, mode: "cli" };
+    claudeStatusCache = { result, expiresAt: Date.now() + CLAUDE_STATUS_TTL };
+    res.json(result);
   })
 );
 
@@ -390,6 +407,7 @@ router.put(
     }
 
     await setOAuthToken(token);
+    claudeStatusCache = null; // Invalidate cache after token change
     const status = await getAuthStatus();
     res.json(status);
   })
@@ -403,6 +421,7 @@ router.delete(
   "/auth/token",
   asyncHandler(async (_req, res) => {
     await deleteOAuthToken();
+    claudeStatusCache = null; // Invalidate cache after token removal
     const status = await getAuthStatus();
     res.json(status);
   })

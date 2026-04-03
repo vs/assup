@@ -83,18 +83,17 @@ export function ResearchSection() {
     try {
       setLoading(true);
       setError(null);
-      const [savedSettings, auth, claude, saAuth] = await Promise.all([
+      // Load fast settings first — don't block on slow claude CLI check
+      const [savedSettings, auth, saAuth] = await Promise.all([
         settingsApi
           .get<ResearchSettings>("research")
           .then((r) => r.value)
           .catch(() => defaultSettings),
         researchApi.getAuthStatus().catch(() => null),
-        researchApi.getClaudeStatus().catch(() => null),
         researchApi.getSAAuthStatus().catch(() => null),
       ]);
       setSettings(savedSettings);
       setAuthStatus(auth);
-      setConnectionStatus(claude);
       setSaStatus(saAuth);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -105,6 +104,8 @@ export function ResearchSection() {
 
   useEffect(() => {
     loadData();
+    // Load claude status in background (spawns CLI, can be slow)
+    researchApi.getClaudeStatus().then(setConnectionStatus).catch(() => {});
   }, [loadData]);
 
   const handleModeChange = async (useCli: boolean) => {
