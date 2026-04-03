@@ -23,6 +23,7 @@ import {
   fetchSAArticles,
   fetchSACommentIds,
   fetchSAComments,
+  _resetCommentsCache,
 } from "../../../services/research/collectors/sa-rapidapi.js";
 
 const mockPrisma = vi.mocked(prisma);
@@ -30,6 +31,8 @@ const mockPrisma = vi.mocked(prisma);
 describe("sa-rapidapi", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockFetch.mockClear();
+    _resetCommentsCache();
     delete process.env.SA_RAPIDAPI_KEY;
   });
 
@@ -128,13 +131,14 @@ describe("sa-rapidapi", () => {
       expect(result).toEqual({ pe_nongaap_fy1: 25.5, revenue_growth: 0.65 });
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("filter[slugs]=aapl");
+      expect(url).toContain("/symbols/get-metrics");
+      expect(url).toContain("symbols=aapl");
       expect(url).toContain("pe_nongaap_fy1");
 
       const opts = mockFetch.mock.calls[0][1] as RequestInit;
       expect(opts.headers).toMatchObject({
         "x-RapidAPI-Key": "test-key",
-        "x-RapidAPI-Host": "seeking-alpha-api.p.rapidapi.com",
+        "x-RapidAPI-Host": "seeking-alpha.p.rapidapi.com",
       });
     });
 
@@ -220,7 +224,7 @@ describe("sa-rapidapi", () => {
       });
     });
 
-    it("fetches comments with bracket array syntax", async () => {
+    it("fetches comments by article ID", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -230,13 +234,13 @@ describe("sa-rapidapi", () => {
         }),
       });
 
-      const result = await fetchSAComments("100", ["c1", "c2"]);
+      const result = await fetchSAComments("100");
       expect(result).toHaveLength(1);
       expect(result[0].attributes.content).toBe("Great");
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("comment_ids[]=c1");
-      expect(url).toContain("comment_ids[]=c2");
+      expect(url).toContain("/comments/list");
+      expect(url).toContain("id=100");
     });
   });
 });

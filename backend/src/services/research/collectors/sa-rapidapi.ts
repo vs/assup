@@ -1,6 +1,6 @@
 import { prisma } from "../db.js";
 
-const RAPIDAPI_HOST = "seeking-alpha-api.p.rapidapi.com";
+const RAPIDAPI_HOST = "seeking-alpha.p.rapidapi.com";
 const RAPIDAPI_BASE = `https://${RAPIDAPI_HOST}`;
 const SETTINGS_KEY = "sa_rapidapi_key";
 
@@ -112,7 +112,7 @@ export async function fetchSAMetrics(
 ): Promise<Record<string, number> | null> {
   const slug = symbol.toLowerCase();
   const raw = await saFetch(
-    `/api/v3/metrics?filter[fields]=${fields.join(",")}&filter[slugs]=${encodeURIComponent(slug)}&minified=false`,
+    `/symbols/get-metrics?symbols=${encodeURIComponent(slug)}&fields=${fields.join(",")}`,
   );
   return flattenMetrics(raw);
 }
@@ -126,22 +126,21 @@ export interface SAArticleRaw {
 
 export async function fetchSAArticles(
   symbol: string,
-  lookbackDays: number,
+  _lookbackDays: number,
 ): Promise<SAArticleRaw[]> {
-  const since = Math.floor((Date.now() - lookbackDays * 24 * 60 * 60 * 1000) / 1000);
+  const slug = symbol.toLowerCase();
   const raw = await saFetch(
-    `/api/v3/feed?any_primary[]=${encodeURIComponent(symbol)}&filter[since]=${since}&include=author&models[]=Article&page[size]=10`,
+    `/articles/v2/list?id=${encodeURIComponent(slug)}&size=10&number=1`,
   );
   const json = raw as { data?: SAArticleRaw[] } | null;
   return json?.data ?? [];
 }
 
 export async function fetchSACommentIds(articleId: string): Promise<string[]> {
-  const raw = await saFetch(
-    `/api/v3/articles/${encodeURIComponent(articleId)}/comment_maps?include=user&lang=en&sort=-top_parent_id`,
-  );
-  const json = raw as { data?: Array<{ id: string }> } | null;
-  return (json?.data ?? []).map((d) => d.id);
+  // APIDojo /comments/list returns full comments. We extract IDs for
+  // backward compatibility with the collector's two-step flow.
+  const comments = await fetchSAComments(articleId);
+  return comments.map((c) => c.id);
 }
 
 export interface SACommentRaw {
@@ -149,14 +148,28 @@ export interface SACommentRaw {
   attributes: { content: string; createdOn: string; likesCount: number };
 }
 
+// Cache last fetch to avoid double API call (collector calls fetchSACommentIds then fetchSAComments)
+let lastCommentsCache: { articleId: string; data: SACommentRaw[] } | null = null;
+
+/** @internal test-only */
+export function _resetCommentsCache(): void {
+  lastCommentsCache = null;
+}
+
 export async function fetchSAComments(
   articleId: string,
-  commentIds: string[],
+  _commentIds?: string[],
 ): Promise<SACommentRaw[]> {
-  const idsParam = commentIds.map((id) => `comment_ids[]=${encodeURIComponent(id)}`).join("&");
+  if (lastCommentsCache?.articleId === articleId) {
+    const cached = lastCommentsCache.data;
+    lastCommentsCache = null;
+    return cached;
+  }
   const raw = await saFetch(
-    `/api/v3/articles/${encodeURIComponent(articleId)}/comments?${idsParam}&include=user&lang=en&sort=-top_parent_id`,
+    `/comments/list?id=${encodeURIComponent(articleId)}&sort=-top_parent_id&per_page=20`,
   );
   const json = raw as { data?: SACommentRaw[] } | null;
-  return json?.data ?? [];
+  const data = json?.data ?? [];
+  lastCommentsCache = { articleId, data };
+  return data;
 }
