@@ -9,6 +9,9 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(): PrismaClient {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL environment variable is required but not set.");
+  }
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   const adapter = new PrismaPg(pool);
 

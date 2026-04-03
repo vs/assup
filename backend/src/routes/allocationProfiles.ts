@@ -237,7 +237,7 @@ router.post(
       }),
     ]);
 
-    const profile = await prisma.allocationProfile.findUnique({
+    const profile = await prisma.allocationProfile.findUniqueOrThrow({
       where: { id: profileId },
       include: {
         targets: { include: { assetClass: true } },

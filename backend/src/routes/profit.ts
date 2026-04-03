@@ -100,12 +100,8 @@ router.delete(
   "/imports/:id",
   validate({ params: importBatchIdParamSchema }),
   asyncHandler(async (req, res) => {
-    try {
-      await importService.deleteImportBatch(req.params.id);
-      res.status(204).send();
-    } catch {
-      throw new NotFoundError("Import batch not found");
-    }
+    await importService.deleteImportBatch(req.params.id);
+    res.status(204).send();
   })
 );
 
@@ -135,6 +131,13 @@ router.get(
     const endDate = req.query.endDate
       ? new Date(req.query.endDate as string)
       : undefined;
+
+    if (startDate && isNaN(startDate.getTime())) {
+      throw new BadRequestError(`Invalid startDate: "${req.query.startDate}". Use YYYY-MM-DD format.`);
+    }
+    if (endDate && isNaN(endDate.getTime())) {
+      throw new BadRequestError(`Invalid endDate: "${req.query.endDate}". Use YYYY-MM-DD format.`);
+    }
 
     const result = await profitService.getMonthlyProfits(startDate, endDate);
     res.json(result);

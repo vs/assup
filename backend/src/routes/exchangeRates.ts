@@ -47,7 +47,8 @@ router.post(
   "/fetch",
   validate({ body: exchangeRateFetchSchema }),
   asyncHandler(async (req, res) => {
-    const { startDate, endDate, currencies } = req.body;
+    const { startDate, currencies } = req.body;
+    // Note: endDate is accepted by the schema but not used — rates are fetched for the entire year
     const start = new Date(startDate);
     const year = start.getFullYear();
 

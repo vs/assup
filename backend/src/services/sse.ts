@@ -33,13 +33,17 @@ class SSEService {
 
     const messageStr = `data: ${JSON.stringify(message)}\n\n`;
 
+    const failedClients: string[] = [];
     for (const [clientId, res] of this.clients.entries()) {
       try {
         res.write(messageStr);
       } catch (err) {
         console.error(`Failed to send to client ${clientId}:`, err);
-        this.removeClient(clientId);
+        failedClients.push(clientId);
       }
+    }
+    for (const clientId of failedClients) {
+      this.removeClient(clientId);
     }
   }
 

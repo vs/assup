@@ -16,7 +16,10 @@ function maskToken(token: string): string {
 export async function getOAuthToken(): Promise<string | null> {
   const setting = await prisma.setting.findUnique({ where: { key: TOKEN_KEY } });
   if (setting) {
-    return (setting.value as { token: string }).token;
+    const value = setting.value as Record<string, unknown> | null;
+    if (value && typeof value === "object" && typeof value.token === "string") {
+      return value.token;
+    }
   }
   return process.env.CLAUDE_CODE_OAUTH_TOKEN || null;
 }
@@ -36,8 +39,10 @@ export async function deleteOAuthToken(): Promise<void> {
 export async function getAuthStatus(): Promise<AuthStatus> {
   const dbSetting = await prisma.setting.findUnique({ where: { key: TOKEN_KEY } });
   if (dbSetting) {
-    const token = (dbSetting.value as { token: string }).token;
-    return { configured: true, source: "database", maskedToken: maskToken(token) };
+    const value = dbSetting.value as Record<string, unknown> | null;
+    if (value && typeof value === "object" && typeof value.token === "string") {
+      return { configured: true, source: "database", maskedToken: maskToken(value.token) };
+    }
   }
 
   const envToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;

@@ -112,14 +112,16 @@ class HistoricalDataService {
     await processNext();
 
     // Wait for all active requests to complete before marking as not processing
-    const waitForCompletion = (): Promise<void> => {
-      if (this.activeRequests > 0 || this.requestQueue.length > 0) {
-        return new Promise((resolve) => setTimeout(() => waitForCompletion().then(resolve), 50));
-      }
-      return Promise.resolve();
-    };
-
-    await waitForCompletion();
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (this.activeRequests > 0 || this.requestQueue.length > 0) {
+          setTimeout(check, 50);
+        } else {
+          resolve();
+        }
+      };
+      check();
+    });
     this.isProcessing = false;
   }
 
