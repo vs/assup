@@ -21,7 +21,6 @@ import {
   getSAApiKeyStatus,
   fetchSAMetrics,
   fetchSAArticles,
-  fetchSACommentIds,
   fetchSAComments,
 } from "../../../services/research/collectors/sa-rapidapi.js";
 
@@ -199,46 +198,68 @@ describe("sa-rapidapi", () => {
     });
   });
 
-  describe("fetchSACommentIds", () => {
-    it("fetches comment IDs via fetchSAComments", async () => {
-      mockApiKey();
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: [{ id: "c1", attributes: { content: "x", createdOn: "2026-03-01", likesCount: 1 } }] }),
-      });
-
-      const result = await fetchSACommentIds("100");
-      expect(result).toEqual(["c1"]);
-    });
-
-    it("returns empty array on failure", async () => {
-      mockApiKey();
-      mockFetch.mockResolvedValue({ ok: false, status: 404 });
-      vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await fetchSACommentIds("999");
-      expect(result).toEqual([]);
-    });
-  });
-
   describe("fetchSAComments", () => {
-    it("fetches comments by article ID", async () => {
+    it("fetches comment list then content via two API calls", async () => {
       mockApiKey();
-      mockFetch.mockResolvedValue({
+      // First call: comments/v2/list returns IDs (no content)
+      mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           data: [
-            { id: "c1", attributes: { content: "Great", createdOn: "2026-03-01T12:00:00Z", likesCount: 5 } },
+            { id: "c1", attributes: { createdOn: "2026-03-01T12:00:00Z", likesCount: 5 } },
+            { id: "c2", attributes: { createdOn: "2026-03-01T13:00:00Z", likesCount: 2 } },
+          ],
+        }),
+      });
+      // Second call: comments/get-contents returns actual content
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: "c1", attributes: { content: "Great analysis", createdOn: "2026-03-01T12:00:00Z", likesCount: 5 } },
+            { id: "c2", attributes: { content: "I disagree", createdOn: "2026-03-01T13:00:00Z", likesCount: 2 } },
           ],
         }),
       });
 
       const result = await fetchSAComments("100");
-      expect(result).toHaveLength(1);
-      expect(result[0].attributes.content).toBe("Great");
+      expect(result).toHaveLength(2);
+      expect(result[0].attributes.content).toBe("Great analysis");
+      expect(result[1].attributes.content).toBe("I disagree");
 
-      const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("/comments/v2/list");
-      expect(url).toContain("id=100");
+      // Verify first call is comments/v2/list
+      const listUrl = mockFetch.mock.calls[0][0] as string;
+      expect(listUrl).toContain("/comments/v2/list");
+      expect(listUrl).toContain("id=100");
+
+      // Verify second call is comments/get-contents with comment IDs
+      const contentsUrl = mockFetch.mock.calls[1][0] as string;
+      expect(contentsUrl).toContain("/comments/get-contents");
+      expect(contentsUrl).toContain("id=100");
+      expect(contentsUrl).toContain("comment_ids=c1");
+      expect(contentsUrl).toContain("comment_ids=c2");
+    });
+
+    it("returns empty array when no comments listed", async () => {
+      mockApiKey();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      const result = await fetchSAComments("100");
+      expect(result).toEqual([]);
+      // Should not make a second call
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns empty array when list call fails", async () => {
+      mockApiKey();
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const result = await fetchSAComments("999");
+      expect(result).toEqual([]);
     });
   });
 });

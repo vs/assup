@@ -135,15 +135,10 @@ export async function fetchSAArticles(
 ): Promise<SAArticleRaw[]> {
   const slug = symbol.toLowerCase();
   const raw = await saFetch(
-    `/analysis/v2/list?id=${encodeURIComponent(slug)}&size=10&number=1`,
+    `/analysis/v2/list?id=${encodeURIComponent(slug)}&size=40&number=1`,
   );
   const data = (raw as { data?: SAArticleRaw[] } | null)?.data ?? [];
   return data;
-}
-
-export async function fetchSACommentIds(articleId: string): Promise<string[]> {
-  const comments = await fetchSAComments(articleId);
-  return comments.map((c) => c.id);
 }
 
 export interface SACommentRaw {
@@ -151,23 +146,29 @@ export interface SACommentRaw {
   attributes: { content: string; createdOn: string; likesCount: number };
 }
 
-// Cache last fetch to avoid double API call (collector calls fetchSACommentIds then fetchSAComments)
-let lastCommentsCache: { articleId: string; data: SACommentRaw[] } | null = null;
-
 export async function fetchSAComments(
   articleId: string,
-  _commentIds?: string[],
 ): Promise<SACommentRaw[]> {
-  if (lastCommentsCache?.articleId === articleId) {
-    const cached = lastCommentsCache.data;
-    lastCommentsCache = null;
-    return cached;
-  }
-  const raw = await saFetch(
-    `/comments/v2/list?id=${encodeURIComponent(articleId)}&sort=-top_parent_id&per_page=20`,
+  // Step 1: Get comment list (metadata only — no content)
+  const listRaw = await saFetch(
+    `/comments/v2/list?id=${encodeURIComponent(articleId)}&sort=-top_parent_id&per_page=100`,
   );
-  const json = raw as { data?: SACommentRaw[] } | null;
-  const data = json?.data ?? [];
-  lastCommentsCache = { articleId, data };
-  return data;
+  const listJson = listRaw as { data?: Array<{ id: string; attributes: Record<string, unknown> }> } | null;
+  const commentList = listJson?.data ?? [];
+  if (commentList.length === 0) return [];
+
+  // Step 2: Fetch actual content via comments/get-contents (batches of 50)
+  const results: SACommentRaw[] = [];
+  for (let i = 0; i < commentList.length; i += 50) {
+    const batch = commentList.slice(i, i + 50);
+    const idsParam = batch.map((c) => `comment_ids=${encodeURIComponent(c.id)}`).join("&");
+    const contentRaw = await saFetch(
+      `/comments/get-contents?id=${encodeURIComponent(articleId)}&${idsParam}&sort=-top_parent_id`,
+    );
+    const contentJson = contentRaw as { data?: SACommentRaw[] } | null;
+    if (contentJson?.data) {
+      results.push(...contentJson.data);
+    }
+  }
+  return results;
 }

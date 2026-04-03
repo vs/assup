@@ -1,9 +1,9 @@
 // backend/src/services/research/collectors/sa-comments.collector.ts
 import type { Collector, CollectionResult } from "./types.js";
-import { fetchSAArticles, fetchSACommentIds, fetchSAComments } from "./sa-rapidapi.js";
+import { fetchSAArticles, fetchSAComments } from "./sa-rapidapi.js";
 
-const MAX_ARTICLES = 3;
-const MAX_COMMENTS_PER_ARTICLE = 20;
+const MAX_ARTICLES = 50;
+const MAX_COMMENTS_PER_ARTICLE = 100;
 const LOOKBACK_DAYS = 90;
 
 export const saCommentsCollector: Collector = {
@@ -16,7 +16,7 @@ export const saCommentsCollector: Collector = {
     try {
       const allArticles = await fetchSAArticles(symbol, LOOKBACK_DAYS);
       articlesRaw = allArticles
-        .filter((a) => a.attributes.commentCount > 0)
+        .filter((a) => (a.attributes.commentCount ?? 1) > 0)
         .slice(0, MAX_ARTICLES);
       console.log(`[sa_comments] ${symbol}: ${allArticles.length} articles found, ${articlesRaw.length} with comments`);
     } catch (err) {
@@ -25,27 +25,17 @@ export const saCommentsCollector: Collector = {
 
     const articles = await Promise.all(
       articlesRaw.map(async (article) => {
-        let commentIds: string[] = [];
+        let comments: Array<{ id: string; content: string; createdAt: string; likes: number }> = [];
         try {
-          commentIds = await fetchSACommentIds(article.id);
+          const raw = await fetchSAComments(article.id);
+          comments = raw.slice(0, MAX_COMMENTS_PER_ARTICLE).map((d) => ({
+            id: d.id,
+            content: stripHtml(d.attributes.content ?? ""),
+            createdAt: d.attributes.createdOn,
+            likes: d.attributes.likesCount,
+          }));
         } catch {
           // skip comments for this article
-        }
-
-        let comments: Array<{ id: string; content: string; createdAt: string; likes: number }> = [];
-        const idsToFetch = commentIds.slice(0, MAX_COMMENTS_PER_ARTICLE);
-        if (idsToFetch.length > 0) {
-          try {
-            const raw = await fetchSAComments(article.id, idsToFetch);
-            comments = raw.map((d) => ({
-              id: d.id,
-              content: stripHtml(d.attributes.content),
-              createdAt: d.attributes.createdOn,
-              likes: d.attributes.likesCount,
-            }));
-          } catch {
-            // skip comments for this article
-          }
         }
 
         return {
