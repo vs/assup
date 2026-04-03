@@ -390,7 +390,7 @@ export function groupOptionTrades(
     const closeQuantity = closeTrades.reduce((sum, t) => sum + Math.abs(t.quantity), 0);
 
     // Prepare open trades with per-contract values for FIFO matching
-    const openTradesForFifo = openTrades.map(t => ({
+    const openTradesForFifo = openTrades.filter(t => t.quantity !== 0).map(t => ({
       remainingQty: Math.abs(t.quantity),
       pricePerContract: Math.abs(t.proceeds) / Math.abs(t.quantity),
       commissionPerContract: t.commission / Math.abs(t.quantity)

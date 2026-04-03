@@ -872,6 +872,7 @@ export const wheelService = {
 
       // Check against assigned options lookup
       const tradeDate = trade.tradeDate.toISOString().split("T")[0];
+      if (trade.quantity === 0) return null;
       const tradePrice = Math.abs(trade.proceeds / trade.quantity);
 
       // Look for matching assigned option (date within 5 days, price within 2% of strike)
