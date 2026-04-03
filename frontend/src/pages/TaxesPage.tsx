@@ -53,7 +53,7 @@ export function TaxesPage() {
     if (!summary?.canExport) return;
     setExporting(true);
     try {
-      taxesApi.export(selectedYear);
+      await taxesApi.export(selectedYear);
     } finally {
       setExporting(false);
     }

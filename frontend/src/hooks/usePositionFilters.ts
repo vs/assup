@@ -65,7 +65,7 @@ export function usePositionFilters() {
         setSearchParams({}, { replace: true });
       }
     }
-  }, [filters, searchParams, setSearchParams]);
+  }, [filters, setSearchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setFilters = useCallback((newFilters: FilterState) => {
     setFiltersState(newFilters);

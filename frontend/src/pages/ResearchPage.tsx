@@ -451,7 +451,9 @@ export function ResearchPage() {
 
         if (job.status === "completed") {
           const report = await researchApi.getReport(symbol);
-          setReports((prev) => ({ ...prev, [symbol]: report }));
+          if (report) {
+            setReports((prev) => ({ ...prev, [symbol]: report }));
+          }
           return;
         }
 

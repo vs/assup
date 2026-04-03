@@ -152,9 +152,22 @@ export function AssetClassesSection() {
         });
         setHasUnsavedChanges(true);
       }
+      // Capture pending edits before reload (loadData resets editedPercentages)
+      const pendingEdits = new Map(editedPercentages);
+      if (!editingClass) {
+        // For new class, the state update above hasn't flushed yet,
+        // so we manually add it to the captured map
+        const classes = await api.assetClasses.list();
+        const newClass = classes.find((c) => c.name === formData.name);
+        if (newClass) pendingEdits.set(newClass.id, formData.targetPercentage);
+      }
       setDialogOpen(false);
       await loadData();
-      // Restore edited percentages after reload if we had changes
+      // Restore pending edits that loadData wiped
+      if (pendingEdits.size > 0) {
+        setEditedPercentages(pendingEdits);
+        setHasUnsavedChanges(true);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save asset class");
     } finally {

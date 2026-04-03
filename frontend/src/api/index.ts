@@ -21,6 +21,7 @@ export { profitApi } from "./profit";
 export { wheelApi } from "./wheel";
 export { researchApi } from "./research";
 export { wheelScannerApi } from "./wheelScanner";
+export { exchangeRatesApi } from "./exchangeRates";
 
 // Combined api object for backward compatibility
 import { assetClassesApi } from "./assetClasses";
@@ -36,6 +37,7 @@ import { profitApi } from "./profit";
 import { wheelApi } from "./wheel";
 import { researchApi } from "./research";
 import { wheelScannerApi } from "./wheelScanner";
+import { exchangeRatesApi } from "./exchangeRates";
 
 export const api = {
   assetClasses: assetClassesApi,
@@ -51,4 +53,5 @@ export const api = {
   wheel: wheelApi,
   research: researchApi,
   wheelScanner: wheelScannerApi,
+  exchangeRates: exchangeRatesApi,
 };
