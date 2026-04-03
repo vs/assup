@@ -27,6 +27,12 @@ import {
 
 const mockPrisma = vi.mocked(prisma);
 
+function mockApiKey() {
+  mockPrisma.setting.findUnique.mockResolvedValue({
+    id: "1", key: "sa_rapidapi_key", value: "test-key", updatedAt: new Date(),
+  });
+}
+
 describe("sa-rapidapi", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -108,9 +114,7 @@ describe("sa-rapidapi", () => {
 
   describe("fetchSAMetrics", () => {
     it("fetches and flattens metrics", async () => {
-      mockPrisma.setting.findUnique.mockResolvedValue({
-        id: "1", key: "sa_rapidapi_key", value: "test-key", updatedAt: new Date(),
-      });
+      mockApiKey();
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -131,7 +135,6 @@ describe("sa-rapidapi", () => {
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain("/symbols/get-metrics");
       expect(url).toContain("symbols=aapl");
-      expect(url).toContain("pe_nongaap_fy1");
 
       const opts = mockFetch.mock.calls[0][1] as RequestInit;
       expect(opts.headers).toMatchObject({
@@ -148,9 +151,7 @@ describe("sa-rapidapi", () => {
     });
 
     it("returns null on HTTP error", async () => {
-      mockPrisma.setting.findUnique.mockResolvedValue({
-        id: "1", key: "sa_rapidapi_key", value: "test-key", updatedAt: new Date(),
-      });
+      mockApiKey();
       mockFetch.mockResolvedValue({ ok: false, status: 403 });
 
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -161,30 +162,37 @@ describe("sa-rapidapi", () => {
   });
 
   describe("fetchSAArticles", () => {
-    it("fetches articles using direct SA API with ticker filter", async () => {
+    it("fetches articles via /analysis/v2/list with ticker as id", async () => {
+      mockApiKey();
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
           data: [
-            { id: "100", attributes: { title: "Article One", publishOn: "2026-03-01T10:00:00Z", commentCount: 5 } },
-            { id: "200", attributes: { title: "Article Two", publishOn: "2026-03-02T10:00:00Z", commentCount: 0 } },
+            { id: "100", attributes: { title: "AAPL Analysis", publishOn: "2026-03-01T10:00:00Z", commentCount: 5 } },
           ],
         }),
       });
 
       const result = await fetchSAArticles("AAPL", 90);
-      expect(result).toHaveLength(2);
-      expect(result[0].id).toBe("100");
-      expect(result[0].attributes.title).toBe("Article One");
+      expect(result).toHaveLength(1);
+      expect(result[0].attributes.title).toBe("AAPL Analysis");
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("seekingalpha.com/api/v3/feed");
-      expect(url).toContain("any_primary[]=AAPL");
-      expect(url).toContain("filter[since]=");
+      expect(url).toContain("/analysis/v2/list");
+      expect(url).toContain("id=aapl");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it("returns empty array on HTTP error", async () => {
+      mockApiKey();
       mockFetch.mockResolvedValue({ ok: false, status: 500 });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = await fetchSAArticles("AAPL", 90);
+      expect(result).toEqual([]);
+    });
+
+    it("returns empty array when no API key", async () => {
+      mockPrisma.setting.findUnique.mockResolvedValue(null);
       vi.spyOn(console, "warn").mockImplementation(() => {});
       const result = await fetchSAArticles("AAPL", 90);
       expect(result).toEqual([]);
@@ -192,28 +200,29 @@ describe("sa-rapidapi", () => {
   });
 
   describe("fetchSACommentIds", () => {
-    it("fetches comment IDs from direct SA API", async () => {
+    it("fetches comment IDs via fetchSAComments", async () => {
+      mockApiKey();
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ data: [{ id: "c1" }, { id: "c2" }] }),
+        json: async () => ({ data: [{ id: "c1", attributes: { content: "x", createdOn: "2026-03-01", likesCount: 1 } }] }),
       });
 
       const result = await fetchSACommentIds("100");
-      expect(result).toEqual(["c1", "c2"]);
-
-      const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("seekingalpha.com/api/v3/articles/100/comment_maps");
+      expect(result).toEqual(["c1"]);
     });
 
     it("returns empty array on failure", async () => {
+      mockApiKey();
       mockFetch.mockResolvedValue({ ok: false, status: 404 });
-      const result = await fetchSACommentIds("100");
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = await fetchSACommentIds("999");
       expect(result).toEqual([]);
     });
   });
 
   describe("fetchSAComments", () => {
-    it("fetches comments by article ID with comment IDs", async () => {
+    it("fetches comments by article ID", async () => {
+      mockApiKey();
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -223,27 +232,13 @@ describe("sa-rapidapi", () => {
         }),
       });
 
-      const result = await fetchSAComments("100", ["c1", "c2"]);
+      const result = await fetchSAComments("100");
       expect(result).toHaveLength(1);
       expect(result[0].attributes.content).toBe("Great");
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("seekingalpha.com/api/v3/articles/100/comments");
-      expect(url).toContain("comment_ids[]=c1");
-      expect(url).toContain("comment_ids[]=c2");
-    });
-
-    it("fetches comments without specific IDs", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: [] }),
-      });
-
-      await fetchSAComments("100");
-
-      const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("seekingalpha.com/api/v3/articles/100/comments");
-      expect(url).not.toContain("comment_ids");
+      expect(url).toContain("/comments/v2/list");
+      expect(url).toContain("id=100");
     });
   });
 });

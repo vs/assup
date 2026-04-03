@@ -117,59 +117,33 @@ export async function fetchSAMetrics(
   return flattenMetrics(raw);
 }
 
-// ── Articles & Comments (Direct SA API) ─────────────────────────────
-// RapidAPI's /articles/v2/list?id= doesn't properly filter by ticker,
-// so we use the direct SA API which correctly scopes via any_primary[].
-
-const SA_DIRECT_BASE = "https://seekingalpha.com/api/v3";
-const SA_HEADERS: Record<string, string> = {
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  Accept: "application/json",
-};
+// ── Articles & Comments ──────────────────────────────────────────────
 
 export interface SAArticleRaw {
   id: string;
   attributes: { title: string; publishOn: string; commentCount: number };
 }
 
+/**
+ * Fetch analysis articles for a ticker via RapidAPI.
+ * Uses /analysis/v2/list which is the ticker-scoped analysis endpoint
+ * (not /articles/v2/list which is a general/category endpoint).
+ */
 export async function fetchSAArticles(
   symbol: string,
-  lookbackDays: number,
+  _lookbackDays: number,
 ): Promise<SAArticleRaw[]> {
-  const since = Math.floor(
-    (Date.now() - lookbackDays * 24 * 60 * 60 * 1000) / 1000,
+  const slug = symbol.toLowerCase();
+  const raw = await saFetch(
+    `/analysis/v2/list?id=${encodeURIComponent(slug)}&size=10&number=1`,
   );
-  try {
-    const res = await fetch(
-      `${SA_DIRECT_BASE}/feed?any_primary[]=${encodeURIComponent(symbol)}&filter[since]=${since}&include=author&models[]=Article&page[size]=10`,
-      { headers: SA_HEADERS },
-    );
-    if (!res.ok) {
-      console.warn(`[sa-rapidapi] Articles fetch failed for ${symbol}: HTTP ${res.status}`);
-      return [];
-    }
-    const json = (await res.json()) as { data?: SAArticleRaw[] } | null;
-    return json?.data ?? [];
-  } catch (err) {
-    console.warn(`[sa-rapidapi] Articles fetch error for ${symbol}:`, (err as Error).message);
-    return [];
-  }
+  const data = (raw as { data?: SAArticleRaw[] } | null)?.data ?? [];
+  return data;
 }
 
 export async function fetchSACommentIds(articleId: string): Promise<string[]> {
-  try {
-    const res = await fetch(
-      `${SA_DIRECT_BASE}/articles/${encodeURIComponent(articleId)}/comment_maps?include=user&lang=en&sort=-top_parent_id`,
-      { headers: SA_HEADERS },
-    );
-    if (!res.ok) return [];
-    const json = (await res.json()) as { data?: Array<{ id: string }> } | null;
-    return (json?.data ?? []).map((d) => d.id);
-  } catch (err) {
-    console.warn(`[sa-rapidapi] Comment IDs fetch error for article ${articleId}:`, (err as Error).message);
-    return [];
-  }
+  const comments = await fetchSAComments(articleId);
+  return comments.map((c) => c.id);
 }
 
 export interface SACommentRaw {
@@ -177,23 +151,23 @@ export interface SACommentRaw {
   attributes: { content: string; createdOn: string; likesCount: number };
 }
 
+// Cache last fetch to avoid double API call (collector calls fetchSACommentIds then fetchSAComments)
+let lastCommentsCache: { articleId: string; data: SACommentRaw[] } | null = null;
+
 export async function fetchSAComments(
   articleId: string,
-  commentIds?: string[],
+  _commentIds?: string[],
 ): Promise<SACommentRaw[]> {
-  try {
-    const idsParam = (commentIds ?? [])
-      .map((id) => `comment_ids[]=${encodeURIComponent(id)}`)
-      .join("&");
-    const url = idsParam
-      ? `${SA_DIRECT_BASE}/articles/${encodeURIComponent(articleId)}/comments?${idsParam}&include=user&lang=en&sort=-top_parent_id`
-      : `${SA_DIRECT_BASE}/articles/${encodeURIComponent(articleId)}/comments?include=user&lang=en&sort=-top_parent_id`;
-    const res = await fetch(url, { headers: SA_HEADERS });
-    if (!res.ok) return [];
-    const json = (await res.json()) as { data?: SACommentRaw[] } | null;
-    return json?.data ?? [];
-  } catch (err) {
-    console.warn(`[sa-rapidapi] Comments fetch error for article ${articleId}:`, (err as Error).message);
-    return [];
+  if (lastCommentsCache?.articleId === articleId) {
+    const cached = lastCommentsCache.data;
+    lastCommentsCache = null;
+    return cached;
   }
+  const raw = await saFetch(
+    `/comments/v2/list?id=${encodeURIComponent(articleId)}&sort=-top_parent_id&per_page=20`,
+  );
+  const json = raw as { data?: SACommentRaw[] } | null;
+  const data = json?.data ?? [];
+  lastCommentsCache = { articleId, data };
+  return data;
 }
