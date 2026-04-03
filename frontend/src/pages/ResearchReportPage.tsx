@@ -508,7 +508,14 @@ function CommentsSection({
                 {visibleSA.map((article) => (
                   <div key={article.id}>
                     <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-sm font-medium">{article.title}</span>
+                      <a
+                        href={`https://seekingalpha.com/article/${article.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium hover:underline"
+                      >
+                        {article.title}
+                      </a>
                       <span className="text-xs text-muted-foreground shrink-0">
                         {timeAgo(article.publishedAt)}
                       </span>
@@ -571,7 +578,20 @@ function CommentsSection({
                     className="bg-muted/30 rounded-md px-3 py-2"
                   >
                     {post.title && (
-                      <p className="text-sm font-medium mb-0.5">{post.title}</p>
+                      <p className="text-sm font-medium mb-0.5">
+                        {post.url ? (
+                          <a
+                            href={post.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                          >
+                            {post.title}
+                          </a>
+                        ) : (
+                          post.title
+                        )}
+                      </p>
                     )}
                     <p className="text-xs text-foreground/80 line-clamp-3">{post.body}</p>
                     <div className="flex items-center gap-3 mt-1">
