@@ -60,40 +60,49 @@ function createFallbackProvider(primary: MarketDataProvider, fallback: MarketDat
 }
 
 export function getMarketDataProvider(): MarketDataProvider {
-  if (cachedProvider) return cachedProvider;
-
   const providerName = process.env.MARKET_DATA_PROVIDER || "auto";
 
-  switch (providerName) {
-    case "ibkr":
-      cachedProvider = createIBKRProvider();
-      break;
-    case "polygon":
-      cachedProvider = createPolygonProvider();
-      break;
-    case "auto": {
-      const ibkr = getIBKRProvider();
-      const polygon = getPolygonProvider();
+  // For explicit provider selection, cache the instance
+  if (providerName !== "auto") {
+    if (cachedProvider) return cachedProvider;
 
-      if (ibkr && polygon) {
-        cachedProvider = createFallbackProvider(ibkr, polygon);
-      } else if (ibkr) {
-        cachedProvider = ibkr;
-      } else if (polygon) {
-        cachedProvider = polygon;
-      } else {
-        throw new Error(
-          "No market data provider available: IBKR not connected and MARKET_DATA_API_KEY not set"
-        );
-      }
-      break;
+    switch (providerName) {
+      case "ibkr":
+        cachedProvider = createIBKRProvider();
+        break;
+      case "polygon":
+        cachedProvider = createPolygonProvider();
+        break;
+      default:
+        throw new Error(`Unknown market data provider: ${providerName}`);
     }
-    default:
-      throw new Error(`Unknown market data provider: ${providerName}`);
+
+    console.log(`Market data provider: ${cachedProvider.name}`);
+    return cachedProvider;
   }
 
-  console.log(`Market data provider: ${cachedProvider.name}`);
-  return cachedProvider;
+  // Auto mode: re-evaluate each time so IBKR is picked up once connected
+  const ibkr = getIBKRProvider();
+  const polygon = getPolygonProvider();
+
+  let provider: MarketDataProvider;
+  if (ibkr && polygon) {
+    provider = createFallbackProvider(ibkr, polygon);
+  } else if (ibkr) {
+    provider = ibkr;
+  } else if (polygon) {
+    provider = polygon;
+  } else {
+    throw new Error(
+      "No market data provider available: IBKR not connected and MARKET_DATA_API_KEY not set"
+    );
+  }
+
+  if (!cachedProvider || cachedProvider.name !== provider.name) {
+    console.log(`Market data provider: ${provider.name}`);
+  }
+  cachedProvider = provider;
+  return provider;
 }
 
 /**
