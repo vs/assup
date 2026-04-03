@@ -13,7 +13,7 @@ import { ibkrService } from "../services/ibkr.js";
 import { sseService } from "../services/sse.js";
 import { scannerCriteriaSchema } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
-import { isMarketOpen, parseExpirationDate } from "../utils/index.js";
+import { parseExpirationDate } from "../utils/index.js";
 import { z } from "zod";
 import type { OptionOpportunity } from "@assup/shared";
 import { Prisma } from "@prisma/client";
@@ -213,15 +213,7 @@ async function executeJobScan(
     })
   );
 
-  // Check market hours for data type
-  const marketDataType = isMarketOpen() ? 1 : 2;
-  try {
-    ibkrService.setMarketDataType(marketDataType as 1 | 2);
-  } catch (err) {
-    console.warn("Could not switch market data type:", err);
-  }
-
-  try {
+  {
     for (const symbol of filteredSymbols) {
       // Check for cancellation
       if (signal.aborted) {
@@ -385,13 +377,6 @@ async function executeJobScan(
       }
 
       await progress.symbolComplete(symbol, assetClassInfo.name, opportunities);
-    }
-  } finally {
-    // Switch back to delayed data
-    try {
-      ibkrService.setMarketDataType(3);
-    } catch (err) {
-      console.warn("Could not switch back to delayed market data:", err);
     }
   }
 }

@@ -4,7 +4,9 @@
 
 import { prisma } from "../db/index.js";
 import { sseService } from "./sse.js";
+import { ibkrService } from "./ibkr.js";
 import type { ScannerCriteria, OptionOpportunity, ScanJob } from "@assup/shared";
+import { isMarketOpen } from "../utils/index.js";
 
 // Track running jobs with their abort controllers
 const runningJobs = new Map<string, AbortController>();
@@ -70,6 +72,31 @@ async function createJob(
 }
 
 /**
+ * Manage market data type based on running job count.
+ * Switch to live/frozen when first job starts, back to delayed when last job ends.
+ */
+function acquireMarketDataType(): void {
+  if (runningJobs.size === 1) {
+    try {
+      const marketDataType = isMarketOpen() ? 1 : 2;
+      ibkrService.setMarketDataType(marketDataType as 1 | 2);
+    } catch (err) {
+      console.warn("Could not switch market data type:", err);
+    }
+  }
+}
+
+function releaseMarketDataType(): void {
+  if (runningJobs.size === 0) {
+    try {
+      ibkrService.setMarketDataType(3);
+    } catch (err) {
+      console.warn("Could not switch back to delayed market data:", err);
+    }
+  }
+}
+
+/**
  * Start job execution (call after createJob)
  */
 function startJobExecution(
@@ -78,11 +105,13 @@ function startJobExecution(
 ): void {
   const abortController = new AbortController();
   runningJobs.set(jobId, abortController);
+  acquireMarketDataType();
 
   // Execute asynchronously
   executeFn(abortController.signal, createProgressUpdater(jobId))
     .then(async () => {
       runningJobs.delete(jobId);
+      releaseMarketDataType();
       // Mark complete if not already cancelled
       const job = await prisma.scanJob.findUnique({ where: { id: jobId } });
       if (job && job.status === "running") {
@@ -98,6 +127,7 @@ function startJobExecution(
     })
     .catch(async (err) => {
       runningJobs.delete(jobId);
+      releaseMarketDataType();
       const errorMessage = err instanceof Error ? err.message : String(err);
       await prisma.scanJob.update({
         where: { id: jobId },
@@ -187,6 +217,7 @@ async function cancelJob(jobId: string): Promise<ScanJob | null> {
   if (controller) {
     controller.abort();
     runningJobs.delete(jobId);
+    releaseMarketDataType();
   }
 
   const job = await prisma.scanJob.update({
@@ -232,6 +263,7 @@ async function deleteJob(jobId: string): Promise<void> {
   if (controller) {
     controller.abort();
     runningJobs.delete(jobId);
+    releaseMarketDataType();
   }
 
   await prisma.scanJob.delete({ where: { id: jobId } });

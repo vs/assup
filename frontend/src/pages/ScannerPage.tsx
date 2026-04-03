@@ -557,9 +557,9 @@ export function ScannerPage() {
             </p>
           </div>
 
-          <Button onClick={handleScan} disabled={jobs.some((j) => j.status === "running")}>
+          <Button onClick={handleScan}>
             <Search className="h-4 w-4 mr-2" />
-            {jobs.some((j) => j.status === "running") ? "Scanning..." : "Run Scan"}
+            Run Scan
           </Button>
         </CardContent>
       </Card>
