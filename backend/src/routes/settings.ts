@@ -15,6 +15,11 @@ const router = Router();
 const DEFAULT_DASHBOARD_SETTINGS = {
   includeOptions: false,
   optionsWeightMode: "notional" as const,
+  chartsExpanded: true,
+};
+
+const DEFAULT_RESEARCH_SETTINGS = {
+  synthesizerMode: "claude-cli" as const,
 };
 
 /**
@@ -47,6 +52,10 @@ router.get(
       // Return defaults for known keys
       if (key === "dashboard") {
         res.json({ key, value: DEFAULT_DASHBOARD_SETTINGS });
+        return;
+      }
+      if (key === "research") {
+        res.json({ key, value: DEFAULT_RESEARCH_SETTINGS });
         return;
       }
       throw new NotFoundError("Setting not found");
