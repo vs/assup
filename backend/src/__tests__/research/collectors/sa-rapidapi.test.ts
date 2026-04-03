@@ -239,7 +239,7 @@ describe("sa-rapidapi", () => {
       expect(result[0].attributes.content).toBe("Great");
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("/comments/list");
+      expect(url).toContain("/comments/v2/list");
       expect(url).toContain("id=100");
     });
   });

@@ -166,7 +166,7 @@ export async function fetchSAComments(
     return cached;
   }
   const raw = await saFetch(
-    `/comments/list?id=${encodeURIComponent(articleId)}&sort=-top_parent_id&per_page=20`,
+    `/comments/v2/list?id=${encodeURIComponent(articleId)}&sort=-top_parent_id&per_page=20`,
   );
   const json = raw as { data?: SACommentRaw[] } | null;
   const data = json?.data ?? [];
