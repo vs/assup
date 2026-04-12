@@ -91,7 +91,7 @@ describe("synthesizer", () => {
     setResponse("not valid json at all");
 
     await expect(synthesize(baseInput)).rejects.toThrow(
-      "Failed to parse synthesizer JSON"
+      "No JSON object found in output"
     );
   });
 
@@ -259,7 +259,7 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
     createMockChild("This is not JSON at all");
 
     await expect(synthesize(baseInput)).rejects.toThrow(
-      "Failed to parse synthesizer JSON"
+      "No JSON object found in output"
     );
   });
 

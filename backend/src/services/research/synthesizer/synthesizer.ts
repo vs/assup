@@ -138,14 +138,34 @@ function extractJson(text: string): string {
   throw new Error("No complete JSON object found in output");
 }
 
+function repairJson(raw: string): string {
+  // Fix unescaped control characters inside JSON strings (common in Claude markdown output)
+  // Replace literal tabs and other control chars that aren't already escaped
+  let result = raw.replace(/[\x00-\x1f]/g, (ch) => {
+    if (ch === "\n") return "\\n";
+    if (ch === "\r") return "\\r";
+    if (ch === "\t") return "\\t";
+    return "";
+  });
+  // Remove trailing commas before } or ]
+  result = result.replace(/,\s*([}\]])/g, "$1");
+  return result;
+}
+
 function parseAndValidate(text: string): SynthesizerOutput {
   let parsed: Record<string, unknown>;
+  const jsonStr = extractJson(text);
   try {
-    parsed = JSON.parse(extractJson(text)) as Record<string, unknown>;
-  } catch (e) {
-    throw new Error(
-      `Failed to parse synthesizer JSON output: ${(e as Error).message}. Raw text (first 500 chars): ${text.slice(0, 500)}`
-    );
+    parsed = JSON.parse(jsonStr) as Record<string, unknown>;
+  } catch {
+    // Attempt repair for common Claude JSON issues
+    try {
+      parsed = JSON.parse(repairJson(jsonStr)) as Record<string, unknown>;
+    } catch (e2) {
+      throw new Error(
+        `Failed to parse synthesizer JSON output: ${(e2 as Error).message}. Raw text (first 500 chars): ${text.slice(0, 500)}`
+      );
+    }
   }
 
   const validRecs = ["buy", "sell", "wheel", "hold", "avoid"];

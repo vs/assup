@@ -5,6 +5,26 @@ import { fetchSAArticles, fetchSAComments } from "./sa-rapidapi.js";
 const MAX_ARTICLES = 50;
 const MAX_COMMENTS_PER_ARTICLE = 100;
 const LOOKBACK_DAYS = 90;
+const CONCURRENCY = 3; // limit parallel API calls to avoid 429s
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  return results;
+}
 
 export const saCommentsCollector: Collector = {
   source: "sa_comments",
@@ -23,8 +43,9 @@ export const saCommentsCollector: Collector = {
       console.warn(`[sa_comments] Failed to fetch articles for ${symbol}:`, (err as Error).message);
     }
 
-    const articles = await Promise.all(
-      articlesRaw.map(async (article) => {
+    const articles = await mapWithConcurrency(
+      articlesRaw,
+      async (article) => {
         let comments: Array<{ id: string; content: string; createdAt: string; likes: number }> = [];
         try {
           const raw = await fetchSAComments(article.id);
@@ -44,7 +65,8 @@ export const saCommentsCollector: Collector = {
           publishedAt: article.attributes.publishOn,
           comments,
         };
-      }),
+      },
+      CONCURRENCY,
     );
 
     const totalComments = articles.reduce((sum, a) => sum + a.comments.length, 0);

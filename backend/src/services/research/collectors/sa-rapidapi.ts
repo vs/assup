@@ -53,6 +53,9 @@ export async function getSAApiKeyStatus(): Promise<SAApiKeyStatus> {
 
 // ── HTTP Helper ──────────────────────────────────────────────────────
 
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 1000;
+
 async function saFetch(path: string): Promise<unknown | null> {
   const apiKey = await getSAApiKey();
   if (!apiKey) {
@@ -60,22 +63,31 @@ async function saFetch(path: string): Promise<unknown | null> {
     return null;
   }
   const url = `${RAPIDAPI_BASE}${path}`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "x-RapidAPI-Key": apiKey,
-        "x-RapidAPI-Host": RAPIDAPI_HOST,
-      },
-    });
-    if (!res.ok) {
-      console.warn(`[sa-rapidapi] HTTP ${res.status} for ${url.slice(0, 100)}`);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "x-RapidAPI-Key": apiKey,
+          "x-RapidAPI-Host": RAPIDAPI_HOST,
+        },
+      });
+      if (res.status === 429 && attempt < MAX_RETRIES) {
+        const delay = RETRY_BASE_MS * 2 ** attempt;
+        console.warn(`[sa-rapidapi] HTTP 429, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      if (!res.ok) {
+        console.warn(`[sa-rapidapi] HTTP ${res.status} for ${url.slice(0, 100)}`);
+        return null;
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn(`[sa-rapidapi] Fetch failed for ${url.slice(0, 100)}:`, (err as Error).message);
       return null;
     }
-    return await res.json();
-  } catch (err) {
-    console.warn(`[sa-rapidapi] Fetch failed for ${url.slice(0, 100)}:`, (err as Error).message);
-    return null;
   }
+  return null;
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────
