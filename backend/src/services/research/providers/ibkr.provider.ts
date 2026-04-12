@@ -13,6 +13,12 @@ import {
   parseReportSnapshot,
   parseDividendTick,
 } from "./ibkr-xml-parser.js";
+import {
+  getUnderlyingPrice,
+  getReferencePrice,
+  filterChainByStrike,
+  marketDataKey,
+} from "../../../utils/options.js";
 
 function stockContract(symbol: string) {
   return { symbol, secType: SecType.STK, exchange: "SMART", currency: "USD" };
@@ -99,33 +105,21 @@ class IBKRProvider implements MarketDataProvider {
     const chain = await ibkrService.getOptionChain(symbol);
     if (chain.length === 0) return [];
 
-    // Get underlying price to filter strikes near the money
-    let underlyingPrice: number | null = null;
-    try {
-      const stockData = await ibkrService.getMarketData(stockContract(symbol));
-      underlyingPrice = stockData?.last ?? stockData?.close ?? null;
-    } catch {
-      // fall through — use median strike as reference
-    }
+    const underlyingPrice = await getUnderlyingPrice(symbol);
 
     // Get unique expirations sorted, take nearest N
     const uniqueExpiries = [...new Set(chain.map((e) => e.expiration))].sort();
     const targetExpiries = new Set(uniqueExpiries.slice(0, expirations));
 
-    // Filter to target expirations
-    let filtered = chain.filter((e) => targetExpiries.has(e.expiration));
-
-    // Filter to strikes near the money (50%-150% of underlying, like the scanner)
-    // This reduces 500+ strikes to a manageable ~20-40 per expiration
-    const strikes = filtered.map((e) => e.strike).sort((a, b) => a - b);
-    const refPrice = underlyingPrice ?? strikes[Math.floor(strikes.length / 2)];
-    const minStrike = refPrice * 0.5;
-    const maxStrike = refPrice * 1.5;
-    filtered = filtered.filter((e) => e.strike >= minStrike && e.strike <= maxStrike);
+    // Filter to target expirations, then to strikes near the money
+    const byExpiry = chain.filter((e) => targetExpiries.has(e.expiration));
+    const strikes = byExpiry.map((e) => e.strike);
+    const refPrice = getReferencePrice(underlyingPrice, strikes);
+    const filtered = filterChainByStrike(byExpiry, refPrice);
 
     if (filtered.length === 0) return [];
 
-    console.log(`[ibkr-provider] Options chain ${symbol}: ${filtered.length} strikes near $${refPrice.toFixed(2)} (${minStrike.toFixed(0)}-${maxStrike.toFixed(0)}), ${targetExpiries.size} expirations`);
+    console.log(`[ibkr-provider] Options chain ${symbol}: ${filtered.length} strikes near $${refPrice.toFixed(2)}, ${targetExpiries.size} expirations`);
 
     // Collect all contracts (calls + puts) for batch market data
     const contracts = filtered.flatMap((e) => [e.call, e.put]);
@@ -135,8 +129,7 @@ class IBKRProvider implements MarketDataProvider {
     const entries: OptionsChainEntry[] = [];
     for (const entry of filtered) {
       for (const [right, contract] of [["C", entry.call], ["P", entry.put]] as const) {
-        const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
-        const md = marketData.get(key);
+        const md = marketData.get(marketDataKey(contract));
 
         // Format expiration from YYYYMMDD to YYYY-MM-DD
         const exp = entry.expiration;

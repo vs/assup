@@ -21,6 +21,14 @@ import {
 } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
 import { isIgnorablePositionError, isMarketOpen, parseExpirationDate } from "../utils/index.js";
+import {
+  getUnderlyingPrice,
+  getReferencePrice,
+  filterChainByStrike,
+  marketDataKey,
+  calcOptionMetrics,
+  estimateDelta,
+} from "../utils/options.js";
 
 const router = Router();
 
@@ -310,14 +318,11 @@ async function scanOptionsForSymbols(
 
   // Use Live data during market hours, Frozen (last close) outside market hours
   const marketOpen = isMarketOpen();
-  const marketDataType = marketOpen ? 1 : 2; // 1 = Live, 2 = Frozen
-  const marketDataTypeName = marketOpen ? "Live" : "Frozen (last close)";
-
   try {
-    ibkrService.setMarketDataType(marketDataType as 1 | 2);
-    console.log(`Market is ${marketOpen ? "OPEN" : "CLOSED"}, using ${marketDataTypeName} data`);
+    ibkrService.setMarketDataType(marketOpen ? 1 : 2);
+    console.log(`Market is ${marketOpen ? "OPEN" : "CLOSED"}, using ${marketOpen ? "Live" : "Frozen"} data`);
   } catch (err) {
-    console.warn(`Could not switch to ${marketDataTypeName} market data, continuing with delayed:`, err);
+    console.warn("Could not switch market data type, continuing with delayed:", err);
   }
 
   // Send initial progress
@@ -348,23 +353,10 @@ async function scanOptionsForSymbols(
       });
 
       // Get current price of underlying stock
-      let underlyingPrice: number | undefined;
-      try {
-        const stockContract = {
-          symbol,
-          secType: SecType.STK,
-          exchange: "SMART",
-          currency: "USD",
-        };
-        const stockData = await ibkrService.getMarketDataBatch([stockContract]);
-        const stockKey = `${symbol}_undefined_undefined_undefined`;
-        const stockSnapshot = stockData.get(stockKey);
-        if (stockSnapshot?.last) {
-          underlyingPrice = stockSnapshot.last;
-          console.log(`  ↳ Underlying price: $${underlyingPrice.toFixed(2)}`);
-        }
-      } catch (err) {
-        console.log(`  ↳ Could not fetch underlying price: ${err instanceof Error ? err.message : String(err)}`);
+      const underlyingPriceRaw = await getUnderlyingPrice(symbol);
+      const underlyingPrice = underlyingPriceRaw ?? undefined;
+      if (underlyingPrice) {
+        console.log(`  ↳ Underlying price: $${underlyingPrice.toFixed(2)}`);
       }
 
       // Get options chain
@@ -386,8 +378,7 @@ async function scanOptionsForSymbols(
       const uniqueStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
 
       // Use actual underlying price for strike range calculation
-      // Fall back to median strike only if underlying price is unavailable
-      const referencePrice = underlyingPrice ?? uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
+      const referencePrice = getReferencePrice(underlyingPrice ?? null, uniqueStrikes);
 
       // Determine which option types to scan
       const optionTypes = criteria.optionTypes || "PUT";
@@ -395,17 +386,12 @@ async function scanOptionsForSymbols(
       const scanCalls = optionTypes === "CALL";
 
       // Calculate separate strike ranges for PUTs and CALLs
-      const putMinStrike = referencePrice * (criteria.putMinStrikePercent / 100);
-      const putMaxStrike = referencePrice * (criteria.putMaxStrikePercent / 100);
-      const callMinStrike = referencePrice * (criteria.callMinStrikePercent / 100);
-      const callMaxStrike = referencePrice * (criteria.callMaxStrikePercent / 100);
-
       console.log(`  ↳ Reference price: $${referencePrice.toFixed(2)}, scanning: ${optionTypes}`);
       if (scanPuts) {
-        console.log(`  ↳ PUT strike range: $${putMinStrike.toFixed(0)}-$${putMaxStrike.toFixed(0)} (${criteria.putMinStrikePercent}%-${criteria.putMaxStrikePercent}%)`);
+        console.log(`  ↳ PUT strike range: ${criteria.putMinStrikePercent}%-${criteria.putMaxStrikePercent}%`);
       }
       if (scanCalls) {
-        console.log(`  ↳ CALL strike range: $${callMinStrike.toFixed(0)}-$${callMaxStrike.toFixed(0)} (${criteria.callMinStrikePercent}%-${criteria.callMaxStrikePercent}%)`);
+        console.log(`  ↳ CALL strike range: ${criteria.callMinStrikePercent}%-${criteria.callMaxStrikePercent}%`);
       }
 
       // Filter chain by expiration only first (strike ranges depend on option type)
@@ -422,12 +408,12 @@ async function scanOptionsForSymbols(
 
       // Filter for PUT contracts (within PUT strike range)
       const putFilteredChain = scanPuts
-        ? expirationFilteredChain.filter((entry) => entry.strike >= putMinStrike && entry.strike <= putMaxStrike)
+        ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.putMinStrikePercent, criteria.putMaxStrikePercent)
         : [];
 
       // Filter for CALL contracts (within CALL strike range)
       const callFilteredChain = scanCalls
-        ? expirationFilteredChain.filter((entry) => entry.strike >= callMinStrike && entry.strike <= callMaxStrike)
+        ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.callMinStrikePercent, criteria.callMaxStrikePercent)
         : [];
 
       if (putFilteredChain.length === 0 && callFilteredChain.length === 0) {
@@ -492,14 +478,11 @@ async function scanOptionsForSymbols(
         contract: typeof chain[0]['put'],
         daysToExpiry: number
       ) => {
-        const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
-        const data = marketDataMap.get(key);
+        const data = marketDataMap.get(marketDataKey(contract));
 
         if (data && data.bid !== undefined && data.ask !== undefined && data.bid > 0 && data.ask > 0) {
           withBidAsk++;
-          const midPrice = (data.bid + data.ask) / 2;
-          const premiumPercent = (midPrice / entry.strike) * 100;
-          const annualizedReturn = (premiumPercent * 365) / daysToExpiry;
+          const { midPrice, premiumPercent, annualizedReturn } = calcOptionMetrics(data.bid, data.ask, entry.strike, daysToExpiry);
 
           // Debug: Log first few samples
           if (withBidAsk <= 3) {
@@ -511,20 +494,11 @@ async function scanOptionsForSymbols(
           const passesPremium = premiumPercent >= criteria.minPremiumPercent;
 
           // Delta filtering - use absolute value since puts have negative delta
-          // If TWS doesn't provide delta, estimate it from moneyness
           let absDelta: number | null = null;
           if (data.delta !== undefined) {
             absDelta = Math.abs(data.delta);
           } else if (underlyingPrice && underlyingPrice > 0) {
-            // Estimate delta from moneyness (simple linear approximation)
-            const moneyness = entry.strike / underlyingPrice;
-            if (optionType === "PUT") {
-              // PUT: ATM=-0.5, OTM approaches 0, ITM approaches -1
-              absDelta = Math.abs(Math.max(-0.95, Math.min(-0.05, -0.5 - (moneyness - 1) * 2)));
-            } else {
-              // CALL: ATM=0.5, OTM approaches 0, ITM approaches 1
-              absDelta = Math.max(0.05, Math.min(0.95, 0.5 - (moneyness - 1) * 2));
-            }
+            absDelta = estimateDelta(entry.strike, underlyingPrice, optionType);
           }
           const passesDelta = absDelta === null || (absDelta >= criteria.minDelta && absDelta <= criteria.maxDelta);
 

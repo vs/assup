@@ -59,7 +59,7 @@ interface HistoricalDataParams {
   formatDate: number;
 }
 
-interface OptionChainEntry {
+export interface OptionChainEntry {
   strike: number;
   expiration: string;
   call: Contract;

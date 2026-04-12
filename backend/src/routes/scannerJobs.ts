@@ -4,7 +4,6 @@
  */
 
 import { Router } from "express";
-import { SecType } from "@stoqey/ib";
 import { prisma } from "../db/index.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
@@ -14,6 +13,14 @@ import { sseService } from "../services/sse.js";
 import { scannerCriteriaSchema } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
 import { parseExpirationDate } from "../utils/index.js";
+import {
+  getUnderlyingPrice,
+  getReferencePrice,
+  filterChainByStrike,
+  marketDataKey,
+  calcOptionMetrics,
+  estimateDelta,
+} from "../utils/options.js";
 import { z } from "zod";
 import type { OptionOpportunity } from "@assup/shared";
 import { Prisma } from "@prisma/client";
@@ -227,23 +234,7 @@ async function executeJobScan(
 
       try {
         // Get underlying price
-        let underlyingPrice: number | undefined;
-        try {
-          const stockContract = {
-            symbol,
-            secType: SecType.STK,
-            exchange: "SMART",
-            currency: "USD",
-          };
-          const stockData = await ibkrService.getMarketDataBatch([stockContract]);
-          const stockKey = `${symbol}_undefined_undefined_undefined`;
-          const stockSnapshot = stockData.get(stockKey);
-          if (stockSnapshot?.last) {
-            underlyingPrice = stockSnapshot.last;
-          }
-        } catch (err) {
-          // Continue without underlying price
-        }
+        const underlyingPrice = (await getUnderlyingPrice(symbol)) ?? undefined;
 
         // Get options chain
         const chain = await ibkrService.getOptionChain(symbol);
@@ -254,16 +245,11 @@ async function executeJobScan(
 
         const today = new Date();
         const uniqueStrikes = [...new Set(chain.map((c) => c.strike))].sort((a, b) => a - b);
-        const referencePrice = underlyingPrice ?? uniqueStrikes[Math.floor(uniqueStrikes.length / 2)];
+        const referencePrice = getReferencePrice(underlyingPrice ?? null, uniqueStrikes);
 
         const optionTypes = criteria.optionTypes || "PUT";
         const scanPuts = optionTypes === "PUT";
         const scanCalls = optionTypes === "CALL";
-
-        const putMinStrike = referencePrice * (criteria.putMinStrikePercent / 100);
-        const putMaxStrike = referencePrice * (criteria.putMaxStrikePercent / 100);
-        const callMinStrike = referencePrice * (criteria.callMinStrikePercent / 100);
-        const callMaxStrike = referencePrice * (criteria.callMaxStrikePercent / 100);
 
         // Filter by expiration
         const expirationFilteredChain = chain.filter((entry) => {
@@ -281,10 +267,10 @@ async function executeJobScan(
 
         // Filter by strike ranges
         const putFilteredChain = scanPuts
-          ? expirationFilteredChain.filter((e) => e.strike >= putMinStrike && e.strike <= putMaxStrike)
+          ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.putMinStrikePercent, criteria.putMaxStrikePercent)
           : [];
         const callFilteredChain = scanCalls
-          ? expirationFilteredChain.filter((e) => e.strike >= callMinStrike && e.strike <= callMaxStrike)
+          ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.callMinStrikePercent, criteria.callMaxStrikePercent)
           : [];
 
         if (putFilteredChain.length === 0 && callFilteredChain.length === 0) {
@@ -307,13 +293,10 @@ async function executeJobScan(
           contract: typeof chain[0]["put"],
           daysToExpiry: number
         ) => {
-          const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
-          const data = marketDataMap.get(key);
+          const data = marketDataMap.get(marketDataKey(contract));
 
           if (data && data.bid !== undefined && data.ask !== undefined && data.bid > 0 && data.ask > 0) {
-            const midPrice = (data.bid + data.ask) / 2;
-            const premiumPercent = (midPrice / entry.strike) * 100;
-            const annualizedReturn = (premiumPercent * 365) / daysToExpiry;
+            const { midPrice, premiumPercent, annualizedReturn } = calcOptionMetrics(data.bid, data.ask, entry.strike, daysToExpiry);
 
             const passesReturn = annualizedReturn >= criteria.minAnnualizedReturn;
             const passesPremium = premiumPercent >= criteria.minPremiumPercent;
@@ -322,12 +305,7 @@ async function executeJobScan(
             if (data.delta !== undefined) {
               absDelta = Math.abs(data.delta);
             } else if (underlyingPrice && underlyingPrice > 0) {
-              const moneyness = entry.strike / underlyingPrice;
-              if (optionType === "PUT") {
-                absDelta = Math.abs(Math.max(-0.95, Math.min(-0.05, -0.5 - (moneyness - 1) * 2)));
-              } else {
-                absDelta = Math.max(0.05, Math.min(0.95, 0.5 - (moneyness - 1) * 2));
-              }
+              absDelta = estimateDelta(entry.strike, underlyingPrice, optionType);
             }
             const passesDelta =
               absDelta === null || (absDelta >= criteria.minDelta && absDelta <= criteria.maxDelta);
