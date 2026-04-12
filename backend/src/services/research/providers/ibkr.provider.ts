@@ -112,10 +112,12 @@ class IBKRProvider implements MarketDataProvider {
     const targetExpiries = new Set(uniqueExpiries.slice(0, expirations));
 
     // Filter to target expirations, then to strikes near the money
+    // Use 80%-120% range (tighter than scanner) — research needs near-money
+    // analysis, not the full chain, and IBKR limits concurrent data lines
     const byExpiry = chain.filter((e) => targetExpiries.has(e.expiration));
     const strikes = byExpiry.map((e) => e.strike);
     const refPrice = getReferencePrice(underlyingPrice, strikes);
-    const filtered = filterChainByStrike(byExpiry, refPrice);
+    const filtered = filterChainByStrike(byExpiry, refPrice, 80, 120);
 
     if (filtered.length === 0) return [];
 
