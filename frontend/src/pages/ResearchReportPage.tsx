@@ -21,6 +21,7 @@ import {
   ThumbsUp,
   AlertTriangle,
   ChevronDown,
+  Activity,
 } from "lucide-react";
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import {
@@ -427,6 +428,329 @@ function CompanyInfoPanel({
       </CardContent>
     </Card>
   );
+}
+
+// --- Options Landscape Section ---
+
+interface OptionsChainRow {
+  symbol: string;
+  expiration: string;
+  strike: number;
+  right: "C" | "P";
+  bid: number;
+  ask: number;
+  last: number;
+  volume: number;
+  openInterest: number;
+  impliedVolatility: number | null;
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+}
+
+interface UnusualActivityRow {
+  symbol: string;
+  expiration: string;
+  strike: number;
+  right: "C" | "P";
+  volume: number;
+  openInterest: number;
+  ratio: number;
+}
+
+function OptionsLandscapeSection({
+  analysis,
+  collections,
+}: {
+  analysis: AnalysisResult | undefined;
+  collections: Map<string, CollectionDataEntry>;
+}) {
+  const [expandedExpiry, setExpandedExpiry] = useState<Set<string>>(new Set());
+
+  const optD = det(analysis);
+  const rawData = collections.get("options")?.data as
+    | { chain?: OptionsChainRow[]; symbol?: string; fetchedAt?: string }
+    | undefined;
+  const chain = rawData?.chain ?? [];
+
+  // Nothing to show if no analysis and no chain
+  if (!analysis && chain.length === 0) return null;
+
+  const ivRank = optD.ivRank as number | undefined;
+  const avgIV = optD.avgIV as number | undefined;
+  const putCallRatio = optD.putCallRatio as number | null | undefined;
+  const totalCallVolume = (optD.totalCallVolume as number) ?? 0;
+  const totalPutVolume = (optD.totalPutVolume as number) ?? 0;
+  const wheelSuitability = optD.wheelSuitability as number | undefined;
+  const unusualActivity = (optD.unusualActivity as UnusualActivityRow[]) ?? [];
+
+  // Group chain by expiration
+  const byExpiry = new Map<string, OptionsChainRow[]>();
+  for (const row of chain) {
+    const list = byExpiry.get(row.expiration) ?? [];
+    list.push(row);
+    byExpiry.set(row.expiration, list);
+  }
+  const expirations = [...byExpiry.keys()].sort();
+
+  const toggleExpiry = (exp: string) => {
+    setExpandedExpiry((prev) => {
+      const next = new Set(prev);
+      if (next.has(exp)) next.delete(exp);
+      else next.add(exp);
+      return next;
+    });
+  };
+
+  const totalVolume = totalCallVolume + totalPutVolume;
+  const callPct = totalVolume > 0 ? (totalCallVolume / totalVolume) * 100 : 50;
+
+  return (
+    <Card>
+      <CardContent className="py-3 px-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Activity className="h-4 w-4 text-violet-500" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+            Options Landscape
+          </span>
+          {analysis && (
+            <SignalIcon signal={analysis.signal} />
+          )}
+          {analysis?.summary && (
+            <span className="text-xs text-muted-foreground ml-1 line-clamp-1">
+              {analysis.summary}
+            </span>
+          )}
+        </div>
+
+        {/* Key Metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          {ivRank != null && (
+            <OptionMetricCard
+              label="IV Rank"
+              value={`${ivRank.toFixed(0)}%`}
+              bar={ivRank}
+              color={ivRank > 50 ? "green" : ivRank < 20 ? "red" : "amber"}
+            />
+          )}
+          {avgIV != null && avgIV > 0 && (
+            <OptionMetricCard
+              label="Avg IV"
+              value={`${(avgIV * 100).toFixed(1)}%`}
+              bar={Math.min(avgIV * 100, 100)}
+              color="neutral"
+            />
+          )}
+          {putCallRatio != null && (
+            <OptionMetricCard
+              label="Put/Call Ratio"
+              value={putCallRatio.toFixed(2)}
+              bar={Math.min(putCallRatio * 50, 100)}
+              color={putCallRatio > 1.5 ? "red" : putCallRatio < 0.7 ? "green" : "amber"}
+            />
+          )}
+          {wheelSuitability != null && (
+            <OptionMetricCard
+              label="Wheel Score"
+              value={`${(wheelSuitability * 100).toFixed(0)}%`}
+              bar={wheelSuitability * 100}
+              color={wheelSuitability >= 0.7 ? "green" : wheelSuitability >= 0.4 ? "amber" : "red"}
+            />
+          )}
+        </div>
+
+        {/* Volume Bar */}
+        {totalVolume > 0 && (
+          <div className="mb-4">
+            <div className="flex justify-between text-xs text-muted-foreground mb-1">
+              <span>Calls: {totalCallVolume.toLocaleString()}</span>
+              <span>Puts: {totalPutVolume.toLocaleString()}</span>
+            </div>
+            <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+              <div
+                className="bg-green-500 transition-all"
+                style={{ width: `${callPct}%` }}
+              />
+              <div
+                className="bg-red-500 transition-all"
+                style={{ width: `${100 - callPct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Unusual Activity */}
+        {unusualActivity.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-xs font-semibold text-muted-foreground mb-2">
+              Unusual Activity (Vol/OI &gt; 3x)
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="text-left py-1 pr-3 font-medium">Exp</th>
+                    <th className="text-right py-1 px-2 font-medium">Strike</th>
+                    <th className="text-center py-1 px-2 font-medium">Type</th>
+                    <th className="text-right py-1 px-2 font-medium">Volume</th>
+                    <th className="text-right py-1 px-2 font-medium">OI</th>
+                    <th className="text-right py-1 pl-2 font-medium">Ratio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unusualActivity.map((u, i) => (
+                    <tr key={i} className="border-b border-border/30">
+                      <td className="py-1 pr-3">{u.expiration}</td>
+                      <td className="text-right py-1 px-2">{u.strike}</td>
+                      <td className="text-center py-1 px-2">
+                        <span className={u.right === "C" ? "text-green-600" : "text-red-600"}>
+                          {u.right === "C" ? "Call" : "Put"}
+                        </span>
+                      </td>
+                      <td className="text-right py-1 px-2">{u.volume.toLocaleString()}</td>
+                      <td className="text-right py-1 px-2">{u.openInterest.toLocaleString()}</td>
+                      <td className="text-right py-1 pl-2 font-medium">{u.ratio.toFixed(1)}x</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Chain by Expiration */}
+        {expirations.length > 0 && (
+          <div>
+            <h3 className="text-xs font-semibold text-muted-foreground mb-2">
+              Chain ({chain.length} contracts across {expirations.length} expiration{expirations.length !== 1 ? "s" : ""})
+            </h3>
+            <div className="space-y-1">
+              {expirations.map((exp) => {
+                const rows = byExpiry.get(exp)!;
+                const calls = rows.filter((r) => r.right === "C");
+                const puts = rows.filter((r) => r.right === "P");
+                const expAvgIV = rows.reduce((s, r) => s + (r.impliedVolatility ?? 0), 0) / rows.length;
+                const expVol = rows.reduce((s, r) => s + r.volume, 0);
+                const isOpen = expandedExpiry.has(exp);
+
+                return (
+                  <div key={exp} className="border border-border/40 rounded-md">
+                    <button
+                      onClick={() => toggleExpiry(exp)}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted/50 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium">{exp}</span>
+                        <span className="text-muted-foreground">
+                          {calls.length}C / {puts.length}P
+                        </span>
+                        <span className="text-muted-foreground">
+                          IV: {(expAvgIV * 100).toFixed(1)}%
+                        </span>
+                        <span className="text-muted-foreground">
+                          Vol: {expVol.toLocaleString()}
+                        </span>
+                      </div>
+                      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isOpen && (
+                      <div className="px-3 pb-2 overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b text-muted-foreground">
+                              <th className="text-right py-1 px-1.5 font-medium">Bid</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Ask</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Last</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Vol</th>
+                              <th className="text-right py-1 px-1.5 font-medium">IV</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Delta</th>
+                              <th className="text-center py-1 px-2 font-bold bg-muted/50">Strike</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Delta</th>
+                              <th className="text-right py-1 px-1.5 font-medium">IV</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Vol</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Last</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Bid</th>
+                              <th className="text-right py-1 px-1.5 font-medium">Ask</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getStrikePairs(calls, puts).map((pair, i) => (
+                              <tr key={i} className="border-b border-border/20">
+                                {/* Call side */}
+                                <td className="text-right py-0.5 px-1.5 text-green-700">{pair.call ? pair.call.bid.toFixed(2) : ""}</td>
+                                <td className="text-right py-0.5 px-1.5 text-green-700">{pair.call ? pair.call.ask.toFixed(2) : ""}</td>
+                                <td className="text-right py-0.5 px-1.5 text-green-700">{pair.call ? pair.call.last.toFixed(2) : ""}</td>
+                                <td className="text-right py-0.5 px-1.5">{pair.call?.volume ?? ""}</td>
+                                <td className="text-right py-0.5 px-1.5">{pair.call?.impliedVolatility != null ? `${(pair.call.impliedVolatility * 100).toFixed(0)}%` : ""}</td>
+                                <td className="text-right py-0.5 px-1.5">{pair.call?.delta != null ? pair.call.delta.toFixed(2) : ""}</td>
+                                {/* Strike */}
+                                <td className="text-center py-0.5 px-2 font-semibold bg-muted/30">{pair.strike}</td>
+                                {/* Put side */}
+                                <td className="text-right py-0.5 px-1.5">{pair.put?.delta != null ? pair.put.delta.toFixed(2) : ""}</td>
+                                <td className="text-right py-0.5 px-1.5">{pair.put?.impliedVolatility != null ? `${(pair.put.impliedVolatility * 100).toFixed(0)}%` : ""}</td>
+                                <td className="text-right py-0.5 px-1.5">{pair.put?.volume ?? ""}</td>
+                                <td className="text-right py-0.5 px-1.5 text-red-700">{pair.put ? pair.put.last.toFixed(2) : ""}</td>
+                                <td className="text-right py-0.5 px-1.5 text-red-700">{pair.put ? pair.put.bid.toFixed(2) : ""}</td>
+                                <td className="text-right py-0.5 px-1.5 text-red-700">{pair.put ? pair.put.ask.toFixed(2) : ""}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OptionMetricCard({
+  label,
+  value,
+  bar,
+  color,
+}: {
+  label: string;
+  value: string;
+  bar: number;
+  color: "green" | "red" | "amber" | "neutral";
+}) {
+  const barColor =
+    color === "green" ? "bg-green-500" :
+    color === "red" ? "bg-red-500" :
+    color === "amber" ? "bg-amber-500" : "bg-slate-400";
+
+  return (
+    <div className="bg-muted/30 rounded-md px-3 py-2">
+      <div className="text-[11px] text-muted-foreground mb-0.5">{label}</div>
+      <div className="text-sm font-semibold">{value}</div>
+      <div className="h-1 rounded-full bg-muted mt-1.5">
+        <div
+          className={`h-full rounded-full ${barColor} transition-all`}
+          style={{ width: `${Math.min(Math.max(bar, 2), 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function getStrikePairs(
+  calls: OptionsChainRow[],
+  puts: OptionsChainRow[],
+): Array<{ strike: number; call: OptionsChainRow | null; put: OptionsChainRow | null }> {
+  const callMap = new Map(calls.map((c) => [c.strike, c]));
+  const putMap = new Map(puts.map((p) => [p.strike, p]));
+  const strikes = [...new Set([...callMap.keys(), ...putMap.keys()])].sort((a, b) => a - b);
+  return strikes.map((strike) => ({
+    strike,
+    call: callMap.get(strike) ?? null,
+    put: putMap.get(strike) ?? null,
+  }));
 }
 
 // --- Comments Section ---
@@ -989,6 +1313,9 @@ export function ResearchReportPage() {
           )}
         </div>
       )}
+
+      {/* Options Landscape */}
+      <OptionsLandscapeSection analysis={options} collections={collectionMap} />
 
       {/* Full Report (collapsible) */}
       {report?.fullReport && (
