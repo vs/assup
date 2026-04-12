@@ -99,23 +99,37 @@ class IBKRProvider implements MarketDataProvider {
     const chain = await ibkrService.getOptionChain(symbol);
     if (chain.length === 0) return [];
 
+    // Get underlying price to filter strikes near the money
+    let underlyingPrice: number | null = null;
+    try {
+      const stockData = await ibkrService.getMarketData(stockContract(symbol));
+      underlyingPrice = stockData?.last ?? stockData?.close ?? null;
+    } catch {
+      // fall through — use median strike as reference
+    }
+
     // Get unique expirations sorted, take nearest N
     const uniqueExpiries = [...new Set(chain.map((e) => e.expiration))].sort();
     const targetExpiries = new Set(uniqueExpiries.slice(0, expirations));
 
     // Filter to target expirations
-    const filtered = chain.filter((e) => targetExpiries.has(e.expiration));
+    let filtered = chain.filter((e) => targetExpiries.has(e.expiration));
+
+    // Filter to strikes near the money (50%-150% of underlying, like the scanner)
+    // This reduces 500+ strikes to a manageable ~20-40 per expiration
+    const strikes = filtered.map((e) => e.strike).sort((a, b) => a - b);
+    const refPrice = underlyingPrice ?? strikes[Math.floor(strikes.length / 2)];
+    const minStrike = refPrice * 0.5;
+    const maxStrike = refPrice * 1.5;
+    filtered = filtered.filter((e) => e.strike >= minStrike && e.strike <= maxStrike);
+
+    if (filtered.length === 0) return [];
+
+    console.log(`[ibkr-provider] Options chain ${symbol}: ${filtered.length} strikes near $${refPrice.toFixed(2)} (${minStrike.toFixed(0)}-${maxStrike.toFixed(0)}), ${targetExpiries.size} expirations`);
 
     // Collect all contracts (calls + puts) for batch market data
     const contracts = filtered.flatMap((e) => [e.call, e.put]);
-
-    // Fetch market data for all option contracts in smaller batches
-    // TWS struggles with large batches of options; cap to 200 contracts
-    const cappedContracts = contracts.slice(0, 200);
-    if (contracts.length > 200) {
-      console.log(`[ibkr-provider] Options chain ${symbol}: capped market data from ${contracts.length} to 200 contracts`);
-    }
-    const marketData = await ibkrService.getMarketDataBatch(cappedContracts);
+    const marketData = await ibkrService.getMarketDataBatch(contracts);
 
     // Build OptionsChainEntry for each contract
     const entries: OptionsChainEntry[] = [];
