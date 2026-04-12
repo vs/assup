@@ -98,50 +98,10 @@ describe("PolygonProvider", () => {
   });
 
   describe("getOptionsChain", () => {
-    it("transforms and filters to N expirations", async () => {
-      vi.spyOn(globalThis, "fetch").mockResolvedValue({
-        ok: true, status: 200,
-        json: () => Promise.resolve({
-          results: [
-            {
-              details: { contract_type: "call", expiration_date: "2026-03-20", strike_price: 150 },
-              day: { volume: 100 }, open_interest: 500, implied_volatility: 0.3,
-              greeks: { delta: 0.5, gamma: 0.03, theta: -0.05 },
-              last_quote: { bid: 5.0, ask: 5.1 }, last_trade: { price: 5.05 },
-              underlying_asset: { ticker: "AAPL" },
-            },
-            {
-              details: { contract_type: "put", expiration_date: "2026-04-17", strike_price: 145 },
-              day: { volume: 50 }, open_interest: 300, implied_volatility: 0.35,
-              greeks: null, last_quote: { bid: 3.0, ask: 3.2 }, last_trade: { price: 3.1 },
-              underlying_asset: { ticker: "AAPL" },
-            },
-          ],
-        }),
-      } as Response);
-
-      const chain = await provider.getOptionsChain("AAPL", 1);
-      expect(chain.length).toBe(1);
-      expect(chain[0].right).toBe("C");
-      expect(chain[0].strike).toBe(150);
-    });
-
-    it("handles null greeks", async () => {
-      vi.spyOn(globalThis, "fetch").mockResolvedValue({
-        ok: true, status: 200,
-        json: () => Promise.resolve({
-          results: [{
-            details: { contract_type: "call", expiration_date: "2026-03-20", strike_price: 150 },
-            day: { volume: 100 }, open_interest: 500, implied_volatility: null,
-            greeks: null, last_quote: { bid: 5.0, ask: 5.1 }, last_trade: { price: 5.05 },
-            underlying_asset: { ticker: "AAPL" },
-          }],
-        }),
-      } as Response);
-
-      const chain = await provider.getOptionsChain("AAPL");
-      expect(chain[0].delta).toBeNull();
-      expect(chain[0].impliedVolatility).toBeNull();
+    it("throws not-supported error", async () => {
+      await expect(provider.getOptionsChain("AAPL", 1)).rejects.toThrow(
+        "Options chain not supported via Polygon — use IBKR"
+      );
     });
   });
 

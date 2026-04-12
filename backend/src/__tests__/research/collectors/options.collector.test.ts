@@ -2,20 +2,32 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { optionsCollector } from "../../../services/research/collectors/options.collector.js";
 import type { SkippedCollection } from "../../../services/research/collectors/types.js";
 
-vi.mock("../../../services/research/providers/index.js", () => ({
-  getMarketDataProvider: vi.fn(),
+vi.mock("../../../services/ibkr.js", () => ({
+  ibkrService: {
+    isConnected: vi.fn(),
+  },
 }));
 
-import { getMarketDataProvider } from "../../../services/research/providers/index.js";
+vi.mock("../../../services/research/providers/ibkr.provider.js", () => ({
+  createIBKRProvider: vi.fn(),
+}));
+
+import { ibkrService } from "../../../services/ibkr.js";
+import { createIBKRProvider } from "../../../services/research/providers/ibkr.provider.js";
+
+const mockIbkrService = vi.mocked(ibkrService);
+const mockCreateIBKRProvider = vi.mocked(createIBKRProvider);
 
 describe("optionsCollector", () => {
   const mockProvider = {
-    name: "mock",
+    name: "ibkr",
     getOptionsChain: vi.fn(),
   };
 
   beforeEach(() => {
-    vi.mocked(getMarketDataProvider).mockReturnValue(mockProvider as any);
+    vi.restoreAllMocks();
+    mockIbkrService.isConnected.mockReturnValue(true);
+    mockCreateIBKRProvider.mockReturnValue(mockProvider as any);
   });
 
   it("has correct source and schedule", () => {
@@ -23,8 +35,8 @@ describe("optionsCollector", () => {
     expect(optionsCollector.stalenessMinutes).toBe(1440);
   });
 
-  it("collects options chain and returns data", async () => {
-    const chain = [{ symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 500, impliedVolatility: 0.3, delta: 0.5, gamma: 0.03, theta: -0.05 }];
+  it("collects options chain via IBKR and returns data", async () => {
+    const chain = [{ symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 0, impliedVolatility: 0.3, delta: 0.5, gamma: null, theta: null }];
     mockProvider.getOptionsChain.mockResolvedValue(chain);
 
     const result = await optionsCollector.collect("AAPL");
@@ -34,39 +46,29 @@ describe("optionsCollector", () => {
     expect((result as any).data.symbol).toBe("AAPL");
   });
 
-  it("throws when no chain data returned", async () => {
+  it("skips when TWS is not connected", async () => {
+    mockIbkrService.isConnected.mockReturnValue(false);
+    const result = await optionsCollector.collect("AAPL");
+    expect(result).toMatchObject({
+      _tag: "skipped",
+      source: "options",
+    });
+    expect((result as SkippedCollection).reason).toContain("TWS not connected");
+  });
+
+  it("skips when no chain data returned", async () => {
     mockProvider.getOptionsChain.mockResolvedValue([]);
-    await expect(optionsCollector.collect("AAPL")).rejects.toThrow("No options chain data");
-  });
-
-  it("returns SkippedCollection when provider returns 403", async () => {
-    mockProvider.getOptionsChain.mockRejectedValue(new Error("Polygon API error 403: NOT_AUTHORIZED"));
     const result = await optionsCollector.collect("AAPL");
     expect(result).toMatchObject({
       _tag: "skipped",
       source: "options",
     });
-    expect((result as SkippedCollection).reason).toContain("403");
-  });
-
-  it("returns SkippedCollection when provider returns 404", async () => {
-    mockProvider.getOptionsChain.mockRejectedValue(new Error("Polygon API error 404: Not Found"));
-    const result = await optionsCollector.collect("AAPL");
-    expect(result).toMatchObject({
-      _tag: "skipped",
-      source: "options",
-    });
-    expect((result as SkippedCollection).reason).toContain("404");
-  });
-
-  it("rethrows other provider errors", async () => {
-    mockProvider.getOptionsChain.mockRejectedValue(new Error("Polygon API error 500: Internal Server Error"));
-    await expect(optionsCollector.collect("AAPL")).rejects.toThrow("500");
+    expect((result as SkippedCollection).reason).toContain("No options chain");
   });
 
   it("requests 4 expirations", async () => {
     mockProvider.getOptionsChain.mockResolvedValue([
-      { symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 500, impliedVolatility: 0.3, delta: 0.5, gamma: 0.03, theta: -0.05 },
+      { symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 0, impliedVolatility: 0.3, delta: 0.5, gamma: null, theta: null },
     ]);
     await optionsCollector.collect("AAPL");
     expect(mockProvider.getOptionsChain).toHaveBeenCalledWith("AAPL", 4);

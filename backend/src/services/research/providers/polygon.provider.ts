@@ -88,50 +88,10 @@ class PolygonProvider implements MarketDataProvider {
   }
 
   async getOptionsChain(
-    symbol: string,
-    expirations = 4
+    _symbol: string,
+    _expirations = 4
   ): Promise<OptionsChainEntry[]> {
-    const data = await this.fetch<{
-      results: Array<{
-        details: {
-          contract_type: string;
-          expiration_date: string;
-          strike_price: number;
-        };
-        day: { volume: number };
-        open_interest: number;
-        implied_volatility: number;
-        greeks: { delta: number; gamma: number; theta: number } | null;
-        last_quote: { bid: number; ask: number };
-        last_trade: { price: number };
-        underlying_asset: { ticker: string };
-      }>;
-    }>(`/v3/snapshot/options/${symbol}`, {
-      limit: "250",
-      order: "asc",
-      sort: "expiration_date",
-    });
-
-    const entries: OptionsChainEntry[] = (data.results || []).map((r) => ({
-      symbol: r.underlying_asset.ticker,
-      expiration: r.details.expiration_date,
-      strike: r.details.strike_price,
-      right: r.details.contract_type === "call" ? "C" as const : "P" as const,
-      bid: r.last_quote?.bid ?? 0,
-      ask: r.last_quote?.ask ?? 0,
-      last: r.last_trade?.price ?? 0,
-      volume: r.day?.volume ?? 0,
-      openInterest: r.open_interest ?? 0,
-      impliedVolatility: r.implied_volatility ?? null,
-      delta: r.greeks?.delta ?? null,
-      gamma: r.greeks?.gamma ?? null,
-      theta: r.greeks?.theta ?? null,
-    }));
-
-    // Filter to nearest N expirations
-    const uniqueExpiries = [...new Set(entries.map((e) => e.expiration))].sort();
-    const targetExpiries = new Set(uniqueExpiries.slice(0, expirations));
-    return entries.filter((e) => targetExpiries.has(e.expiration));
+    throw new Error("Options chain not supported via Polygon — use IBKR");
   }
 
   async getEarningsCalendar(symbol: string): Promise<EarningsEvent[]> {
