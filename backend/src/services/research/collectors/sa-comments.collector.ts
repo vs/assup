@@ -4,6 +4,7 @@ import { fetchSAArticles, fetchSAComments } from "./sa-rapidapi.js";
 
 const MAX_ARTICLES = 50;
 const MAX_COMMENTS_PER_ARTICLE = 100;
+const MAX_TOTAL_COMMENTS = 200; // cap total comments to keep Claude prompt reasonable
 const LOOKBACK_DAYS = 90;
 const CONCURRENCY = 3; // limit parallel API calls to avoid 429s
 
@@ -69,8 +70,22 @@ export const saCommentsCollector: Collector = {
       CONCURRENCY,
     );
 
-    const totalComments = articles.reduce((sum, a) => sum + a.comments.length, 0);
-    console.log(`[sa_comments] ${symbol}: collected ${articles.length} articles, ${totalComments} comments`);
+    // Cap total comments to keep Claude prompt size reasonable.
+    // Prioritize articles with more likes (higher engagement = better signal).
+    let totalComments = 0;
+    for (const article of articles) {
+      // Sort comments within each article by likes (most liked first)
+      article.comments.sort((a, b) => b.likes - a.likes);
+
+      const remaining = MAX_TOTAL_COMMENTS - totalComments;
+      if (remaining <= 0) {
+        article.comments = [];
+      } else if (article.comments.length > remaining) {
+        article.comments = article.comments.slice(0, remaining);
+      }
+      totalComments += article.comments.length;
+    }
+    console.log(`[sa_comments] ${symbol}: collected ${articles.length} articles, ${totalComments} comments (capped at ${MAX_TOTAL_COMMENTS})`);
 
     return {
       source: "sa_comments",

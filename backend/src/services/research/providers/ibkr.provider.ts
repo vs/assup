@@ -109,8 +109,13 @@ class IBKRProvider implements MarketDataProvider {
     // Collect all contracts (calls + puts) for batch market data
     const contracts = filtered.flatMap((e) => [e.call, e.put]);
 
-    // Fetch market data for all option contracts
-    const marketData = await ibkrService.getMarketDataBatch(contracts);
+    // Fetch market data for all option contracts in smaller batches
+    // TWS struggles with large batches of options; cap to 200 contracts
+    const cappedContracts = contracts.slice(0, 200);
+    if (contracts.length > 200) {
+      console.log(`[ibkr-provider] Options chain ${symbol}: capped market data from ${contracts.length} to 200 contracts`);
+    }
+    const marketData = await ibkrService.getMarketDataBatch(cappedContracts);
 
     // Build OptionsChainEntry for each contract
     const entries: OptionsChainEntry[] = [];

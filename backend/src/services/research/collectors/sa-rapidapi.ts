@@ -71,9 +71,9 @@ async function saFetch(path: string): Promise<unknown | null> {
           "x-RapidAPI-Host": RAPIDAPI_HOST,
         },
       });
-      if (res.status === 429 && attempt < MAX_RETRIES) {
+      if ((res.status === 429 || res.status === 302) && attempt < MAX_RETRIES) {
         const delay = RETRY_BASE_MS * 2 ** attempt;
-        console.warn(`[sa-rapidapi] HTTP 429, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        console.warn(`[sa-rapidapi] HTTP ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
