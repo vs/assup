@@ -17,7 +17,7 @@ describe("seekingAlphaAnalyzer", () => {
     const result = await seekingAlphaAnalyzer.analyze({
       metrics: {
         pe_nongaap_fy1: 25.3,
-        revenue_growth: 0.654,
+        revenue_growth: 65.4,
       },
     });
     expect(result.summary).toContain("Fwd P/E: 25.3");
@@ -26,30 +26,30 @@ describe("seekingAlphaAnalyzer", () => {
 
   it("signals bullish for high revenue growth", async () => {
     const result = await seekingAlphaAnalyzer.analyze({
-      metrics: { revenue_growth: 0.65 },
+      metrics: { revenue_growth: 65 },
     });
     expect(result.signal).toBe("bullish");
   });
 
   it("signals bearish for negative revenue growth", async () => {
     const result = await seekingAlphaAnalyzer.analyze({
-      metrics: { revenue_growth: -0.15 },
+      metrics: { revenue_growth: -15 },
     });
     expect(result.signal).toBe("bearish");
   });
 
   it("signals neutral for moderate metrics", async () => {
     const result = await seekingAlphaAnalyzer.analyze({
-      metrics: { pe_nongaap_fy1: 20, revenue_growth: 0.05 },
+      metrics: { pe_nongaap_fy1: 20, revenue_growth: 5 },
     });
     expect(result.signal).toBe("neutral");
   });
 
   it("includes dividend yield in summary", async () => {
     const result = await seekingAlphaAnalyzer.analyze({
-      metrics: { dividend_yield: 0.035 },
+      metrics: { dividend_yield: 3.5 },
     });
-    expect(result.summary).toContain("Dividend Yield: 3.5%");
+    expect(result.summary).toContain("Dividend Yield: 3.50%");
   });
 
   it("includes market cap in summary", async () => {
@@ -61,9 +61,9 @@ describe("seekingAlphaAnalyzer", () => {
 
   it("returns metrics and rawScore in details", async () => {
     const result = await seekingAlphaAnalyzer.analyze({
-      metrics: { revenue_growth: 0.3 },
+      metrics: { revenue_growth: 30 },
     });
-    expect(result.details.metrics).toEqual({ revenue_growth: 0.3 });
+    expect(result.details.metrics).toEqual({ revenue_growth: 30 });
     expect(result.details.rawScore).toBe(1);
   });
 });

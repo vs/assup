@@ -269,7 +269,7 @@ function CompanyInfoPanel({
               {metrics?.revenue_growth != null && (
                 <MetricItem
                   label="Rev Growth"
-                  value={pct(metrics.revenue_growth)}
+                  value={`${(metrics.revenue_growth as number).toFixed(1)}%`}
                   color={
                     (metrics.revenue_growth as number) > 0 ? "green" :
                     (metrics.revenue_growth as number) < 0 ? "red" : undefined
@@ -277,10 +277,10 @@ function CompanyInfoPanel({
                 />
               )}
               {metrics?.dividend_yield != null && (
-                <MetricItem label="Div Yield" value={pct(metrics.dividend_yield)} />
+                <MetricItem label="Div Yield" value={`${(metrics.dividend_yield as number).toFixed(2)}%`} />
               )}
               {metrics?.div_yield_fwd != null && (
-                <MetricItem label="Fwd Yield" value={pct(metrics.div_yield_fwd)} />
+                <MetricItem label="Fwd Yield" value={`${(metrics.div_yield_fwd as number).toFixed(2)}%`} />
               )}
             </div>
           </InfoBullet>
@@ -725,7 +725,11 @@ function CommentsSection({
 // --- Skipped Sources ---
 
 function SkippedSourcesSection({ skipped }: { skipped: CollectionStatus[] }) {
-  if (skipped.length === 0) return null;
+  // Hide authorization/subscription failures — these are permanent, not actionable
+  const actionable = skipped.filter(
+    (s) => !s.skipReason?.includes("403") && !s.skipReason?.includes("not authorized"),
+  );
+  if (actionable.length === 0) return null;
   return (
     <div>
       <h2 className="text-sm font-semibold mb-2 text-muted-foreground flex items-center gap-2">
@@ -733,7 +737,7 @@ function SkippedSourcesSection({ skipped }: { skipped: CollectionStatus[] }) {
         Unavailable Data Sources
       </h2>
       <div className="flex flex-wrap gap-2">
-        {skipped.map((s) => (
+        {actionable.map((s) => (
           <div
             key={s.source}
             className="bg-muted/50 rounded-md px-3 py-1.5 text-xs text-muted-foreground"

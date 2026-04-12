@@ -20,9 +20,8 @@ describe("shortInterestAnalyzer", () => {
   });
 
   it("signals bearish for extreme short interest with increasing trend", async () => {
-    // 0.20 = 20% of S/O, extreme threshold is 15%
     const result = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.20,
+      shortPercentOfSO: 20,
       daysToCover: 12,
       shortInterestTrend: "increasing",
     });
@@ -31,9 +30,8 @@ describe("shortInterestAnalyzer", () => {
   });
 
   it("signals bullish for low short interest with decreasing trend", async () => {
-    // 0.02 = 2% of S/O, low threshold is < 4%
     const result = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.02,
+      shortPercentOfSO: 2,
       daysToCover: 1.5,
       shortInterestTrend: "decreasing",
     });
@@ -41,9 +39,8 @@ describe("shortInterestAnalyzer", () => {
   });
 
   it("detects short squeeze potential (high short + decreasing)", async () => {
-    // 0.10 = 10% of S/O, high threshold is 8%
     const result = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.10,
+      shortPercentOfSO: 10,
       daysToCover: 5,
       shortInterestTrend: "decreasing",
     });
@@ -51,35 +48,35 @@ describe("shortInterestAnalyzer", () => {
     expect(result.summary).toContain("squeeze");
   });
 
-  it("classifies short levels correctly with new thresholds", async () => {
+  it("classifies short levels correctly", async () => {
     // Extreme: >= 15%
     const extreme = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.20, daysToCover: 0,
+      shortPercentOfSO: 20, daysToCover: 0,
     });
     expect((extreme.details as Record<string, unknown>).shortLevel).toBe("extreme");
 
     // High: >= 8%
     const high = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.10, daysToCover: 0,
+      shortPercentOfSO: 10, daysToCover: 0,
     });
     expect((high.details as Record<string, unknown>).shortLevel).toBe("high");
 
     // Moderate: >= 4%
     const moderate = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.05, daysToCover: 0,
+      shortPercentOfSO: 5, daysToCover: 0,
     });
     expect((moderate.details as Record<string, unknown>).shortLevel).toBe("moderate");
 
     // Low: < 4%
     const low = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.02, daysToCover: 0,
+      shortPercentOfSO: 2, daysToCover: 0,
     });
     expect((low.details as Record<string, unknown>).shortLevel).toBe("low");
   });
 
   it("has higher baseline confidence with real SA data", async () => {
     const result = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.05,
+      shortPercentOfSO: 5,
     });
     // confidence = abs(0)/4 + 0.3 = 0.3 minimum (moderate, score=0)
     expect(result.confidence).toBeGreaterThanOrEqual(0.3);
@@ -87,7 +84,7 @@ describe("shortInterestAnalyzer", () => {
 
   it("uses S/O label in summary", async () => {
     const result = await shortInterestAnalyzer.analyze({
-      shortPercentOfSO: 0.10,
+      shortPercentOfSO: 10,
     });
     expect(result.summary).toContain("S/O");
     expect(result.summary).not.toContain("float");

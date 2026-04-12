@@ -18,8 +18,8 @@ export const shortInterestAnalyzer: Analyzer = {
       "unknown";
     const shortInterestChange = (rawData.shortInterestChange as number | null) ?? null;
 
-    // SA gives decimal (0.05 = 5%), convert to percentage for analysis
-    const shortPercentOfSO = shortPercentOfSORaw * 100;
+    // SA metric is already a percentage (e.g. 18.07 = 18.07%)
+    const shortPercentOfSO = shortPercentOfSORaw;
 
     // Early return when data is missing
     if (shortPercentOfSO === 0) {

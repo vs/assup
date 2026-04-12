@@ -14,18 +14,15 @@ export const seekingAlphaAnalyzer: Analyzer = {
         signals.push(`Fwd P/E: ${metrics.pe_nongaap_fy1.toFixed(1)}`);
       }
       if (metrics.revenue_growth != null) {
-        const pct = (metrics.revenue_growth * 100).toFixed(1);
-        signals.push(`Revenue Growth: ${pct}%`);
-        if (metrics.revenue_growth > 0.2) score += 1;
-        else if (metrics.revenue_growth < -0.1) score -= 1;
+        signals.push(`Revenue Growth: ${metrics.revenue_growth.toFixed(1)}%`);
+        if (metrics.revenue_growth > 20) score += 1;
+        else if (metrics.revenue_growth < -10) score -= 1;
       }
       if (metrics.dividend_yield != null) {
-        const pct = (metrics.dividend_yield * 100).toFixed(1);
-        signals.push(`Dividend Yield: ${pct}%`);
+        signals.push(`Dividend Yield: ${metrics.dividend_yield.toFixed(2)}%`);
       }
       if (metrics.div_yield_fwd != null && metrics.dividend_yield == null) {
-        const pct = (metrics.div_yield_fwd * 100).toFixed(1);
-        signals.push(`Fwd Dividend Yield: ${pct}%`);
+        signals.push(`Fwd Dividend Yield: ${metrics.div_yield_fwd.toFixed(2)}%`);
       }
       if (metrics.marketcap != null) {
         const b = metrics.marketcap / 1e9;
