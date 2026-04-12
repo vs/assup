@@ -461,6 +461,7 @@ function CommentsSection({
   collections: Map<string, CollectionDataEntry>;
 }) {
   const [showAllSA, setShowAllSA] = useState(false);
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [showAllReddit, setShowAllReddit] = useState(false);
   const [showAllST, setShowAllST] = useState(false);
 
@@ -483,7 +484,16 @@ function CommentsSection({
     return null;
   }
 
-  const visibleSA = showAllSA ? saArticles : saArticles.slice(0, 3);
+  const visibleSA = showAllSA ? saArticles : saArticles.slice(0, 10);
+
+  const toggleComments = (articleId: string) => {
+    setExpandedComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(articleId)) next.delete(articleId);
+      else next.add(articleId);
+      return next;
+    });
+  };
   const visibleReddit = showAllReddit ? redditPosts : redditPosts.slice(0, 5);
   const visibleST = showAllST ? stocktwitsPosts : stocktwitsPosts.slice(0, 5);
 
@@ -520,31 +530,49 @@ function CommentsSection({
                         {timeAgo(article.publishedAt)}
                       </span>
                     </div>
-                    {article.comments.length > 0 && (
-                      <div className="ml-3 space-y-1.5">
-                        {article.comments.map((comment) => (
-                          <div
-                            key={comment.id}
-                            className="border-l-2 border-orange-200 pl-3 py-1"
-                          >
-                            <p className="text-xs text-foreground/80">{comment.content}</p>
-                            <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                              {comment.likes > 0 && (
-                                <span className="flex items-center gap-1">
-                                  <ThumbsUp className="h-3 w-3" />
-                                  {comment.likes}
-                                </span>
-                              )}
-                              <span>{timeAgo(comment.createdAt)}</span>
+                    {article.comments.length > 0 && (() => {
+                      const commentsExpanded = expandedComments.has(article.id);
+                      const visibleComments = commentsExpanded
+                        ? article.comments
+                        : article.comments.slice(0, 5);
+                      return (
+                        <div className="ml-3 space-y-1.5">
+                          {visibleComments.map((comment) => (
+                            <div
+                              key={comment.id}
+                              className="border-l-2 border-orange-200 pl-3 py-1"
+                            >
+                              <p className="text-xs text-foreground/80">{comment.content}</p>
+                              <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                                {comment.likes > 0 && (
+                                  <span className="flex items-center gap-1">
+                                    <ThumbsUp className="h-3 w-3" />
+                                    {comment.likes}
+                                  </span>
+                                )}
+                                <span>{timeAgo(comment.createdAt)}</span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                          {article.comments.length > 5 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs h-6 px-2"
+                              onClick={() => toggleComments(article.id)}
+                            >
+                              {commentsExpanded
+                                ? "Show less"
+                                : `Show all ${article.comments.length} comments`}
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
-              {saArticles.length > 3 && (
+              {saArticles.length > 10 && (
                 <Button
                   variant="ghost"
                   size="sm"
