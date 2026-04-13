@@ -658,8 +658,8 @@ export function ResearchPage() {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to add to watchlist";
-      // Don't show error for duplicates
-      if (!msg.includes("already")) {
+      // Don't show error for duplicates (Prisma throws "Unique constraint failed")
+      if (!msg.toLowerCase().includes("unique constraint") && !msg.includes("already")) {
         setError(msg);
       }
     }
