@@ -115,6 +115,7 @@ export interface ScannerResult {
   longName?: string;
   industry?: string;
   category?: string;
+  subcategory?: string;
 }
 
 class IBKRService {
@@ -1383,6 +1384,7 @@ class IBKRService {
               longName: details.longName,
               industry: details.industry,
               category: details.category,
+              subcategory: details.subcategory,
             });
           });
 

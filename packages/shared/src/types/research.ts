@@ -158,6 +158,7 @@ export interface ScannerResultItem {
   longName?: string;
   industry?: string;
   category?: string;
+  subcategory?: string;
   technical?: TechnicalScore;
 }
 

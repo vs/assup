@@ -149,6 +149,7 @@ class MarketScannerService {
       longName: r.longName,
       industry: r.industry,
       category: r.category,
+      subcategory: r.subcategory,
     }));
 
     const symbols = scannerResults.map((r) => r.symbol);

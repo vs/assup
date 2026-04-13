@@ -773,9 +773,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
                         />
                       </TableHead>
                       <TableHead className="w-12">#</TableHead>
-                      <TableHead>Symbol</TableHead>
-                      <TableHead className="hidden md:table-cell">Name</TableHead>
-                      <TableHead className="hidden lg:table-cell">Industry</TableHead>
+                      <TableHead>Company</TableHead>
                       <TableHead>Score</TableHead>
                       <TableHead>RSI</TableHead>
                       <TableHead>SMA200</TableHead>
@@ -911,12 +909,20 @@ function ResultRow({
         />
       </TableCell>
       <TableCell className="text-muted-foreground text-xs">{item.rank}</TableCell>
-      <TableCell className="font-semibold">{item.symbol}</TableCell>
-      <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-[200px] truncate">
-        {item.longName || "--"}
-      </TableCell>
-      <TableCell className="hidden lg:table-cell text-sm text-muted-foreground max-w-[150px] truncate">
-        {item.industry || "--"}
+      <TableCell>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">{item.symbol}</span>
+            {item.longName && (
+              <span className="text-sm text-muted-foreground truncate">{item.longName}</span>
+            )}
+          </div>
+          {(item.industry || item.category) && (
+            <div className="text-xs text-muted-foreground truncate mt-0.5">
+              {[item.industry, item.category, item.subcategory].filter(Boolean).join(" / ")}
+            </div>
+          )}
+        </div>
       </TableCell>
       <TableCell>
         {score != null ? (
