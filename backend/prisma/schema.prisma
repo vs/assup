@@ -442,6 +442,20 @@ model MarketScannerPreset {
   @@map("market_scanner_preset")
 }
 
+// Scan Run - persists each scanner execution with metadata and results
+model ScanRun {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(200)
+  scanCode        String   @map("scan_code") @db.VarChar(60)
+  locationCode    String   @default("STK.US.MAJOR") @map("location_code") @db.VarChar(40)
+  filters         Json     @default("{}") @db.JsonB
+  technicalFilter Json     @default("{}") @map("technical_filter") @db.JsonB
+  symbols         String[]
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("scan_runs")
+}
+
 // Macro Snapshot - macro regime analysis snapshots
 model MacroSnapshot {
   id         String   @id @default(uuid()) @db.Uuid

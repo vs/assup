@@ -14,6 +14,7 @@ import type {
   MarketScannerPreset,
   ScanCodeInfo,
   MarketScanResult,
+  ScanRun,
 } from "@assup/shared";
 
 export const researchApi = {
@@ -166,4 +167,11 @@ export const researchApi = {
     request<{ tickers: Array<{ symbol: string; addedAt: string; status: string }>; total: number }>(
       `/api/research/scanner/results${buildQuery({ page, limit })}`
     ),
+
+  // Scan Runs
+  listScanRuns: () =>
+    request<ScanRun[]>("/api/research/scanner/runs"),
+
+  deleteScanRun: (id: string) =>
+    request<void>(`/api/research/scanner/runs/${id}`, { method: "DELETE" }),
 };

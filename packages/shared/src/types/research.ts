@@ -10,6 +10,19 @@ export interface ResearchTicker {
   lastAnalyzed: string | null;
 }
 
+// === Scan Run ===
+
+export interface ScanRun {
+  id: string;
+  name: string;
+  scanCode: string;
+  locationCode: string;
+  filters: Record<string, unknown>;
+  technicalFilter: Record<string, unknown>;
+  symbols: string[];
+  createdAt: string;
+}
+
 // === Analysis ===
 
 export type AnalysisSignal = "bullish" | "bearish" | "neutral";

@@ -645,6 +645,30 @@ router.get(
 );
 
 /**
+ * GET /api/research/scanner/runs
+ * List scan run history
+ */
+router.get(
+  "/scanner/runs",
+  asyncHandler(async (_req, res) => {
+    const runs = await marketScannerService.listScanRuns();
+    res.json(runs);
+  })
+);
+
+/**
+ * DELETE /api/research/scanner/runs/:id
+ * Delete a scan run
+ */
+router.delete(
+  "/scanner/runs/:id",
+  asyncHandler(async (req, res) => {
+    await marketScannerService.deleteScanRun(req.params.id);
+    res.status(204).send();
+  })
+);
+
+/**
  * GET /api/research/scanner/scan-codes
  * Reference data: available scan codes with labels
  */

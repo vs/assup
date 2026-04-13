@@ -101,7 +101,7 @@ class MarketScannerService {
       stockTypeFilter: filters.stockTypeFilter as string | undefined,
     };
 
-    const result = await this.executeAndProcess(scanParams, techConfig);
+    const result = await this.executeAndProcess(scanParams, techConfig, preset.name);
 
     // Update lastRun
     await prisma.marketScannerPreset.update({
@@ -127,7 +127,8 @@ class MarketScannerService {
    */
   private async executeAndProcess(
     params: MarketScannerParams,
-    techConfig?: TechnicalFilterConfig
+    techConfig?: TechnicalFilterConfig,
+    runName?: string
   ): Promise<MarketScanResult> {
     console.log(
       `[MarketScanner] Running scan: scanCode=${params.scanCode}, location=${params.locationCode ?? "STK.US.MAJOR"}`
@@ -186,6 +187,19 @@ class MarketScannerService {
     console.log(
       `[MarketScanner] Added ${addedSymbols.length} tickers, skipped ${skipped.length}`
     );
+
+    // Step 4: Persist scan run for history
+    const scanRunName = runName || params.scanCode;
+    await prisma.scanRun.create({
+      data: {
+        name: scanRunName,
+        scanCode: params.scanCode,
+        locationCode: params.locationCode ?? "STK.US.MAJOR",
+        filters: params as unknown as Prisma.InputJsonValue,
+        technicalFilter: (techConfig ?? {}) as unknown as Prisma.InputJsonValue,
+        symbols: [...addedSymbols, ...skipped],
+      },
+    });
 
     return {
       discovered,
@@ -440,6 +454,19 @@ class MarketScannerService {
     ]);
 
     return { tickers, total };
+  }
+
+  // ── Scan Runs ─────────────────────────────────────────────────
+
+  async listScanRuns() {
+    return prisma.scanRun.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+  }
+
+  async deleteScanRun(id: string) {
+    await prisma.scanRun.delete({ where: { id } });
   }
 }
 

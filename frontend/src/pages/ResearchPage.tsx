@@ -1,20 +1,21 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { researchApi, settingsApi } from "@/api";
+import { researchApi, watchlistsApi, settingsApi } from "@/api";
 import type {
   ResearchTicker,
   ResearchReport,
   MacroAnalysis,
   MarketRegime,
+  Watchlist,
+  WatchlistWithItems,
+  ScanRun,
 } from "@assup/shared";
 import {
   ErrorAlert,
   PageLoadingSkeleton,
   PageHeader,
   RecommendationBadge,
-  SortableHead,
 } from "@/components/common";
-import { useTableSort } from "@/hooks/useTableSort";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -26,7 +27,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Zap, AlertTriangle, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, Radar, Trash2 } from "lucide-react";
+import {
+  Eye,
+  Zap,
+  AlertTriangle,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  ChevronDown,
+  ChevronRight,
+  Radar,
+  Trash2,
+  GripVertical,
+  List,
+} from "lucide-react";
 import { timeAgo } from "@/utils/format";
 import { ScannerDialog } from "@/components/research/ScannerDialog";
 
@@ -67,7 +81,6 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-/** Linearly map value from [inLow, inHigh] to [outLow, outHigh], clamped. */
 function linearMap(v: number, inLow: number, inHigh: number, outLow: number, outHigh: number): number {
   return clamp(outLow + ((v - inLow) / (inHigh - inLow)) * (outHigh - outLow), Math.min(outLow, outHigh), Math.max(outLow, outHigh));
 }
@@ -81,7 +94,6 @@ interface FearScoreResult {
 function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | null {
   const signals: { score: number; weight: number; name: string; display: string; change?: number | null }[] = [];
 
-  // VIX level: 0 (greed) at ≤12, 50 at 20, 100 (fear) at ≥35
   if (details.vix != null) {
     const s = details.vix <= 20
       ? linearMap(details.vix, 12, 20, 0, 50)
@@ -89,14 +101,12 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
     signals.push({ score: s, weight: 0.30, name: "VIX", display: details.vix.toFixed(1), change: details.vixChange });
   }
 
-  // VIX vs SMA20: 0 when 15%+ below, 50 at parity, 100 when 15%+ above
   if (details.vix != null && details.vixSma20 != null && details.vixSma20 > 0) {
     const pctDiff = ((details.vix - details.vixSma20) / details.vixSma20) * 100;
     const s = linearMap(pctDiff, -15, 15, 0, 100);
-    signals.push({ score: s, weight: 0.10, name: "", display: "" }); // weight participates but no separate display
+    signals.push({ score: s, weight: 0.10, name: "", display: "" });
   }
 
-  // S&P vs SMA200: 0 when 10%+ above, 50 at parity, 100 when 10%+ below (inverted)
   if (details.sp500Index != null && details.sp500Sma200 != null && details.sp500Sma200 > 0) {
     const pctAbove = ((details.sp500Index - details.sp500Sma200) / details.sp500Sma200) * 100;
     const s = linearMap(pctAbove, 10, -10, 0, 100);
@@ -104,25 +114,21 @@ function computeFearScore(details: MacroAnalysis["details"]): FearScoreResult | 
     signals.push({ score: s, weight: 0.15, name: "S&P 500", display: displayPrice, change: details.sp500Change });
   }
 
-  // S&P 500 RSI: RSI 70→30 maps to 0→100 fear (high RSI = greed, low RSI = fear)
   if (details.sp500Rsi != null) {
     const s = linearMap(details.sp500Rsi, 70, 30, 0, 100);
     signals.push({ score: s, weight: 0.10, name: "RSI", display: details.sp500Rsi.toFixed(0) });
   }
 
-  // Safe haven demand: HYG-TLT spread. +3→-3 maps to 0→100 fear
   if (details.safeHavenSpread != null) {
     const s = linearMap(details.safeHavenSpread, 3, -3, 0, 100);
     signals.push({ score: s, weight: 0.15, name: "HYG/TLT", display: `${details.safeHavenSpread >= 0 ? "+" : ""}${details.safeHavenSpread.toFixed(1)}%` });
   }
 
-  // Market momentum: SPX daily change. +2→-2 maps to 0→100 fear
   if (details.sp500Change != null) {
     const s = linearMap(details.sp500Change, 2, -2, 0, 100);
     signals.push({ score: s, weight: 0.10, name: "Momentum", display: `${details.sp500Change >= 0 ? "+" : ""}${details.sp500Change.toFixed(1)}%` });
   }
 
-  // Put/Call ratio: 0 at ≤0.5, 50 at 0.85, 100 at ≥1.5
   if (details.putCallRatio != null) {
     const s = details.putCallRatio <= 0.85
       ? linearMap(details.putCallRatio, 0.5, 0.85, 0, 50)
@@ -229,28 +235,42 @@ function MacroBanner({ macro }: { macro: MacroAnalysis | null }) {
   );
 }
 
-// --- Ticker Row ---
+// --- Ticker Row (draggable) ---
 
 function TickerRow({
-  ticker,
+  symbol,
   report,
   generatingSymbol,
   generateProgress,
   onView,
   onGenerate,
   onDelete,
+  draggable,
 }: {
-  ticker: ResearchTicker;
+  symbol: string;
   report: ResearchReport | undefined;
   generatingSymbol: string | null;
   generateProgress: string | null;
   onView: () => void;
   onGenerate: () => void;
   onDelete: () => void;
+  draggable?: boolean;
 }) {
   return (
-    <TableRow>
-      <TableCell className="font-semibold">{ticker.symbol}</TableCell>
+    <TableRow
+      draggable={draggable}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", symbol);
+        e.dataTransfer.effectAllowed = "copy";
+      }}
+      className={draggable ? "cursor-grab active:cursor-grabbing" : ""}
+    >
+      {draggable && (
+        <TableCell className="w-8 px-2">
+          <GripVertical className="h-4 w-4 text-muted-foreground/40" />
+        </TableCell>
+      )}
+      <TableCell className="font-semibold">{symbol}</TableCell>
       <TableCell>
         {report ? (
           <RecommendationBadge recommendation={report.recommendation} />
@@ -266,7 +286,7 @@ function TickerRow({
         )}
       </TableCell>
       <TableCell className="hidden md:table-cell max-w-xs">
-        {generatingSymbol === ticker.symbol && generateProgress ? (
+        {generatingSymbol === symbol && generateProgress ? (
           <span className="text-sm text-blue-600 animate-pulse">{generateProgress}</span>
         ) : report ? (
           <span className="text-sm text-muted-foreground">{truncate(report.summary, 80)}</span>
@@ -276,22 +296,12 @@ function TickerRow({
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground">
-          {report
-            ? timeAgo(report.createdAt)
-            : ticker.lastAnalyzed
-              ? timeAgo(ticker.lastAnalyzed)
-              : "Never"}
+          {report ? timeAgo(report.createdAt) : "Never"}
         </span>
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onView}
-            disabled={!report && !ticker.lastAnalyzed}
-            title="View report"
-          >
+          <Button variant="ghost" size="sm" onClick={onView} disabled={!report} title="View report">
             <Eye className="h-4 w-4 mr-1" />
             View
           </Button>
@@ -300,20 +310,18 @@ function TickerRow({
             size="sm"
             className="w-[120px]"
             onClick={onGenerate}
-            disabled={generatingSymbol === ticker.symbol}
+            disabled={generatingSymbol === symbol}
             title="Generate report"
           >
-            <Zap
-              className={`h-4 w-4 mr-1 ${generatingSymbol === ticker.symbol ? "animate-pulse" : ""}`}
-            />
-            {generatingSymbol === ticker.symbol ? "Generating..." : "Generate"}
+            <Zap className={`h-4 w-4 mr-1 ${generatingSymbol === symbol ? "animate-pulse" : ""}`} />
+            {generatingSymbol === symbol ? "Generating..." : "Generate"}
           </Button>
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-destructive"
             onClick={onDelete}
-            disabled={generatingSymbol === ticker.symbol}
+            disabled={generatingSymbol === symbol}
             title="Delete ticker"
           >
             <Trash2 className="h-4 w-4" />
@@ -324,6 +332,159 @@ function TickerRow({
   );
 }
 
+// --- Collapsible Section ---
+
+function CollapsibleSection({
+  title,
+  subtitle,
+  icon,
+  count,
+  defaultOpen,
+  onDelete,
+  isDropTarget,
+  onDrop,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  count: number;
+  defaultOpen?: boolean;
+  onDelete?: () => void;
+  isDropTarget?: boolean;
+  onDrop?: (symbol: string) => void;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isDropTarget) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => setDragOver(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!isDropTarget || !onDrop) return;
+    e.preventDefault();
+    setDragOver(false);
+    const symbol = e.dataTransfer.getData("text/plain");
+    if (symbol) onDrop(symbol);
+  };
+
+  return (
+    <Card
+      className={`transition-colors ${dragOver ? "ring-2 ring-primary/50 bg-primary/5" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <div
+        className="flex items-center justify-between px-4 py-3 cursor-pointer select-none hover:bg-muted/30 transition-colors"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+          <span className="shrink-0">{icon}</span>
+          <span className="font-medium text-sm truncate">{title}</span>
+          {subtitle && <span className="text-xs text-muted-foreground truncate hidden sm:inline">{subtitle}</span>}
+          <Badge variant="secondary" className="text-xs shrink-0">{count}</Badge>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {isDropTarget && (
+            <span className="text-xs text-muted-foreground mr-2 hidden sm:inline">Drop here to add</span>
+          )}
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              title="Delete section"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+      {open && <CardContent className="p-0 pt-0">{children}</CardContent>}
+    </Card>
+  );
+}
+
+// --- Section Table ---
+
+function SectionTable({
+  symbols,
+  reports,
+  generatingSymbol,
+  generateProgress,
+  onView,
+  onGenerate,
+  onDelete,
+  draggable,
+}: {
+  symbols: string[];
+  reports: Record<string, ResearchReport>;
+  generatingSymbol: string | null;
+  generateProgress: string | null;
+  onView: (symbol: string) => void;
+  onGenerate: (symbol: string) => void;
+  onDelete: (symbol: string) => void;
+  draggable?: boolean;
+}) {
+  if (symbols.length === 0) {
+    return (
+      <div className="py-6 text-center text-sm text-muted-foreground">
+        No tickers in this section.
+      </div>
+    );
+  }
+
+  // Sort: tickers with reports first (by recommendation), then without
+  const sorted = [...symbols].sort((a, b) => {
+    const ra = reports[a];
+    const rb = reports[b];
+    if (ra && !rb) return -1;
+    if (!ra && rb) return 1;
+    return a.localeCompare(b);
+  });
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {draggable && <TableHead className="w-8" />}
+          <TableHead>Symbol</TableHead>
+          <TableHead>Recommendation</TableHead>
+          <TableHead>Confidence</TableHead>
+          <TableHead className="hidden md:table-cell">Summary</TableHead>
+          <TableHead>Last Updated</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((symbol) => (
+          <TickerRow
+            key={symbol}
+            symbol={symbol}
+            report={reports[symbol]}
+            generatingSymbol={generatingSymbol}
+            generateProgress={generateProgress}
+            onView={() => onView(symbol)}
+            onGenerate={() => onGenerate(symbol)}
+            onDelete={() => onDelete(symbol)}
+            draggable={draggable}
+          />
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
 // --- Main Page ---
 
 export function ResearchPage() {
@@ -331,6 +492,8 @@ export function ResearchPage() {
   const [tickers, setTickers] = useState<ResearchTicker[]>([]);
   const [reports, setReports] = useState<Record<string, ResearchReport>>({});
   const [macro, setMacro] = useState<MacroAnalysis | null>(null);
+  const [watchlists, setWatchlists] = useState<WatchlistWithItems[]>([]);
+  const [scanRuns, setScanRuns] = useState<ScanRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -341,18 +504,16 @@ export function ResearchPage() {
   // Discover dialog
   const [discoverOpen, setDiscoverOpen] = useState(false);
 
-  // Collapse state for tickers without reports
-  const [showPending, setShowPending] = useState(false);
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Auto-sync watchlist tickers, refresh macro, and load tickers in parallel
-      const [, , tickerData] = await Promise.allSettled([
+      const [, , tickerData, wlList, scanRunData] = await Promise.allSettled([
         researchApi.syncWatchlist(),
         researchApi.refreshMacro().then(setMacro),
         researchApi.listTickers(),
+        watchlistsApi.list(),
+        researchApi.listScanRuns(),
       ]);
 
       if (tickerData.status === "fulfilled") {
@@ -377,6 +538,21 @@ export function ResearchPage() {
         );
       }
 
+      // Load watchlists with items
+      if (wlList.status === "fulfilled") {
+        const wlDetails = await Promise.allSettled(
+          wlList.value.map((wl: Watchlist) => watchlistsApi.get(wl.id))
+        );
+        setWatchlists(
+          wlDetails
+            .filter((r): r is PromiseFulfilledResult<WatchlistWithItems> => r.status === "fulfilled")
+            .map((r) => r.value)
+        );
+      }
+
+      if (scanRunData.status === "fulfilled") {
+        setScanRuns(scanRunData.value);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load research data"
@@ -395,7 +571,6 @@ export function ResearchPage() {
     try {
       const result = await researchApi.deleteTicker(symbol);
       if (result.action === "deleted") {
-        // Remove ticker entirely from local state
         setTickers((prev) => prev.filter((t) => t.symbol !== symbol));
         setReports((prev) => {
           const next = { ...prev };
@@ -403,13 +578,11 @@ export function ResearchPage() {
           return next;
         });
       } else {
-        // Cleared: remove report so ticker moves to "without reports" section
         setReports((prev) => {
           const next = { ...prev };
           delete next[symbol];
           return next;
         });
-        // Reset lastAnalyzed in local state
         setTickers((prev) =>
           prev.map((t) =>
             t.symbol === symbol ? { ...t, lastAnalyzed: null } : t
@@ -439,8 +612,7 @@ export function ResearchPage() {
         model: researchSettings.model,
       });
 
-      // Poll job status until complete
-      const maxAttempts = 150; // 5 minutes at 2s intervals
+      const maxAttempts = 150;
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, 2000));
         const job = await researchApi.getJob(jobId);
@@ -476,34 +648,68 @@ export function ResearchPage() {
     }
   }
 
-  const recOrder: Record<string, number> = { buy: 0, wheel: 1, hold: 2, avoid: 3, sell: 4 };
-
-  const getColumnValue = useCallback(
-    (ticker: ResearchTicker, column: string): string | number => {
-      const report = reports[ticker.symbol];
-      switch (column) {
-        case "symbol":
-          return ticker.symbol;
-        case "recommendation":
-          return report ? (recOrder[report.recommendation] ?? 99) : 99;
-        case "confidence":
-          return report ? report.confidence : -1;
-        case "updated":
-          return report
-            ? new Date(report.createdAt).getTime()
-            : ticker.lastAnalyzed
-              ? new Date(ticker.lastAnalyzed).getTime()
-              : 0;
-        default:
-          return "";
+  async function handleDropOnWatchlist(watchlistId: string, symbol: string) {
+    try {
+      await watchlistsApi.addItem(watchlistId, { symbol });
+      // Refresh watchlists to reflect the new item
+      const updated = await watchlistsApi.get(watchlistId);
+      setWatchlists((prev) =>
+        prev.map((wl) => (wl.id === watchlistId ? updated : wl))
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to add to watchlist";
+      // Don't show error for duplicates
+      if (!msg.includes("already")) {
+        setError(msg);
       }
-    },
-    [reports],
-  );
+    }
+  }
 
-  const { sorted: sortedTickers, ...sortProps } = useTableSort(tickers, getColumnValue);
+  async function handleDeleteScanRun(id: string) {
+    try {
+      await researchApi.deleteScanRun(id);
+      setScanRuns((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete scan run");
+    }
+  }
+
+  // Compute which symbols are in watchlists or scan runs
+  const watchlistSymbolSets = new Map<string, Set<string>>();
+  for (const wl of watchlists) {
+    watchlistSymbolSets.set(wl.id, new Set(wl.items.map((i) => i.symbol)));
+  }
+
+  const scanRunSymbolSets = new Map<string, Set<string>>();
+  for (const run of scanRuns) {
+    scanRunSymbolSets.set(run.id, new Set(run.symbols));
+  }
+
+  // Tickers not in any watchlist or scan run
+  const assignedSymbols = new Set<string>();
+  for (const syms of watchlistSymbolSets.values()) {
+    for (const s of syms) assignedSymbols.add(s);
+  }
+  for (const syms of scanRunSymbolSets.values()) {
+    for (const s of syms) assignedSymbols.add(s);
+  }
+
+  const allTickerSymbols = new Set(tickers.map((t) => t.symbol));
+  const unassignedSymbols = [...allTickerSymbols].filter((s) => !assignedSymbols.has(s));
 
   if (loading) return <PageLoadingSkeleton />;
+
+  const formatScanSubtitle = (run: ScanRun) => {
+    const parts: string[] = [];
+    parts.push(run.locationCode);
+    parts.push(timeAgo(run.createdAt));
+    const tf = run.technicalFilter as Record<string, unknown> | undefined;
+    if (tf?.enabled) {
+      if (tf.maxRsi) parts.push(`RSI<${tf.maxRsi}`);
+      if (tf.requireAboveSma200) parts.push("SMA200");
+    }
+    return parts.join(" · ");
+  };
 
   return (
     <div className="space-y-6">
@@ -524,99 +730,101 @@ export function ResearchPage() {
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Macro Regime Banner */}
       <MacroBanner macro={macro} />
 
-      {/* Scanner Dialog */}
       <ScannerDialog
         open={discoverOpen}
         onOpenChange={setDiscoverOpen}
         onTickersAdded={() => fetchData()}
       />
 
-      {/* Tickers Table */}
-      <Card>
-        <CardContent className="p-0">
-          {tickers.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">
-              <AlertTriangle className="h-8 w-8 mx-auto mb-3 opacity-50" />
-              <p className="font-medium">No tickers tracked yet</p>
-              <p className="text-sm mt-1">
-                Add symbols to a watchlist and they will appear here automatically.
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <SortableHead column="symbol" {...sortProps}>Symbol</SortableHead>
-                  <SortableHead column="recommendation" {...sortProps}>Recommendation</SortableHead>
-                  <SortableHead column="confidence" {...sortProps}>Confidence</SortableHead>
-                  <TableHead className="hidden md:table-cell">
-                    Summary
-                  </TableHead>
-                  <SortableHead column="updated" {...sortProps}>Last Updated</SortableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedTickers
-                  .filter((t) => reports[t.symbol])
-                  .map((ticker) => {
-                    const report = reports[ticker.symbol];
-                    return (
-                      <TickerRow
-                        key={ticker.id}
-                        ticker={ticker}
-                        report={report}
-                        generatingSymbol={generatingSymbol}
-                        generateProgress={generateProgress}
-                        onView={() => navigate(`/research/${ticker.symbol}`)}
-                        onGenerate={() => handleGenerate(ticker.symbol)}
-                        onDelete={() => handleDelete(ticker.symbol)}
-                      />
-                    );
-                  })}
-                {sortedTickers.some((t) => !reports[t.symbol]) && (
-                  <>
-                    <TableRow
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setShowPending((v) => !v)}
-                    >
-                      <TableCell colSpan={6}>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          {showPending ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                          {sortedTickers.filter((t) => !reports[t.symbol]).length} tickers without reports
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    {showPending &&
-                      sortedTickers
-                        .filter((t) => !reports[t.symbol])
-                        .map((ticker) => (
-                          <TickerRow
-                            key={ticker.id}
-                            ticker={ticker}
-                            report={undefined}
-                            generatingSymbol={generatingSymbol}
-                            generateProgress={generateProgress}
-                            onView={() => navigate(`/research/${ticker.symbol}`)}
-                            onGenerate={() => handleGenerate(ticker.symbol)}
-                            onDelete={() => handleDelete(ticker.symbol)}
-                          />
-                        ))}
-                  </>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Watchlist sections */}
+      {watchlists.map((wl) => {
+        const wlSymbols = wl.items.map((i) => i.symbol).filter((s) => allTickerSymbols.has(s));
+        return (
+          <CollapsibleSection
+            key={wl.id}
+            title={wl.name}
+            icon={<List className="h-4 w-4 text-blue-500" />}
+            count={wlSymbols.length}
+            defaultOpen={true}
+            isDropTarget={true}
+            onDrop={(symbol) => handleDropOnWatchlist(wl.id, symbol)}
+          >
+            <SectionTable
+              symbols={wlSymbols}
+              reports={reports}
+              generatingSymbol={generatingSymbol}
+              generateProgress={generateProgress}
+              onView={(s) => navigate(`/research/${s}`)}
+              onGenerate={handleGenerate}
+              onDelete={handleDelete}
+              draggable={true}
+            />
+          </CollapsibleSection>
+        );
+      })}
 
+      {/* Scan run sections */}
+      {scanRuns.map((run) => {
+        const runSymbols = run.symbols.filter((s) => allTickerSymbols.has(s));
+        return (
+          <CollapsibleSection
+            key={run.id}
+            title={run.name}
+            subtitle={formatScanSubtitle(run)}
+            icon={<Radar className="h-4 w-4 text-amber-500" />}
+            count={runSymbols.length}
+            defaultOpen={false}
+            onDelete={() => handleDeleteScanRun(run.id)}
+          >
+            <SectionTable
+              symbols={runSymbols}
+              reports={reports}
+              generatingSymbol={generatingSymbol}
+              generateProgress={generateProgress}
+              onView={(s) => navigate(`/research/${s}`)}
+              onGenerate={handleGenerate}
+              onDelete={handleDelete}
+              draggable={true}
+            />
+          </CollapsibleSection>
+        );
+      })}
+
+      {/* Unassigned tickers */}
+      {unassignedSymbols.length > 0 && (
+        <CollapsibleSection
+          title="Other Tickers"
+          icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />}
+          count={unassignedSymbols.length}
+          defaultOpen={true}
+        >
+          <SectionTable
+            symbols={unassignedSymbols}
+            reports={reports}
+            generatingSymbol={generatingSymbol}
+            generateProgress={generateProgress}
+            onView={(s) => navigate(`/research/${s}`)}
+            onGenerate={handleGenerate}
+            onDelete={handleDelete}
+            draggable={true}
+          />
+        </CollapsibleSection>
+      )}
+
+      {/* Empty state */}
+      {watchlists.length === 0 && scanRuns.length === 0 && unassignedSymbols.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <AlertTriangle className="h-8 w-8 mx-auto mb-3 opacity-50" />
+            <p className="font-medium">No tickers tracked yet</p>
+            <p className="text-sm mt-1">
+              Add symbols to a watchlist or use Discover Tickers to find candidates.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
