@@ -167,7 +167,6 @@ export interface MarketScanResult {
   qualified: string[];
   added: string[];
   skipped: string[];
-  reportsQueued: number;
 }
 
 // === Collection Status ===

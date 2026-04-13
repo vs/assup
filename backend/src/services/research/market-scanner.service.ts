@@ -6,7 +6,6 @@ import { prisma } from "./db.js";
 import { ibkrService } from "../ibkr.js";
 import type { MarketScannerParams, ScannerResult } from "../ibkr.js";
 import { tickerService } from "./ticker.service.js";
-import { pipelineService } from "./pipeline.service.js";
 import { NotFoundError } from "./errors/AppError.js";
 import type {
   MarketScanResult,
@@ -187,27 +186,12 @@ class MarketScannerService {
       `[MarketScanner] Added ${addedSymbols.length} tickers, skipped ${skipped.length}`
     );
 
-    // Step 4: Queue reports for newly added tickers (non-fatal)
-    let reportsQueued = 0;
-    for (const symbol of addedSymbols) {
-      try {
-        await pipelineService.generateReport(symbol);
-        reportsQueued++;
-      } catch (err) {
-        console.error(
-          `[MarketScanner] Report generation failed for ${symbol}:`,
-          (err as Error).message
-        );
-      }
-    }
-
     return {
       discovered,
       scored,
       qualified,
       added: addedSymbols,
       skipped,
-      reportsQueued,
     };
   }
 
