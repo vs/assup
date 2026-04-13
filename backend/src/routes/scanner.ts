@@ -20,14 +20,16 @@ import {
   scannerCriteriaSchema,
 } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
-import { isIgnorablePositionError, isMarketOpen, parseExpirationDate } from "../utils/index.js";
+import { isIgnorablePositionError } from "../utils/index.js";
 import {
+  withLiveMarketData,
   getUnderlyingPrice,
   getReferencePrice,
   filterChainByStrike,
   marketDataKey,
   calcOptionMetrics,
   estimateDelta,
+  getDaysToExpiry,
 } from "../utils/options.js";
 
 const router = Router();
@@ -316,15 +318,6 @@ async function scanOptionsForSymbols(
   const totalSymbols = symbols.length;
   console.log(`\n=== Starting Options Scan for ${totalSymbols} symbols ===\n`);
 
-  // Use Live data during market hours, Frozen (last close) outside market hours
-  const marketOpen = isMarketOpen();
-  try {
-    ibkrService.setMarketDataType(marketOpen ? 1 : 2);
-    console.log(`Market is ${marketOpen ? "OPEN" : "CLOSED"}, using ${marketOpen ? "Live" : "Frozen"} data`);
-  } catch (err) {
-    console.warn("Could not switch market data type, continuing with delayed:", err);
-  }
-
   // Send initial progress
   sseService.broadcast("scanner", {
     status: "started",
@@ -333,7 +326,7 @@ async function scanOptionsForSymbols(
     message: `Starting scan for ${totalSymbols} symbols`,
   });
 
-  try {
+  return withLiveMarketData(async () => {
     for (let i = 0; i < symbols.length; i++) {
     const symbol = symbols[i];
     const assetClassInfo = symbolToAssetClass.get(symbol);
@@ -396,9 +389,8 @@ async function scanOptionsForSymbols(
 
       // Filter chain by expiration only first (strike ranges depend on option type)
       const expirationFilteredChain = chain.filter((entry) => {
-        const expirationDate = parseExpirationDate(entry.expiration);
-        const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        return daysToExpiry >= criteria.minDaysToExpiry && daysToExpiry <= criteria.maxDaysToExpiry;
+        const dte = getDaysToExpiry(entry.expiration, today);
+        return dte >= criteria.minDaysToExpiry && dte <= criteria.maxDaysToExpiry;
       });
 
       if (expirationFilteredChain.length === 0) {
@@ -531,18 +523,14 @@ async function scanOptionsForSymbols(
       // Process PUT options
       if (scanPuts) {
         for (const entry of putFilteredChain) {
-          const expirationDate = parseExpirationDate(entry.expiration);
-          const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-          processOption(entry, "PUT", entry.put, daysToExpiry);
+          processOption(entry, "PUT", entry.put, getDaysToExpiry(entry.expiration, today));
         }
       }
 
       // Process CALL options
       if (scanCalls) {
         for (const entry of callFilteredChain) {
-          const expirationDate = parseExpirationDate(entry.expiration);
-          const daysToExpiry = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-          processOption(entry, "CALL", entry.call, daysToExpiry);
+          processOption(entry, "CALL", entry.call, getDaysToExpiry(entry.expiration, today));
         }
       }
 
@@ -584,14 +572,7 @@ async function scanOptionsForSymbols(
   });
 
   return opportunities;
-  } finally {
-    // Always switch back to delayed data after scan completes
-    try {
-      ibkrService.setMarketDataType(3); // 3 = Delayed
-    } catch (err) {
-      console.warn("Could not switch back to delayed market data:", err);
-    }
-  }
+  });
 }
 
 export default router;

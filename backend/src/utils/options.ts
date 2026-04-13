@@ -6,7 +6,7 @@
 
 import { SecType } from "@stoqey/ib";
 import { ibkrService, type OptionChainEntry } from "../services/ibkr.js";
-import { isMarketOpen } from "./market.js";
+import { isMarketOpen, parseExpirationDate } from "./market.js";
 
 // --- Market Data Type Switching ---
 
@@ -138,4 +138,14 @@ export function estimateDelta(
     return Math.abs(Math.max(-0.95, Math.min(-0.05, -0.5 - (moneyness - 1) * 2)));
   }
   return Math.max(0.05, Math.min(0.95, 0.5 - (moneyness - 1) * 2));
+}
+
+// --- Days To Expiry ---
+
+/**
+ * Calculate calendar days from today to an option expiration date string.
+ */
+export function getDaysToExpiry(expiration: string, today: Date = new Date()): number {
+  const expirationDate = parseExpirationDate(expiration);
+  return Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }

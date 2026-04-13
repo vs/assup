@@ -12,14 +12,15 @@ import { ibkrService } from "../services/ibkr.js";
 import { sseService } from "../services/sse.js";
 import { scannerCriteriaSchema } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
-import { parseExpirationDate } from "../utils/index.js";
 import {
+  withLiveMarketData,
   getUnderlyingPrice,
   getReferencePrice,
   filterChainByStrike,
   marketDataKey,
   calcOptionMetrics,
   estimateDelta,
+  getDaysToExpiry,
 } from "../utils/options.js";
 import { z } from "zod";
 import type { OptionOpportunity } from "@assup/shared";
@@ -220,7 +221,7 @@ async function executeJobScan(
     })
   );
 
-  {
+  await withLiveMarketData(async () => {
     for (const symbol of filteredSymbols) {
       // Check for cancellation
       if (signal.aborted) {
@@ -253,11 +254,8 @@ async function executeJobScan(
 
         // Filter by expiration
         const expirationFilteredChain = chain.filter((entry) => {
-          const expirationDate = parseExpirationDate(entry.expiration);
-          const daysToExpiry = Math.floor(
-            (expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-          );
-          return daysToExpiry >= criteria.minDaysToExpiry && daysToExpiry <= criteria.maxDaysToExpiry;
+          const dte = getDaysToExpiry(entry.expiration, today);
+          return dte >= criteria.minDaysToExpiry && dte <= criteria.maxDaysToExpiry;
         });
 
         if (expirationFilteredChain.length === 0) {
@@ -333,21 +331,13 @@ async function executeJobScan(
 
         if (scanPuts) {
           for (const entry of putFilteredChain) {
-            const expirationDate = parseExpirationDate(entry.expiration);
-            const daysToExpiry = Math.floor(
-              (expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-            );
-            processOption(entry, "PUT", entry.put, daysToExpiry);
+            processOption(entry, "PUT", entry.put, getDaysToExpiry(entry.expiration, today));
           }
         }
 
         if (scanCalls) {
           for (const entry of callFilteredChain) {
-            const expirationDate = parseExpirationDate(entry.expiration);
-            const daysToExpiry = Math.floor(
-              (expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-            );
-            processOption(entry, "CALL", entry.call, daysToExpiry);
+            processOption(entry, "CALL", entry.call, getDaysToExpiry(entry.expiration, today));
           }
         }
       } catch (err) {
@@ -356,7 +346,7 @@ async function executeJobScan(
 
       await progress.symbolComplete(symbol, assetClassInfo.name, opportunities);
     }
-  }
+  });
 }
 
 export default router;

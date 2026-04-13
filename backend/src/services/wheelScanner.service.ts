@@ -1,5 +1,6 @@
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
+import { calcOptionMetrics } from "../utils/options.js";
 import { sseService } from "./sse.js";
 import { getMarketDataProvider } from "./research/providers/index.js";
 import {
@@ -390,15 +391,13 @@ class WheelScannerService {
         const absDelta = Math.abs(td.delta ?? 0);
         if (absDelta < 0.15 || absDelta > 0.35) continue;
 
-        const midPrice = ((td.bid ?? 0) + (td.ask ?? td.bid ?? 0)) / 2;
         const strike = entry.strike;
         if (strike <= 0) continue;
 
         const exp = new Date(entry.expiration).getTime();
         const dte = Math.max((exp - now) / 86400000, 1);
-        const premiumPct = (midPrice / strike) * 100;
-        const annualized = (premiumPct * 365) / dte;
-        bestAnnualizedReturn = Math.max(bestAnnualizedReturn, annualized);
+        const { annualizedReturn } = calcOptionMetrics(td.bid ?? 0, td.ask ?? td.bid ?? 0, strike, dte);
+        bestAnnualizedReturn = Math.max(bestAnnualizedReturn, annualizedReturn);
       }
 
       // Get last price from any market data or use candidate's
