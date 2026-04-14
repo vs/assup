@@ -13,7 +13,7 @@ class CollectionService {
    * Skips if existing data is still fresh.
    * Returns true if new data was collected or a skip was recorded.
    */
-  async collectSource(tickerId: string, symbol: string, source: string, force = false): Promise<boolean> {
+  async collectSource(symbol: string, source: string, force = false): Promise<boolean> {
     const collector = getCollector(source);
     if (!collector) {
       throw new Error(`Unknown collector: ${source}`);
@@ -22,7 +22,7 @@ class CollectionService {
     // Check if existing data is still fresh
     if (!force) {
       const existing = await prisma.dataCollection.findFirst({
-        where: { tickerId, source },
+        where: { symbol, source },
         orderBy: { collectedAt: "desc" },
       });
 
@@ -37,7 +37,7 @@ class CollectionService {
     if (isSkipped(result)) {
       await prisma.dataCollection.create({
         data: {
-          tickerId,
+          symbol,
           source: result.source,
           status: "skipped",
           data: DbNull,
@@ -50,7 +50,7 @@ class CollectionService {
 
     await prisma.dataCollection.create({
       data: {
-        tickerId,
+        symbol,
         source: result.source,
         data: result.data as Prisma.InputJsonValue,
         expiresAt: result.expiresAt,
@@ -64,12 +64,12 @@ class CollectionService {
    * Run analyzer on the latest collected data for a source.
    * Stores the analysis result.
    */
-  async analyzeSource(tickerId: string, source: string): Promise<string | null> {
+  async analyzeSource(symbol: string, source: string): Promise<string | null> {
     const analyzer = getAnalyzer(source);
     if (!analyzer) return null;
 
     const latestData = await prisma.dataCollection.findFirst({
-      where: { tickerId, source, status: "ok" },
+      where: { symbol, source, status: "ok" },
       orderBy: { collectedAt: "desc" },
     });
 
@@ -79,7 +79,7 @@ class CollectionService {
 
     const analysis = await prisma.analysis.create({
       data: {
-        tickerId,
+        symbol,
         source,
         signal: result.signal,
         confidence: result.confidence,
@@ -96,7 +96,6 @@ class CollectionService {
    * Returns the IDs of new analysis rows.
    */
   async collectAndAnalyzeAll(
-    tickerId: string,
     symbol: string,
     options: { force?: boolean; sources?: string[] } = {}
   ): Promise<string[]> {
@@ -110,7 +109,7 @@ class CollectionService {
       const batch = sources.slice(i, i + CONCURRENCY);
       await Promise.allSettled(
         batch.map((source) =>
-          this.collectSource(tickerId, symbol, source, options.force).catch((err) => {
+          this.collectSource(symbol, source, options.force).catch((err) => {
             console.error(`Collection failed for ${symbol}/${source}:`, (err as Error).message);
           })
         )
@@ -120,17 +119,17 @@ class CollectionService {
     // Analyze each source sequentially
     for (const source of sources) {
       try {
-        const analysisId = await this.analyzeSource(tickerId, source);
+        const analysisId = await this.analyzeSource(symbol, source);
         if (analysisId) analysisIds.push(analysisId);
       } catch (err) {
         console.error(`Analysis failed for ${symbol}/${source}:`, (err as Error).message);
       }
     }
 
-    // Update ticker's lastAnalyzed timestamp
-    await prisma.researchTicker.update({
-      where: { id: tickerId },
-      data: { lastAnalyzed: new Date() },
+    // Update lastAnalyzedAt on all watchlist items for this symbol
+    await prisma.watchlistItem.updateMany({
+      where: { symbol },
+      data: { lastAnalyzedAt: new Date() },
     });
 
     return analysisIds;

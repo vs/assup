@@ -3,7 +3,6 @@ import { collectionService } from "./collection.service.js";
 import { jobService } from "./job.service.js";
 import { synthesize, type SynthesizerMode } from "./synthesizer/synthesizer.js";
 import { macroService } from "./macro.service.js";
-import { NotFoundError } from "./errors/AppError.js";
 
 class PipelineService {
   /**
@@ -14,15 +13,12 @@ class PipelineService {
     symbol: string,
     options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6"; mode?: SynthesizerMode } = {}
   ): Promise<string> {
-    const ticker = await prisma.researchTicker.findUnique({ where: { symbol } });
-    if (!ticker) throw new NotFoundError("Ticker", symbol);
-
     const job = await jobService.create("generate_report", symbol);
 
     console.log(`[Pipeline] Starting report generation for ${symbol} (job=${job.id}, mode=${options.mode ?? "default"}, model=${options.model ?? "default"}, force=${!!options.force})`);
 
     // Run pipeline in background (don't await)
-    this.runPipeline(job.id, ticker.id, symbol, options).catch((err) => {
+    this.runPipeline(job.id, symbol, options).catch((err) => {
       console.error(`[Pipeline] Failed for ${symbol}:`, err);
     });
 
@@ -31,7 +27,6 @@ class PipelineService {
 
   private async runPipeline(
     jobId: string,
-    tickerId: string,
     symbol: string,
     options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6"; mode?: SynthesizerMode }
   ): Promise<void> {
@@ -44,7 +39,6 @@ class PipelineService {
       console.log(`[Pipeline] ${symbol}: collecting data from all sources...`);
       const collectStart = Date.now();
       const analysisIds = await collectionService.collectAndAnalyzeAll(
-        tickerId,
         symbol,
         { force: options.force }
       );
@@ -105,7 +99,7 @@ class PipelineService {
       await jobService.updateProgress(jobId, "Storing report...");
       const report = await prisma.researchReport.create({
         data: {
-          tickerId,
+          symbol,
           recommendation: result.recommendation,
           confidence: result.confidence,
           summary: result.summary,
