@@ -169,6 +169,8 @@ export interface MarketScanResult {
   qualified: string[];
   added: string[];
   skipped: string[];
+  watchlistId: string;
+  watchlistName: string;
 }
 
 // === Collection Status ===

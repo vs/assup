@@ -152,9 +152,9 @@ class SchedulerService {
     const startTime = Date.now();
     console.log("[Scheduler] Starting daily collection...");
 
-    const tickers = await prisma.researchTicker.findMany({
-      where: { status: "active" },
-      select: { id: true, symbol: true },
+    const tickers = await prisma.watchlistItem.findMany({
+      distinct: ["symbol"],
+      select: { symbol: true },
     });
 
     console.log(`[Scheduler] Found ${tickers.length} active tickers.`);
@@ -170,7 +170,7 @@ class SchedulerService {
     // Process tickers in batches of 5
     await processBatched(tickers, 5, async (ticker) => {
       try {
-        await collectionService.collectAndAnalyzeAll(ticker.id, ticker.symbol, {
+        await collectionService.collectAndAnalyzeAll(ticker.symbol, {
           sources: DAILY_SOURCES,
         });
         console.log(`[Scheduler] Daily collection complete for ${ticker.symbol}`);
@@ -194,17 +194,17 @@ class SchedulerService {
     const startTime = Date.now();
     console.log("[Scheduler] Starting social sentiment collection...");
 
-    const tickers = await prisma.researchTicker.findMany({
-      where: { status: "active" },
-      select: { id: true, symbol: true },
+    const tickers = await prisma.watchlistItem.findMany({
+      distinct: ["symbol"],
+      select: { symbol: true },
     });
 
     console.log(`[Scheduler] Found ${tickers.length} active tickers for social sentiment.`);
 
     await processBatched(tickers, 5, async (ticker) => {
       try {
-        await collectionService.collectSource(ticker.id, ticker.symbol, "social");
-        await collectionService.analyzeSource(ticker.id, "social");
+        await collectionService.collectSource(ticker.symbol, "social");
+        await collectionService.analyzeSource(ticker.symbol, "social");
         console.log(`[Scheduler] Social sentiment complete for ${ticker.symbol}`);
       } catch (err) {
         console.error(
@@ -226,26 +226,26 @@ class SchedulerService {
     const startTime = Date.now();
     console.log("[Scheduler] Starting report generation...");
 
-    const tickers = await prisma.researchTicker.findMany({
-      where: { status: "active" },
-      select: { id: true, symbol: true, lastAnalyzed: true },
+    const items = await prisma.watchlistItem.findMany({
+      distinct: ["symbol"],
+      select: { symbol: true, lastAnalyzedAt: true },
     });
 
     // Find tickers that need a new report
-    const tickersNeedingReports: { id: string; symbol: string }[] = [];
+    const tickersNeedingReports: { symbol: string }[] = [];
 
-    for (const ticker of tickers) {
-      if (!ticker.lastAnalyzed) continue;
+    for (const item of items) {
+      if (!item.lastAnalyzedAt) continue;
 
       const latestReport = await prisma.researchReport.findFirst({
-        where: { tickerId: ticker.id },
+        where: { symbol: item.symbol },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       });
 
       // Generate report if no report exists or analyses are newer
-      if (!latestReport || ticker.lastAnalyzed > latestReport.createdAt) {
-        tickersNeedingReports.push({ id: ticker.id, symbol: ticker.symbol });
+      if (!latestReport || item.lastAnalyzedAt > latestReport.createdAt) {
+        tickersNeedingReports.push({ symbol: item.symbol });
       }
     }
 

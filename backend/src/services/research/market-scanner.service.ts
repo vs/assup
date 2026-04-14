@@ -5,7 +5,6 @@ import { SMA, RSI } from "technicalindicators";
 import { prisma } from "./db.js";
 import { ibkrService } from "../ibkr.js";
 import type { MarketScannerParams, ScannerResult } from "../ibkr.js";
-import { tickerService } from "./ticker.service.js";
 import { NotFoundError } from "./errors/AppError.js";
 import type {
   MarketScanResult,
@@ -178,15 +177,38 @@ class MarketScannerService {
       );
     }
 
-    // Step 3: Add discovered tickers (only qualified ones)
-    const { added, skipped } = await tickerService.add(
-      qualified,
-      "scanner"
-    );
-    const addedSymbols = added.map((t) => t.symbol);
-    console.log(
-      `[MarketScanner] Added ${addedSymbols.length} tickers, skipped ${skipped.length}`
-    );
+    // Step 3: Create watchlist with discovered tickers
+    const now = new Date();
+    const watchlistName = runName
+      ? `${runName} - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+      : `${params.scanCode} Scan - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+
+    const watchlist = await prisma.watchlist.create({
+      data: { name: watchlistName },
+    });
+
+    const addedSymbols: string[] = [];
+    const skipped: string[] = [];
+
+    for (const symbol of qualified) {
+      try {
+        await prisma.watchlistItem.create({
+          data: {
+            watchlistId: watchlist.id,
+            symbol,
+            source: "scanner",
+          },
+        });
+        addedSymbols.push(symbol);
+      } catch (err) {
+        if (err instanceof Error && "code" in err && (err as { code: string }).code === "P2002") {
+          skipped.push(symbol);
+        } else {
+          throw err;
+        }
+      }
+    }
+    console.log(`[MarketScanner] Created watchlist "${watchlistName}" with ${addedSymbols.length} tickers, skipped ${skipped.length}`);
 
     // Step 4: Persist scan run for history
     const scanRunName = runName || params.scanCode;
@@ -198,6 +220,7 @@ class MarketScannerService {
         filters: params as unknown as Prisma.InputJsonValue,
         technicalFilter: (techConfig ?? {}) as unknown as Prisma.InputJsonValue,
         symbols: [...addedSymbols, ...skipped],
+        watchlistId: watchlist.id,
       },
     });
 
@@ -207,6 +230,8 @@ class MarketScannerService {
       qualified,
       added: addedSymbols,
       skipped,
+      watchlistId: watchlist.id,
+      watchlistName,
     };
   }
 
@@ -433,27 +458,19 @@ class MarketScannerService {
    * Get tickers discovered by the scanner (source='scanner'),
    * sorted by addedAt desc with pagination.
    */
-  async getResults(
-    page: number,
-    limit: number
-  ): Promise<{
-    tickers: Array<{ symbol: string; addedAt: Date; status: string }>;
-    total: number;
-  }> {
+  async getResults(page: number, limit: number) {
     const where = { source: "scanner" };
-
-    const [tickers, total] = await Promise.all([
-      prisma.researchTicker.findMany({
+    const [items, total] = await Promise.all([
+      prisma.watchlistItem.findMany({
         where,
         orderBy: { addedAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
-        select: { symbol: true, addedAt: true, status: true },
+        select: { symbol: true, addedAt: true, watchlistId: true },
       }),
-      prisma.researchTicker.count({ where }),
+      prisma.watchlistItem.count({ where }),
     ]);
-
-    return { tickers, total };
+    return { tickers: items, total };
   }
 
   // ── Scan Runs ─────────────────────────────────────────────────
