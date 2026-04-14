@@ -50,6 +50,11 @@ WHERE wi."symbol" = rt."symbol" AND rt."last_analyzed" IS NOT NULL;
 -- Step 6: Add watchlist_id column to scan_runs
 ALTER TABLE "scan_runs" ADD COLUMN "watchlist_id" UUID;
 
+-- Step 6b: Remove any orphan rows where symbol could not be populated (defensive)
+DELETE FROM "data_collection" WHERE "symbol" IS NULL;
+DELETE FROM "analysis" WHERE "symbol" IS NULL;
+DELETE FROM "research_report" WHERE "symbol" IS NULL;
+
 -- Step 7: Drop old FK constraints and indexes
 ALTER TABLE "data_collection" DROP CONSTRAINT "data_collection_ticker_id_fkey";
 ALTER TABLE "analysis" DROP CONSTRAINT "analysis_ticker_id_fkey";
