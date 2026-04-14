@@ -29,7 +29,7 @@ describe("collectionService", () => {
       vi.mocked(getCollector).mockReturnValue(undefined);
 
       await expect(
-        collectionService.collectSource("t1", "AAPL", "unknown_source")
+        collectionService.collectSource("AAPL", "unknown_source")
       ).rejects.toThrow("Unknown collector: unknown_source");
     });
 
@@ -43,14 +43,14 @@ describe("collectionService", () => {
       });
       vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue({
         id: "dc-1",
-        tickerId: "t1",
+        symbol: "AAPL",
         source: "technical",
         data: {},
         expiresAt: futureDate,
         collectedAt: new Date(),
       } as any);
 
-      const result = await collectionService.collectSource("t1", "AAPL", "technical");
+      const result = await collectionService.collectSource("AAPL", "technical");
       expect(result).toBe(false);
       expect(prisma.dataCollection.create).not.toHaveBeenCalled();
     });
@@ -70,7 +70,7 @@ describe("collectionService", () => {
       vi.mocked(getCollector).mockReturnValue(mockCollector);
       vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue({
         id: "dc-1",
-        tickerId: "t1",
+        symbol: "AAPL",
         source: "technical",
         data: {},
         expiresAt: pastDate,
@@ -78,13 +78,13 @@ describe("collectionService", () => {
       } as any);
       vi.mocked(prisma.dataCollection.create).mockResolvedValue({} as any);
 
-      const result = await collectionService.collectSource("t1", "AAPL", "technical");
+      const result = await collectionService.collectSource("AAPL", "technical");
       expect(result).toBe(true);
       expect(mockCollector.collect).toHaveBeenCalledWith("AAPL");
       expect(prisma.dataCollection.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            tickerId: "t1",
+            symbol: "AAPL",
             source: "technical",
           }),
         })
@@ -105,7 +105,7 @@ describe("collectionService", () => {
       vi.mocked(getCollector).mockReturnValue(mockCollector);
       vi.mocked(prisma.dataCollection.create).mockResolvedValue({} as any);
 
-      const result = await collectionService.collectSource("t1", "AAPL", "technical", true);
+      const result = await collectionService.collectSource("AAPL", "technical", true);
       expect(result).toBe(true);
       expect(prisma.dataCollection.findFirst).not.toHaveBeenCalled();
       expect(mockCollector.collect).toHaveBeenCalledWith("AAPL");
@@ -127,11 +127,11 @@ describe("collectionService", () => {
       vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue(null);
       vi.mocked(prisma.dataCollection.create).mockResolvedValue({} as any);
 
-      const result = await collectionService.collectSource("t1", "AAPL", "options");
+      const result = await collectionService.collectSource("AAPL", "options");
       expect(result).toBe(true);
       expect(prisma.dataCollection.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          tickerId: "t1",
+          symbol: "AAPL",
           source: "options",
           status: "skipped",
           skipReason: "Polygon options API not authorized (403)",
@@ -144,7 +144,7 @@ describe("collectionService", () => {
     it("returns null when no analyzer exists", async () => {
       vi.mocked(getAnalyzer).mockReturnValue(undefined);
 
-      const result = await collectionService.analyzeSource("t1", "unknown_source");
+      const result = await collectionService.analyzeSource("AAPL", "unknown_source");
       expect(result).toBeNull();
     });
 
@@ -155,7 +155,7 @@ describe("collectionService", () => {
       });
       vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue(null);
 
-      const result = await collectionService.analyzeSource("t1", "technical");
+      const result = await collectionService.analyzeSource("AAPL", "technical");
       expect(result).toBeNull();
     });
 
@@ -166,9 +166,9 @@ describe("collectionService", () => {
       });
       vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue(null);
 
-      await collectionService.analyzeSource("t1", "options");
+      await collectionService.analyzeSource("AAPL", "options");
       expect(prisma.dataCollection.findFirst).toHaveBeenCalledWith({
-        where: { tickerId: "t1", source: "options", status: "ok" },
+        where: { symbol: "AAPL", source: "options", status: "ok" },
         orderBy: { collectedAt: "desc" },
       });
     });
@@ -186,7 +186,7 @@ describe("collectionService", () => {
       vi.mocked(getAnalyzer).mockReturnValue(mockAnalyzer);
       vi.mocked(prisma.dataCollection.findFirst).mockResolvedValue({
         id: "dc-1",
-        tickerId: "t1",
+        symbol: "AAPL",
         source: "technical",
         data: { price: 150 },
         expiresAt: new Date(),
@@ -194,7 +194,7 @@ describe("collectionService", () => {
       } as any);
       vi.mocked(prisma.analysis.create).mockResolvedValue({
         id: "analysis-1",
-        tickerId: "t1",
+        symbol: "AAPL",
         source: "technical",
         signal: "bullish",
         confidence: 0.8,
@@ -203,13 +203,13 @@ describe("collectionService", () => {
         analyzedAt: new Date(),
       } as any);
 
-      const result = await collectionService.analyzeSource("t1", "technical");
+      const result = await collectionService.analyzeSource("AAPL", "technical");
       expect(result).toBe("analysis-1");
       expect(mockAnalyzer.analyze).toHaveBeenCalledWith({ price: 150 });
       expect(prisma.analysis.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            tickerId: "t1",
+            symbol: "AAPL",
             source: "technical",
             signal: "bullish",
             confidence: 0.8,
@@ -221,7 +221,7 @@ describe("collectionService", () => {
   });
 
   describe("collectAndAnalyzeAll", () => {
-    it("updates ticker lastAnalyzed timestamp", async () => {
+    it("updates watchlistItem lastAnalyzedAt timestamp", async () => {
       // Provide sources explicitly to avoid collector/analyzer complexity
       vi.mocked(getAllCollectors).mockReturnValue([]);
       // Mock getCollector to return a valid collector for "src1"
@@ -239,16 +239,16 @@ describe("collectionService", () => {
       vi.mocked(prisma.dataCollection.create).mockResolvedValue({} as any);
       // No analyzer for the source
       vi.mocked(getAnalyzer).mockReturnValue(undefined);
-      vi.mocked(prisma.researchTicker.update).mockResolvedValue({} as any);
+      vi.mocked(prisma.watchlistItem.updateMany).mockResolvedValue({ count: 1 } as any);
 
-      await collectionService.collectAndAnalyzeAll("t1", "AAPL", {
+      await collectionService.collectAndAnalyzeAll("AAPL", {
         sources: ["src1"],
       });
 
-      expect(prisma.researchTicker.update).toHaveBeenCalledWith(
+      expect(prisma.watchlistItem.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "t1" },
-          data: expect.objectContaining({ lastAnalyzed: expect.any(Date) }),
+          where: { symbol: "AAPL" },
+          data: expect.objectContaining({ lastAnalyzedAt: expect.any(Date) }),
         })
       );
     });

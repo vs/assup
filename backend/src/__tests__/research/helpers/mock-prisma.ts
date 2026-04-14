@@ -2,13 +2,8 @@ import { vi } from "vitest";
 
 export function createMockPrisma() {
   return {
-    researchTicker: {
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      count: vi.fn(),
+    watchlistItem: {
+      updateMany: vi.fn(),
     },
     dataCollection: {
       findFirst: vi.fn(),
