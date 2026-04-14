@@ -1,15 +1,3 @@
-// === Ticker ===
-
-export interface ResearchTicker {
-  id: string;
-  symbol: string;
-  secType: string;
-  status: string;
-  source: string;
-  addedAt: string;
-  lastAnalyzed: string | null;
-}
-
 // === Scan Run ===
 
 export interface ScanRun {
@@ -20,6 +8,7 @@ export interface ScanRun {
   filters: Record<string, unknown>;
   technicalFilter: Record<string, unknown>;
   symbols: string[];
+  watchlistId: string | null;
   createdAt: string;
 }
 
@@ -39,7 +28,7 @@ export type AnalysisSource =
 
 export interface AnalysisResult {
   id: string;
-  tickerId: string;
+  symbol: string;
   source: AnalysisSource;
   analyzedAt: string;
   signal: AnalysisSignal;
@@ -63,7 +52,6 @@ export type Recommendation = "buy" | "sell" | "wheel" | "hold" | "avoid";
 
 export interface ResearchReport {
   id: string;
-  tickerId: string;
   symbol: string;
   createdAt: string;
   recommendation: Recommendation;
@@ -193,16 +181,6 @@ export interface CollectionStatus {
 }
 
 // === API Request/Response ===
-
-export interface AddTickersRequest {
-  symbols: string[];
-  source?: string;
-}
-
-export interface TickerListResponse {
-  tickers: ResearchTicker[];
-  total: number;
-}
 
 export interface ReportHistoryResponse {
   reports: ResearchReport[];
