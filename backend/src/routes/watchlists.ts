@@ -119,9 +119,9 @@ router.get(
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
-        latestSignal: analysis?.signal || null,
-        latestConfidence: analysis?.confidence || null,
-        latestRecommendation: report?.recommendation || null,
+        latestSignal: analysis?.signal ?? null,
+        latestConfidence: analysis?.confidence ?? null,
+        latestRecommendation: report?.recommendation ?? null,
         reportAge,
       };
     });
@@ -239,10 +239,11 @@ router.patch(
   validate({ params: watchlistIdParamSchema, body: watchlistReorderSchema }),
   asyncHandler(async (req, res) => {
     const { items } = req.body;
+    const watchlistId = req.params.id;
     await prisma.$transaction(
       items.map((item: { id: string; sortOrder: number }) =>
         prisma.watchlistItem.update({
-          where: { id: item.id },
+          where: { id: item.id, watchlistId },
           data: { sortOrder: item.sortOrder },
         })
       )
@@ -263,7 +264,9 @@ router.patch(
     const target = await prisma.watchlist.findUnique({ where: { id: targetWatchlistId } });
     if (!target) throw new NotFoundError("Watchlist", targetWatchlistId);
 
-    const item = await prisma.watchlistItem.findUnique({ where: { id: req.params.itemId } });
+    const item = await prisma.watchlistItem.findFirst({
+      where: { id: req.params.itemId, watchlistId: req.params.id },
+    });
     if (!item) throw new NotFoundError("WatchlistItem", req.params.itemId);
 
     const existing = await prisma.watchlistItem.findFirst({
