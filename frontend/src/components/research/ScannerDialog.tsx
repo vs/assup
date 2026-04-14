@@ -277,23 +277,10 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     }
   }
 
-  // --- Add Tickers (without running research) ---
+  // --- Add Tickers (scanner already created watchlist with them) ---
   async function handleAddSelected() {
-    if (selectedSymbols.size === 0) return;
-    setAddingTickers(true);
-    setError(null);
-    try {
-      const { skipped } = await researchApi.addTickers({
-        symbols: Array.from(selectedSymbols),
-        source: "scanner",
-      });
-      onTickersAdded();
-      setSkippedSymbols(new Set(skipped));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add tickers");
-    } finally {
-      setAddingTickers(false);
-    }
+    // Tickers are already in a watchlist from the scan run — just notify parent
+    onTickersAdded();
   }
 
   // --- Run research on specific symbols ---
@@ -302,20 +289,10 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     setAddingTickers(true);
     setError(null);
     try {
-      // Add tickers first (skips already tracked)
-      const { added, skipped } = await researchApi.addTickers({
-        symbols,
-        source: "scanner",
-      });
+      // Tickers are already in a watchlist from the scan run — just notify parent and generate reports
       onTickersAdded();
-      setSkippedSymbols((prev) => {
-        const next = new Set(prev);
-        for (const s of skipped) next.add(s);
-        return next;
-      });
 
-      // All symbols to research: newly added + already tracked
-      const toResearch = [...added.map((t) => t.symbol), ...skipped];
+      const toResearch = symbols;
 
       // Initialize generation state
       const initial = new Map(generationState);

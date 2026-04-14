@@ -1,7 +1,8 @@
 import type { MacroAnalysis, MarketRegime } from "@assup/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Minus, RefreshCw } from "lucide-react";
 
 // --- Regime config ---
 
@@ -261,7 +262,7 @@ interface MacroBannerProps {
   refreshing?: boolean;
 }
 
-export function MacroBanner({ macro }: MacroBannerProps) {
+export function MacroBanner({ macro, onRefresh, refreshing }: MacroBannerProps) {
   if (!macro) return null;
 
   const config = regimeConfig[macro.regime];
@@ -277,6 +278,17 @@ export function MacroBanner({ macro }: MacroBannerProps) {
             {config.label}
           </Badge>
           <FearGauge details={macro.details} />
+          {onRefresh && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="ml-auto h-7 px-2"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

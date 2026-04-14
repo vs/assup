@@ -7,6 +7,7 @@ import type {
   AssetClass,
   MacroAnalysis,
   Recommendation,
+  SparklinePoint,
 } from "@assup/shared";
 import {
   ErrorAlert,
@@ -74,6 +75,7 @@ export function WatchlistsPage() {
 
   // Macro state
   const [macro, setMacro] = useState<MacroAnalysis | null>(null);
+  const [refreshingMacro, setRefreshingMacro] = useState(false);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -419,7 +421,18 @@ export function WatchlistsPage() {
   return (
     <div className="space-y-4">
       {/* Macro Banner */}
-      <MacroBanner macro={macro} />
+      <MacroBanner
+        macro={macro}
+        onRefresh={() => {
+          setRefreshingMacro(true);
+          researchApi
+            .refreshMacro()
+            .then(setMacro)
+            .catch(() => {})
+            .finally(() => setRefreshingMacro(false));
+        }}
+        refreshing={refreshingMacro}
+      />
 
       {/* Toolbar */}
       <div className="flex items-center justify-between">
@@ -682,7 +695,7 @@ interface TickerRowProps {
   item: WatchlistItem;
   assetClasses: AssetClass[];
   getSparklineState: (symbol: string) => {
-    data: Array<{ close: number }>;
+    data: SparklinePoint[];
     loading: boolean;
     error: boolean;
   };
