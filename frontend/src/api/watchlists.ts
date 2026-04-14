@@ -43,4 +43,16 @@ export const watchlistsApi = {
 
   removeItem: (id: string, itemId: string) =>
     request<void>(`/api/watchlists/${id}/items/${itemId}`, { method: "DELETE" }),
+
+  reorderItems: (watchlistId: string, items: { id: string; sortOrder: number }[]) =>
+    request<void>(`/api/watchlists/${watchlistId}/items/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ items }),
+    }),
+
+  moveItem: (watchlistId: string, itemId: string, targetWatchlistId: string) =>
+    request<WatchlistItem>(`/api/watchlists/${watchlistId}/items/${itemId}/move`, {
+      method: "PATCH",
+      body: JSON.stringify({ targetWatchlistId }),
+    }),
 };

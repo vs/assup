@@ -9,7 +9,6 @@ import type {
   MacroAnalysis,
   AnalysisSummaryResponse,
   ReportHistoryResponse,
-  TickerListResponse,
   CollectionDataResponse,
   MarketScannerPreset,
   ScanCodeInfo,
@@ -41,38 +40,6 @@ export const researchApi = {
   getMacro: () => request<MacroAnalysis>("/api/research/macro"),
   refreshMacro: () =>
     request<MacroAnalysis>("/api/research/macro/refresh", { method: "POST" }),
-
-  // Tickers
-  listTickers: (page = 1, limit = 100) =>
-    request<TickerListResponse>(
-      `/api/research/tickers${buildQuery({ page, limit })}`
-    ),
-
-  // Sync
-  syncWatchlist: () =>
-    request<{ synced: number; skipped: number }>(
-      "/api/research/sync-watchlist",
-      {
-        method: "POST",
-      }
-    ),
-
-  // Add tickers
-  addTickers: (data: { symbols: string[]; source?: string }) =>
-    request<{ added: { symbol: string }[]; skipped: string[] }>(
-      "/api/research/tickers",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    ),
-
-  // Delete/clear ticker
-  deleteTicker: (symbol: string) =>
-    request<{ action: "deleted" | "cleared"; inWatchlist: boolean }>(
-      `/api/research/tickers/${symbol}`,
-      { method: "DELETE" }
-    ),
 
   // Collection data (OHLCV, raw source data)
   getCollectionData: (symbol: string) =>
