@@ -82,19 +82,23 @@ model Watchlist {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  items WatchlistItem[]
+  items    WatchlistItem[]
+  scanRuns ScanRun[]
 
   @@map("watchlists")
 }
 
 // Watchlist Items - individual securities in a watchlist
 model WatchlistItem {
-  id          String   @id @default(uuid()) @db.Uuid
-  watchlistId String   @map("watchlist_id") @db.Uuid
-  symbol      String   @db.VarChar(20)
-  conId       Int?     @map("con_id")
-  secType     String   @default("STK") @map("sec_type") @db.VarChar(10)
-  addedAt     DateTime @default(now()) @map("added_at") @db.Timestamptz
+  id             String    @id @default(uuid()) @db.Uuid
+  watchlistId    String    @map("watchlist_id") @db.Uuid
+  symbol         String    @db.VarChar(20)
+  conId          Int?      @map("con_id")
+  secType        String    @default("STK") @map("sec_type") @db.VarChar(10)
+  addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz
+  source         String    @default("manual") @map("source") @db.VarChar(20)
+  lastAnalyzedAt DateTime? @map("last_analyzed_at") @db.Timestamptz
+  sortOrder      Int       @default(0) @map("sort_order")
 
   // Relations
   watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
@@ -339,27 +343,10 @@ model CorporateAction {
 // Research models (merged from research microservice)
 // ============================================================
 
-// Research Tickers - symbols being tracked for research
-model ResearchTicker {
-  id           String    @id @default(uuid()) @db.Uuid
-  symbol       String    @unique @db.VarChar(20)
-  secType      String    @default("STK") @map("sec_type") @db.VarChar(10)
-  status       String    @default("active") @db.VarChar(20)
-  source       String    @default("manual") @map("source") @db.VarChar(20)
-  addedAt      DateTime  @default(now()) @map("added_at") @db.Timestamptz()
-  lastAnalyzed DateTime? @map("last_analyzed") @db.Timestamptz()
-
-  dataCollections DataCollection[]
-  analyses        Analysis[]
-  reports         ResearchReport[]
-
-  @@map("research_ticker")
-}
-
 // Data Collections - raw collected market data per source
 model DataCollection {
   id          String    @id @default(uuid()) @db.Uuid
-  tickerId    String    @map("ticker_id") @db.Uuid
+  symbol      String    @db.VarChar(20)
   source      String    @db.VarChar(30)
   collectedAt DateTime  @default(now()) @map("collected_at") @db.Timestamptz()
   status      String    @default("ok") @db.VarChar(10)
@@ -367,9 +354,7 @@ model DataCollection {
   skipReason  String?   @map("skip_reason")
   expiresAt   DateTime? @map("expires_at") @db.Timestamptz()
 
-  ticker ResearchTicker @relation(fields: [tickerId], references: [id], onDelete: Cascade)
-
-  @@index([tickerId, source])
+  @@index([symbol, source])
   @@index([expiresAt])
   @@map("data_collection")
 }
@@ -377,7 +362,7 @@ model DataCollection {
 // Analysis - analysis results with signal, confidence, and details
 model Analysis {
   id         String   @id @default(uuid()) @db.Uuid
-  tickerId   String   @map("ticker_id") @db.Uuid
+  symbol     String   @db.VarChar(20)
   source     String   @db.VarChar(30)
   analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz()
   signal     String   @db.VarChar(10)
@@ -385,27 +370,23 @@ model Analysis {
   summary    String
   details    Json     @db.JsonB
 
-  ticker ResearchTicker @relation(fields: [tickerId], references: [id], onDelete: Cascade)
-
-  @@index([tickerId, source])
+  @@index([symbol, source])
   @@map("analysis")
 }
 
 // Research Reports - synthesized research reports with recommendations
 model ResearchReport {
-  id             String   @id @default(uuid()) @db.Uuid
-  tickerId       String   @map("ticker_id") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  recommendation String   @db.VarChar(20)
-  confidence     Float
-  summary        String
-  fullReport     String   @map("full_report")
+  id              String   @id @default(uuid()) @db.Uuid
+  symbol          String   @db.VarChar(20)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  recommendation  String   @db.VarChar(20)
+  confidence      Float
+  summary         String
+  fullReport      String   @map("full_report")
   analysisIds     String[] @map("analysis_ids") @db.Uuid
   companyOverview Json?    @map("company_overview")
 
-  ticker ResearchTicker @relation(fields: [tickerId], references: [id], onDelete: Cascade)
-
-  @@index([tickerId])
+  @@index([symbol])
   @@map("research_report")
 }
 
@@ -444,14 +425,17 @@ model MarketScannerPreset {
 
 // Scan Run - persists each scanner execution with metadata and results
 model ScanRun {
-  id              String   @id @default(uuid()) @db.Uuid
-  name            String   @db.VarChar(200)
-  scanCode        String   @map("scan_code") @db.VarChar(60)
-  locationCode    String   @default("STK.US.MAJOR") @map("location_code") @db.VarChar(40)
-  filters         Json     @default("{}") @db.JsonB
-  technicalFilter Json     @default("{}") @map("technical_filter") @db.JsonB
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String    @db.VarChar(200)
+  scanCode        String    @map("scan_code") @db.VarChar(60)
+  locationCode    String    @default("STK.US.MAJOR") @map("location_code") @db.VarChar(40)
+  filters         Json      @default("{}") @db.JsonB
+  technicalFilter Json      @default("{}") @map("technical_filter") @db.JsonB
   symbols         String[]
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  watchlistId     String?   @map("watchlist_id") @db.Uuid
+
+  watchlist Watchlist? @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
 
   @@map("scan_runs")
 }
