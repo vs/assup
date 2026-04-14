@@ -7,7 +7,7 @@ import { Router } from "express";
 import { execFile, spawn } from "node:child_process";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { prisma } from "../db/index.js";
-import { tickerService } from "../services/research/ticker.service.js";
+
 import { jobService } from "../services/research/job.service.js";
 import { macroService } from "../services/research/macro.service.js";
 import { pipelineService } from "../services/research/pipeline.service.js";
@@ -25,12 +25,7 @@ import {
   deleteSAApiKey,
   fetchSAMetrics,
 } from "../services/research/collectors/sa-rapidapi.js";
-import {
-  addTickersSchema,
-  tickerParamsSchema,
-  updateTickerSchema,
-  tickerListQuerySchema,
-} from "../services/research/schemas/ticker.schema.js";
+
 import { z } from "zod";
 import { validate } from "../services/research/middleware/validate.js";
 import { NotFoundError } from "../services/research/errors/AppError.js";
@@ -147,134 +142,6 @@ router.get(
     ]);
 
     res.json({ snapshots, total });
-  })
-);
-
-// ── Tickers ──────────────────────────────────────────────────────────
-
-/**
- * GET /api/research/tickers
- * List tracked tickers with optional filters
- */
-router.get(
-  "/tickers",
-  validate({ query: tickerListQuerySchema }),
-  asyncHandler(async (req, res) => {
-    const { status, source, page, limit } = req.query as unknown as {
-      status?: string;
-      source?: string;
-      page: number;
-      limit: number;
-    };
-    const result = await tickerService.list({ status, source, page, limit });
-    res.json(result);
-  })
-);
-
-/**
- * GET /api/research/tickers/:symbol
- * Get a single ticker
- */
-router.get(
-  "/tickers/:symbol",
-  validate({ params: tickerParamsSchema }),
-  asyncHandler(async (req, res) => {
-    const ticker = await tickerService.get(req.params.symbol);
-    res.json(ticker);
-  })
-);
-
-/**
- * POST /api/research/tickers
- * Add tickers for tracking
- */
-router.post(
-  "/tickers",
-  validate({ body: addTickersSchema }),
-  asyncHandler(async (req, res) => {
-    const { symbols, source } = req.body;
-    const result = await tickerService.add(symbols, source);
-    res.status(201).json(result);
-  })
-);
-
-/**
- * PATCH /api/research/tickers/:symbol
- * Update ticker status
- */
-router.patch(
-  "/tickers/:symbol",
-  validate({ params: tickerParamsSchema, body: updateTickerSchema }),
-  asyncHandler(async (req, res) => {
-    const ticker = await tickerService.update(req.params.symbol, req.body);
-    res.json(ticker);
-  })
-);
-
-/**
- * DELETE /api/research/tickers/:symbol
- * Remove or clear a ticker depending on watchlist membership.
- * - If NOT in any watchlist: delete ticker and all related data
- * - If IN a watchlist: clear reports and analyses but keep ticker and data collections
- */
-router.delete(
-  "/tickers/:symbol",
-  validate({ params: tickerParamsSchema }),
-  asyncHandler(async (req, res) => {
-    const symbol = req.params.symbol.toUpperCase();
-
-    const ticker = await prisma.researchTicker.findUnique({
-      where: { symbol },
-    });
-    if (!ticker) throw new NotFoundError("Ticker", symbol);
-
-    const inWatchlist = await prisma.watchlistItem.findFirst({
-      where: { symbol },
-    });
-
-    if (!inWatchlist) {
-      // Not in any watchlist — delete everything (cascade handles related records)
-      await prisma.researchTicker.delete({ where: { symbol } });
-      res.json({ action: "deleted", inWatchlist: false });
-    } else {
-      // In a watchlist — clear reports and analyses only, keep data collections
-      await prisma.researchReport.deleteMany({ where: { tickerId: ticker.id } });
-      await prisma.analysis.deleteMany({ where: { tickerId: ticker.id } });
-      // Reset lastAnalyzed so it appears as "no report"
-      await prisma.researchTicker.update({
-        where: { symbol },
-        data: { lastAnalyzed: null },
-      });
-      res.json({ action: "cleared", inWatchlist: true });
-    }
-  })
-);
-
-// ── Sync Watchlist ───────────────────────────────────────────────────
-
-/**
- * POST /api/research/sync-watchlist
- * Push all watchlist symbols to research tickers
- */
-router.post(
-  "/sync-watchlist",
-  asyncHandler(async (_req, res) => {
-    const items = await prisma.watchlistItem.findMany({
-      select: { symbol: true },
-      distinct: ["symbol"],
-    });
-    const symbols = items.map((i: { symbol: string }) => i.symbol);
-
-    if (symbols.length === 0) {
-      res.json({ synced: 0, skipped: 0 });
-      return;
-    }
-
-    const result = await tickerService.add(symbols, "external");
-    res.json({
-      synced: result.added.length,
-      skipped: result.skipped.length,
-    });
   })
 );
 
@@ -709,26 +576,15 @@ router.get(
   "/:symbol/data",
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-
-    const ticker = await prisma.researchTicker.findUnique({
-      where: { symbol },
-    });
-    if (!ticker) throw new NotFoundError("Ticker", symbol);
-
-    const collections: Array<{
-      source: string;
-      data: unknown;
-      collectedAt: Date;
-    }> = await prisma.$queryRaw`
+    const collections = await prisma.$queryRaw`
       SELECT dc.source, dc.data, dc.collected_at AS "collectedAt"
       FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY collected_at DESC) AS rn
         FROM data_collection
-        WHERE ticker_id = ${ticker.id}::uuid AND status = 'ok'
+        WHERE symbol = ${symbol} AND status = 'ok'
       ) dc
       WHERE dc.rn = 1
     `;
-
     res.json({ symbol, collections });
   })
 );
@@ -741,20 +597,12 @@ router.get(
   "/:symbol",
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-
-    const ticker = await prisma.researchTicker.findUnique({
-      where: { symbol },
-    });
-    if (!ticker) throw new NotFoundError("Ticker", symbol);
-
     const report = await prisma.researchReport.findFirst({
-      where: { tickerId: ticker.id },
+      where: { symbol },
       orderBy: { createdAt: "desc" },
     });
-
     if (!report) throw new NotFoundError("Report", symbol);
-
-    res.json({ ...report, symbol });
+    res.json(report);
   })
 );
 
@@ -767,28 +615,16 @@ router.get(
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.min(
-      100,
-      Math.max(1, parseInt(req.query.limit as string, 10) || 20)
-    );
-
-    const ticker = await prisma.researchTicker.findUnique({
-      where: { symbol },
-    });
-    if (!ticker) throw new NotFoundError("Ticker", symbol);
-
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const [reports, total] = await Promise.all([
       prisma.researchReport.findMany({
-        where: { tickerId: ticker.id },
+        where: { symbol },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      prisma.researchReport.count({
-        where: { tickerId: ticker.id },
-      }),
+      prisma.researchReport.count({ where: { symbol } }),
     ]);
-
     res.json({ reports, total });
   })
 );
@@ -818,50 +654,36 @@ router.get(
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
 
-    const ticker = await prisma.researchTicker.findUnique({
-      where: { symbol },
-    });
-    if (!ticker) throw new NotFoundError("Ticker", symbol);
-
-    const analyses: Array<{
-      id: string;
-      tickerId: string;
-      source: string;
-      analyzedAt: Date;
-      signal: string;
-      confidence: number;
-      summary: string;
-      details: unknown;
-    }> = await prisma.$queryRaw`
-      SELECT a.id, a.ticker_id AS "tickerId", a.source,
+    const analyses = await prisma.$queryRaw`
+      SELECT a.id, a.symbol, a.source,
              a.analyzed_at AS "analyzedAt", a.signal, a.confidence,
              a.summary, a.details
       FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY analyzed_at DESC) AS rn
         FROM analysis
-        WHERE ticker_id = ${ticker.id}::uuid
+        WHERE symbol = ${symbol}
       ) a
       WHERE a.rn = 1
     `;
 
-    const skippedCollections: Array<{
-      source: string;
-      status: string;
-      skipReason: string;
-      collectedAt: Date;
-    }> = await prisma.$queryRaw`
+    const skippedCollections = await prisma.$queryRaw`
       SELECT dc.source, dc.status, dc.skip_reason AS "skipReason",
              dc.collected_at AS "collectedAt"
       FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY collected_at DESC) AS rn
         FROM data_collection
-        WHERE ticker_id = ${ticker.id}::uuid
+        WHERE symbol = ${symbol}
       ) dc
       WHERE dc.rn = 1 AND dc.status = 'skipped'
     `;
 
-    const collectionStatuses = skippedCollections;
-    res.json({ symbol, analyses, collectionStatuses, lastUpdated: ticker.lastAnalyzed });
+    const item = await prisma.watchlistItem.findFirst({
+      where: { symbol },
+      select: { lastAnalyzedAt: true },
+      orderBy: { lastAnalyzedAt: "desc" },
+    });
+
+    res.json({ symbol, analyses, collectionStatuses: skippedCollections, lastUpdated: item?.lastAnalyzedAt });
   })
 );
 
@@ -874,11 +696,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const { source } = req.params;
-    const ticker = await prisma.researchTicker.findUnique({ where: { symbol } });
-    if (!ticker) throw new NotFoundError("Ticker", symbol);
-
     const analysis = await prisma.analysis.findFirst({
-      where: { tickerId: ticker.id, source },
+      where: { symbol, source },
       orderBy: { analyzedAt: "desc" },
     });
     if (!analysis) throw new NotFoundError("Analysis", `${symbol}/${source}`);
