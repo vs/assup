@@ -784,26 +784,36 @@ class ImportService {
   }
 
   /**
-   * Import corporate actions with deduplication
+   * Import corporate actions with deduplication using batch operations
    */
   private async importCorporateActions(
     batchId: string,
     actions: FlexCorporateAction[]
   ): Promise<{ imported: number; skipped: number }> {
-    let imported = 0;
-    let skipped = 0;
+    if (actions.length === 0) {
+      return { imported: 0, skipped: 0 };
+    }
 
-    for (const action of actions) {
-      // Check for existing action
-      const existing = await prisma.corporateAction.findUnique({
-        where: { actionId: action.actionID },
-      });
+    // Batch lookup: find all existing action IDs in one query
+    const existingActionIds = new Set(
+      (
+        await prisma.corporateAction.findMany({
+          where: { actionId: { in: actions.map((a) => a.actionID) } },
+          select: { actionId: true },
+        })
+      ).map((a) => a.actionId)
+    );
 
-      if (existing) {
-        skipped++;
-        continue;
-      }
+    // Filter to only new actions
+    const newActions = actions.filter((a) => !existingActionIds.has(a.actionID));
+    const skipped = existingActionIds.size;
 
+    if (newActions.length === 0) {
+      return { imported: 0, skipped };
+    }
+
+    // Validate and transform all actions first (fail fast before any inserts)
+    const validatedData = newActions.map((action) => {
       // Parse and validate ex-date
       const exDate = this.parseDate(action.exDate);
       if (!exDate) {
@@ -837,26 +847,28 @@ class ImportService {
         }
       }
 
-      await prisma.corporateAction.create({
-        data: {
-          importBatchId: batchId,
-          actionId: action.actionID,
-          symbol: action.symbol,
-          description: action.description,
-          conId: action.conid ? parseInt(action.conid, 10) : null,
-          actionType: action.type,
-          exDate,
-          payDate,
-          quantity,
-          value,
-          splitRatio,
-        },
-      });
+      return {
+        importBatchId: batchId,
+        actionId: action.actionID,
+        symbol: action.symbol,
+        description: action.description,
+        conId: action.conid ? parseInt(action.conid, 10) : null,
+        actionType: action.type,
+        exDate,
+        payDate,
+        quantity,
+        value,
+        splitRatio,
+      };
+    });
 
-      imported++;
-    }
+    // Batch insert all validated corporate actions
+    await prisma.corporateAction.createMany({
+      data: validatedData,
+      skipDuplicates: true,
+    });
 
-    return { imported, skipped };
+    return { imported: newActions.length, skipped };
   }
 
   /**
@@ -885,8 +897,6 @@ class ImportService {
    * - Expiration assignments (option expired and was assigned on expiry)
    */
   async detectAssignments(): Promise<number> {
-    let detected = 0;
-
     // Find all sold options that haven't been checked for assignment
     const shortOptions = await prisma.importedTrade.findMany({
       where: {
@@ -898,35 +908,125 @@ class ImportService {
       },
     });
 
-    for (const option of shortOptions) {
-      if (!option.expiry || !option.underlying || !option.strike) continue;
+    // Filter to options with required fields
+    const validOptions = shortOptions.filter(
+      (o) => o.expiry && o.underlying && o.strike
+    );
 
-      // Find the close trade for this option (if it exists)
+    if (validOptions.length === 0) return 0;
+
+    // Pre-fetch ALL close trades for these option contracts in ONE query.
+    // We need BUY-to-close trades for OPT contracts. Fetch by conId OR by symbol
+    // to cover both matching strategies.
+    const optionConIds = validOptions
+      .map((o) => o.conId)
+      .filter((id): id is number => id !== null);
+    const optionSymbols = [...new Set(validOptions.map((o) => o.symbol))];
+
+    const allCloseTrades = await prisma.importedTrade.findMany({
+      where: {
+        secType: "OPT",
+        buySell: "BUY",
+        openClose: "C",
+        OR: [
+          ...(optionConIds.length > 0 ? [{ conId: { in: optionConIds } }] : []),
+          { symbol: { in: optionSymbols } },
+        ],
+      },
+    });
+
+    // Index close trades by conId for O(1) lookup
+    const closeTradesByConId = new Map<number, typeof allCloseTrades>();
+    // Index close trades by composite key for symbol-based fallback
+    const closeTradesByKey = new Map<string, typeof allCloseTrades>();
+
+    for (const ct of allCloseTrades) {
+      if (ct.conId) {
+        const existing = closeTradesByConId.get(ct.conId) || [];
+        existing.push(ct);
+        closeTradesByConId.set(ct.conId, existing);
+      }
+      // Build composite key: symbol|strike|expiry|right
+      if (ct.strike !== null && ct.expiry && ct.right) {
+        const key = `${ct.symbol}|${ct.strike}|${ct.expiry.toISOString()}|${ct.right}`;
+        const existing = closeTradesByKey.get(key) || [];
+        existing.push(ct);
+        closeTradesByKey.set(key, existing);
+      }
+    }
+
+    // Pre-fetch ALL stock trades for underlying symbols in the relevant date range.
+    // We need to cover: earliest (expiry - 1 day) to latest (expiry + 5 days)
+    const underlyingSymbols = [...new Set(validOptions.map((o) => o.underlying!))];
+
+    // Calculate the widest date window across all options
+    let globalSearchStart = new Date(8640000000000000); // max date
+    let globalSearchEnd = new Date(-8640000000000000); // min date
+
+    for (const option of validOptions) {
+      const expiry = new Date(option.expiry!);
+      const start = new Date(expiry);
+      start.setDate(start.getDate() - 1);
+      const end = new Date(expiry);
+      end.setDate(end.getDate() + 5);
+      if (start < globalSearchStart) globalSearchStart = start;
+      if (end > globalSearchEnd) globalSearchEnd = end;
+    }
+
+    // Also account for early close dates (close trades may be before expiry)
+    for (const ct of allCloseTrades) {
+      if (ct.tradePrice <= 0.01) {
+        const start = new Date(ct.tradeDate);
+        start.setDate(start.getDate() - 1);
+        const end = new Date(ct.tradeDate);
+        end.setDate(end.getDate() + 5);
+        if (start < globalSearchStart) globalSearchStart = start;
+        if (end > globalSearchEnd) globalSearchEnd = end;
+      }
+    }
+
+    const allStockTrades = await prisma.importedTrade.findMany({
+      where: {
+        symbol: { in: underlyingSymbols },
+        secType: "STK",
+        tradeDate: {
+          gte: globalSearchStart,
+          lte: globalSearchEnd,
+        },
+      },
+    });
+
+    // Index stock trades by symbol+buySell for fast lookup
+    const stockTradesBySymbolDir = new Map<string, typeof allStockTrades>();
+    for (const st of allStockTrades) {
+      const key = `${st.symbol}|${st.buySell}`;
+      const existing = stockTradesBySymbolDir.get(key) || [];
+      existing.push(st);
+      stockTradesBySymbolDir.set(key, existing);
+    }
+
+    // Collect assignment updates to batch them
+    const assignmentUpdates: Array<{ id: string; assignmentDate: Date }> = [];
+
+    for (const option of validOptions) {
+      // Find the close trade for this option using pre-fetched data
       // Use conId if available for reliable matching, otherwise match by symbol
-      const closeTrade = await prisma.importedTrade.findFirst({
-        where: option.conId
-          ? {
-              conId: option.conId,
-              secType: "OPT",
-              buySell: "BUY",
-              openClose: "C",
-            }
-          : {
-              symbol: option.symbol,
-              secType: "OPT",
-              buySell: "BUY",
-              openClose: "C",
-              strike: option.strike,
-              expiry: option.expiry,
-              right: option.right,
-            },
-      });
+      let closeTrade: (typeof allCloseTrades)[number] | undefined;
+      if (option.conId) {
+        const candidates = closeTradesByConId.get(option.conId) || [];
+        closeTrade = candidates[0];
+      }
+      if (!closeTrade && option.strike !== null && option.expiry && option.right) {
+        const key = `${option.symbol}|${option.strike}|${option.expiry.toISOString()}|${option.right}`;
+        const candidates = closeTradesByKey.get(key) || [];
+        closeTrade = candidates[0];
+      }
 
       // Determine if this could be an assignment:
       // 1. Early assignment: close trade exists at $0 (or very low price) before expiry
       // 2. Expiration assignment: expiry has passed
       const isEarlyClose = closeTrade && closeTrade.tradePrice <= 0.01;
-      const isExpired = this.hasExpiryPassed(option.expiry);
+      const isExpired = this.hasExpiryPassed(option.expiry!);
 
       // Skip if neither condition applies
       if (!isEarlyClose && !isExpired) continue;
@@ -938,7 +1038,7 @@ class ImportService {
       if (isEarlyClose && closeTrade) {
         searchDate = new Date(closeTrade.tradeDate);
       } else {
-        searchDate = new Date(option.expiry);
+        searchDate = new Date(option.expiry!);
       }
 
       // Search for stock trades around the search date
@@ -948,18 +1048,15 @@ class ImportService {
       const searchEnd = new Date(searchDate);
       searchEnd.setDate(searchEnd.getDate() + 5);
 
-      // Find stock trades that match assignment criteria
-      const potentialAssignments = await prisma.importedTrade.findMany({
-        where: {
-          symbol: option.underlying,
-          secType: "STK",
-          tradeDate: {
-            gte: searchStart,
-            lte: searchEnd,
-          },
-          // PUT assignment = buy stock at strike, CALL assignment = sell stock at strike
-          buySell: option.right === "P" ? "BUY" : "SELL",
-        },
+      // PUT assignment = buy stock at strike, CALL assignment = sell stock at strike
+      const direction = option.right === "P" ? "BUY" : "SELL";
+      const stockKey = `${option.underlying}|${direction}`;
+      const candidateStockTrades = stockTradesBySymbolDir.get(stockKey) || [];
+
+      // Filter by date range (per-option window)
+      const potentialAssignments = candidateStockTrades.filter((st) => {
+        const td = new Date(st.tradeDate);
+        return td >= searchStart && td <= searchEnd;
       });
 
       if (potentialAssignments.length > 0) {
@@ -983,19 +1080,30 @@ class ImportService {
         });
 
         if (matchingAssignment) {
-          await prisma.importedTrade.update({
-            where: { id: option.id },
-            data: {
-              wasAssigned: true,
-              assignmentDate: matchingAssignment.tradeDate,
-            },
+          assignmentUpdates.push({
+            id: option.id,
+            assignmentDate: matchingAssignment.tradeDate,
           });
-          detected++;
         }
       }
     }
 
-    return detected;
+    // Execute all assignment updates in a single transaction
+    if (assignmentUpdates.length > 0) {
+      await prisma.$transaction(
+        assignmentUpdates.map((upd) =>
+          prisma.importedTrade.update({
+            where: { id: upd.id },
+            data: {
+              wasAssigned: true,
+              assignmentDate: upd.assignmentDate,
+            },
+          })
+        )
+      );
+    }
+
+    return assignmentUpdates.length;
   }
 
   /**
