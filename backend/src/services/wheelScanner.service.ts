@@ -289,7 +289,7 @@ class WheelScannerService {
       try {
         const recentReport = await prisma.researchReport.findFirst({
           where: {
-            ticker: { symbol: r.candidate.symbol },
+            symbol: r.candidate.symbol,
             createdAt: {
               gte: new Date(
                 Date.now() - REPORT_FRESHNESS_DAYS * 86400000

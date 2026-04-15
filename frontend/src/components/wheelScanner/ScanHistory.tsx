@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { WheelScan, AssetClass } from "@assup/shared";
 import { wheelScannerApi } from "@/api/wheelScanner";
-import { researchApi } from "@/api";
+import { watchlistsApi } from "@/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CandidateCard } from "./CandidateCard";
@@ -30,12 +30,20 @@ export function ScanHistory({ assetClasses, refreshTrigger }: ScanHistoryProps) 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [scanData, tickerData] = await Promise.all([
+      const [scanData, watchlists] = await Promise.all([
         wheelScannerApi.scans.list(10),
-        researchApi.listTickers(1, 100),
+        watchlistsApi.list(),
       ]);
       setScans(scanData);
-      setTrackedSymbols(new Set(tickerData.tickers.map((t) => t.symbol)));
+      // Collect all symbols across all watchlists
+      const allSymbols = new Set<string>();
+      for (const wl of watchlists) {
+        const full = await watchlistsApi.get(wl.id);
+        for (const item of full.items) {
+          allSymbols.add(item.symbol);
+        }
+      }
+      setTrackedSymbols(allSymbols);
 
       if (scanData.some((s) => s.status === "running")) {
         setCollapsed(false);

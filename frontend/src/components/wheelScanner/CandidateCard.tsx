@@ -4,13 +4,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, Check, Loader2 } from "lucide-react";
-import { researchApi } from "@/api";
+import { watchlistsApi } from "@/api";
 
 interface CandidateCardProps {
   result: WheelScanResult;
   assetClassName?: string;
   assetClassColor?: string;
   isTracked: boolean;
+  watchlistId?: string;
   onAdded: (symbol: string) => void;
 }
 
@@ -33,15 +34,17 @@ export function CandidateCard({
   assetClassName,
   assetClassColor,
   isTracked,
+  watchlistId,
   onAdded,
 }: CandidateCardProps) {
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
 
   async function handleAdd() {
+    if (!watchlistId) return;
     setAdding(true);
     try {
-      await researchApi.addTickers({ symbols: [result.symbol], source: "wheel_scanner" });
+      await watchlistsApi.addItem(watchlistId, { symbol: result.symbol });
       setAdded(true);
       onAdded(result.symbol);
     } catch (err) {
@@ -51,7 +54,7 @@ export function CandidateCard({
     }
   }
 
-  const disabled = isTracked || added || adding;
+  const disabled = isTracked || added || adding || !watchlistId;
 
   return (
     <Card className="relative">
@@ -129,7 +132,7 @@ export function CandidateCard({
           ) : (
             <>
               <Plus className="h-4 w-4 mr-1.5" />
-              Add to Research
+              Add to Watchlist
             </>
           )}
         </Button>

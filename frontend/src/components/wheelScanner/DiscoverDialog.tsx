@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { WheelScanConfig, WheelScan, WheelScanProgress, AssetClass } from "@assup/shared";
 import { wheelScannerApi } from "@/api/wheelScanner";
-import { assetClassesApi, researchApi } from "@/api";
+import { assetClassesApi, watchlistsApi } from "@/api";
 import { sseManager } from "@/hooks/useSSE";
 import {
   Dialog,
@@ -51,14 +51,22 @@ export function DiscoverDialog({ open, onOpenChange, onTickersAdded }: DiscoverD
     async function load() {
       setLoading(true);
       try {
-        const [cfgs, acs, tickers] = await Promise.all([
+        const [cfgs, acs, watchlists] = await Promise.all([
           wheelScannerApi.configs.list(),
           assetClassesApi.list(),
-          researchApi.listTickers(1, 100),
+          watchlistsApi.list(),
         ]);
         setConfigs(cfgs);
         setAssetClasses(acs);
-        setTrackedSymbols(new Set(tickers.tickers.map((t) => t.symbol)));
+        // Collect all symbols across all watchlists
+        const allSymbols = new Set<string>();
+        for (const wl of watchlists) {
+          const full = await watchlistsApi.get(wl.id);
+          for (const item of full.items) {
+            allSymbols.add(item.symbol);
+          }
+        }
+        setTrackedSymbols(allSymbols);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
