@@ -649,9 +649,10 @@ class IBKRService {
         ? { ...contract, exchange: "SMART" }
         : contract;
 
-      // For options, request generic ticks for IV and open interest
-      const genericTicks = contract.secType === SecType.OPT ? "106,101" : "";
-      const marketData = await this.api.getMarketDataSnapshot(mdContract, genericTicks, false);
+      // getMarketDataSnapshot uses snapshot=true which doesn't support generic
+      // ticks (TWS error 321). Delta/IV arrive via tickOptionComputation callback
+      // regardless, so no generic ticks are needed.
+      const marketData = await this.api.getMarketDataSnapshot(mdContract, "", false);
 
       if (!marketData) {
         return null;
