@@ -146,19 +146,29 @@ class ProfitService {
       )
     );
 
-    // Fetch ALL option trades for these contracts (including opens from previous periods)
-    const allOptionTrades = await prisma.importedTrade.findMany({
-      where: {
-        secType: "OPT",
-      },
-      orderBy: { tradeDate: "asc" },
-    });
+    // Fetch option trades scoped to contracts that closed in this period
+    const closingConIds = [...new Set(
+      closingTrades.map(t => t.conId).filter((id): id is number => id !== null && id !== 0)
+    )];
 
-    // Filter to trades matching our contract keys
-    const optionTrades = allOptionTrades.filter((t) => {
-      const key = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
-      return contractKeys.has(key);
-    });
+    let optionTrades: typeof closingTrades;
+    if (closingConIds.length > 0 && closingConIds.length >= contractKeys.size) {
+      // All closing trades have conIds — use precise query
+      optionTrades = await prisma.importedTrade.findMany({
+        where: { secType: "OPT", conId: { in: closingConIds } },
+        orderBy: { tradeDate: "asc" },
+      });
+    } else {
+      // Fallback: fetch all OPT trades and filter in-memory
+      const allOptionTrades = await prisma.importedTrade.findMany({
+        where: { secType: "OPT" },
+        orderBy: { tradeDate: "asc" },
+      });
+      optionTrades = allOptionTrades.filter((t) => {
+        const key = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+        return contractKeys.has(key);
+      });
+    }
 
     // Get all stock trades in range
     const stockTrades = await prisma.importedTrade.findMany({
@@ -368,21 +378,32 @@ class ProfitService {
       )
     );
 
-    // Fetch ALL trades for these contracts (including opens from previous months)
-    const trades = await prisma.importedTrade.findMany({
-      where: {
-        secType: "OPT",
-      },
-      orderBy: { tradeDate: "asc" },
-    });
+    // Fetch option trades scoped to contracts that closed in this month
+    const closingConIds = [...new Set(
+      [...closingTrades, ...todayExecutions]
+        .map(t => t.conId)
+        .filter((id): id is number => id !== null && id !== 0)
+    )];
 
-    // Filter to trades matching our contract keys
-    // First try exact match, then fall back to relaxed match (for strike-adjusted contracts)
-    let relevantTrades = trades.filter((t) => {
-      const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
-      const relaxedKey = `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
-      return exactContractKeys.has(exactKey) || relaxedContractKeys.has(relaxedKey);
-    });
+    let relevantTrades: typeof closingTrades;
+    if (closingConIds.length > 0 && closingConIds.length >= exactContractKeys.size) {
+      // All closing trades have conIds — use precise query
+      relevantTrades = await prisma.importedTrade.findMany({
+        where: { secType: "OPT", conId: { in: closingConIds } },
+        orderBy: { tradeDate: "asc" },
+      });
+    } else {
+      // Fallback: fetch all OPT trades and filter in-memory with relaxed matching
+      const allTrades = await prisma.importedTrade.findMany({
+        where: { secType: "OPT" },
+        orderBy: { tradeDate: "asc" },
+      });
+      relevantTrades = allTrades.filter((t) => {
+        const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+        const relaxedKey = `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+        return exactContractKeys.has(exactKey) || relaxedContractKeys.has(relaxedKey);
+      });
+    }
 
     // Merge today's executions with imported trades (avoid duplicates by tradeId)
     if (todayExecutions.length > 0) {
@@ -1107,7 +1128,8 @@ class ProfitService {
     for (const buy of buyTrades) {
       const existing = costBasisMap.get(buy.symbol) || { totalQty: 0, totalCost: 0 };
       existing.totalQty += Math.abs(buy.quantity);
-      existing.totalCost += Math.abs(buy.quantity) * buy.tradePrice - buy.commission;
+      // Cost basis = price paid + commission paid
+      existing.totalCost += Math.abs(buy.quantity) * buy.tradePrice + Math.abs(buy.commission);
       costBasisMap.set(buy.symbol, existing);
     }
 
@@ -1118,7 +1140,8 @@ class ProfitService {
         const avgCostPerShare = costInfo.totalCost / costInfo.totalQty;
         const sellQty = Math.abs(sell.quantity);
         const costBasis = avgCostPerShare * sellQty;
-        const sellProceeds = sellQty * sell.tradePrice + sell.commission;
+        // Net proceeds = gross proceeds - commission paid
+        const sellProceeds = sellQty * sell.tradePrice - Math.abs(sell.commission);
         sell.costBasis = costBasis;
         sell.realizedPnl = sellProceeds - costBasis;
       }
