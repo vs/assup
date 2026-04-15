@@ -4,33 +4,23 @@
  */
 
 import { Router } from "express";
-import { SecType } from "@stoqey/ib";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
-import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
-import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
+import { ibkrService } from "../services/ibkr.js";
 import { allocationService, getUnderinvestedClasses } from "../services/allocation.service.js";
 import { sseService } from "../services/sse.js";
+import { scanSymbols } from "../services/optionScan.service.js";
 import {
   scannerPresetCreateSchema,
   scannerPresetUpdateSchema,
   scannerPresetIdParamSchema,
   scannerCriteriaSchema,
 } from "@assup/shared";
+import type { ScannerCriteria } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
 import { isIgnorablePositionError } from "../utils/index.js";
-import {
-  withLiveMarketData,
-  getUnderlyingPrice,
-  getReferencePrice,
-  filterChainByStrike,
-  marketDataKey,
-  calcOptionMetrics,
-  estimateDelta,
-  getDaysToExpiry,
-} from "../utils/options.js";
 
 const router = Router();
 
@@ -247,7 +237,7 @@ router.post(
     });
 
     // Scan for options opportunities
-    const opportunities = await scanOptionsForSymbols(filteredSymbols, symbolAssignments, criteria);
+    const opportunities = await scanOptionsForSymbols(symbolAssignments, criteria);
 
     res.json({
       criteria,
@@ -274,51 +264,22 @@ router.get(
 );
 
 /**
- * Scan options for given symbols based on criteria
+ * Scan options for given symbols based on criteria.
+ * Delegates to the shared optionScan service, wiring SSE progress callbacks.
  */
 async function scanOptionsForSymbols(
-  symbols: string[],
-  symbolAssignments: Array<{ symbol: string; assetClass: { name: string; color: string } }>,
-  criteria: {
-    optionTypes?: "PUT" | "CALL";
-    minDaysToExpiry: number;
-    maxDaysToExpiry: number;
-    minDelta: number;
-    maxDelta: number;
-    minAnnualizedReturn: number;
-    minPremiumPercent: number;
-    putMinStrikePercent: number;
-    putMaxStrikePercent: number;
-    callMinStrikePercent: number;
-    callMaxStrikePercent: number;
-  }
+  symbolAssignmentsList: Array<{ symbol: string; assetClass: { name: string; color: string } }>,
+  criteria: ScannerCriteria,
 ) {
-  const opportunities: Array<{
-    symbol: string;
-    assetClassName: string;
-    assetClassColor: string;
-    strike: number;
-    expiration: string;
-    daysToExpiry: number;
-    optionType: "CALL" | "PUT";
-    bid: number;
-    ask: number;
-    midPrice: number;
-    delta?: number;
-    annualizedReturn: number;
-    premiumPercent: number;
-    underlyingPrice?: number;
-  }> = [];
-
-  // Create a map for quick lookup of asset class info
-  const symbolToAssetClass = new Map(
-    symbolAssignments.map((s) => [s.symbol, { name: s.assetClass.name, color: s.assetClass.color }])
+  const symbolAssignments = new Map(
+    symbolAssignmentsList.map((s) => [s.symbol, { name: s.assetClass.name, color: s.assetClass.color }]),
   );
 
-  const totalSymbols = symbols.length;
+  const totalSymbols = symbolAssignments.size;
+  let currentSymbol = 0;
+
   console.log(`\n=== Starting Options Scan for ${totalSymbols} symbols ===\n`);
 
-  // Send initial progress
   sseService.broadcast("scanner", {
     status: "started",
     totalSymbols,
@@ -326,244 +287,43 @@ async function scanOptionsForSymbols(
     message: `Starting scan for ${totalSymbols} symbols`,
   });
 
-  return withLiveMarketData(async () => {
-    for (let i = 0; i < symbols.length; i++) {
-    const symbol = symbols[i];
-    const assetClassInfo = symbolToAssetClass.get(symbol);
-    if (!assetClassInfo) continue;
+  const opportunities = await scanSymbols({
+    symbolAssignments,
+    criteria,
+    callbacks: {
+      onSymbolComplete(symbol, assetClass, symbolOpportunities) {
+        currentSymbol++;
+        console.log(`[${currentSymbol}/${totalSymbols}] ${symbol} (${assetClass}): ${symbolOpportunities.length} opportunities`);
 
-    try {
-      console.log(`[${i + 1}/${totalSymbols}] Scanning ${symbol} (${assetClassInfo.name})...`);
-
-      // Send progress update
-      sseService.broadcast("scanner", {
-        status: "scanning",
-        totalSymbols,
-        currentSymbol: i + 1,
-        symbol,
-        assetClass: assetClassInfo.name,
-        message: `Scanning ${symbol} (${i + 1}/${totalSymbols})`,
-      });
-
-      // Get current price of underlying stock
-      const underlyingPriceRaw = await getUnderlyingPrice(symbol);
-      const underlyingPrice = underlyingPriceRaw ?? undefined;
-      if (underlyingPrice) {
-        console.log(`  ↳ Underlying price: $${underlyingPrice.toFixed(2)}`);
-      }
-
-      // Get options chain
-      const chain = await ibkrService.getOptionChain(symbol);
-      if (chain.length === 0) {
-        console.log(`  ↳ No options chain available`);
-        continue;
-      }
-
-      // Get unique expirations and strikes from chain
-      const allExpirations = [...new Set(chain.map(c => c.expiration))].sort();
-      const allStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
-      console.log(`  ↳ Found ${allExpirations.length} expirations, ${allStrikes.length} strikes`);
-
-      // Filter by expiration date and reasonable strike range
-      const today = new Date();
-
-      // Get unique strikes for logging
-      const uniqueStrikes = [...new Set(chain.map(c => c.strike))].sort((a, b) => a - b);
-
-      // Use actual underlying price for strike range calculation
-      const referencePrice = getReferencePrice(underlyingPrice ?? null, uniqueStrikes);
-
-      // Determine which option types to scan
-      const optionTypes = criteria.optionTypes || "PUT";
-      const scanPuts = optionTypes === "PUT";
-      const scanCalls = optionTypes === "CALL";
-
-      // Calculate separate strike ranges for PUTs and CALLs
-      console.log(`  ↳ Reference price: $${referencePrice.toFixed(2)}, scanning: ${optionTypes}`);
-      if (scanPuts) {
-        console.log(`  ↳ PUT strike range: ${criteria.putMinStrikePercent}%-${criteria.putMaxStrikePercent}%`);
-      }
-      if (scanCalls) {
-        console.log(`  ↳ CALL strike range: ${criteria.callMinStrikePercent}%-${criteria.callMaxStrikePercent}%`);
-      }
-
-      // Filter chain by expiration only first (strike ranges depend on option type)
-      const expirationFilteredChain = chain.filter((entry) => {
-        const dte = getDaysToExpiry(entry.expiration, today);
-        return dte >= criteria.minDaysToExpiry && dte <= criteria.maxDaysToExpiry;
-      });
-
-      if (expirationFilteredChain.length === 0) {
-        console.log(`  ↳ No options in expiration range (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry} days)`);
-        continue;
-      }
-
-      // Filter for PUT contracts (within PUT strike range)
-      const putFilteredChain = scanPuts
-        ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.putMinStrikePercent, criteria.putMaxStrikePercent)
-        : [];
-
-      // Filter for CALL contracts (within CALL strike range)
-      const callFilteredChain = scanCalls
-        ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.callMinStrikePercent, criteria.callMaxStrikePercent)
-        : [];
-
-      if (putFilteredChain.length === 0 && callFilteredChain.length === 0) {
-        console.log(`  ↳ No options in strike ranges`);
-        continue;
-      }
-
-      // Show what's being evaluated
-      const allFilteredEntries = [...putFilteredChain, ...callFilteredChain];
-      const filteredExpirations = [...new Set(allFilteredEntries.map(c => c.expiration))].sort();
-      const filteredStrikes = [...new Set(allFilteredEntries.map(c => c.strike))].sort((a, b) => a - b);
-      const strikeRange = filteredStrikes.length > 0
-        ? `$${filteredStrikes[0]}-$${filteredStrikes[filteredStrikes.length - 1]}`
-        : 'none';
-      console.log(`  ↳ Evaluating ${filteredExpirations.length} expirations (${filteredExpirations[0]} to ${filteredExpirations[filteredExpirations.length - 1]})`);
-      console.log(`  ↳ Combined strike range: ${strikeRange} (${filteredStrikes.length} strikes, filtered from ${uniqueStrikes.length})`);
-
-      // Collect contracts to get market data for
-      const contracts: typeof chain[0]['put'][] = [];
-      if (scanPuts) {
-        contracts.push(...putFilteredChain.map((entry) => entry.put));
-      }
-      if (scanCalls) {
-        contracts.push(...callFilteredChain.map((entry) => entry.call));
-      }
-
-      // Send progress update with details
-      sseService.broadcast("scanner", {
-        status: "fetching",
-        totalSymbols,
-        currentSymbol: i + 1,
-        symbol,
-        assetClass: assetClassInfo.name,
-        expirations: `${filteredExpirations[0]} to ${filteredExpirations[filteredExpirations.length - 1]}`,
-        strikeRange,
-        contractCount: contracts.length,
-        message: `Fetching ${contracts.length} contracts for ${symbol}`,
-      });
-
-      // Get market data for options contracts (NOT the underlying!)
-      if (contracts.length > 0) {
-        const sample = contracts[0];
-        console.log(`  ↳ Sample contract: ${sample.symbol} $${sample.strike} ${sample.lastTradeDateOrContractMonth} ${sample.right} on ${sample.exchange}`);
-      }
-      const putCount = scanPuts ? putFilteredChain.length : 0;
-      const callCount = scanCalls ? callFilteredChain.length : 0;
-      console.log(`  ↳ Fetching market data for ${contracts.length} contracts (${putCount} PUTs, ${callCount} CALLs)...`);
-      const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
-      console.log(`  ↳ Received market data for ${marketDataMap.size} contracts`);
-
-      // Debug counters
-      let withBidAsk = 0;
-      let passedCriteria = 0;
-      let failedReturn = 0;
-      let failedPremium = 0;
-      let failedDelta = 0;
-
-      // Helper function to process an option entry
-      const processOption = (
-        entry: typeof chain[0],
-        optionType: "PUT" | "CALL",
-        contract: typeof chain[0]['put'],
-        daysToExpiry: number
-      ) => {
-        const data = marketDataMap.get(marketDataKey(contract));
-
-        if (data && data.bid !== undefined && data.ask !== undefined && data.bid > 0 && data.ask > 0) {
-          withBidAsk++;
-          const { midPrice, premiumPercent, annualizedReturn } = calcOptionMetrics(data.bid, data.ask, entry.strike, daysToExpiry);
-
-          // Debug: Log first few samples
-          if (withBidAsk <= 3) {
-            console.log(`  ↳ Sample ${optionType}: ${symbol} $${entry.strike} ${entry.expiration}: bid=${data.bid}, ask=${data.ask}, premium=${premiumPercent.toFixed(2)}%, annual=${annualizedReturn.toFixed(2)}%`);
-          }
-
-          // Filter by criteria
-          const passesReturn = annualizedReturn >= criteria.minAnnualizedReturn;
-          const passesPremium = premiumPercent >= criteria.minPremiumPercent;
-
-          // Delta filtering - use absolute value since puts have negative delta
-          let absDelta: number | null = null;
-          if (data.delta !== undefined) {
-            absDelta = Math.abs(data.delta);
-          } else if (underlyingPrice && underlyingPrice > 0) {
-            absDelta = estimateDelta(entry.strike, underlyingPrice, optionType);
-          }
-          const passesDelta = absDelta === null || (absDelta >= criteria.minDelta && absDelta <= criteria.maxDelta);
-
-          if (!passesReturn) failedReturn++;
-          if (!passesPremium) failedPremium++;
-          if (!passesDelta) failedDelta++;
-
-          if (passesReturn && passesPremium && passesDelta) {
-            passedCriteria++;
-            opportunities.push({
-              symbol,
-              assetClassName: assetClassInfo.name,
-              assetClassColor: assetClassInfo.color,
-              strike: entry.strike,
-              expiration: entry.expiration,
-              daysToExpiry,
-              optionType,
-              bid: data.bid,
-              ask: data.ask,
-              midPrice,
-              delta: data.delta,
-              annualizedReturn,
-              premiumPercent,
-              underlyingPrice,
-            });
-          }
-        }
-      };
-
-      // Process PUT options
-      if (scanPuts) {
-        for (const entry of putFilteredChain) {
-          processOption(entry, "PUT", entry.put, getDaysToExpiry(entry.expiration, today));
-        }
-      }
-
-      // Process CALL options
-      if (scanCalls) {
-        for (const entry of callFilteredChain) {
-          processOption(entry, "CALL", entry.call, getDaysToExpiry(entry.expiration, today));
-        }
-      }
-
-      console.log(`  ↳ Market data stats: ${withBidAsk} with valid bid/ask, ${passedCriteria} passed criteria`);
-      if (failedReturn > 0 || failedPremium > 0 || failedDelta > 0) {
-        console.log(`  ↳ Filtered out: ${failedReturn} by annual return (min ${criteria.minAnnualizedReturn}%), ${failedPremium} by premium (min ${criteria.minPremiumPercent}%), ${failedDelta} by delta (${criteria.minDelta}-${criteria.maxDelta})`);
-      }
-
-      // Get opportunities just found for this symbol
-      const symbolOpportunities = opportunities.filter(o => o.symbol === symbol);
-      console.log(`  ↳ Found ${symbolOpportunities.length} qualifying opportunities\n`);
-
-      // Send interim results for this symbol
-      sseService.broadcast("scanner", {
-        status: "symbol_complete",
-        totalSymbols,
-        currentSymbol: i + 1,
-        symbol,
-        assetClass: assetClassInfo.name,
-        opportunities: symbolOpportunities,
-        message: `Found ${symbolOpportunities.length} opportunities for ${symbol}`,
-      });
-    } catch (err) {
-      console.error(`  ↳ Error: ${err instanceof Error ? err.message : String(err)}\n`);
-    }
-  }
+        sseService.broadcast("scanner", {
+          status: "symbol_complete",
+          totalSymbols,
+          currentSymbol,
+          symbol,
+          assetClass,
+          opportunities: symbolOpportunities,
+          message: `Found ${symbolOpportunities.length} opportunities for ${symbol}`,
+        });
+      },
+      onFetching(symbol, assetClass, contractCount) {
+        sseService.broadcast("scanner", {
+          status: "fetching",
+          totalSymbols,
+          currentSymbol: currentSymbol + 1,
+          symbol,
+          assetClass,
+          contractCount,
+          message: `Fetching ${contractCount} contracts for ${symbol}`,
+        });
+      },
+    },
+  });
 
   // Sort by annualized return descending
   opportunities.sort((a, b) => b.annualizedReturn - a.annualizedReturn);
 
   console.log(`=== Scan Complete: ${opportunities.length} total opportunities found ===\n`);
 
-  // Send completion event
   sseService.broadcast("scanner", {
     status: "completed",
     totalSymbols,
@@ -572,7 +332,6 @@ async function scanOptionsForSymbols(
   });
 
   return opportunities;
-  });
 }
 
 export default router;
