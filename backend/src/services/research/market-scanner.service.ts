@@ -113,21 +113,24 @@ class MarketScannerService {
 
   /**
    * Run an ad-hoc scan without saving a preset.
+   * Does NOT create a watchlist — caller decides which symbols to keep.
    */
   async runAdhoc(
     params: MarketScannerParams,
     techConfig?: TechnicalFilterConfig
   ): Promise<MarketScanResult> {
-    return this.executeAndProcess(params, techConfig);
+    return this.executeAndProcess(params, techConfig, undefined, false);
   }
 
   /**
    * Shared execution logic for runPreset and runAdhoc.
+   * @param createWatchlist If true, creates a watchlist with qualified symbols (default: true for presets)
    */
   private async executeAndProcess(
     params: MarketScannerParams,
     techConfig?: TechnicalFilterConfig,
-    runName?: string
+    runName?: string,
+    createWatchlist = true
   ): Promise<MarketScanResult> {
     console.log(
       `[MarketScanner] Running scan: scanCode=${params.scanCode}, location=${params.locationCode ?? "STK.US.MAJOR"}`
@@ -177,38 +180,43 @@ class MarketScannerService {
       );
     }
 
-    // Step 3: Create watchlist with discovered tickers
-    const now = new Date();
-    const watchlistName = runName
-      ? `${runName} - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-      : `${params.scanCode} Scan - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-
-    const watchlist = await prisma.watchlist.create({
-      data: { name: watchlistName },
-    });
-
+    // Step 3: Optionally create watchlist with discovered tickers
+    let watchlistId: string | null = null;
+    let watchlistName: string | null = null;
     const addedSymbols: string[] = [];
     const skipped: string[] = [];
 
-    for (const symbol of qualified) {
-      try {
-        await prisma.watchlistItem.create({
-          data: {
-            watchlistId: watchlist.id,
-            symbol,
-            source: "scanner",
-          },
-        });
-        addedSymbols.push(symbol);
-      } catch (err) {
-        if (err instanceof Error && "code" in err && (err as { code: string }).code === "P2002") {
-          skipped.push(symbol);
-        } else {
-          throw err;
+    if (createWatchlist) {
+      const now = new Date();
+      watchlistName = runName
+        ? `${runName} - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+        : `${params.scanCode} Scan - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+
+      const watchlist = await prisma.watchlist.create({
+        data: { name: watchlistName },
+      });
+      watchlistId = watchlist.id;
+
+      for (const symbol of qualified) {
+        try {
+          await prisma.watchlistItem.create({
+            data: {
+              watchlistId: watchlist.id,
+              symbol,
+              source: "scanner",
+            },
+          });
+          addedSymbols.push(symbol);
+        } catch (err) {
+          if (err instanceof Error && "code" in err && (err as { code: string }).code === "P2002") {
+            skipped.push(symbol);
+          } else {
+            throw err;
+          }
         }
       }
+      console.log(`[MarketScanner] Created watchlist "${watchlistName}" with ${addedSymbols.length} tickers, skipped ${skipped.length}`);
     }
-    console.log(`[MarketScanner] Created watchlist "${watchlistName}" with ${addedSymbols.length} tickers, skipped ${skipped.length}`);
 
     // Step 4: Persist scan run for history
     const scanRunName = runName || params.scanCode;
@@ -220,7 +228,7 @@ class MarketScannerService {
         filters: params as unknown as Prisma.InputJsonValue,
         technicalFilter: (techConfig ?? {}) as unknown as Prisma.InputJsonValue,
         symbols: [...addedSymbols, ...skipped],
-        watchlistId: watchlist.id,
+        watchlistId,
       },
     });
 
@@ -230,7 +238,7 @@ class MarketScannerService {
       qualified,
       added: addedSymbols,
       skipped,
-      watchlistId: watchlist.id,
+      watchlistId,
       watchlistName,
     };
   }

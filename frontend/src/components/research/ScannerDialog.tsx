@@ -6,7 +6,7 @@ import type {
   ScannerResultItem,
   TechnicalFilterConfig,
 } from "@assup/shared";
-import { researchApi, settingsApi } from "@/api";
+import { api, researchApi, settingsApi } from "@/api";
 import {
   Dialog,
   DialogContent,
@@ -277,10 +277,27 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     }
   }
 
-  // --- Add Tickers (scanner already created watchlist with them) ---
+  // --- Add selected tickers to a new watchlist ---
   async function handleAddSelected() {
-    // Tickers are already in a watchlist from the scan run — just notify parent
-    onTickersAdded();
+    if (selectedSymbols.size === 0) return;
+    setAddingTickers(true);
+    setError(null);
+    try {
+      const selectedLabel = scanCodes.find((sc) => sc.code === scanCode)?.label ?? scanCode;
+      const now = new Date();
+      const datePart = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const watchlistName = `${selectedLabel} - ${datePart}`;
+
+      const watchlist = await api.watchlists.create({ name: watchlistName });
+      for (const symbol of selectedSymbols) {
+        await api.watchlists.addItem(watchlist.id, { symbol });
+      }
+      onTickersAdded();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add tickers");
+    } finally {
+      setAddingTickers(false);
+    }
   }
 
   // --- Run research on specific symbols ---
@@ -289,7 +306,16 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     setAddingTickers(true);
     setError(null);
     try {
-      // Tickers are already in a watchlist from the scan run — just notify parent and generate reports
+      // Create watchlist with the symbols first
+      const selectedLabel = scanCodes.find((sc) => sc.code === scanCode)?.label ?? scanCode;
+      const now = new Date();
+      const datePart = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const watchlistName = `${selectedLabel} - ${datePart}`;
+
+      const watchlist = await api.watchlists.create({ name: watchlistName });
+      for (const sym of symbols) {
+        await api.watchlists.addItem(watchlist.id, { symbol: sym });
+      }
       onTickersAdded();
 
       const toResearch = symbols;
