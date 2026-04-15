@@ -15,9 +15,9 @@ import { AssetClassesSection } from "@/pages/settings/AssetClassesSection";
 import { ExchangeRatesSection } from "@/pages/settings/ExchangeRatesSection";
 import { ResearchSection } from "@/pages/settings/ResearchSection";
 
-function ResearchSymbolRedirect() {
+function SymbolRedirect() {
   const { symbol } = useParams();
-  return <Navigate to={`/watchlists/${symbol}`} replace />;
+  return <Navigate to={`/analysis/${symbol}`} replace />;
 }
 
 function App() {
@@ -28,14 +28,16 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/positions" element={<PositionsPage />} />
-            <Route path="/watchlists" element={<WatchlistsPage />} />
-            <Route path="/watchlists/:symbol" element={<ResearchReportPage />} />
+            <Route path="/analysis" element={<WatchlistsPage />} />
+            <Route path="/analysis/:symbol" element={<ResearchReportPage />} />
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/profit" element={<ProfitPage />} />
             <Route path="/wheel" element={<WheelPage />} />
             <Route path="/taxes" element={<TaxesPage />} />
-            <Route path="/research" element={<Navigate to="/watchlists" replace />} />
-            <Route path="/research/:symbol" element={<ResearchSymbolRedirect />} />
+            <Route path="/watchlists" element={<Navigate to="/analysis" replace />} />
+            <Route path="/watchlists/:symbol" element={<SymbolRedirect />} />
+            <Route path="/research" element={<Navigate to="/analysis" replace />} />
+            <Route path="/research/:symbol" element={<SymbolRedirect />} />
             <Route path="/settings" element={<SettingsPage />}>
               <Route index element={<Navigate to="/settings/imports" replace />} />
               <Route path="imports" element={<ImportsSection />} />

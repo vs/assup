@@ -747,7 +747,7 @@ function TickerRow({
       {/* Symbol */}
       <TableCell>
         <Link
-          to={`/watchlists/${item.symbol}`}
+          to={`/analysis/${item.symbol}`}
           className="font-medium hover:text-primary hover:underline"
         >
           {item.symbol}

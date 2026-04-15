@@ -42,7 +42,7 @@ function NavItem({ to, children, icon: Icon, onClick }: NavItemProps) {
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/positions", label: "Positions", icon: Briefcase },
-  { to: "/watchlists", label: "Analysis", icon: FlaskConical },
+  { to: "/analysis", label: "Analysis", icon: FlaskConical },
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
