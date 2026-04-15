@@ -1170,7 +1170,7 @@ export function ResearchReportPage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate("/research")}
+          onClick={() => navigate("/watchlists")}
           className="gap-1"
         >
           <ArrowLeft className="h-4 w-4" />

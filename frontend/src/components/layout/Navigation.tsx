@@ -9,7 +9,6 @@ import {
   TrendingUp,
   RefreshCw,
   Receipt,
-  FlaskConical,
   Menu,
   X,
 } from "lucide-react";
@@ -48,7 +47,6 @@ const navItems = [
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
   { to: "/taxes", label: "Taxes", icon: Receipt },
-  { to: "/research", label: "Research", icon: FlaskConical },
 ];
 
 export function Navigation() {
