@@ -7,6 +7,8 @@ import type {
   MonthSummary,
   Order,
   AllPositionsView,
+  OptionTradeGroup,
+  StockTradeGroup,
 } from "@assup/shared";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +39,14 @@ import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { PositionsTable } from "@/components/profit/PositionsTable";
 import { ChartModal } from "@/components/ChartModal";
 import { useTableSort } from "@/hooks/useTableSort";
+
+function optionTradeKey(trade: OptionTradeGroup, idx: number): string {
+  return trade.openTrade?.id ?? trade.closeTrade?.id ?? `${trade.underlying}-${trade.expiry}-${trade.strike}-${trade.right}-${idx}`;
+}
+
+function stockTradeKey(trade: StockTradeGroup, idx: number): string {
+  return trade.sellTrade?.id ?? trade.buyTrade?.id ?? `${trade.symbol}-${idx}`;
+}
 
 // Helper to format contract display name from trade data
 function formatTradeDisplayName(trade: { underlying: string; strike: number; expiry: string; right: "C" | "P" }): string {
@@ -479,7 +489,7 @@ function MonthProfitCard({
                         </TableHeader>
                         <TableBody>
                           {optSort.sorted.map((trade, idx) => (
-                            <TableRow key={idx}>
+                            <TableRow key={optionTradeKey(trade, idx)}>
                               <TableCell className="text-muted-foreground">
                                 {trade.closeTrade?.tradeDate || trade.expiry}
                               </TableCell>
@@ -568,7 +578,7 @@ function MonthProfitCard({
                         </TableHeader>
                         <TableBody>
                           {stkSort.sorted.map((trade, idx) => (
-                            <TableRow key={idx}>
+                            <TableRow key={stockTradeKey(trade, idx)}>
                               <TableCell className="text-muted-foreground">
                                 {trade.sellTrade?.tradeDate || "-"}
                               </TableCell>
@@ -993,7 +1003,7 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
             </TableHeader>
             <TableBody>
               {optSort.sorted.map((trade, idx) => (
-                <TableRow key={idx}>
+                <TableRow key={optionTradeKey(trade, idx)}>
                   <TableCell className="text-muted-foreground">
                     {trade.closeTrade?.tradeDate || trade.expiry}
                   </TableCell>
@@ -1082,7 +1092,7 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
             </TableHeader>
             <TableBody>
               {stkSort.sorted.map((trade, idx) => (
-                <TableRow key={idx}>
+                <TableRow key={stockTradeKey(trade, idx)}>
                   <TableCell className="text-muted-foreground">
                     {trade.sellTrade?.tradeDate || "-"}
                   </TableCell>

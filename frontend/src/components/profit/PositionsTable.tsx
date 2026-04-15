@@ -109,7 +109,7 @@ export function PositionsTable({
           const dte = calculateDTE(pos.expiry);
           const matchingOrder = findMatchingOrder(pos);
           return (
-            <TableRow key={idx}>
+            <TableRow key={pos.displayName}>
               <TableCell>
                 <div className="flex items-center">
                   <a
