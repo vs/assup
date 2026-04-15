@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   Briefcase,
-  List,
+  FlaskConical,
   Search,
   TrendingUp,
   RefreshCw,
@@ -42,7 +42,7 @@ function NavItem({ to, children, icon: Icon, onClick }: NavItemProps) {
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/positions", label: "Positions", icon: Briefcase },
-  { to: "/watchlists", label: "Watchlists", icon: List },
+  { to: "/watchlists", label: "Analysis", icon: FlaskConical },
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },

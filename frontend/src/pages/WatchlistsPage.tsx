@@ -805,7 +805,7 @@ function TickerRow({
             className="h-8 w-[100px]"
             onClick={() => onGenerateReport(item.symbol)}
             disabled={isGenerating}
-            title="Generate research report"
+            title="Analyze ticker"
           >
             <Zap
               className={`h-3.5 w-3.5 mr-1 ${isGenerating ? "animate-pulse" : ""}`}
@@ -816,7 +816,7 @@ function TickerRow({
                   ? generateProgress.slice(0, 12) + "..."
                   : generateProgress
                 : "Working..."
-              : "Report"}
+              : "Analyze"}
           </Button>
           <Button
             variant="ghost"
