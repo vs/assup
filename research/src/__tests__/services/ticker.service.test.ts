@@ -61,57 +61,96 @@ describe("tickerService", () => {
   });
 
   describe("add", () => {
-    it("creates new tickers", async () => {
-      vi.mocked(prisma.ticker.findUnique).mockResolvedValue(null);
-      vi.mocked(prisma.ticker.create).mockImplementation(({ data }: any) =>
-        Promise.resolve({ id: "1", ...data, addedAt: new Date(), lastAnalyzed: null, status: "active" })
-      );
+    it("creates new tickers via batch", async () => {
+      // No existing tickers
+      vi.mocked(prisma.ticker.findMany).mockResolvedValue([]);
+      vi.mocked(prisma.ticker.createManyAndReturn).mockResolvedValue([
+        { id: "1", symbol: "AAPL", source: "manual", status: "active", addedAt: new Date(), lastAnalyzed: null },
+        { id: "2", symbol: "GOOG", source: "manual", status: "active", addedAt: new Date(), lastAnalyzed: null },
+      ]);
 
       const result = await tickerService.add(["AAPL", "GOOG"], "manual");
       expect(result.added).toHaveLength(2);
       expect(result.skipped).toHaveLength(0);
+      expect(prisma.ticker.createManyAndReturn).toHaveBeenCalledWith({
+        data: [{ symbol: "AAPL", source: "manual" }, { symbol: "GOOG", source: "manual" }],
+        skipDuplicates: true,
+      });
+      expect(prisma.ticker.findUnique).not.toHaveBeenCalled();
     });
 
     it("skips already-existing active tickers", async () => {
-      vi.mocked(prisma.ticker.findUnique).mockResolvedValue({
-        id: "1", symbol: "AAPL", status: "active", source: "manual", addedAt: new Date(), lastAnalyzed: null,
-      });
+      vi.mocked(prisma.ticker.findMany).mockResolvedValue([
+        { id: "1", symbol: "AAPL", status: "active", source: "manual", addedAt: new Date(), lastAnalyzed: null },
+      ]);
 
       const result = await tickerService.add(["AAPL"], "manual");
       expect(result.added).toHaveLength(0);
       expect(result.skipped).toEqual(["AAPL"]);
+      expect(prisma.ticker.createManyAndReturn).not.toHaveBeenCalled();
+      expect(prisma.ticker.updateMany).not.toHaveBeenCalled();
+      expect(prisma.ticker.findUnique).not.toHaveBeenCalled();
     });
 
-    it("reactivates removed tickers", async () => {
-      vi.mocked(prisma.ticker.findUnique).mockResolvedValue({
-        id: "1", symbol: "AAPL", status: "removed", source: "manual", addedAt: new Date(), lastAnalyzed: null,
-      });
-      vi.mocked(prisma.ticker.update).mockResolvedValue({
-        id: "1", symbol: "AAPL", status: "active", source: "external", addedAt: new Date(), lastAnalyzed: null,
-      });
+    it("reactivates removed tickers via batch", async () => {
+      // Initial findMany returns the removed ticker
+      vi.mocked(prisma.ticker.findMany)
+        .mockResolvedValueOnce([
+          { id: "1", symbol: "AAPL", status: "removed", source: "manual", addedAt: new Date(), lastAnalyzed: null },
+        ])
+        // Second findMany (after updateMany) returns the reactivated ticker
+        .mockResolvedValueOnce([
+          { id: "1", symbol: "AAPL", status: "active", source: "external", addedAt: new Date(), lastAnalyzed: null },
+        ]);
+      vi.mocked(prisma.ticker.updateMany).mockResolvedValue({ count: 1 });
 
       const result = await tickerService.add(["AAPL"], "external");
       expect(result.added).toHaveLength(1);
-      expect(prisma.ticker.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: "active", source: "external" } })
-      );
+      expect(prisma.ticker.updateMany).toHaveBeenCalledWith({
+        where: { symbol: { in: ["AAPL"] } },
+        data: { status: "active", source: "external" },
+      });
+      expect(prisma.ticker.findUnique).not.toHaveBeenCalled();
     });
 
-    it("catches P2002 unique constraint (concurrent adds)", async () => {
-      vi.mocked(prisma.ticker.findUnique).mockResolvedValue(null);
-      const p2002Error = Object.assign(new Error("Unique constraint"), { code: "P2002" });
-      vi.mocked(prisma.ticker.create).mockRejectedValue(p2002Error);
+    it("handles mixed: new, removed, and active tickers in one batch", async () => {
+      // Initial findMany returns existing tickers
+      vi.mocked(prisma.ticker.findMany)
+        .mockResolvedValueOnce([
+          { id: "1", symbol: "AAPL", status: "active", source: "manual", addedAt: new Date(), lastAnalyzed: null },
+          { id: "2", symbol: "MSFT", status: "removed", source: "manual", addedAt: new Date(), lastAnalyzed: null },
+        ])
+        // Second findMany (reactivated tickers)
+        .mockResolvedValueOnce([
+          { id: "2", symbol: "MSFT", status: "active", source: "screener", addedAt: new Date(), lastAnalyzed: null },
+        ]);
+      vi.mocked(prisma.ticker.updateMany).mockResolvedValue({ count: 1 });
+      vi.mocked(prisma.ticker.createManyAndReturn).mockResolvedValue([
+        { id: "3", symbol: "GOOG", source: "screener", status: "active", addedAt: new Date(), lastAnalyzed: null },
+      ]);
+
+      const result = await tickerService.add(["AAPL", "MSFT", "GOOG"], "screener");
+      expect(result.added).toHaveLength(2); // MSFT reactivated + GOOG created
+      expect(result.skipped).toEqual(["AAPL"]);
+      expect(prisma.ticker.updateMany).toHaveBeenCalled();
+      expect(prisma.ticker.createManyAndReturn).toHaveBeenCalledWith({
+        data: [{ symbol: "GOOG", source: "screener" }],
+        skipDuplicates: true,
+      });
+      expect(prisma.ticker.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("uses skipDuplicates to handle concurrent adds (TOCTOU race)", async () => {
+      // No existing tickers found
+      vi.mocked(prisma.ticker.findMany).mockResolvedValue([]);
+      // createManyAndReturn with skipDuplicates silently skips the duplicate
+      vi.mocked(prisma.ticker.createManyAndReturn).mockResolvedValue([]);
 
       const result = await tickerService.add(["AAPL"], "manual");
       expect(result.added).toHaveLength(0);
-      expect(result.skipped).toEqual(["AAPL"]);
-    });
-
-    it("rethrows non-P2002 errors", async () => {
-      vi.mocked(prisma.ticker.findUnique).mockResolvedValue(null);
-      vi.mocked(prisma.ticker.create).mockRejectedValue(new Error("DB connection failed"));
-
-      await expect(tickerService.add(["AAPL"], "manual")).rejects.toThrow("DB connection failed");
+      expect(prisma.ticker.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({ skipDuplicates: true })
+      );
     });
   });
 

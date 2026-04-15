@@ -34,44 +34,49 @@ class TickerService {
   }
 
   async add(symbols: string[], source: string) {
-    const results = [];
-    const skipped = [];
+    // 1. Batch-fetch all existing tickers in one query
+    const existing = await prisma.ticker.findMany({
+      where: { symbol: { in: symbols } },
+    });
+    const existingMap = new Map(existing.map((t) => [t.symbol, t]));
+
+    // 2. Classify symbols
+    const toCreate: string[] = [];
+    const toReactivate: string[] = [];
+    const skipped: string[] = [];
 
     for (const symbol of symbols) {
-      const existing = await prisma.ticker.findUnique({
-        where: { symbol },
+      const ticker = existingMap.get(symbol);
+      if (!ticker) {
+        toCreate.push(symbol);
+      } else if (ticker.status === "removed") {
+        toReactivate.push(symbol);
+      } else {
+        skipped.push(symbol);
+      }
+    }
+
+    const results: typeof existing = [];
+
+    // 3. Batch-reactivate removed tickers
+    if (toReactivate.length > 0) {
+      await prisma.ticker.updateMany({
+        where: { symbol: { in: toReactivate } },
+        data: { status: "active", source },
       });
+      const reactivated = await prisma.ticker.findMany({
+        where: { symbol: { in: toReactivate } },
+      });
+      results.push(...reactivated);
+    }
 
-      if (existing) {
-        if (existing.status === "removed") {
-          const updated = await prisma.ticker.update({
-            where: { symbol },
-            data: { status: "active", source },
-          });
-          results.push(updated);
-        } else {
-          skipped.push(symbol);
-        }
-        continue;
-      }
-
-      try {
-        const ticker = await prisma.ticker.create({
-          data: { symbol, source },
-        });
-        results.push(ticker);
-      } catch (err) {
-        // Unique constraint violation — another request added it concurrently
-        if (
-          err instanceof Error &&
-          "code" in err &&
-          (err as { code: string }).code === "P2002"
-        ) {
-          skipped.push(symbol);
-        } else {
-          throw err;
-        }
-      }
+    // 4. Batch-create new tickers (skipDuplicates eliminates TOCTOU race)
+    if (toCreate.length > 0) {
+      const created = await prisma.ticker.createManyAndReturn({
+        data: toCreate.map((symbol) => ({ symbol, source })),
+        skipDuplicates: true,
+      });
+      results.push(...created);
     }
 
     return { added: results, skipped };
