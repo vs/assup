@@ -104,7 +104,7 @@ export function PositionsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {expSort.sorted.map((pos, idx) => {
+        {expSort.sorted.map((pos) => {
           const sparkline = getSparklineState(pos.underlying);
           const dte = calculateDTE(pos.expiry);
           const matchingOrder = findMatchingOrder(pos);

@@ -1,6 +1,6 @@
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
-import { calcOptionMetrics } from "../utils/options.js";
+import { calcOptionMetrics, marketDataKey } from "../utils/options.js";
 import { sseService } from "./sse.js";
 import { getMarketDataProvider } from "./research/providers/index.js";
 import {
@@ -385,7 +385,7 @@ class WheelScannerService {
       // Calculate best annualized premium yield from ~25 delta puts
       let bestAnnualizedReturn = 0;
       for (const entry of relevantEntries) {
-        const td = marketDataMap.get(String(entry.put.conId ?? ""));
+        const td = marketDataMap.get(marketDataKey(entry.put));
         if (!td || !td.bid || td.bid <= 0) continue;
 
         const absDelta = Math.abs(td.delta ?? 0);
