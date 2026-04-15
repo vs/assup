@@ -55,7 +55,7 @@ type Step = "configure" | "scanning" | "results";
 interface ScannerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onTickersAdded: () => void;
+  onTickersAdded: (watchlistId?: string) => void;
 }
 
 const LOCATION_CODES = [
@@ -292,7 +292,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
       for (const symbol of selectedSymbols) {
         await api.watchlists.addItem(watchlist.id, { symbol });
       }
-      onTickersAdded();
+      onTickersAdded(watchlist.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add tickers");
     } finally {
@@ -316,7 +316,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
       for (const sym of symbols) {
         await api.watchlists.addItem(watchlist.id, { symbol: sym });
       }
-      onTickersAdded();
+      onTickersAdded(watchlist.id);
 
       const toResearch = symbols;
 

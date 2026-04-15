@@ -401,15 +401,25 @@ export function WatchlistsPage() {
   }
 
   // --- Scanner complete callback ---
-  async function handleScanComplete() {
-    // Refresh watchlist list (scanner may have added tickers to watchlists)
+  async function handleScanComplete(newWatchlistId?: string) {
     const wlData = await api.watchlists.list();
     setWatchlists(wlData);
 
-    // If there's a new watchlist, auto-select it
-    if (wlData.length > 0) {
-      const lastWl = wlData[wlData.length - 1];
-      const full = await api.watchlists.get(lastWl.id);
+    // Select the newly created watchlist, or fall back to current selection
+    const targetId = newWatchlistId ?? selectedWatchlistRef.current?.id;
+    if (targetId) {
+      try {
+        const full = await api.watchlists.get(targetId);
+        setSelectedWatchlist(full);
+      } catch {
+        // Watchlist may not exist; select first available
+        if (wlData.length > 0) {
+          const full = await api.watchlists.get(wlData[0].id);
+          setSelectedWatchlist(full);
+        }
+      }
+    } else if (wlData.length > 0) {
+      const full = await api.watchlists.get(wlData[0].id);
       setSelectedWatchlist(full);
     }
   }
