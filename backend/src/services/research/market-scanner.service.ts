@@ -390,7 +390,7 @@ class MarketScannerService {
     locationCode?: string;
     filters?: Record<string, unknown>;
     technicalFilter?: TechnicalFilterConfig;
-    schedule: string;
+    schedule?: string;
     enabled?: boolean;
   }): Promise<MarketScannerPreset> {
     return prisma.marketScannerPreset.create({
@@ -400,7 +400,7 @@ class MarketScannerService {
         locationCode: data.locationCode ?? "STK.US.MAJOR",
         filters: (data.filters ?? {}) as Prisma.InputJsonValue,
         technicalFilter: (data.technicalFilter ?? {}) as unknown as Prisma.InputJsonValue,
-        schedule: data.schedule,
+        schedule: data.schedule ?? "",
         enabled: data.enabled ?? true,
       },
     });

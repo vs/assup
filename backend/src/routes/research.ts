@@ -355,7 +355,7 @@ const createPresetSchema = z.object({
   locationCode: z.string().max(40).optional(),
   filters: z.record(z.unknown()).optional(),
   technicalFilter: technicalFilterSchema.optional(),
-  schedule: z.string().min(1).max(50),
+  schedule: z.string().max(50).optional().default(""),
   enabled: z.boolean().optional(),
 });
 
