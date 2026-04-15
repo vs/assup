@@ -563,11 +563,19 @@ class IBKRService {
         return [];
       }
 
-      // Build options chain from security definitions
-      // Note: secDefs contains one entry per exchange, so we deduplicate by strike+expiration
+      // Build options chain from security definitions.
+      // secDefs contains one entry per (exchange, tradingClass) combination.
+      // Prefer the standard trading class matching the symbol name — non-standard
+      // classes (e.g. "GTLB1" after a corporate action) have adjusted deliverables
+      // and strike/expiration sets that often fail to resolve via SMART routing.
+      const standardDefs = secDefs.filter(d => d.tradingClass === symbol);
+      const activeDefs = standardDefs.length > 0 ? standardDefs : secDefs;
+      const tradingClass = standardDefs.length > 0 ? symbol : activeDefs[0]?.tradingClass;
+      const multiplier = activeDefs[0]?.multiplier ?? 100;
+
       const chainMap = new Map<string, OptionChainEntry>();
 
-      for (const secDef of secDefs) {
+      for (const secDef of activeDefs) {
         if (!secDef.expirations || !secDef.strikes) continue;
 
         for (const expiration of secDef.expirations) {
@@ -580,23 +588,25 @@ class IBKRService {
             const callContract: Contract = {
               symbol,
               secType: SecType.OPT,
-              exchange: "SMART", // Use SMART for best routing
+              exchange: "SMART",
               currency: "USD",
               lastTradeDateOrContractMonth: expiration,
               strike,
               right: OptionType.Call,
-              multiplier: 100,
+              multiplier,
+              tradingClass,
             };
 
             const putContract: Contract = {
               symbol,
               secType: SecType.OPT,
-              exchange: "SMART", // Use SMART for best routing
+              exchange: "SMART",
               currency: "USD",
               lastTradeDateOrContractMonth: expiration,
               strike,
               right: OptionType.Put,
-              multiplier: 100,
+              multiplier,
+              tradingClass,
             };
 
             chainMap.set(key, {
@@ -647,13 +657,14 @@ class IBKRService {
         return null;
       }
 
-      // Extract bid, ask, last, close, volume from the market data map
-      // TickType values: BID=1, ASK=2, LAST=4, VOLUME=8, CLOSE=9
-      const bidTick = marketData.get(1); // BID
-      const askTick = marketData.get(2); // ASK
-      const lastTick = marketData.get(4); // LAST
-      const volumeTick = marketData.get(8); // VOLUME
-      const closeTick = marketData.get(9); // CLOSE
+      // Extract bid, ask, last, close, volume from the market data map.
+      // When market data type is Delayed (3) TWS sends DELAYED_* tick types
+      // instead of their live equivalents, so fall back to those.
+      const bidTick = marketData.get(1) ?? marketData.get(66);       // BID / DELAYED_BID
+      const askTick = marketData.get(2) ?? marketData.get(67);       // ASK / DELAYED_ASK
+      const lastTick = marketData.get(4) ?? marketData.get(68);      // LAST / DELAYED_LAST
+      const volumeTick = marketData.get(8) ?? marketData.get(74);    // VOLUME / DELAYED_VOLUME
+      const closeTick = marketData.get(9) ?? marketData.get(75);     // CLOSE / DELAYED_CLOSE
 
       // Extract delta and IV for options (IBApiNext tick types)
       // MODEL_OPTION_DELTA=10041, DELAYED_MODEL_OPTION_DELTA=10047
@@ -697,7 +708,8 @@ class IBKRService {
         error.message?.includes("No security definition") ||
         error.message?.includes("not applicable to generic ticks")
       ) {
-        // Silently skip - these are expected for options without proper subscriptions or invalid contracts
+        // Expected for options without proper subscriptions or invalid contracts
+        console.debug(`Market data skip [${error.code}]: ${contract.symbol} $${contract.strike} ${contract.lastTradeDateOrContractMonth} ${contract.right}`);
         return null;
       }
       console.error(`Failed to get market data for ${contract.symbol}:`, err);
@@ -762,7 +774,7 @@ class IBKRService {
     if (contracts.length > 0) {
       console.log(`Market data batch: ${successCount} succeeded, ${failCount} failed out of ${contracts.length} total`);
       if (firstFailure && failCount > 0) {
-        console.log(`First failure example: ${firstFailure.contract.symbol} $${firstFailure.contract.strike} ${firstFailure.contract.lastTradeDateOrContractMonth} - ${firstFailure.reason}`);
+        console.log(`First failure example: ${firstFailure.contract.symbol} $${firstFailure.contract.strike} ${firstFailure.contract.lastTradeDateOrContractMonth} [class=${firstFailure.contract.tradingClass ?? 'unset'}] - ${firstFailure.reason}`);
       }
     }
 

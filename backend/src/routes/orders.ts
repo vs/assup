@@ -281,6 +281,8 @@ router.post(
       lastTradeDateOrContractMonth: expiration,
       strike,
       right: right === "C" ? OptionType.Call : OptionType.Put,
+      multiplier: 100,
+      tradingClass: symbol,
     };
 
     // Place the order
@@ -326,6 +328,8 @@ router.post(
       lastTradeDateOrContractMonth: expiration,
       strike,
       right: right === "C" ? OptionType.Call : OptionType.Put,
+      multiplier: 100,
+      tradingClass: symbol,
     };
 
     const marketData = await ibkrService.getMarketData(contract);
