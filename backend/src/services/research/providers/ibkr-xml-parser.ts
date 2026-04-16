@@ -113,7 +113,7 @@ export function parseFundamentalRatiosTick(tickString: string | undefined): Pars
   result.debtToEquity = safeNum(map.get("QTOTD2EQ") ?? map.get("DebtToEquity"));
   result.profitMargin = safeNum(map.get("TTMNPMGN") ?? map.get("NetProfitMargin"));
   result.revenueGrowth = safeNum(map.get("REVCHNGYR") ?? map.get("RevenueGrowth"));
-  result.bookValue = safeNum(map.get("PRICE2BK"));
+  result.bookValue = safeNum(map.get("QTANBVPS") ?? map.get("BookValue"));
   result.priceToBook = safeNum(map.get("PRICE2BK"));
   result.priceToCashFlow = safeNum(map.get("TTMPRCFPS"));
 

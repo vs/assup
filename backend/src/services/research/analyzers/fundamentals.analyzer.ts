@@ -13,6 +13,9 @@ interface Fundamentals {
   debtToEquity: number | null;
   profitMargin: number | null;
   revenueGrowth: number | null;
+  bookValue: number | null;
+  priceToBook: number | null;
+  priceToCashFlow: number | null;
 }
 
 interface Volatility {
