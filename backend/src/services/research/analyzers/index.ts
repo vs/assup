@@ -3,7 +3,6 @@ export { registerAnalyzer, getAnalyzer, getAllAnalyzers } from "./registry.js";
 
 import { registerAnalyzer } from "./registry.js";
 import { technicalAnalyzer } from "./technical.analyzer.js";
-import { seekingAlphaAnalyzer } from "./seeking-alpha.analyzer.js";
 import { eventsAnalyzer } from "./events.analyzer.js";
 import { optionsAnalyzer } from "./options.analyzer.js";
 import { secFilingsAnalyzer } from "./sec-filings.analyzer.js";
@@ -15,7 +14,6 @@ import { fundamentalsAnalyzer } from "./fundamentals.analyzer.js";
 
 export function initAnalyzers(): void {
   registerAnalyzer(technicalAnalyzer);
-  registerAnalyzer(seekingAlphaAnalyzer);
   registerAnalyzer(eventsAnalyzer);
   registerAnalyzer(optionsAnalyzer);
   registerAnalyzer(secFilingsAnalyzer);
@@ -25,6 +23,6 @@ export function initAnalyzers(): void {
   registerAnalyzer(fundamentalsAnalyzer);
   registerAnalyzer(macroAnalyzer); // Used separately by macro service, not per-ticker analysis
   console.log(
-    "Registered analyzers: technical, seeking_alpha, events, options, sec_filings, short_interest, social, sa_comments, fundamentals, macro"
+    "Registered analyzers: technical, events, options, sec_filings, short_interest, social, sa_comments, fundamentals, macro"
   );
 }

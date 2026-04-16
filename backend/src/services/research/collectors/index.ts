@@ -4,7 +4,6 @@ export type { OHLCV } from "../providers/types.js";
 
 import { registerCollector } from "./registry.js";
 import { technicalCollector } from "./technical.collector.js";
-import { seekingAlphaCollector } from "./seeking-alpha.collector.js";
 import { eventsCollector } from "./events.collector.js";
 import { optionsCollector } from "./options.collector.js";
 import { secFilingsCollector } from "./sec-filings.collector.js";
@@ -16,7 +15,6 @@ import { fundamentalsCollector } from "./fundamentals.collector.js";
 
 export function initCollectors(): void {
   registerCollector(technicalCollector);
-  registerCollector(seekingAlphaCollector);
   registerCollector(eventsCollector);
   registerCollector(optionsCollector);
   registerCollector(secFilingsCollector);
@@ -26,6 +24,6 @@ export function initCollectors(): void {
   registerCollector(fundamentalsCollector);
   registerCollector(macroCollector); // Used separately by macro service, not per-ticker collection
   console.log(
-    "Registered collectors: technical, seeking_alpha, events, options, sec_filings, short_interest, social, sa_comments, fundamentals, macro"
+    "Registered collectors: technical, events, options, sec_filings, short_interest, social, sa_comments, fundamentals, macro"
   );
 }
