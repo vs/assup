@@ -266,6 +266,105 @@ function SACommentsRenderer({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+function FundamentalsRenderer({ data }: { data: Record<string, unknown> }) {
+  const sector = data.sector as { industry?: string; category?: string; subcategory?: string } | undefined;
+  const fundamentals = data.fundamentals as Record<string, number | null | undefined> | undefined;
+  const volatility = data.volatility as { historical30d?: number; implied?: number } | undefined;
+  const optionActivity = data.optionActivity as {
+    callVolume?: number; putVolume?: number;
+    callOI?: number; putOI?: number; putCallRatio?: number;
+  } | undefined;
+  const shortable = data.shortable as { isShortable?: boolean; sharesAvailable?: number } | undefined;
+
+  function bigNum(n: number | null | undefined): string {
+    if (n == null) return "--";
+    if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
+    if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+    if (n >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
+    return `$${n.toLocaleString()}`;
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Company Info */}
+      <div>
+        <p className="font-medium text-muted-foreground mb-1">Company</p>
+        <div className="space-y-0.5">
+          <KeyValue label="Name" value={data.companyName as string | undefined} />
+          <KeyValue label="Type" value={data.stockType as string | undefined} />
+          {sector && (
+            <>
+              <KeyValue label="Industry" value={sector.industry} />
+              <KeyValue label="Category" value={sector.category} />
+              <KeyValue label="Subcategory" value={sector.subcategory} />
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Fundamentals Grid */}
+      {fundamentals && (
+        <div>
+          <p className="font-medium text-muted-foreground mb-1">Fundamentals</p>
+          <div className="space-y-0.5">
+            <KeyValue label="P/E" value={fundamentals.pe != null ? fmt(fundamentals.pe as number, 1) : undefined} />
+            <KeyValue label="Forward P/E" value={fundamentals.forwardPe != null ? fmt(fundamentals.forwardPe as number, 1) : undefined} />
+            <KeyValue label="EPS" value={fundamentals.eps != null ? `$${fmt(fundamentals.eps as number)}` : undefined} />
+            <KeyValue label="EPS Growth" value={fundamentals.epsGrowth != null ? `${fmt(fundamentals.epsGrowth as number, 1)}%` : undefined} />
+            <KeyValue label="Revenue" value={bigNum(fundamentals.revenue as number | undefined)} />
+            <KeyValue label="Revenue Growth" value={fundamentals.revenueGrowth != null ? `${fmt(fundamentals.revenueGrowth as number, 1)}%` : undefined} />
+            <KeyValue label="Market Cap" value={bigNum(fundamentals.marketCap as number | undefined)} />
+            <KeyValue label="Dividend Yield" value={fundamentals.dividendYield != null ? `${fmt(fundamentals.dividendYield as number, 2)}%` : undefined} />
+            <KeyValue label="Beta" value={fundamentals.beta != null ? fmt(fundamentals.beta as number) : undefined} />
+            <KeyValue label="ROE" value={fundamentals.roe != null ? `${fmt(fundamentals.roe as number, 1)}%` : undefined} />
+            <KeyValue label="Debt/Equity" value={fundamentals.debtToEquity != null ? fmt(fundamentals.debtToEquity as number, 1) : undefined} />
+            <KeyValue label="Profit Margin" value={fundamentals.profitMargin != null ? `${fmt(fundamentals.profitMargin as number, 1)}%` : undefined} />
+            <KeyValue label="Book Value" value={fundamentals.bookValue != null ? `$${fmt(fundamentals.bookValue as number)}` : undefined} />
+            <KeyValue label="P/B" value={fundamentals.priceToBook != null ? fmt(fundamentals.priceToBook as number, 1) : undefined} />
+            <KeyValue label="P/CF" value={fundamentals.priceToCashFlow != null ? fmt(fundamentals.priceToCashFlow as number, 1) : undefined} />
+          </div>
+        </div>
+      )}
+
+      {/* Volatility */}
+      {volatility && (
+        <div>
+          <p className="font-medium text-muted-foreground mb-1">Volatility</p>
+          <div className="space-y-0.5">
+            <KeyValue label="HV (30d)" value={volatility.historical30d != null ? pct(volatility.historical30d) : undefined} />
+            <KeyValue label="IV" value={volatility.implied != null ? pct(volatility.implied) : undefined} />
+          </div>
+        </div>
+      )}
+
+      {/* Option Activity */}
+      {optionActivity && (
+        <div>
+          <p className="font-medium text-muted-foreground mb-1">Option Activity</p>
+          <div className="space-y-0.5">
+            <KeyValue label="Call Volume" value={optionActivity.callVolume?.toLocaleString()} />
+            <KeyValue label="Put Volume" value={optionActivity.putVolume?.toLocaleString()} />
+            <KeyValue label="Call OI" value={optionActivity.callOI?.toLocaleString()} />
+            <KeyValue label="Put OI" value={optionActivity.putOI?.toLocaleString()} />
+            <KeyValue label="Put/Call Ratio" value={optionActivity.putCallRatio != null ? fmt(optionActivity.putCallRatio) : undefined} />
+          </div>
+        </div>
+      )}
+
+      {/* Shortable */}
+      {shortable && (
+        <div>
+          <p className="font-medium text-muted-foreground mb-1">Short Availability</p>
+          <div className="space-y-0.5">
+            <KeyValue label="Shortable" value={shortable.isShortable != null ? (shortable.isShortable ? "Yes" : "No") : undefined} />
+            <KeyValue label="Shares Available" value={shortable.sharesAvailable?.toLocaleString()} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MacroRenderer({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-1">
@@ -298,6 +397,7 @@ const renderers: Record<string, React.ComponentType<{ data: Record<string, unkno
   events: EventsRenderer,
   seeking_alpha: SeekingAlphaRenderer,
   sa_comments: SACommentsRenderer,
+  fundamentals: FundamentalsRenderer,
   macro: MacroRenderer,
 };
 
