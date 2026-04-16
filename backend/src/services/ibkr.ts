@@ -548,6 +548,7 @@ class IBKRService {
       const details = await this.api.getContractDetails(underlyingContract);
 
       if (!details || details.length === 0) {
+        console.debug(`[getOptionChain] ${symbol}: no contract details found`);
         return [];
       }
 
@@ -560,6 +561,7 @@ class IBKRService {
       );
 
       if (!secDefs || secDefs.length === 0) {
+        console.debug(`[getOptionChain] ${symbol}: no options listed (getSecDefOptParams returned empty)`);
         return [];
       }
 
@@ -1409,7 +1411,13 @@ class IBKRService {
             resolved = true;
             clearTimeout(timeoutId);
             sub.unsubscribe();
-            reject(err);
+            // TWS error 165 = "no items retrieved" — normal empty result, not a failure
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (errMsg.includes("no items retrieved")) {
+              resolve([]);
+            } else {
+              reject(err);
+            }
           }
         },
         complete: finish,
