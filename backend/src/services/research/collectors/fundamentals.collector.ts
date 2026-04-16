@@ -81,6 +81,9 @@ export const fundamentalsCollector: Collector = {
           debtToEquity: ratios.debtToEquity,
           profitMargin: ratios.profitMargin,
           revenueGrowth: ratios.revenueGrowth,
+          bookValue: ratios.bookValue,
+          priceToBook: ratios.priceToBook,
+          priceToCashFlow: ratios.priceToCashFlow,
         },
         volatility: {
           historical30d: enhanced?.historicalVolatility ?? null,
