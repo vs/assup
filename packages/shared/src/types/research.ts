@@ -17,7 +17,7 @@ export interface ScanRun {
 export type AnalysisSignal = "bullish" | "bearish" | "neutral";
 
 export type AnalysisSource =
-  | "seeking_alpha"
+  | "fundamentals"
   | "technical"
   | "events"
   | "options"
