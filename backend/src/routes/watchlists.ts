@@ -29,7 +29,7 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const watchlists = await prisma.watchlist.findMany({
-      orderBy: { name: "asc" },
+      orderBy: { createdAt: "desc" },
       include: {
         _count: { select: { items: true } },
       },

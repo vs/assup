@@ -63,6 +63,9 @@ import {
   Radar,
   Zap,
   BarChart3,
+  ArrowUp,
+  ArrowDown,
+  SortAsc,
 } from "lucide-react";
 
 export function WatchlistsPage() {
@@ -98,6 +101,67 @@ export function WatchlistsPage() {
   const [dragOverWatchlistId, setDragOverWatchlistId] = useState<string | null>(
     null
   );
+
+  // Watchlist list sort
+  type WatchlistSort = "newest" | "oldest" | "name";
+  const [wlSort, setWlSort] = useState<WatchlistSort>("newest");
+  const sortedWatchlists = useMemo(() => {
+    const sorted = [...watchlists];
+    switch (wlSort) {
+      case "newest":
+        return sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      case "oldest":
+        return sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      case "name":
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }, [watchlists, wlSort]);
+
+  // Item sort state
+  type SortField = "addedAt" | "symbol" | "signal" | "recommendation" | "reportAge";
+  type SortDir = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("addedAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir(field === "symbol" ? "asc" : "desc");
+    }
+  }
+
+  const sortedItems = useMemo(() => {
+    if (!selectedWatchlist) return [];
+    const items = [...selectedWatchlist.items];
+    const dir = sortDir === "asc" ? 1 : -1;
+
+    items.sort((a, b) => {
+      switch (sortField) {
+        case "addedAt":
+          return dir * (new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime());
+        case "symbol":
+          return dir * a.symbol.localeCompare(b.symbol);
+        case "signal":
+          return dir * (a.latestSignal || "").localeCompare(b.latestSignal || "");
+        case "recommendation":
+          return dir * (a.latestRecommendation || "").localeCompare(b.latestRecommendation || "");
+        case "reportAge": {
+          // Sort by lastAnalyzedAt timestamp; nulls go last
+          const aTime = a.lastAnalyzedAt ? new Date(a.lastAnalyzedAt).getTime() : 0;
+          const bTime = b.lastAnalyzedAt ? new Date(b.lastAnalyzedAt).getTime() : 0;
+          if (!aTime && !bTime) return 0;
+          if (!aTime) return 1;
+          if (!bTime) return -1;
+          return dir * (aTime - bTime);
+        }
+        default:
+          return 0;
+      }
+    });
+    return items;
+  }, [selectedWatchlist, sortField, sortDir]);
 
   // Sparklines
   const symbols = useMemo(
@@ -471,17 +535,36 @@ export function WatchlistsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Left sidebar -- watchlist list (drop targets) */}
         <Card className="lg:col-span-1">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between py-3">
             <CardTitle className="text-sm">Your Watchlists</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title={`Sort: ${wlSort === "newest" ? "Newest first" : wlSort === "oldest" ? "Oldest first" : "By name"}`}
+              onClick={() =>
+                setWlSort((s) =>
+                  s === "newest" ? "name" : s === "name" ? "oldest" : "newest"
+                )
+              }
+            >
+              {wlSort === "name" ? (
+                <SortAsc className="h-3.5 w-3.5" />
+              ) : wlSort === "newest" ? (
+                <ArrowDown className="h-3.5 w-3.5" />
+              ) : (
+                <ArrowUp className="h-3.5 w-3.5" />
+              )}
+            </Button>
           </CardHeader>
           <CardContent className="p-0">
-            {watchlists.length === 0 ? (
+            {sortedWatchlists.length === 0 ? (
               <p className="text-muted-foreground text-center py-4 text-sm">
                 No watchlists yet
               </p>
             ) : (
               <div className="divide-y">
-                {watchlists.map((wl) => (
+                {sortedWatchlists.map((wl) => (
                   <button
                     key={wl.id}
                     onClick={() => selectWatchlist(wl.id)}
@@ -549,18 +632,19 @@ export function WatchlistsPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-8" />
-                          <TableHead>Symbol</TableHead>
+                          <SortableHead field="symbol" current={sortField} dir={sortDir} onToggle={toggleSort}>Symbol</SortableHead>
                           <TableHead className="w-10" />
                           <TableHead className="w-24">7D</TableHead>
-                          <TableHead>Signal</TableHead>
+                          <SortableHead field="signal" current={sortField} dir={sortDir} onToggle={toggleSort}>Signal</SortableHead>
                           <TableHead>Asset Class</TableHead>
-                          <TableHead>Recommendation</TableHead>
-                          <TableHead>Report</TableHead>
+                          <SortableHead field="recommendation" current={sortField} dir={sortDir} onToggle={toggleSort}>Recommendation</SortableHead>
+                          <SortableHead field="reportAge" current={sortField} dir={sortDir} onToggle={toggleSort}>Report</SortableHead>
+                          <SortableHead field="addedAt" current={sortField} dir={sortDir} onToggle={toggleSort} className="w-36">Added</SortableHead>
                           <TableHead className="w-36">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {selectedWatchlist.items.map((item) => (
+                        {sortedItems.map((item) => (
                           <TickerRow
                             key={item.id}
                             item={item}
@@ -806,6 +890,13 @@ function TickerRow({
         </span>
       </TableCell>
 
+      {/* Added at */}
+      <TableCell>
+        <span className="text-sm text-muted-foreground">
+          {new Date(item.addedAt).toLocaleDateString()}
+        </span>
+      </TableCell>
+
       {/* Actions */}
       <TableCell>
         <div className="flex items-center gap-1">
@@ -854,5 +945,41 @@ function TickerRow({
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+// --- Sortable Table Head ---
+
+function SortableHead({
+  field,
+  current,
+  dir,
+  onToggle,
+  className,
+  children,
+}: {
+  field: string;
+  current: string;
+  dir: "asc" | "desc";
+  onToggle: (field: any) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const active = current === field;
+  return (
+    <TableHead className={className}>
+      <button
+        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+        onClick={() => onToggle(field)}
+      >
+        {children}
+        {active &&
+          (dir === "asc" ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          ))}
+      </button>
+    </TableHead>
   );
 }
