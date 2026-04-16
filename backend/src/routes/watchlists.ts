@@ -79,9 +79,11 @@ router.get(
         ? prisma.$queryRaw<Array<{ symbol: string; signal: string; confidence: number }>>`
             SELECT a.symbol, a.signal, a.confidence
             FROM (
-              SELECT *, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY analyzed_at DESC) AS rn
+              SELECT *,
+                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY confidence DESC, analyzed_at DESC) AS rn
               FROM analysis
               WHERE symbol = ANY(${symbols})
+                AND confidence > 0
             ) a
             WHERE a.rn = 1
           `
