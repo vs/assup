@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api";
 import { sseManager, useSSEConnection } from "./useSSE";
-import type { ScanJob, ScanJobCreateInput } from "@assup/shared";
+import type { ScanJob, ScanJobCreateInput, OptionOpportunity } from "@assup/shared";
 
 interface ScanJobEvent {
   type: "created" | "progress" | "completed" | "failed" | "cancelled";
@@ -16,6 +16,7 @@ interface ScanJobEvent {
   opportunityCount?: number;
   symbol?: string;
   assetClass?: string;
+  opportunities?: OptionOpportunity[];
   error?: string;
 }
 
@@ -94,6 +95,9 @@ export function useScanJobs() {
                       scannedSymbols: data.scannedSymbols ?? j.scannedSymbols,
                       totalSymbols: data.totalSymbols ?? j.totalSymbols,
                       opportunityCount: data.opportunityCount ?? j.opportunityCount,
+                      opportunities: data.opportunities?.length
+                        ? [...j.opportunities, ...data.opportunities]
+                        : j.opportunities,
                     }
                   : j
               )

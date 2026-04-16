@@ -72,8 +72,8 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    // Get preset name if presetId provided
-    let presetName = "Custom Scan";
+    // Get preset name if presetId provided, otherwise build from criteria
+    let presetName: string | undefined;
     if (presetId) {
       const preset = await prisma.scannerPreset.findUnique({
         where: { id: presetId },
@@ -82,6 +82,9 @@ router.post(
       if (preset) {
         presetName = preset.name;
       }
+    }
+    if (!presetName) {
+      presetName = buildScanLabel(criteria);
     }
 
     // Create the job record
@@ -225,6 +228,24 @@ async function executeJobScan(
       },
     },
   });
+}
+
+/**
+ * Build a human-readable label from scan criteria.
+ * e.g. "PUT δ0.15–0.40 7–45d" or "AAPL CALL δ0.20–0.50 14–60d"
+ */
+function buildScanLabel(criteria: z.infer<typeof scannerCriteriaSchema>): string {
+  const parts: string[] = [];
+  if (criteria.specificSymbol) {
+    parts.push(criteria.specificSymbol.toUpperCase());
+  }
+  parts.push(criteria.optionTypes);
+  parts.push(`δ${criteria.minDelta}–${criteria.maxDelta}`);
+  parts.push(`${criteria.minDaysToExpiry}–${criteria.maxDaysToExpiry}d`);
+  if (criteria.minAnnualizedReturn > 0) {
+    parts.push(`≥${criteria.minAnnualizedReturn}%`);
+  }
+  return parts.join(" ");
 }
 
 export default router;

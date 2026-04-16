@@ -196,7 +196,8 @@ function createProgressUpdater(jobId: string): ProgressUpdater {
         WHERE id = ${jobId}::uuid
       `;
 
-      // Broadcast progress
+      // Broadcast progress with newly found opportunities so the UI can
+      // render results incrementally while the scan is still running.
       const updatedJob = await prisma.scanJob.findUnique({ where: { id: jobId } });
       if (updatedJob) {
         sseService.broadcast("scanner_job", {
@@ -207,6 +208,7 @@ function createProgressUpdater(jobId: string): ProgressUpdater {
           opportunityCount: updatedJob.opportunityCount,
           symbol,
           assetClass,
+          opportunities: newOpportunities,
         });
       }
     },
