@@ -4,6 +4,8 @@ import { getApiBase } from "@/lib/apiConfig";
 type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job" | "wheel_scanner";
 
 // Singleton SSE connection manager
+// Pauses when tab is hidden to avoid exhausting Chrome's 6-connection-per-origin
+// limit on HTTP/1.1 (each EventSource holds an open connection).
 class SSEManager {
   private eventSource: EventSource | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -13,6 +15,7 @@ class SSEManager {
   private _clientId: string | null = null;
   private reconnectInterval = 5000;
   private subscriberCount = 0;
+  private visibilityBound = false;
 
   get connected() {
     return this._connected;
@@ -25,15 +28,40 @@ class SSEManager {
   subscribe() {
     this.subscriberCount++;
     if (this.subscriberCount === 1) {
-      this.connect();
+      this.bindVisibility();
+      if (!document.hidden) {
+        this.connect();
+      }
     }
     return () => {
       this.subscriberCount--;
       if (this.subscriberCount === 0) {
+        this.unbindVisibility();
         this.disconnect();
       }
     };
   }
+
+  private bindVisibility() {
+    if (this.visibilityBound) return;
+    this.visibilityBound = true;
+    document.addEventListener("visibilitychange", this.handleVisibility);
+  }
+
+  private unbindVisibility() {
+    this.visibilityBound = false;
+    document.removeEventListener("visibilitychange", this.handleVisibility);
+  }
+
+  private handleVisibility = () => {
+    if (document.hidden) {
+      // Tab hidden — release the connection so other tabs/requests can use it
+      this.disconnect();
+    } else if (this.subscriberCount > 0) {
+      // Tab visible again — reconnect
+      this.connect();
+    }
+  };
 
   private connect() {
     if (this.eventSource) {
@@ -76,8 +104,8 @@ class SSEManager {
         this.notifyConnectionListeners();
         this.cleanup();
 
-        // Auto-reconnect if we still have subscribers
-        if (this.subscriberCount > 0) {
+        // Auto-reconnect if we still have subscribers and tab is visible
+        if (this.subscriberCount > 0 && !document.hidden) {
           this.reconnectTimeout = setTimeout(() => {
             console.log("SSE reconnecting...");
             this.connect();
