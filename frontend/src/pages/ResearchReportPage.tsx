@@ -170,7 +170,7 @@ function CompanyInfoPanel({
   analyses,
   techD,
   socialD,
-  saD,
+  fundD,
   shortD,
   optD,
 }: {
@@ -178,19 +178,35 @@ function CompanyInfoPanel({
   analyses: AnalysisResult[];
   techD: Record<string, unknown>;
   socialD: Record<string, unknown>;
-  saD: Record<string, unknown>;
+  fundD: Record<string, unknown>;
   shortD: Record<string, unknown>;
   optD: Record<string, unknown>;
 }) {
   const technical = getAnalysis(analyses, "technical");
   const social = getAnalysis(analyses, "social");
-  const seekingAlpha = getAnalysis(analyses, "seeking_alpha");
+  const fundamentalsAnalysis = getAnalysis(analyses, "fundamentals");
   const shortInterest = getAnalysis(analyses, "short_interest");
   const options = getAnalysis(analyses, "options");
   const events = getAnalysis(analyses, "events");
   const eventsD = det(events);
 
-  const metrics = saD.metrics as Record<string, number | undefined> | null;
+  const fund = fundD.fundamentals as {
+    pe?: number | null;
+    forwardPe?: number | null;
+    eps?: number | null;
+    epsGrowth?: number | null;
+    dividendYield?: number | null;
+    revenue?: number | null;
+    marketCap?: number | null;
+    beta?: number | null;
+    roe?: number | null;
+    debtToEquity?: number | null;
+    profitMargin?: number | null;
+    revenueGrowth?: number | null;
+    bookValue?: number | null;
+    priceToBook?: number | null;
+    priceToCashFlow?: number | null;
+  } | null;
 
   return (
     <Card className="lg:col-span-2">
@@ -251,37 +267,72 @@ function CompanyInfoPanel({
         )}
 
         {/* Fundamentals */}
-        {seekingAlpha && (metrics?.market_cap != null || metrics?.pe_nongaap_fy1 != null || metrics?.revenue_growth != null || metrics?.dividend_yield != null) && (
-          <InfoBullet label="Fundamentals" signal={seekingAlpha.signal}>
+        {fundamentalsAnalysis && fund && (fund.pe != null || fund.marketCap != null || fund.roe != null) && (
+          <InfoBullet label="Fundamentals" signal={fundamentalsAnalysis.signal}>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-              {metrics?.market_cap != null && (
-                <MetricItem label="Mkt Cap" value={fmtCap(metrics.market_cap as number)} />
+              {fund.marketCap != null && (
+                <MetricItem label="Mkt Cap" value={fmtCap(fund.marketCap)} />
               )}
-              {metrics?.pe_nongaap_fy1 != null && (
+              {fund.pe != null && (
+                <MetricItem
+                  label="P/E"
+                  value={fmt(fund.pe, 1)}
+                  color={fund.pe > 0 && fund.pe < 15 ? "green" : fund.pe > 40 ? "red" : undefined}
+                />
+              )}
+              {fund.forwardPe != null && (
                 <MetricItem
                   label="Fwd P/E"
-                  value={fmt(metrics.pe_nongaap_fy1, 1)}
-                  color={
-                    (metrics.pe_nongaap_fy1 as number) < 15 ? "green" :
-                    (metrics.pe_nongaap_fy1 as number) > 30 ? "red" : undefined
-                  }
+                  value={fmt(fund.forwardPe, 1)}
+                  color={fund.forwardPe > 0 && fund.forwardPe < 15 ? "green" : fund.forwardPe > 30 ? "red" : undefined}
                 />
               )}
-              {metrics?.revenue_growth != null && (
+              {fund.eps != null && (
+                <MetricItem label="EPS" value={fmt(fund.eps, 2)} />
+              )}
+              {fund.epsGrowth != null && (
+                <MetricItem
+                  label="EPS Growth"
+                  value={`${fund.epsGrowth.toFixed(1)}%`}
+                  color={fund.epsGrowth > 20 ? "green" : fund.epsGrowth < -10 ? "red" : undefined}
+                />
+              )}
+              {fund.revenueGrowth != null && (
                 <MetricItem
                   label="Rev Growth"
-                  value={`${(metrics.revenue_growth as number).toFixed(1)}%`}
-                  color={
-                    (metrics.revenue_growth as number) > 0 ? "green" :
-                    (metrics.revenue_growth as number) < 0 ? "red" : undefined
-                  }
+                  value={`${fund.revenueGrowth.toFixed(1)}%`}
+                  color={fund.revenueGrowth > 15 ? "green" : fund.revenueGrowth < -5 ? "red" : undefined}
                 />
               )}
-              {metrics?.dividend_yield != null && (
-                <MetricItem label="Div Yield" value={`${(metrics.dividend_yield as number).toFixed(2)}%`} />
+              {fund.roe != null && (
+                <MetricItem
+                  label="ROE"
+                  value={`${fund.roe.toFixed(1)}%`}
+                  color={fund.roe > 20 ? "green" : fund.roe < 5 ? "red" : undefined}
+                />
               )}
-              {metrics?.div_yield_fwd != null && (
-                <MetricItem label="Fwd Yield" value={`${(metrics.div_yield_fwd as number).toFixed(2)}%`} />
+              {fund.profitMargin != null && (
+                <MetricItem
+                  label="Margin"
+                  value={`${fund.profitMargin.toFixed(1)}%`}
+                  color={fund.profitMargin > 20 ? "green" : fund.profitMargin < 0 ? "red" : undefined}
+                />
+              )}
+              {fund.debtToEquity != null && (
+                <MetricItem
+                  label="D/E"
+                  value={`${fund.debtToEquity.toFixed(0)}%`}
+                  color={fund.debtToEquity < 50 ? "green" : fund.debtToEquity > 200 ? "red" : undefined}
+                />
+              )}
+              {fund.dividendYield != null && fund.dividendYield > 0 && (
+                <MetricItem label="Div Yield" value={`${fund.dividendYield.toFixed(2)}%`} />
+              )}
+              {fund.beta != null && (
+                <MetricItem label="Beta" value={fmt(fund.beta, 2)} />
+              )}
+              {fund.priceToBook != null && (
+                <MetricItem label="P/B" value={fmt(fund.priceToBook, 1)} />
               )}
             </div>
           </InfoBullet>
@@ -1133,14 +1184,14 @@ export function ResearchReportPage() {
 
   const technical = getAnalysis(analyses, "technical");
   const social = getAnalysis(analyses, "social");
-  const seekingAlpha = getAnalysis(analyses, "seeking_alpha");
+  const fundamentals = getAnalysis(analyses, "fundamentals");
   const shortInterest = getAnalysis(analyses, "short_interest");
   const saComments = getAnalysis(analyses, "sa_comments");
   const options = getAnalysis(analyses, "options");
 
   const techD = det(technical);
   const socialD = det(social);
-  const saD = det(seekingAlpha);
+  const fundD = det(fundamentals);
   const shortD = det(shortInterest);
   const optD = det(options);
   const saCommentsD = det(saComments);
@@ -1256,7 +1307,7 @@ export function ResearchReportPage() {
           analyses={analyses}
           techD={techD}
           socialD={socialD}
-          saD={saD}
+          fundD={fundD}
           shortD={shortD}
           optD={optD}
         />
