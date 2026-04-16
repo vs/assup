@@ -93,9 +93,10 @@ export function WatchlistsPage() {
   // Scanner dialog
   const [discoverOpen, setDiscoverOpen] = useState(false);
 
-  // Report generation state
-  const [generatingSymbol, setGeneratingSymbol] = useState<string | null>(null);
-  const [generateProgress, setGenerateProgress] = useState<string | null>(null);
+  // Report generation state – tracks multiple concurrent analyses
+  const [generatingMap, setGeneratingMap] = useState<Map<string, string | null>>(
+    () => new Map()
+  );
 
   // Drag state for sidebar drop targets
   const [dragOverWatchlistId, setDragOverWatchlistId] = useState<string | null>(
@@ -348,9 +349,21 @@ export function WatchlistsPage() {
   }
 
   // --- Report generation ---
+  function setGeneratingProgress(symbol: string, progress: string | null) {
+    setGeneratingMap((prev) => new Map(prev).set(symbol, progress));
+  }
+
+  function clearGenerating(symbol: string) {
+    setGeneratingMap((prev) => {
+      const next = new Map(prev);
+      next.delete(symbol);
+      return next;
+    });
+  }
+
   async function handleGenerateReport(symbol: string) {
-    setGeneratingSymbol(symbol);
-    setGenerateProgress(null);
+    if (generatingMap.has(symbol)) return; // already running
+    setGeneratingProgress(symbol, null);
     setError(null);
     try {
       const researchSettings = await settingsApi
@@ -370,7 +383,7 @@ export function WatchlistsPage() {
         const job = await researchApi.getJob(jobId);
 
         if (job.progress) {
-          setGenerateProgress(job.progress);
+          setGeneratingProgress(symbol, job.progress);
         }
 
         if (job.status === "completed") {
@@ -398,8 +411,16 @@ export function WatchlistsPage() {
           : `Failed to generate report for ${symbol}`
       );
     } finally {
-      setGeneratingSymbol(null);
-      setGenerateProgress(null);
+      clearGenerating(symbol);
+    }
+  }
+
+  async function handleAnalyzeAll() {
+    if (!selectedWatchlist) return;
+    for (const item of selectedWatchlist.items) {
+      if (!generatingMap.has(item.symbol)) {
+        handleGenerateReport(item.symbol);
+      }
     }
   }
 
@@ -600,6 +621,17 @@ export function WatchlistsPage() {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={handleAnalyzeAll}
+                    disabled={generatingMap.size > 0}
+                  >
+                    <Zap className="h-4 w-4 mr-1" />
+                    {generatingMap.size > 0
+                      ? `Analyzing ${generatingMap.size}...`
+                      : "Analyze All"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={openAddSymbolDialog}
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -650,8 +682,7 @@ export function WatchlistsPage() {
                             item={item}
                             assetClasses={assetClasses}
                             getSparklineState={getSparklineState}
-                            generatingSymbol={generatingSymbol}
-                            generateProgress={generateProgress}
+                            generatingMap={generatingMap}
                             onDragStart={handleDragStart}
                             onChartClick={setChartSymbol}
                             onAssignAssetClass={handleAssignAssetClass}
@@ -793,8 +824,7 @@ interface TickerRowProps {
     loading: boolean;
     error: boolean;
   };
-  generatingSymbol: string | null;
-  generateProgress: string | null;
+  generatingMap: Map<string, string | null>;
   onDragStart: (e: React.DragEvent, item: WatchlistItem) => void;
   onChartClick: (symbol: string) => void;
   onAssignAssetClass: (item: WatchlistItem, assetClassId: string) => void;
@@ -806,8 +836,7 @@ function TickerRow({
   item,
   assetClasses,
   getSparklineState,
-  generatingSymbol,
-  generateProgress,
+  generatingMap,
   onDragStart,
   onChartClick,
   onAssignAssetClass,
@@ -815,7 +844,8 @@ function TickerRow({
   onRemove,
 }: TickerRowProps) {
   const sparkline = getSparklineState(item.symbol);
-  const isGenerating = generatingSymbol === item.symbol;
+  const isGenerating = generatingMap.has(item.symbol);
+  const generateProgress = generatingMap.get(item.symbol) ?? null;
 
   return (
     <TableRow
