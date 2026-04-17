@@ -54,6 +54,7 @@ tmp/
 
 # Worktrees
 .worktrees/
+.superpowers/
 .playwright-mcp/
 
 # Seeking Alpha browser session
