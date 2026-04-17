@@ -63,9 +63,8 @@ router.get(
     // Batch fetch latest research data for all symbols
     const symbols = watchlist.items.map((item) => item.symbol);
 
-    const [latestReports, latestAnalyses] = await Promise.all([
-      symbols.length > 0
-        ? prisma.$queryRaw<Array<{ symbol: string; recommendation: string; createdAt: Date }>>`
+    const latestReports = symbols.length > 0
+      ? await prisma.$queryRaw<Array<{ symbol: string; recommendation: string; createdAt: Date }>>`
             SELECT r.symbol, r.recommendation, r.created_at AS "createdAt"
             FROM (
               SELECT *, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY created_at DESC) AS rn
@@ -74,29 +73,13 @@ router.get(
             ) r
             WHERE r.rn = 1
           `
-        : [],
-      symbols.length > 0
-        ? prisma.$queryRaw<Array<{ symbol: string; signal: string; confidence: number }>>`
-            SELECT a.symbol, a.signal, a.confidence
-            FROM (
-              SELECT *,
-                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY confidence DESC, analyzed_at DESC) AS rn
-              FROM analysis
-              WHERE symbol = ANY(${symbols})
-                AND confidence > 0
-            ) a
-            WHERE a.rn = 1
-          `
-        : [],
-    ]);
+      : [];
 
     const reportMap = new Map(latestReports.map((r) => [r.symbol, r]));
-    const analysisMap = new Map(latestAnalyses.map((a) => [a.symbol, a]));
 
     const enrichedItems = watchlist.items.map((item) => {
       const assignment = assignmentMap.get(getSecurityKey(item.symbol, item.secType));
       const report = reportMap.get(item.symbol);
-      const analysis = analysisMap.get(item.symbol);
 
       // Compute human-readable report age
       let reportAge: string | null = null;
@@ -121,8 +104,6 @@ router.get(
         assetClassId: assignment?.assetClassId || null,
         assetClassName: assignment?.assetClass.name || null,
         assetClassColor: assignment?.assetClass.color || null,
-        latestSignal: analysis?.signal ?? null,
-        latestConfidence: analysis?.confidence ?? null,
         latestRecommendation: report?.recommendation ?? null,
         reportAge,
       };

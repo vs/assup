@@ -50,7 +50,6 @@ import { ChartModal } from "@/components/ChartModal";
 import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
 import { MacroBanner } from "@/components/research/MacroBanner";
-import { SignalBadge } from "@/components/research/SignalBadge";
 import { ScannerDialog } from "@/components/research/ScannerDialog";
 import { Link } from "react-router-dom";
 import {
@@ -119,7 +118,7 @@ export function WatchlistsPage() {
   }, [watchlists, wlSort]);
 
   // Item sort state
-  type SortField = "addedAt" | "symbol" | "signal" | "recommendation" | "reportAge";
+  type SortField = "addedAt" | "symbol" | "recommendation" | "reportAge";
   type SortDir = "asc" | "desc";
   const [sortField, setSortField] = useState<SortField>("addedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -144,8 +143,6 @@ export function WatchlistsPage() {
           return dir * (new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime());
         case "symbol":
           return dir * a.symbol.localeCompare(b.symbol);
-        case "signal":
-          return dir * (a.latestSignal || "").localeCompare(b.latestSignal || "");
         case "recommendation":
           return dir * (a.latestRecommendation || "").localeCompare(b.latestRecommendation || "");
         case "reportAge": {
@@ -667,7 +664,6 @@ export function WatchlistsPage() {
                           <SortableHead field="symbol" current={sortField} dir={sortDir} onToggle={toggleSort}>Symbol</SortableHead>
                           <TableHead className="w-10" />
                           <TableHead className="w-24">7D</TableHead>
-                          <SortableHead field="signal" current={sortField} dir={sortDir} onToggle={toggleSort}>Signal</SortableHead>
                           <TableHead>Asset Class</TableHead>
                           <SortableHead field="recommendation" current={sortField} dir={sortDir} onToggle={toggleSort}>Recommendation</SortableHead>
                           <SortableHead field="reportAge" current={sortField} dir={sortDir} onToggle={toggleSort}>Report</SortableHead>
@@ -880,14 +876,6 @@ function TickerRow({
           loading={sparkline.loading}
           error={sparkline.error}
           onChartClick={() => onChartClick(item.symbol)}
-        />
-      </TableCell>
-
-      {/* Signal badge */}
-      <TableCell>
-        <SignalBadge
-          signal={item.latestSignal}
-          confidence={item.latestConfidence}
         />
       </TableCell>
 
