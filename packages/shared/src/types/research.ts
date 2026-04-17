@@ -22,7 +22,6 @@ export type AnalysisSource =
   | "events"
   | "options"
   | "sec_filings"
-  | "short_interest"
   | "social"
   | "macro";
 
