@@ -31,6 +31,11 @@ interface OptionActivity {
   putCallRatio: number | null;
 }
 
+interface Shortable {
+  isShortable: boolean | null;
+  sharesAvailable: number | null;
+}
+
 export const fundamentalsAnalyzer: Analyzer = {
   source: "fundamentals",
 
@@ -38,6 +43,7 @@ export const fundamentalsAnalyzer: Analyzer = {
     const fundamentals = (rawData.fundamentals as Fundamentals) ?? {};
     const volatility = (rawData.volatility as Volatility) ?? {};
     const optionActivity = (rawData.optionActivity as OptionActivity) ?? {};
+    const shortable = (rawData.shortable as Shortable) ?? {};
 
     let score = 0;
     const signals: string[] = [];
@@ -149,6 +155,17 @@ export const fundamentalsAnalyzer: Analyzer = {
       }
     }
 
+    // --- Shortable assessment ---
+    if (shortable.sharesAvailable !== null && shortable.sharesAvailable !== undefined) {
+      dataPoints++;
+      if (shortable.sharesAvailable < 100_000) {
+        score -= 1;
+        signals.push(`Hard to borrow: ${shortable.sharesAvailable.toLocaleString()} shares available`);
+      } else {
+        signals.push(`${shortable.sharesAvailable.toLocaleString()} shares available to short`);
+      }
+    }
+
     // Early return for insufficient data
     if (dataPoints === 0) {
       return {
@@ -165,14 +182,17 @@ export const fundamentalsAnalyzer: Analyzer = {
     else if (score <= -2) signal = "bearish";
     else signal = "neutral";
 
-    // Confidence scales with both signal strength and data availability
+    // Confidence scales with both signal strength and data availability.
+    // A small baseline from dataRatio ensures that having data (even with
+    // a neutral score) produces confidence above the 0.1 "no data" floor.
     const maxDataPoints = 9;
     const dataRatio = Math.min(dataPoints / maxDataPoints, 1);
-    const confidence = Math.min(Math.abs(score) / 5, 1) * (0.5 + 0.5 * dataRatio);
+    const signalConfidence = Math.min(Math.abs(score) / 5, 1) * (0.5 + 0.5 * dataRatio);
+    const confidence = Math.max(signalConfidence, 0.1 + dataRatio * 0.2);
 
     return {
       signal,
-      confidence: Math.max(confidence, 0.1),
+      confidence: Math.min(confidence, 1),
       summary: signals.join(". ") + ".",
       details: {
         score,
@@ -180,6 +200,7 @@ export const fundamentalsAnalyzer: Analyzer = {
         fundamentals,
         volatility,
         optionActivity,
+        shortable,
         sector: rawData.sector,
         companyName: rawData.companyName,
         stockType: rawData.stockType,

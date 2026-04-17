@@ -12,7 +12,6 @@ const DAILY_SOURCES = [
   "events",
   "sa_comments",
   "sec_filings",
-  "short_interest",
 ];
 
 async function processBatched<T>(

@@ -55,11 +55,22 @@ interface SocialPost {
   url: string | null;
 }
 
+function tickerInTitle(title: string, symbol: string): boolean {
+  // Escape regex special chars (e.g., BRK.B → BRK\.B)
+  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (symbol.length < 3) {
+    // Short tickers require $ prefix to avoid matching common words
+    return new RegExp(`\\$${escaped}\\b`, "i").test(title);
+  }
+  // Match word boundary or $ prefix
+  return new RegExp(`(?:\\$|\\b)${escaped}\\b`, "i").test(title);
+}
+
 async function fetchRedditPosts(symbol: string): Promise<SocialPost[]> {
   const params = new URLSearchParams({
     q: symbol,
-    subreddit: "wallstreetbets+options+stocks",
-    sort: "new",
+    subreddit: "wallstreetbets+options+stocks+investing",
+    sort: "relevance",
     limit: "25",
   });
 
@@ -80,19 +91,21 @@ async function fetchRedditPosts(symbol: string): Promise<SocialPost[]> {
   const result = (await response.json()) as RedditSearchResponse;
   const children = result.data?.children ?? [];
 
-  return children.map((child) => ({
-    source: "reddit" as const,
-    title: child.data.title ?? "",
-    body: (child.data.selftext ?? "").slice(0, 500),
-    timestamp: new Date(child.data.created_utc * 1000).toISOString(),
-    score: child.data.score ?? 0,
-    comments: child.data.num_comments ?? 0,
-    subreddit: child.data.subreddit ?? "",
-    sentiment: null,
-    url: child.data.permalink
-      ? `${REDDIT_BASE_URL}${child.data.permalink}`
-      : "",
-  }));
+  return children
+    .map((child) => ({
+      source: "reddit" as const,
+      title: child.data.title ?? "",
+      body: (child.data.selftext ?? "").slice(0, 500),
+      timestamp: new Date(child.data.created_utc * 1000).toISOString(),
+      score: child.data.score ?? 0,
+      comments: child.data.num_comments ?? 0,
+      subreddit: child.data.subreddit ?? "",
+      sentiment: null,
+      url: child.data.permalink
+        ? `${REDDIT_BASE_URL}${child.data.permalink}`
+        : "",
+    }))
+    .filter((post) => (post.score ?? 0) >= 1);
 }
 
 async function fetchStocktwitsPosts(symbol: string): Promise<SocialPost[]> {
@@ -142,6 +155,18 @@ export const socialCollector: Collector = {
     const stocktwitsPosts =
       stocktwitsResult.status === "fulfilled" ? stocktwitsResult.value : null;
 
+    // Filter Reddit posts for relevance (ticker must be in title)
+    let filteredRedditPosts = redditPosts;
+    if (redditPosts && redditPosts.length > 0) {
+      const titleFiltered = redditPosts.filter((post) =>
+        tickerInTitle(post.title ?? "", symbol)
+      );
+      // Fall back to score-filtered posts if title filter removes everything
+      if (titleFiltered.length > 0) {
+        filteredRedditPosts = titleFiltered;
+      }
+    }
+
     if (redditPosts === null && stocktwitsPosts === null) {
       const redditErr =
         redditResult.status === "rejected" ? redditResult.reason : "unknown";
@@ -156,14 +181,14 @@ export const socialCollector: Collector = {
     }
 
     const allPosts: SocialPost[] = [
-      ...(redditPosts ?? []),
+      ...(filteredRedditPosts ?? []),
       ...(stocktwitsPosts ?? []),
     ];
 
     // Engagement score: sum of Reddit upvotes + comments across posts.
     // This varies meaningfully per ticker, unlike post count which is
     // always capped at 25 (Reddit) + 30 (StockTwits) = 55.
-    const redditEngagement = (redditPosts ?? []).reduce(
+    const redditEngagement = (filteredRedditPosts ?? []).reduce(
       (sum, p) => sum + (p.score ?? 0) + (p.comments ?? 0),
       0,
     );
@@ -172,7 +197,7 @@ export const socialCollector: Collector = {
       source: "social",
       data: {
         symbol,
-        redditMentionCount: redditPosts?.length ?? 0,
+        redditMentionCount: filteredRedditPosts?.length ?? 0,
         stocktwitsMentionCount: stocktwitsPosts?.length ?? 0,
         totalMentionCount: allPosts.length,
         redditEngagement,
