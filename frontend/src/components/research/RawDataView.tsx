@@ -131,16 +131,6 @@ function SecFilingsRenderer({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function ShortInterestRenderer({ data }: { data: Record<string, unknown> }) {
-  return (
-    <div className="space-y-1">
-      <KeyValue label="Short % of S/O" value={data.shortPercentOfSO != null ? pct(data.shortPercentOfSO as number) : undefined} />
-      <KeyValue label="Days to Cover" value={data.daysToCover != null && (data.daysToCover as number) > 0 ? fmt(data.daysToCover as number, 1) : undefined} />
-      <KeyValue label="Trend" value={data.shortInterestTrend != null && data.shortInterestTrend !== "unknown" ? String(data.shortInterestTrend) : undefined} />
-    </div>
-  );
-}
-
 function EventsRenderer({ data }: { data: Record<string, unknown> }) {
   const earnings = data.earnings as Array<Record<string, unknown>> | undefined;
   const dividends = data.dividends as Array<Record<string, unknown>> | undefined;
@@ -352,7 +342,6 @@ const renderers: Record<string, React.ComponentType<{ data: Record<string, unkno
   options: OptionsRenderer,
   social: SocialRenderer,
   sec_filings: SecFilingsRenderer,
-  short_interest: ShortInterestRenderer,
   events: EventsRenderer,
   sa_comments: SACommentsRenderer,
   fundamentals: FundamentalsRenderer,

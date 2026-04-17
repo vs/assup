@@ -171,7 +171,6 @@ function CompanyInfoPanel({
   techD,
   socialD,
   fundD,
-  shortD,
   optD,
 }: {
   report: ResearchReport | null;
@@ -179,13 +178,11 @@ function CompanyInfoPanel({
   techD: Record<string, unknown>;
   socialD: Record<string, unknown>;
   fundD: Record<string, unknown>;
-  shortD: Record<string, unknown>;
   optD: Record<string, unknown>;
 }) {
   const technical = getAnalysis(analyses, "technical");
   const social = getAnalysis(analyses, "social");
   const fundamentalsAnalysis = getAnalysis(analyses, "fundamentals");
-  const shortInterest = getAnalysis(analyses, "short_interest");
   const options = getAnalysis(analyses, "options");
   const events = getAnalysis(analyses, "events");
   const eventsD = det(events);
@@ -396,39 +393,6 @@ function CompanyInfoPanel({
                     (optD.wheelSuitability as number) >= 0.4 ? "amber" : "red"
                   }
                 />
-              )}
-            </div>
-          </InfoBullet>
-        )}
-
-        {/* Short Interest */}
-        {shortInterest && (
-          <InfoBullet label="Short Interest" signal={shortInterest.signal}>
-            <div className="flex flex-wrap gap-x-3 text-xs">
-              <MetricItem
-                label="S/O"
-                value={typeof shortD.shortPercentOfSO === "number" ? `${(shortD.shortPercentOfSO as number).toFixed(1)}%` : "N/A"}
-                color={
-                  typeof shortD.shortPercentOfSO === "number"
-                    ? (shortD.shortPercentOfSO as number) < 5 ? "green" :
-                      (shortD.shortPercentOfSO as number) > 10 ? "red" : "amber"
-                    : undefined
-                }
-              />
-              {(shortD.daysToCover as number) > 0 && (
-                <MetricItem
-                  label="DTC"
-                  value={fmt(shortD.daysToCover, 1)}
-                  color={
-                    (shortD.daysToCover as number) > 5 ? "red" :
-                    (shortD.daysToCover as number) < 2 ? "green" : undefined
-                  }
-                />
-              )}
-              {typeof shortD.shortInterestTrend === "string" && shortD.shortInterestTrend !== "unknown" && (
-                <span className="text-muted-foreground">
-                  {trendLabel(shortD.shortInterestTrend as string)}
-                </span>
               )}
             </div>
           </InfoBullet>
@@ -1185,14 +1149,12 @@ export function ResearchReportPage() {
   const technical = getAnalysis(analyses, "technical");
   const social = getAnalysis(analyses, "social");
   const fundamentals = getAnalysis(analyses, "fundamentals");
-  const shortInterest = getAnalysis(analyses, "short_interest");
   const saComments = getAnalysis(analyses, "sa_comments");
   const options = getAnalysis(analyses, "options");
 
   const techD = det(technical);
   const socialD = det(social);
   const fundD = det(fundamentals);
-  const shortD = det(shortInterest);
   const optD = det(options);
   const saCommentsD = det(saComments);
 
@@ -1308,7 +1270,6 @@ export function ResearchReportPage() {
           techD={techD}
           socialD={socialD}
           fundD={fundD}
-          shortD={shortD}
           optD={optD}
         />
       </div>
