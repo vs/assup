@@ -25,8 +25,6 @@ export interface WatchlistItem {
   assetClassName?: string | null;
   assetClassColor?: string | null;
   // Research enrichment fields (from backend)
-  latestSignal?: string | null;
-  latestConfidence?: number | null;
   latestRecommendation?: string | null;
   reportAge?: string | null;
 }

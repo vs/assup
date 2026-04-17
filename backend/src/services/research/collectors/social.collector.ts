@@ -56,12 +56,14 @@ interface SocialPost {
 }
 
 function tickerInTitle(title: string, symbol: string): boolean {
+  // Escape regex special chars (e.g., BRK.B → BRK\.B)
+  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   if (symbol.length < 3) {
     // Short tickers require $ prefix to avoid matching common words
-    return new RegExp(`\\$${symbol}\\b`, "i").test(title);
+    return new RegExp(`\\$${escaped}\\b`, "i").test(title);
   }
   // Match word boundary or $ prefix
-  return new RegExp(`(?:\\$|\\b)${symbol}\\b`, "i").test(title);
+  return new RegExp(`(?:\\$|\\b)${escaped}\\b`, "i").test(title);
 }
 
 async function fetchRedditPosts(symbol: string): Promise<SocialPost[]> {
