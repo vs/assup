@@ -20,6 +20,9 @@ RUN npm ci --ignore-scripts --workspace=@assup/shared --workspace=assup-backend 
 COPY packages/shared ./packages/shared
 COPY backend ./backend
 
+# Fetch Prisma engine binaries (skipped by --ignore-scripts above)
+RUN node node_modules/@prisma/engines/scripts/postinstall.js
+
 # Build shared, generate Prisma client, build backend, compile seed script
 RUN npm run build -w @assup/shared && \
     cd backend && DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate && cd .. && \
@@ -50,6 +53,7 @@ COPY --from=builder /app/backend/prisma ./backend/prisma
 # Install production dependencies and generate Prisma client for runtime
 # --ignore-scripts is safe here: no native modules needed at runtime, only node_modules
 RUN npm ci --omit=dev --ignore-scripts --workspace=@assup/shared --workspace=assup-backend && \
+    node node_modules/@prisma/engines/scripts/postinstall.js && \
     cd backend && DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
 # Install Claude Code CLI globally for research synthesis
