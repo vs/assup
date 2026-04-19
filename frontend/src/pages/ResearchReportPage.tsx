@@ -29,6 +29,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { timeAgo } from "@/utils/format";
 
 // --- Source Icons ---
@@ -146,19 +151,30 @@ function MetricItem({
   label,
   value,
   color,
+  tip,
 }: {
   label: string;
   value: string;
   color?: "green" | "red" | "amber";
+  tip?: string;
 }) {
   const colorClass =
     color === "green" ? "text-green-600" :
     color === "red" ? "text-red-600" :
     color === "amber" ? "text-amber-600" : "";
+  const labelEl = tip ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="text-muted-foreground underline decoration-dotted cursor-help">{label}</span>
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
+  ) : (
+    <span className="text-muted-foreground">{label}</span>
+  );
   return (
     <span>
-      <span className="text-muted-foreground">{label}: </span>
-      <span className={`font-medium ${colorClass}`}>{value}</span>
+      {labelEl}: <span className={`font-medium ${colorClass}`}>{value}</span>
     </span>
   );
 }
@@ -268,13 +284,14 @@ function CompanyInfoPanel({
           <InfoBullet label="Fundamentals" signal={fundamentalsAnalysis.signal}>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
               {fund.marketCap != null && (
-                <MetricItem label="Mkt Cap" value={fmtCap(fund.marketCap)} />
+                <MetricItem label="Mkt Cap" value={fmtCap(fund.marketCap)} tip="Market Capitalization" />
               )}
               {fund.pe != null && (
                 <MetricItem
                   label="P/E"
                   value={fmt(fund.pe, 1)}
                   color={fund.pe > 0 && fund.pe < 15 ? "green" : fund.pe > 40 ? "red" : undefined}
+                  tip="Price-to-Earnings Ratio"
                 />
               )}
               {fund.forwardPe != null && (
@@ -282,10 +299,11 @@ function CompanyInfoPanel({
                   label="Fwd P/E"
                   value={fmt(fund.forwardPe, 1)}
                   color={fund.forwardPe > 0 && fund.forwardPe < 15 ? "green" : fund.forwardPe > 30 ? "red" : undefined}
+                  tip="Forward Price-to-Earnings Ratio (based on estimated future earnings)"
                 />
               )}
               {fund.eps != null && (
-                <MetricItem label="EPS" value={fmt(fund.eps, 2)} />
+                <MetricItem label="EPS" value={fmt(fund.eps, 2)} tip="Earnings Per Share" />
               )}
               {fund.epsGrowth != null && (
                 <MetricItem
@@ -299,6 +317,7 @@ function CompanyInfoPanel({
                   label="Rev Growth"
                   value={`${fund.revenueGrowth.toFixed(1)}%`}
                   color={fund.revenueGrowth > 15 ? "green" : fund.revenueGrowth < -5 ? "red" : undefined}
+                  tip="Revenue Growth (year-over-year)"
                 />
               )}
               {fund.roe != null && (
@@ -306,6 +325,7 @@ function CompanyInfoPanel({
                   label="ROE"
                   value={`${fund.roe.toFixed(1)}%`}
                   color={fund.roe > 20 ? "green" : fund.roe < 5 ? "red" : undefined}
+                  tip="Return on Equity"
                 />
               )}
               {fund.profitMargin != null && (
@@ -320,16 +340,17 @@ function CompanyInfoPanel({
                   label="D/E"
                   value={`${fund.debtToEquity.toFixed(0)}%`}
                   color={fund.debtToEquity < 50 ? "green" : fund.debtToEquity > 200 ? "red" : undefined}
+                  tip="Debt-to-Equity Ratio"
                 />
               )}
               {fund.dividendYield != null && fund.dividendYield > 0 && (
-                <MetricItem label="Div Yield" value={`${fund.dividendYield.toFixed(2)}%`} />
+                <MetricItem label="Div Yield" value={`${fund.dividendYield.toFixed(2)}%`} tip="Dividend Yield (annual dividend / share price)" />
               )}
               {fund.beta != null && (
                 <MetricItem label="Beta" value={fmt(fund.beta, 2)} />
               )}
               {fund.priceToBook != null && (
-                <MetricItem label="P/B" value={fmt(fund.priceToBook, 1)} />
+                <MetricItem label="P/B" value={fmt(fund.priceToBook, 1)} tip="Price-to-Book Ratio" />
               )}
             </div>
           </InfoBullet>
@@ -355,16 +376,17 @@ function CompanyInfoPanel({
                     (techD.rsi14 as number) > 70 ? "red" :
                     (techD.rsi14 as number) < 30 ? "green" : undefined
                   }
+                  tip="Relative Strength Index (14-day). Below 30 = oversold, above 70 = overbought"
                 />
               </div>
               <div className="text-muted-foreground">
-                ${fmt(techD.currentPrice)} · SMA50 ${fmt(techD.sma50)} · SMA200 ${fmt(techD.sma200)}
+                ${fmt(techD.currentPrice)} · <Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">SMA50</span></TooltipTrigger><TooltipContent>50-day Simple Moving Average</TooltipContent></Tooltip> ${fmt(techD.sma50)} · <Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">SMA200</span></TooltipTrigger><TooltipContent>200-day Simple Moving Average</TooltipContent></Tooltip> ${fmt(techD.sma200)}
               </div>
               {(techD.support != null || techD.resistance != null) && (
                 <div className="text-muted-foreground">
-                  {techD.support != null && <>S: ${fmt(techD.support)}</>}
+                  {techD.support != null && <><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">S</span></TooltipTrigger><TooltipContent>Support level</TooltipContent></Tooltip>: ${fmt(techD.support)}</>}
                   {techD.support != null && techD.resistance != null && " · "}
-                  {techD.resistance != null && <>R: ${fmt(techD.resistance)}</>}
+                  {techD.resistance != null && <><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">R</span></TooltipTrigger><TooltipContent>Resistance level</TooltipContent></Tooltip>: ${fmt(techD.resistance)}</>}
                 </div>
               )}
             </div>
@@ -382,8 +404,9 @@ function CompanyInfoPanel({
                   (optD.ivRank as number) > 50 ? "green" :
                   (optD.ivRank as number) < 20 ? "red" : undefined
                 }
+                tip="Implied Volatility Rank — current IV relative to its 52-week range"
               />
-              <MetricItem label="P/C" value={fmt(optD.putCallRatio)} />
+              <MetricItem label="P/C" value={fmt(optD.putCallRatio)} tip="Put/Call Ratio — ratio of put volume to call volume" />
               {optD.wheelSuitability != null && (
                 <MetricItem
                   label="Wheel"
@@ -392,6 +415,7 @@ function CompanyInfoPanel({
                     (optD.wheelSuitability as number) >= 0.7 ? "green" :
                     (optD.wheelSuitability as number) >= 0.4 ? "amber" : "red"
                   }
+                  tip="Wheel Strategy Suitability Score"
                 />
               )}
             </div>
@@ -429,6 +453,7 @@ function CompanyInfoPanel({
                 <MetricItem
                   label="Ex-Div"
                   value={`${String(eventsD.nextExDividend)}${daysUntil(eventsD.nextExDividend as string) ? ` (${daysUntil(eventsD.nextExDividend as string)})` : ""}`}
+                  tip="Ex-Dividend Date — buy before this date to receive the dividend"
                 />
               )}
               {eventsD.dividendYield != null && (
@@ -546,6 +571,7 @@ function OptionsLandscapeSection({
               value={`${ivRank.toFixed(0)}%`}
               bar={ivRank}
               color={ivRank > 50 ? "green" : ivRank < 20 ? "red" : "amber"}
+              tip="Implied Volatility Rank — current IV relative to its 52-week range"
             />
           )}
           {avgIV != null && avgIV > 0 && (
@@ -554,6 +580,7 @@ function OptionsLandscapeSection({
               value={`${(avgIV * 100).toFixed(1)}%`}
               bar={Math.min(avgIV * 100, 100)}
               color="neutral"
+              tip="Average Implied Volatility across all option contracts"
             />
           )}
           {putCallRatio != null && (
@@ -604,11 +631,11 @@ function OptionsLandscapeSection({
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b text-muted-foreground">
-                    <th className="text-left py-1 pr-3 font-medium">Exp</th>
+                    <th className="text-left py-1 pr-3 font-medium"><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">Exp</span></TooltipTrigger><TooltipContent>Expiration Date</TooltipContent></Tooltip></th>
                     <th className="text-right py-1 px-2 font-medium">Strike</th>
                     <th className="text-center py-1 px-2 font-medium">Type</th>
                     <th className="text-right py-1 px-2 font-medium">Volume</th>
-                    <th className="text-right py-1 px-2 font-medium">OI</th>
+                    <th className="text-right py-1 px-2 font-medium"><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">OI</span></TooltipTrigger><TooltipContent>Open Interest — total number of outstanding contracts</TooltipContent></Tooltip></th>
                     <th className="text-right py-1 pl-2 font-medium">Ratio</th>
                   </tr>
                 </thead>
@@ -676,13 +703,13 @@ function OptionsLandscapeSection({
                               <th className="text-right py-1 px-1.5 font-medium">Bid</th>
                               <th className="text-right py-1 px-1.5 font-medium">Ask</th>
                               <th className="text-right py-1 px-1.5 font-medium">Last</th>
-                              <th className="text-right py-1 px-1.5 font-medium">Vol</th>
-                              <th className="text-right py-1 px-1.5 font-medium">IV</th>
+                              <th className="text-right py-1 px-1.5 font-medium"><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">Vol</span></TooltipTrigger><TooltipContent>Volume — contracts traded today</TooltipContent></Tooltip></th>
+                              <th className="text-right py-1 px-1.5 font-medium"><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">IV</span></TooltipTrigger><TooltipContent>Implied Volatility</TooltipContent></Tooltip></th>
                               <th className="text-right py-1 px-1.5 font-medium">Delta</th>
                               <th className="text-center py-1 px-2 font-bold bg-muted/50">Strike</th>
                               <th className="text-right py-1 px-1.5 font-medium">Delta</th>
-                              <th className="text-right py-1 px-1.5 font-medium">IV</th>
-                              <th className="text-right py-1 px-1.5 font-medium">Vol</th>
+                              <th className="text-right py-1 px-1.5 font-medium"><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">IV</span></TooltipTrigger><TooltipContent>Implied Volatility</TooltipContent></Tooltip></th>
+                              <th className="text-right py-1 px-1.5 font-medium"><Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">Vol</span></TooltipTrigger><TooltipContent>Volume — contracts traded today</TooltipContent></Tooltip></th>
                               <th className="text-right py-1 px-1.5 font-medium">Last</th>
                               <th className="text-right py-1 px-1.5 font-medium">Bid</th>
                               <th className="text-right py-1 px-1.5 font-medium">Ask</th>
@@ -729,11 +756,13 @@ function OptionMetricCard({
   value,
   bar,
   color,
+  tip,
 }: {
   label: string;
   value: string;
   bar: number;
   color: "green" | "red" | "amber" | "neutral";
+  tip?: string;
 }) {
   const barColor =
     color === "green" ? "bg-green-500" :
@@ -742,7 +771,11 @@ function OptionMetricCard({
 
   return (
     <div className="bg-muted/30 rounded-md px-3 py-2">
-      <div className="text-[11px] text-muted-foreground mb-0.5">{label}</div>
+      <div className="text-[11px] text-muted-foreground mb-0.5">
+        {tip ? (
+          <Tooltip><TooltipTrigger asChild><span className="underline decoration-dotted cursor-help">{label}</span></TooltipTrigger><TooltipContent>{tip}</TooltipContent></Tooltip>
+        ) : label}
+      </div>
       <div className="text-sm font-semibold">{value}</div>
       <div className="h-1 rounded-full bg-muted mt-1.5">
         <div
