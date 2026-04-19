@@ -9,7 +9,7 @@ import type {
   CollectionStatus,
   CollectionDataEntry,
 } from "@assup/shared";
-import { RecommendationBadge, PageLoadingSkeleton } from "@/components/common";
+import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1223,37 +1223,23 @@ export function ResearchReportPage() {
           Back
         </Button>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">{symbol}</h1>
+          <span className="inline-flex items-center gap-1">
+            <a
+              href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-2xl font-bold hover:text-primary hover:underline"
+            >
+              {symbol}
+            </a>
+            <ExternalLinks symbol={symbol} />
+          </span>
           {report && (
             <RecommendationBadge
               recommendation={report.recommendation}
               confidence={report.confidence}
             />
           )}
-          <div className="flex items-center gap-1.5">
-            <a
-              href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="opacity-50 hover:opacity-100 transition-opacity"
-              title="View on TradingView"
-            >
-              <svg viewBox="0 0 36 28" className="h-5 w-5" fill="currentColor">
-                <path d="M14 22H7V6h7v16zm8-12h-7v12h7V10zm8 4h-7v8h7v-8z" />
-              </svg>
-            </a>
-            <a
-              href={`https://seekingalpha.com/symbol/${symbol}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="opacity-50 hover:opacity-100 transition-opacity"
-              title="View on Seeking Alpha"
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.5 5h3.5l-4.5 5h3l-5 5 2-3.5H7L10.5 7z" />
-              </svg>
-            </a>
-          </div>
         </div>
         {report && (
           <span className="text-sm text-muted-foreground ml-auto">
