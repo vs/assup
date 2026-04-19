@@ -56,7 +56,7 @@ interface RawTrade {
 
 interface PrefetchedTradeData {
   dbTrades: RawTrade[];
-  assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null }>;
+  assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null; tradeDate: Date }>;
 }
 
 const tradeSelect = {
@@ -471,7 +471,7 @@ export const wheelService = {
 
     // Prefetch trades only for symbols that need recomputation
     const tradesBySymbol = new Map<string, RawTrade[]>();
-    const assignedBySymbol = new Map<string, Array<{ expiry: Date | null; strike: number | null; right: string | null }>>();
+    const assignedBySymbol = new Map<string, Array<{ expiry: Date | null; strike: number | null; right: string | null; tradeDate: Date }>>();
 
     if (rebuildSymbols.size > 0) {
       const symbolsToFetch = Array.from(rebuildSymbols);
@@ -497,6 +497,7 @@ export const wheelService = {
             expiry: true,
             strike: true,
             right: true,
+            tradeDate: true,
           },
         }),
       ]);
@@ -784,7 +785,7 @@ export const wheelService = {
    */
   async reconstructCycles(symbol: string, startDate: Date | null, cachedTodayTrades?: RawTrade[], cachedData?: CachedIBKRData, prefetchedData?: PrefetchedTradeData): Promise<WheelCycle[]> {
     let dbTrades: RawTrade[];
-    let assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null }>;
+    let assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null; tradeDate: Date }>;
 
     if (prefetchedData) {
       // Use pre-fetched data from batch query
@@ -810,6 +811,7 @@ export const wheelService = {
             expiry: true,
             strike: true,
             right: true,
+            tradeDate: true,
           },
         }),
       ]);
@@ -847,6 +849,48 @@ export const wheelService = {
       if (a.secType === "OPT" && b.secType === "STK") return 1;
       return 0;
     });
+
+    // Adjust trades for stock splits to normalize all values to post-split terms
+    const splits = await prisma.corporateAction.findMany({
+      where: {
+        symbol,
+        actionType: { in: ["FS", "SD"] },
+        splitRatio: { not: null },
+      },
+      orderBy: { exDate: "asc" },
+    });
+
+    if (splits.length > 0) {
+      const getSplitMultiplier = (tradeDate: Date): number => {
+        let multiplier = 1;
+        for (const split of splits) {
+          if (split.exDate > tradeDate && split.splitRatio) {
+            multiplier *= split.splitRatio;
+          }
+        }
+        return multiplier;
+      };
+
+      for (const trade of trades) {
+        const multiplier = getSplitMultiplier(trade.tradeDate);
+        if (multiplier !== 1) {
+          trade.quantity = trade.quantity * multiplier;
+          trade.tradePrice = trade.tradePrice / multiplier;
+          if (trade.strike) {
+            trade.strike = trade.strike / multiplier;
+          }
+        }
+      }
+
+      for (const opt of assignedOptions) {
+        if (opt.strike) {
+          const multiplier = getSplitMultiplier(opt.tradeDate);
+          if (multiplier !== 1) {
+            opt.strike = opt.strike / multiplier;
+          }
+        }
+      }
+    }
 
     // Build lookup maps for assigned PUTs and CALLs
     // Key: "YYYY-MM-DD:strike" -> true
