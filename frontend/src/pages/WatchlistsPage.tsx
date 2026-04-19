@@ -61,7 +61,7 @@ import {
   GripVertical,
   Radar,
   Zap,
-  BarChart3,
+  FileText,
   ArrowUp,
   ArrowDown,
   SortAsc,
@@ -662,7 +662,6 @@ export function WatchlistsPage() {
                         <TableRow>
                           <TableHead className="w-8" />
                           <SortableHead field="symbol" current={sortField} dir={sortDir} onToggle={toggleSort}>Symbol</SortableHead>
-                          <TableHead className="w-10" />
                           <TableHead className="w-24">7D</TableHead>
                           <TableHead>Asset Class</TableHead>
                           <SortableHead field="recommendation" current={sortField} dir={sortDir} onToggle={toggleSort}>Recommendation</SortableHead>
@@ -856,17 +855,17 @@ function TickerRow({
 
       {/* Symbol */}
       <TableCell>
-        <Link
-          to={`/analysis/${item.symbol}`}
-          className="font-medium hover:text-primary hover:underline"
-        >
-          {item.symbol}
-        </Link>
-      </TableCell>
-
-      {/* External links */}
-      <TableCell className="w-10">
-        <ExternalLinks symbol={item.symbol} />
+        <span className="inline-flex items-center gap-1">
+          <a
+            href={`https://www.tradingview.com/chart/?symbol=${item.symbol}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium hover:text-primary hover:underline"
+          >
+            {item.symbol}
+          </a>
+          <ExternalLinks symbol={item.symbol} />
+        </span>
       </TableCell>
 
       {/* Sparkline */}
@@ -897,15 +896,25 @@ function TickerRow({
             recommendation={item.latestRecommendation as Recommendation}
           />
         ) : (
-          <span className="text-sm text-muted-foreground">--</span>
+          <span className="inline-flex items-center rounded-full border border-dashed border-muted-foreground/30 px-2 py-0.5 text-xs text-muted-foreground">
+            Not analyzed
+          </span>
         )}
       </TableCell>
 
       {/* Report age */}
       <TableCell>
-        <span className="text-sm text-muted-foreground">
-          {item.reportAge || "No report"}
-        </span>
+        {item.reportAge ? (
+          <Link
+            to={`/analysis/${item.symbol}`}
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {item.reportAge}
+          </Link>
+        ) : (
+          <span className="text-sm text-muted-foreground">No report</span>
+        )}
       </TableCell>
 
       {/* Added at */}
@@ -937,15 +946,6 @@ function TickerRow({
                 : "Working..."
               : "Analyze"}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => onChartClick(item.symbol)}
-            title="Open chart"
-          >
-            <BarChart3 className="h-4 w-4" />
-          </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Scan options">
             <Link to={`/scanner?symbol=${item.symbol}`}>
               <Search className="h-4 w-4" />
@@ -954,7 +954,7 @@ function TickerRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 ml-4"
             onClick={() => onRemove(item)}
             title="Remove from watchlist"
           >
