@@ -7,3 +7,4 @@ export {
   useAllocationUpdates,
   usePositionUpdates,
 } from "./useSSE";
+export { useTickerProfile, usePrefetchTickerProfiles } from "./useTickerProfile";

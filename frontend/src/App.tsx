@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
+import { TickerProfileProvider } from "@/components/common/TickerProfileProvider";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { PositionsPage } from "@/pages/PositionsPage";
 import { WatchlistsPage } from "@/pages/WatchlistsPage";
@@ -23,6 +24,7 @@ function SymbolRedirect() {
 function App() {
   return (
     <ErrorBoundary>
+      <TickerProfileProvider>
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -48,6 +50,7 @@ function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </TickerProfileProvider>
     </ErrorBoundary>
   );
 }
