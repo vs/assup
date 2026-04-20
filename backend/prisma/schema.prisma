@@ -514,3 +514,29 @@ model WheelScanResult {
   @@index([compositeScore])
   @@map("wheel_scan_results")
 }
+
+model TickerProfile {
+  symbol         String   @id @db.VarChar(20)
+  companyName    String   @map("company_name") @db.VarChar(255)
+  description    String   @db.Text
+  sector         String?  @db.VarChar(100)
+  industry       String?  @db.VarChar(255)
+  marketPosition String?  @map("market_position") @db.VarChar(100)
+  marketCap      Float?   @map("market_cap") @db.DoublePrecision
+  peRatio        Float?   @map("pe_ratio") @db.DoublePrecision
+  dividendYield  Float?   @map("dividend_yield") @db.DoublePrecision
+  fetchedAt      DateTime @map("fetched_at") @db.Timestamptz
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz
+
+  @@map("ticker_profile")
+}
+
+model PriceHistoryCache {
+  symbol    String   @id @db.VarChar(20)
+  data      Json     @db.JsonB
+  period    String   @db.VarChar(10)
+  fetchedAt DateTime @map("fetched_at") @db.Timestamptz
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+
+  @@map("price_history_cache")
+}
