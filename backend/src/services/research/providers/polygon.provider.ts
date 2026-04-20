@@ -10,7 +10,16 @@ import type {
 
 const BASE_URL = "https://api.polygon.io";
 
-class PolygonProvider implements MarketDataProvider {
+export interface TickerDetails {
+  name: string;
+  description: string;
+  sector: string | null;
+  industry: string | null;
+  type: string | null;
+  marketCap: number | null;
+}
+
+export class PolygonProvider implements MarketDataProvider {
   name = "polygon";
   private apiKey: string;
 
@@ -222,6 +231,33 @@ class PolygonProvider implements MarketDataProvider {
     }
 
     return results;
+  }
+
+  async getTickerDetails(symbol: string): Promise<TickerDetails> {
+    const data = await this.fetch<{
+      results: {
+        ticker: string;
+        name: string;
+        description?: string;
+        sic_description?: string;
+        type?: string;
+        market_cap?: number;
+      } | null;
+    }>(`/v3/reference/tickers/${symbol}`);
+
+    if (!data.results) {
+      throw new Error(`Polygon ticker details returned no data for ${symbol}`);
+    }
+
+    const r = data.results;
+    return {
+      name: r.name,
+      description: r.description || "",
+      sector: null,
+      industry: r.sic_description || null,
+      type: r.type || null,
+      marketCap: r.market_cap || null,
+    };
   }
 }
 
