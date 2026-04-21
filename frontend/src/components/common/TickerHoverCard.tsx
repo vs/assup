@@ -54,7 +54,7 @@ function ProfileSkeleton() {
 }
 
 export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
-  const { data: profile, isLoading } = useTickerProfile(symbol);
+  const { data: profile, isLoading, isError } = useTickerProfile(symbol);
 
   const chartColor =
     profile?.chart && profile.chart.length >= 2
@@ -72,8 +72,13 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
         align="start"
         sideOffset={5}
       >
-        {isLoading || !profile ? (
+        {isLoading ? (
           <ProfileSkeleton />
+        ) : isError || !profile ? (
+          <div className="w-[340px] p-4 text-center">
+            <span className="font-bold text-base">{symbol}</span>
+            <p className="text-xs text-muted-foreground mt-2">No data available</p>
+          </div>
         ) : (
           <div className="w-[340px] p-4 space-y-2.5">
             {/* Header: symbol + company name | recommendation */}

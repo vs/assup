@@ -256,7 +256,7 @@ export class PolygonProvider implements MarketDataProvider {
       sector: null,
       industry: r.sic_description || null,
       type: r.type || null,
-      marketCap: r.market_cap || null,
+      marketCap: r.market_cap ?? null,
     };
   }
 }

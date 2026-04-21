@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api";
 import type { ScannerCriteria, ScannerPreset, AssetClass, OptionTypeFilter } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { SellOptionDialog, ScanJobList } from "@/components/scanner";
 import { useScanJobs } from "@/hooks";
 import type { ExtendedOptionOpportunity } from "@/components/scanner/types";
@@ -115,6 +116,27 @@ export function ScannerPage() {
     cancelJob,
     deleteJob,
   } = useScanJobs();
+
+  const { prefetch } = useTickerProfileContext();
+
+  // Collect unique symbols from all job opportunities for prefetch
+  const jobSymbols = useMemo(() => {
+    const symbols = new Set<string>();
+    for (const job of jobs) {
+      if (job.opportunities) {
+        for (const opp of job.opportunities) {
+          symbols.add(opp.symbol);
+        }
+      }
+    }
+    return [...symbols];
+  }, [jobs]);
+
+  useEffect(() => {
+    if (jobSymbols.length > 0) {
+      prefetch(jobSymbols);
+    }
+  }, [jobSymbols, prefetch]);
 
   function handleSellClick(opportunity: ExtendedOptionOpportunity) {
     setSelectedOpportunity(opportunity);

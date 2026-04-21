@@ -9,10 +9,11 @@ const QUERY_KEY_PREFIX = "tickerProfile";
 const STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 export function useTickerProfile(symbol: string | null) {
+  const upperSymbol = symbol?.toUpperCase() ?? null;
   return useQuery<TickerProfileResponse>({
-    queryKey: [QUERY_KEY_PREFIX, symbol],
-    queryFn: () => tickerProfileApi.getProfile(symbol!),
-    enabled: !!symbol,
+    queryKey: [QUERY_KEY_PREFIX, upperSymbol],
+    queryFn: () => tickerProfileApi.getProfile(upperSymbol!),
+    enabled: !!upperSymbol,
     staleTime: STALE_TIME,
     retry: 1,
   });

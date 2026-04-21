@@ -26,7 +26,11 @@ class TickerProfileService {
 
     // If both caches are fresh, assemble from cache
     if (profileFresh && chartFresh) {
-      return this.assembleResponse(cached, cachedChart.data as any[], upperSymbol);
+      const report = await prisma.researchReport.findFirst({
+        where: { symbol: upperSymbol },
+        orderBy: { createdAt: "desc" },
+      });
+      return this.assembleResponse(cached, cachedChart.data as any[], report?.recommendation ?? null, report?.confidence ?? null);
     }
 
     // Stale-while-revalidate: return stale if available, refresh in background
@@ -34,7 +38,11 @@ class TickerProfileService {
       this.refreshProfile(upperSymbol).catch((err) =>
         console.error(`Background refresh failed for ${upperSymbol}:`, err)
       );
-      return this.assembleResponse(cached, cachedChart.data as any[], upperSymbol);
+      const report = await prisma.researchReport.findFirst({
+        where: { symbol: upperSymbol },
+        orderBy: { createdAt: "desc" },
+      });
+      return this.assembleResponse(cached, cachedChart.data as any[], report?.recommendation ?? null, report?.confidence ?? null);
     }
 
     // No cache at all — must fetch synchronously
@@ -58,10 +66,15 @@ class TickerProfileService {
 
       if (cached && cachedChart) {
         const now = new Date();
-        results[upper] = await this.assembleResponse(
+        const report = await prisma.researchReport.findFirst({
+          where: { symbol: upper },
+          orderBy: { createdAt: "desc" },
+        });
+        results[upper] = this.assembleResponse(
           cached,
           cachedChart.data as any[],
-          upper
+          report?.recommendation ?? null,
+          report?.confidence ?? null,
         );
         if (cached.expiresAt <= now || cachedChart.expiresAt <= now) {
           this.refreshProfile(upper).catch((err) =>
@@ -190,19 +203,15 @@ class TickerProfileService {
       });
     }
 
-    return this.assembleResponse(profileData, chartData, symbol);
+    return this.assembleResponse(profileData, chartData, report?.recommendation ?? null, report?.confidence ?? null);
   }
 
-  private async assembleResponse(
+  private assembleResponse(
     profile: any,
     chartData: { date: string; close: number }[],
-    symbol: string
-  ): Promise<TickerProfileResponse> {
-    const report = await prisma.researchReport.findFirst({
-      where: { symbol },
-      orderBy: { createdAt: "desc" },
-    });
-
+    recommendation: string | null,
+    confidence: number | null,
+  ): TickerProfileResponse {
     return {
       symbol: profile.symbol,
       companyName: profile.companyName,
@@ -214,8 +223,8 @@ class TickerProfileService {
       peRatio: profile.peRatio,
       dividendYield: profile.dividendYield,
       chart: chartData,
-      recommendation: (report?.recommendation as any) ?? null,
-      confidence: report?.confidence ?? null,
+      recommendation: recommendation as any,
+      confidence,
     };
   }
 
