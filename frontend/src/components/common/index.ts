@@ -11,3 +11,4 @@ export { PageLoadingSkeleton } from "./LoadingSkeleton";
 export { PageHeader } from "./PageHeader";
 export { RecommendationBadge } from "./RecommendationBadge";
 export { SortableHead } from "./SortableHead";
+export { TickerHoverCard } from "./TickerHoverCard";
