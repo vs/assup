@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AlertTriangle, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,6 +14,8 @@ import { taxesApi } from "@/api/taxes";
 import type { TaxOptionTrade } from "@assup/shared";
 import { OptionLotTraceModal } from "./OptionLotTraceModal";
 import { formatCzk, formatUsd } from "./formatters";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
+import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 
 interface Props {
   year: number;
@@ -25,6 +27,18 @@ export function OptionTradesTable({ year }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const { prefetch } = useTickerProfileContext();
+
+  const uniqueSymbols = useMemo(
+    () => [...new Set(trades.map((t) => t.symbol))],
+    [trades]
+  );
+
+  useEffect(() => {
+    if (uniqueSymbols.length) {
+      prefetch(uniqueSymbols);
+    }
+  }, [uniqueSymbols, prefetch]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -115,7 +129,9 @@ export function OptionTradesTable({ year }: Props) {
                 >
                   <TableCell>{trade.dateClosed}</TableCell>
                   <TableCell>
-                    <div className="font-medium">{trade.symbol}</div>
+                    <TickerHoverCard symbol={trade.symbol}>
+                      <span className="cursor-default font-medium">{trade.symbol}</span>
+                    </TickerHoverCard>
                     <div className="text-xs text-muted-foreground">
                       {trade.description}
                     </div>
