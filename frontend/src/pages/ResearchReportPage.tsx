@@ -10,6 +10,7 @@ import type {
   CollectionDataEntry,
 } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1224,14 +1225,16 @@ export function ResearchReportPage() {
         </Button>
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
-            <a
-              href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-2xl font-bold hover:text-primary hover:underline"
-            >
-              {symbol}
-            </a>
+            <TickerHoverCard symbol={symbol}>
+              <a
+                href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-2xl font-bold hover:text-primary hover:underline"
+              >
+                {symbol}
+              </a>
+            </TickerHoverCard>
             <ExternalLinks symbol={symbol} />
           </span>
           {report && (
