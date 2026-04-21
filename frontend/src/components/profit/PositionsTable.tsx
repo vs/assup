@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ExternalLinks, SortableHead } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
 import { useTableSort } from "@/hooks/useTableSort";
@@ -112,14 +113,16 @@ export function PositionsTable({
             <TableRow key={pos.displayName}>
               <TableCell>
                 <div className="flex items-center">
-                  <a
-                    href={`https://www.tradingview.com/chart/?symbol=${pos.underlying}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium hover:text-primary hover:underline"
-                  >
-                    {pos.displayName}
-                  </a>
+                  <TickerHoverCard symbol={pos.underlying}>
+                    <a
+                      href={`https://www.tradingview.com/chart/?symbol=${pos.underlying}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium hover:text-primary hover:underline"
+                    >
+                      {pos.displayName}
+                    </a>
+                  </TickerHoverCard>
                   <ExternalLinks symbol={pos.underlying} />
                 </div>
               </TableCell>
