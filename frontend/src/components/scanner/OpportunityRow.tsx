@@ -3,6 +3,7 @@ import { formatCurrency, formatDisplayName } from "@assup/shared";
 import type { ExtendedOptionOpportunity } from "./types";
 import { Button } from "@/components/ui/button";
 import { ExternalLinks } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 
 interface OpportunityRowProps {
   opportunity: ExtendedOptionOpportunity;
@@ -86,14 +87,16 @@ export const OpportunityRow = memo(function OpportunityRow({
       style={{ gridTemplateColumns: gridCols }}
     >
       <div className="pl-14 font-medium flex items-center">
-        <a
-          href={`https://www.tradingview.com/chart/?symbol=${opp.symbol}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-primary hover:underline"
-        >
-          {contractName}
-        </a>
+        <TickerHoverCard symbol={opp.symbol}>
+          <a
+            href={`https://www.tradingview.com/chart/?symbol=${opp.symbol}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-primary hover:underline"
+          >
+            {contractName}
+          </a>
+        </TickerHoverCard>
         <ExternalLinks symbol={opp.symbol} />
       </div>
       <div className="text-right font-mono pr-2">

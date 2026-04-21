@@ -3,6 +3,7 @@ import { formatCurrency, formatNumber, calculatePositionExposure } from "@assup/
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { AssetClassSelect, ExternalLinks } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { Sparkline } from "@/components/Sparkline";
 
 interface PositionRowProps {
@@ -46,14 +47,16 @@ export function PositionRow({
             <span className="font-medium">{position.symbol}</span>
           ) : (
             <>
-              <a
-                href={`https://www.tradingview.com/chart/?symbol=${position.underlying || position.symbol}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium hover:text-primary hover:underline"
-              >
-                {position.symbol}
-              </a>
+              <TickerHoverCard symbol={position.underlying || position.symbol}>
+                <a
+                  href={`https://www.tradingview.com/chart/?symbol=${position.underlying || position.symbol}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium hover:text-primary hover:underline"
+                >
+                  {position.symbol}
+                </a>
+              </TickerHoverCard>
               <ExternalLinks symbol={position.underlying || position.symbol} />
             </>
           )}

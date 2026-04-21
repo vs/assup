@@ -35,6 +35,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks, SortableHead } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
+import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { PositionsTable } from "@/components/profit/PositionsTable";
 import { ChartModal } from "@/components/ChartModal";
@@ -138,6 +140,20 @@ export function ProfitPage() {
   const handleYearChange = useCallback((year: number) => {
     setSelectedYear(year);
   }, []);
+
+  const { prefetch } = useTickerProfileContext();
+
+  useEffect(() => {
+    if (!monthlyData) return;
+    const symbols = new Set<string>();
+    for (const month of monthlyData.months) {
+      month.realized?.closedTrades?.forEach((t: any) => symbols.add(t.underlying));
+      month.realized?.stockTrades?.forEach((t: any) => symbols.add(t.symbol));
+    }
+    if (symbols.size > 0) {
+      prefetch([...symbols]);
+    }
+  }, [monthlyData, prefetch]);
 
   const toggleMonth = (key: string) => {
     setExpandedMonths((prev) => {
@@ -495,14 +511,16 @@ function MonthProfitCard({
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center">
-                                  <a
-                                    href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-medium hover:text-primary hover:underline"
-                                  >
-                                    {formatTradeDisplayName(trade)}
-                                  </a>
+                                  <TickerHoverCard symbol={trade.underlying}>
+                                    <a
+                                      href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-medium hover:text-primary hover:underline"
+                                    >
+                                      {formatTradeDisplayName(trade)}
+                                    </a>
+                                  </TickerHoverCard>
                                   <ExternalLinks symbol={trade.underlying} />
                                 </div>
                               </TableCell>
@@ -584,14 +602,16 @@ function MonthProfitCard({
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center">
-                                  <a
-                                    href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-medium hover:text-primary hover:underline"
-                                  >
-                                    {trade.symbol}
-                                  </a>
+                                  <TickerHoverCard symbol={trade.symbol}>
+                                    <a
+                                      href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-medium hover:text-primary hover:underline"
+                                    >
+                                      {trade.symbol}
+                                    </a>
+                                  </TickerHoverCard>
                                   <ExternalLinks symbol={trade.symbol} />
                                 </div>
                               </TableCell>
@@ -1009,14 +1029,16 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center">
-                      <a
-                        href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium hover:text-primary hover:underline"
-                      >
-                        {formatTradeDisplayName(trade)}
-                      </a>
+                      <TickerHoverCard symbol={trade.underlying}>
+                        <a
+                          href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium hover:text-primary hover:underline"
+                        >
+                          {formatTradeDisplayName(trade)}
+                        </a>
+                      </TickerHoverCard>
                       <ExternalLinks symbol={trade.underlying} />
                     </div>
                   </TableCell>
@@ -1098,14 +1120,16 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center">
-                      <a
-                        href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium hover:text-primary hover:underline"
-                      >
-                        {trade.symbol}
-                      </a>
+                      <TickerHoverCard symbol={trade.symbol}>
+                        <a
+                          href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium hover:text-primary hover:underline"
+                        >
+                          {trade.symbol}
+                        </a>
+                      </TickerHoverCard>
                       <ExternalLinks symbol={trade.symbol} />
                     </div>
                   </TableCell>

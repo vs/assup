@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AlertTriangle, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -13,6 +13,8 @@ import { taxesApi } from "@/api/taxes";
 import type { TaxStockTrade } from "@assup/shared";
 import { LotTraceModal } from "./LotTraceModal";
 import { formatCzk, formatUsd } from "./formatters";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
+import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 
 interface Props {
   year: number;
@@ -24,6 +26,18 @@ export function StockTradesTable({ year }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const { prefetch } = useTickerProfileContext();
+
+  const uniqueSymbols = useMemo(
+    () => [...new Set(trades.map((t) => t.symbol))],
+    [trades]
+  );
+
+  useEffect(() => {
+    if (uniqueSymbols.length) {
+      prefetch(uniqueSymbols);
+    }
+  }, [uniqueSymbols, prefetch]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -105,7 +119,11 @@ export function StockTradesTable({ year }: Props) {
                   onClick={() => setSelectedSymbol(trade.symbol)}
                 >
                   <TableCell>{trade.dateClosed}</TableCell>
-                  <TableCell className="font-medium">{trade.symbol}</TableCell>
+                  <TableCell className="font-medium">
+                    <TickerHoverCard symbol={trade.symbol}>
+                      <span className="cursor-default">{trade.symbol}</span>
+                    </TickerHoverCard>
+                  </TableCell>
                   <TableCell className="text-right">{trade.quantity}</TableCell>
                   <TableCell>{trade.dateOpened || "—"}</TableCell>
                   <TableCell className="text-right">

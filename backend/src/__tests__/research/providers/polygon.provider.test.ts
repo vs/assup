@@ -105,6 +105,45 @@ describe("PolygonProvider", () => {
     });
   });
 
+  describe("getTickerDetails", () => {
+    it("returns ticker details for a valid symbol", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            results: {
+              ticker: "AAPL",
+              name: "Apple Inc.",
+              description: "Apple Inc. designs, manufactures, and markets smartphones and personal computers.",
+              sic_description: "Electronic Computers",
+              type: "CS",
+              market_cap: 3400000000000,
+            },
+          }),
+      } as Response);
+
+      const provider = createPolygonProvider();
+      const details = await (provider as any).getTickerDetails("AAPL");
+
+      expect(details.name).toBe("Apple Inc.");
+      expect(details.description).toContain("Apple");
+      expect(details.industry).toBe("Electronic Computers");
+      expect(details.marketCap).toBe(3400000000000);
+    });
+
+    it("throws on unknown symbol", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ results: null }),
+      } as Response);
+
+      const provider = createPolygonProvider();
+      await expect((provider as any).getTickerDetails("XXXXX")).rejects.toThrow();
+    });
+  });
+
   describe("searchTickers", () => {
     it("returns enriched results with snapshot data", async () => {
       let callCount = 0;

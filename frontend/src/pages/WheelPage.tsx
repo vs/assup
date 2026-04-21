@@ -16,6 +16,8 @@ import {
   ErrorAlert,
   PageLoadingSkeleton,
 } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
+import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks";
@@ -79,6 +81,14 @@ export function WheelPage() {
     [data?.tickers]
   );
   const { getSparklineState } = useSparklines(sparklineSymbols);
+
+  const { prefetch } = useTickerProfileContext();
+
+  useEffect(() => {
+    if (data?.tickers?.length) {
+      prefetch(data.tickers.map((t: any) => t.symbol));
+    }
+  }, [data?.tickers, prefetch]);
 
   const loadData = useCallback(async () => {
     try {
@@ -403,7 +413,11 @@ function WheelTickerCard({
       >
         <div className="flex items-center">
           <div className="flex items-center gap-3 w-[200px] shrink-0">
-            <CardTitle className="text-lg">{ticker.symbol}</CardTitle>
+            <CardTitle className="text-lg">
+              <TickerHoverCard symbol={ticker.symbol}>
+                <span className="cursor-default">{ticker.symbol}</span>
+              </TickerHoverCard>
+            </CardTitle>
             <Badge className={phaseColors[ticker.currentPhase]}>
               {phaseLabels[ticker.currentPhase]}
             </Badge>
