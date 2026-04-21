@@ -7,6 +7,7 @@ import { useSparklines } from "@/hooks/useSparklines";
 import { usePositionFilters } from "@/hooks/usePositionFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { PositionFilters, PositionSummaryCards, PositionTable } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
 
@@ -145,6 +146,15 @@ export function PositionsPage() {
   }, [filteredPositions]);
 
   const { getSparklineState } = useSparklines(sparklineSymbols);
+
+  const { prefetch } = useTickerProfileContext();
+
+  useEffect(() => {
+    if (positions.length) {
+      const symbols = [...new Set(positions.map((p) => p.underlying || p.symbol).filter(Boolean))];
+      prefetch(symbols);
+    }
+  }, [positions, prefetch]);
 
   const getPositionSparkline = useCallback((pos: Position) => {
     if (pos.secType === "CASH") {
