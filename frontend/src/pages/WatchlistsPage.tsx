@@ -16,6 +16,8 @@ import {
   ExternalLinks,
   RecommendationBadge,
 } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
+import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -225,6 +227,14 @@ export function WatchlistsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const { prefetch } = useTickerProfileContext();
+
+  useEffect(() => {
+    if (selectedWatchlist?.items?.length) {
+      prefetch(selectedWatchlist.items.map((item) => item.symbol));
+    }
+  }, [selectedWatchlist, prefetch]);
 
   async function selectWatchlist(id: string) {
     try {
@@ -856,14 +866,16 @@ function TickerRow({
       {/* Symbol */}
       <TableCell>
         <span className="inline-flex items-center gap-1">
-          <a
-            href={`https://www.tradingview.com/chart/?symbol=${item.symbol}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium hover:text-primary hover:underline"
-          >
-            {item.symbol}
-          </a>
+          <TickerHoverCard symbol={item.symbol}>
+            <a
+              href={`https://www.tradingview.com/chart/?symbol=${item.symbol}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:text-primary hover:underline"
+            >
+              {item.symbol}
+            </a>
+          </TickerHoverCard>
           <ExternalLinks symbol={item.symbol} />
         </span>
       </TableCell>
