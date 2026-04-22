@@ -15,6 +15,7 @@ interface QueuedRequest {
   symbol: string;
   resolve: (data: PricePoint[]) => void;
   reject: (error: Error) => void;
+  duration?: string;
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -47,6 +48,28 @@ class HistoricalDataService {
     // Queue the request
     return new Promise((resolve, reject) => {
       this.requestQueue.push({ symbol, resolve, reject });
+      this.processQueue();
+    });
+  }
+
+  async getLongTermData(symbol: string, duration = "3 Y"): Promise<PricePoint[]> {
+    const cacheKey = `${this.getCacheKey(symbol)}:${duration}`;
+
+    const cached = this.cache.get(cacheKey);
+    if (cached && this.isCacheValid(cached)) {
+      return cached.data;
+    }
+
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({
+        symbol,
+        resolve: (data) => {
+          this.cache.set(cacheKey, { data, timestamp: Date.now() });
+          resolve(data);
+        },
+        reject,
+        duration,
+      });
       this.processQueue();
     });
   }
@@ -93,7 +116,7 @@ class HistoricalDataService {
         this.activeRequests++;
 
         // Process this request without awaiting - allow parallelism
-        this.fetchFromTWS(request.symbol)
+        this.fetchFromTWS(request.symbol, request.duration)
           .then((data) => {
             this.cache.set(cacheKey, { data, timestamp: Date.now() });
             request.resolve(data);
@@ -125,12 +148,15 @@ class HistoricalDataService {
     this.isProcessing = false;
   }
 
-  private async fetchFromTWS(symbol: string): Promise<PricePoint[]> {
+  private async fetchFromTWS(symbol: string, duration = "7 D"): Promise<PricePoint[]> {
     if (!ibkrService.isConnected()) {
       throw new Error("Not connected to TWS");
     }
 
     const contract = new Stock(symbol.toUpperCase(), "SMART", "USD");
+
+    // For long durations, use weekly bars to reduce data volume
+    const barSize = duration === "7 D" ? BarSizeSetting.DAYS_ONE : BarSizeSetting.WEEKS_ONE;
 
     // Try TRADES first, fallback to MIDPOINT if we get a warning
     const whatToShowOptions = [WhatToShow.TRADES, WhatToShow.MIDPOINT];
@@ -140,8 +166,8 @@ class HistoricalDataService {
         const bars = await ibkrService.getHistoricalData({
           contract,
           endDateTime: "",
-          duration: "7 D",
-          barSizeSetting: BarSizeSetting.DAYS_ONE,
+          duration,
+          barSizeSetting: barSize,
           whatToShow,
           useRth: true,
           formatDate: 1,

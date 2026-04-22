@@ -33,20 +33,26 @@ vi.mock("../../services/research/providers/polygon.provider.js", () => ({
         marketCap: 3400000000000,
       };
     }
-    async getHistoricalOHLCV() {
-      return [
-        { date: "2023-01-03", open: 130, high: 131, low: 129, close: 130.5, volume: 1000000 },
-        { date: "2023-01-04", open: 131, high: 132, low: 130, close: 131.5, volume: 1100000 },
-      ];
-    }
+  },
+}));
+
+// Mock historical data service (TWS)
+vi.mock("../../services/historicalData.js", () => ({
+  historicalDataService: {
+    getLongTermData: vi.fn(),
   },
 }));
 
 import { tickerProfileService } from "../../services/tickerProfile.service.js";
+import { historicalDataService } from "../../services/historicalData.js";
 
 describe("TickerProfileService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (historicalDataService.getLongTermData as any).mockResolvedValue([
+      { date: "2023-01-06", close: 130.5 },
+      { date: "2023-01-13", close: 131.5 },
+    ]);
   });
 
   it("builds a profile response with chart and no research report", async () => {

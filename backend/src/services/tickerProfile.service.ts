@@ -1,9 +1,10 @@
 import { prisma } from "../db/index.js";
 import { PolygonProvider, type TickerDetails } from "./research/providers/polygon.provider.js";
+import { historicalDataService } from "./historicalData.js";
 import type { TickerProfileResponse } from "@assup/shared";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const MAX_CONCURRENT_FETCHES = 5;
+const MAX_CONCURRENT_FETCHES = 2;
 
 class TickerProfileService {
   private polygonProvider = new PolygonProvider();
@@ -120,22 +121,12 @@ class TickerProfileService {
       console.warn(`Polygon ticker details failed for ${symbol}:`, err);
     }
 
-    // 3. Fetch chart data from Polygon.io
+    // 3. Fetch chart data from TWS (3-year weekly bars)
     let chartData: { date: string; close: number }[] = [];
     try {
-      const threeYearsAgo = new Date();
-      threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
-      const from = threeYearsAgo.toISOString().split("T")[0];
-      const to = new Date().toISOString().split("T")[0];
-      const ohlcv = await this.polygonProvider.getHistoricalOHLCV(
-        symbol,
-        from,
-        to,
-        "day"
-      );
-      chartData = ohlcv.map((d) => ({ date: d.date, close: d.close }));
+      chartData = await historicalDataService.getLongTermData(symbol, "3 Y");
     } catch (err) {
-      console.warn(`Polygon historical data failed for ${symbol}:`, err);
+      console.warn(`TWS historical data failed for ${symbol}:`, err);
     }
 
     // 4. Check for recent fundamentals analysis

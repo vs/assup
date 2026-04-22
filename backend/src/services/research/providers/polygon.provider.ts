@@ -9,6 +9,13 @@ import type {
 } from "./types.js";
 
 const BASE_URL = "https://api.polygon.io";
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 15_000; // 15s base delay on 429
+
+function getMinRequestInterval(): number {
+  const rpm = parseInt(process.env.POLYGON_RATE_LIMIT_RPM || "5", 10);
+  return Math.ceil(60_000 / rpm);
+}
 
 export interface TickerDetails {
   name: string;
@@ -17,6 +24,16 @@ export interface TickerDetails {
   industry: string | null;
   type: string | null;
   marketCap: number | null;
+}
+
+// Shared rate limiter across all PolygonProvider instances
+let lastRequestTime = 0;
+let requestQueue: Promise<void> = Promise.resolve();
+
+/** Reset rate limiter state — for tests only */
+export function _resetRateLimiter(): void {
+  lastRequestTime = 0;
+  requestQueue = Promise.resolve();
 }
 
 export class PolygonProvider implements MarketDataProvider {
@@ -30,7 +47,29 @@ export class PolygonProvider implements MarketDataProvider {
     }
   }
 
-  private async fetch<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+  private async rateLimitedFetch<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+    // Chain onto the queue so requests are serialized
+    return new Promise<T>((resolve, reject) => {
+      requestQueue = requestQueue.then(async () => {
+        try {
+          const result = await this.fetchWithRetry<T>(path, params);
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+  }
+
+  private async fetchWithRetry<T>(path: string, params: Record<string, string>, attempt = 0): Promise<T> {
+    // Enforce minimum interval between requests
+    const now = Date.now();
+    const elapsed = now - lastRequestTime;
+    if (elapsed < getMinRequestInterval()) {
+      await new Promise((r) => setTimeout(r, getMinRequestInterval() - elapsed));
+    }
+    lastRequestTime = Date.now();
+
     const url = new URL(path, BASE_URL);
     url.searchParams.set("apiKey", this.apiKey);
     for (const [key, value] of Object.entries(params)) {
@@ -38,11 +77,24 @@ export class PolygonProvider implements MarketDataProvider {
     }
 
     const response = await globalThis.fetch(url.toString());
+
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      console.warn(`Polygon 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise((r) => setTimeout(r, delay));
+      lastRequestTime = Date.now();
+      return this.fetchWithRetry<T>(path, params, attempt + 1);
+    }
+
     if (!response.ok) {
       const body = await response.text();
       throw new Error(`Polygon API error ${response.status}: ${body}`);
     }
     return response.json() as Promise<T>;
+  }
+
+  private async fetch<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+    return this.rateLimitedFetch<T>(path, params);
   }
 
   async getQuote(symbol: string): Promise<QuoteData> {

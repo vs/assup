@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createPolygonProvider } from "../../../services/research/providers/polygon.provider.js";
+import { createPolygonProvider, _resetRateLimiter } from "../../../services/research/providers/polygon.provider.js";
 import type { MarketDataProvider } from "../../../services/research/providers/types.js";
 
 describe("PolygonProvider", () => {
@@ -8,6 +8,8 @@ describe("PolygonProvider", () => {
 
   beforeEach(() => {
     process.env.MARKET_DATA_API_KEY = "test-key";
+    process.env.POLYGON_RATE_LIMIT_RPM = "60000";
+    _resetRateLimiter();
     provider = createPolygonProvider();
   });
 
