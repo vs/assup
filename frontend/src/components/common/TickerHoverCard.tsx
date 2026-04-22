@@ -112,17 +112,17 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
             {/* Tags */}
             <div className="flex gap-1.5 flex-wrap">
               {profile.sector && (
-                <span className="text-[11px] px-2 py-0.5 rounded bg-blue-950 text-blue-400">
+                <span className="text-[11px] px-2 py-0.5 rounded bg-muted text-muted-foreground">
                   {profile.sector}
                 </span>
               )}
               {profile.industry && (
-                <span className="text-[11px] px-2 py-0.5 rounded bg-blue-950 text-blue-400">
+                <span className="text-[11px] px-2 py-0.5 rounded bg-muted text-muted-foreground">
                   {profile.industry}
                 </span>
               )}
               {profile.marketPosition && (
-                <span className="text-[11px] px-2 py-0.5 rounded bg-green-950 text-green-400">
+                <span className="text-[11px] px-2 py-0.5 rounded bg-muted text-muted-foreground">
                   {profile.marketPosition}
                 </span>
               )}
@@ -130,7 +130,7 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
 
             {/* Description */}
             {profile.description && (
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
                 {profile.description}
               </p>
             )}
