@@ -8,7 +8,7 @@ import {
   Search,
   TrendingUp,
   RefreshCw,
-  Receipt,
+  Landmark,
   Menu,
   X,
 } from "lucide-react";
@@ -46,7 +46,7 @@ const navItems = [
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
-  { to: "/taxes", label: "Taxes", icon: Receipt },
+  { to: "/taxes", label: "Taxes", icon: Landmark },
 ];
 
 export function Navigation() {
