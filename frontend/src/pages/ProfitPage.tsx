@@ -36,7 +36,6 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks, SortableHead } from "@/components/common";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
-import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { PositionsTable } from "@/components/profit/PositionsTable";
 import { ChartModal } from "@/components/ChartModal";
@@ -140,20 +139,6 @@ export function ProfitPage() {
   const handleYearChange = useCallback((year: number) => {
     setSelectedYear(year);
   }, []);
-
-  const { prefetch } = useTickerProfileContext();
-
-  useEffect(() => {
-    if (!monthlyData) return;
-    const symbols = new Set<string>();
-    for (const month of monthlyData.months) {
-      month.realized?.closedTrades?.forEach((t: any) => symbols.add(t.underlying));
-      month.realized?.stockTrades?.forEach((t: any) => symbols.add(t.symbol));
-    }
-    if (symbols.size > 0) {
-      prefetch([...symbols]);
-    }
-  }, [monthlyData, prefetch]);
 
   const toggleMonth = (key: string) => {
     setExpandedMonths((prev) => {
