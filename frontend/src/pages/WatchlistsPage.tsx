@@ -5,7 +5,6 @@ import type {
   WatchlistWithItems,
   WatchlistItem,
   AssetClass,
-  MacroAnalysis,
   Recommendation,
   SparklinePoint,
 } from "@assup/shared";
@@ -51,7 +50,6 @@ import {
 import { ChartModal } from "@/components/ChartModal";
 import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
-import { MacroBanner } from "@/components/research/MacroBanner";
 import { ScannerDialog } from "@/components/research/ScannerDialog";
 import { Link } from "react-router-dom";
 import {
@@ -76,10 +74,6 @@ export function WatchlistsPage() {
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Macro state
-  const [macro, setMacro] = useState<MacroAnalysis | null>(null);
-  const [refreshingMacro, setRefreshingMacro] = useState(false);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -212,16 +206,6 @@ export function WatchlistsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  // Load macro on mount
-  useEffect(() => {
-    researchApi
-      .refreshMacro()
-      .then(setMacro)
-      .catch(() => {
-        // Macro is best-effort; don't block the page
-      });
   }, []);
 
   useEffect(() => {
@@ -522,20 +506,6 @@ export function WatchlistsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Macro Banner */}
-      <MacroBanner
-        macro={macro}
-        onRefresh={() => {
-          setRefreshingMacro(true);
-          researchApi
-            .refreshMacro()
-            .then(setMacro)
-            .catch(() => {})
-            .finally(() => setRefreshingMacro(false));
-        }}
-        refreshing={refreshingMacro}
-      />
-
       {/* Toolbar */}
       <div className="flex items-center justify-between">
         <div>
