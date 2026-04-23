@@ -1,6 +1,8 @@
 import { NavLink } from "react-router-dom";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import { ConnectionStatusPopup } from "@/components/ConnectionStatus";
 import {
   LayoutDashboard,
   Briefcase,
@@ -9,6 +11,7 @@ import {
   TrendingUp,
   RefreshCw,
   Landmark,
+  Settings,
   Menu,
   X,
 } from "lucide-react";
@@ -18,15 +21,16 @@ interface NavItemProps {
   children: React.ReactNode;
   icon: React.ComponentType<{ className?: string }>;
   onClick?: () => void;
+  badge?: React.ReactNode;
 }
 
-function NavItem({ to, children, icon: Icon, onClick }: NavItemProps) {
+function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
   return (
     <NavLink
       to={to}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+        `relative flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
           isActive
             ? "bg-primary text-primary-foreground"
             : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -35,6 +39,7 @@ function NavItem({ to, children, icon: Icon, onClick }: NavItemProps) {
     >
       <Icon className="h-4 w-4" />
       {children}
+      {badge}
     </NavLink>
   );
 }
@@ -54,6 +59,20 @@ export function Navigation() {
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
 
+  const { status, sseError } = useConnectionStatus();
+  const isConnected = status.connected;
+  const [isHovering, setIsHovering] = useState(false);
+
+  const connectionDot = (
+    <span
+      className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${
+        isConnected
+          ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)] animate-breathing"
+          : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]"
+      }`}
+    />
+  );
+
   return (
     <>
       {/* Desktop Navigation */}
@@ -63,6 +82,18 @@ export function Navigation() {
             {item.label}
           </NavItem>
         ))}
+        <div
+          className="relative"
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
+        >
+          <NavItem to="/settings" icon={Settings} badge={connectionDot}>
+            Settings
+          </NavItem>
+          {isHovering && (
+            <ConnectionStatusPopup status={status} sseError={sseError} />
+          )}
+        </div>
       </nav>
 
       {/* Mobile Menu Button */}
@@ -108,6 +139,14 @@ export function Navigation() {
                   {item.label}
                 </NavItem>
               ))}
+              <NavItem
+                to="/settings"
+                icon={Settings}
+                onClick={closeMobileMenu}
+                badge={connectionDot}
+              >
+                Settings
+              </NavItem>
             </div>
           </nav>
         </div>

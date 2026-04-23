@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { Navigation } from "./Navigation";
-import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { HeaderFearGauge } from "@/components/common/HeaderFearGauge";
 import { useSSEConnection } from "@/hooks/useSSE";
 import { setDockBadge, isTauri } from "@/lib/tauriIntegration";
@@ -29,10 +28,7 @@ export function Layout() {
             </a>
             <Navigation />
           </div>
-          <div className="flex items-center gap-4">
-            <HeaderFearGauge />
-            <ConnectionStatus />
-          </div>
+          <HeaderFearGauge />
         </div>
       </header>
       <main className="max-w-[1800px] mx-auto px-4 py-4 md:py-8 flex-1 w-full">
