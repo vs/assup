@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { researchApi } from "@/api";
+import { researchApi, settingsApi } from "@/api";
 import type {
   ResearchReport,
   AnalysisResult,
@@ -10,7 +10,7 @@ import type {
   CollectionDataEntry,
 } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
-import { TickerHoverCard } from "@/components/common/TickerHoverCard";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   ChevronDown,
   Activity,
+  RefreshCw,
 } from "lucide-react";
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import {
@@ -1149,6 +1150,9 @@ export function ResearchReportPage() {
   const [skipped, setSkipped] = useState<CollectionStatus[]>([]);
   const [collections, setCollections] = useState<CollectionDataEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const { data: profile } = useTickerProfile(symbol ?? null);
 
@@ -1179,6 +1183,48 @@ export function ResearchReportPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleAnalyze = useCallback(async () => {
+    if (!symbol || generating) return;
+    setGenerating(true);
+    setGenerateProgress(null);
+    setGenerateError(null);
+    try {
+      const researchSettings = await settingsApi
+        .get<{ synthesizerMode: string; model?: string }>("research")
+        .then((r) => r.value)
+        .catch(() => ({ synthesizerMode: undefined, model: undefined }));
+
+      const { jobId } = await researchApi.generate(symbol, {
+        force: true,
+        mode: researchSettings.synthesizerMode,
+        model: researchSettings.model,
+      });
+
+      const maxAttempts = 150;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const job = await researchApi.getJob(jobId);
+        if (job.progress) setGenerateProgress(job.progress);
+        if (job.status === "completed") {
+          fetchData();
+          return;
+        }
+        if (job.status === "failed") {
+          setGenerateError(job.error || `Report generation failed for ${symbol}`);
+          return;
+        }
+      }
+      setGenerateError(`Report generation timed out for ${symbol}`);
+    } catch (err) {
+      setGenerateError(
+        err instanceof Error ? err.message : `Failed to generate report for ${symbol}`
+      );
+    } finally {
+      setGenerating(false);
+      setGenerateProgress(null);
+    }
+  }, [symbol, generating, fetchData]);
 
   if (!symbol) {
     return (
@@ -1231,7 +1277,7 @@ export function ResearchReportPage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate("/analysis")}
+          onClick={() => navigate(-1)}
           className="gap-1"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -1239,16 +1285,7 @@ export function ResearchReportPage() {
         </Button>
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
-            <TickerHoverCard symbol={symbol}>
-              <a
-                href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-2xl font-bold hover:text-primary hover:underline"
-              >
-                {symbol}
-              </a>
-            </TickerHoverCard>
+            <span className="text-2xl font-bold">{symbol}</span>
             <ExternalLinks symbol={symbol} />
           </span>
           {report && (
@@ -1257,6 +1294,16 @@ export function ResearchReportPage() {
               confidence={report.confidence}
             />
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAnalyze}
+            disabled={generating}
+            className="gap-1.5"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
+            {generating ? (generateProgress || "Analyzing...") : "Analyze"}
+          </Button>
         </div>
         {report && (
           <span className="text-sm text-muted-foreground ml-auto">
@@ -1264,6 +1311,12 @@ export function ResearchReportPage() {
           </span>
         )}
       </div>
+
+      {generateError && (
+        <div className="text-sm text-destructive bg-destructive/10 rounded px-3 py-2">
+          {generateError}
+        </div>
+      )}
 
       {/* Profile Card */}
       {profile && (
@@ -1478,9 +1531,18 @@ export function ResearchReportPage() {
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             <p className="font-medium">No report available for {symbol}</p>
-            <p className="text-sm mt-1">
-              Go back and click &quot;Generate&quot; to create a report.
+            <p className="text-sm mt-1 mb-3">
+              Click Analyze to generate a research report.
             </p>
+            <Button
+              variant="default"
+              onClick={handleAnalyze}
+              disabled={generating}
+              className="gap-1.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
+              {generating ? "Analyzing..." : "Analyze"}
+            </Button>
           </CardContent>
         </Card>
       )}
