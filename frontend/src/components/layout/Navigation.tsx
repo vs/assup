@@ -6,7 +6,7 @@ import { ConnectionStatusPopup } from "@/components/ConnectionStatus";
 import {
   LayoutDashboard,
   Briefcase,
-  FlaskConical,
+  List,
   Search,
   TrendingUp,
   RefreshCw,
@@ -47,7 +47,7 @@ function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/positions", label: "Positions", icon: Briefcase },
-  { to: "/analysis", label: "Analysis", icon: FlaskConical },
+  { to: "/analysis", label: "Watchlists", icon: List },
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
