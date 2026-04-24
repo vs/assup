@@ -17,7 +17,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Trash2,
+  X,
   Square,
 } from "lucide-react";
 
@@ -159,7 +159,7 @@ export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowP
               onClick={() => onDelete(job.id)}
               title="Delete job"
             >
-              <Trash2 className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </Button>
           )}
         </div>

@@ -1280,22 +1280,22 @@ export function ResearchReportPage() {
               confidence={report.confidence}
             />
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAnalyze}
-            disabled={generating}
-            className="gap-1.5"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
-            {generating ? (generateProgress || "Analyzing...") : "Analyze"}
-          </Button>
         </div>
         {report && (
           <span className="text-sm text-muted-foreground ml-auto">
             Updated {timeAgo(report.createdAt)}
           </span>
         )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAnalyze}
+          disabled={generating}
+          className={`gap-1.5${!report ? " ml-auto" : ""}`}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
+          {generating ? (generateProgress || "Updating...") : "Update"}
+        </Button>
       </div>
 
       {generateError && (
@@ -1439,7 +1439,7 @@ export function ResearchReportPage() {
           <CardContent className="py-8 text-center text-muted-foreground">
             <p className="font-medium">No report available for {symbol}</p>
             <p className="text-sm mt-1 mb-3">
-              Click Analyze to generate a research report.
+              Click Update to generate a research report.
             </p>
             <Button
               variant="default"
@@ -1448,7 +1448,7 @@ export function ResearchReportPage() {
               className="gap-1.5"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
-              {generating ? "Analyzing..." : "Analyze"}
+              {generating ? "Updating..." : "Update"}
             </Button>
           </CardContent>
         </Card>

@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Pencil, Trash2, Plus, AlertCircle, Check } from "lucide-react";
+import { Pencil, X, Plus, AlertCircle, Check } from "lucide-react";
 import { ASSET_CLASS_COLORS } from "@assup/shared";
 
 interface AssetClassWithAllocation extends AssetClass {
@@ -346,7 +346,7 @@ export function AssetClassesSection() {
                             size="icon"
                             onClick={() => handleDelete(ac)}
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <X className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>

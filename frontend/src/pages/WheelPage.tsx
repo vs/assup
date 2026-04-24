@@ -22,7 +22,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, ChevronDown, ChevronUp, Search } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronUp, Search } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -231,7 +231,7 @@ export function WheelPage() {
                                 handleDismissSuggestion(s.symbol);
                               }}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <X className="h-4 w-4" />
                             </Button>
                           </div>
                         </DropdownMenuItem>
@@ -487,7 +487,7 @@ function WheelTickerCard({
                 onRemove();
               }}
             >
-              <Trash2 className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </Button>
             {isExpanded ? (
               <ChevronUp className="h-5 w-5" />

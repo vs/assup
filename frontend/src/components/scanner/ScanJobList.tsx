@@ -6,7 +6,7 @@ import type { ScanJob } from "@assup/shared";
 import { ScanJobRow } from "./ScanJobRow";
 import type { ExtendedOptionOpportunity } from "./types";
 import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { X } from "lucide-react";
 
 interface ScanJobListProps {
   jobs: ScanJob[];
@@ -37,7 +37,7 @@ export function ScanJobList({
         <h3 className="text-lg font-semibold">Scan Jobs</h3>
         {completedJobs.length > 1 && (
           <Button variant="outline" size="sm" onClick={onClearAll}>
-            <Trash2 className="h-4 w-4 mr-2" />
+            <X className="h-4 w-4 mr-2" />
             Clear Completed
           </Button>
         )}

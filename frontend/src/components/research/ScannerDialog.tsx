@@ -41,7 +41,6 @@ import {
   Play,
   Plus,
   Pencil,
-  Trash2,
   Radar,
   Check,
   X,
@@ -670,7 +669,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
                             onClick={() => handlePresetDelete(preset.id)}
                             title="Delete preset"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <X className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>

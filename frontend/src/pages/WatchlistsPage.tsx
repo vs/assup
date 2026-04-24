@@ -655,7 +655,7 @@ export function WatchlistsPage() {
                           </span>
                           <span
                             role="button"
-                            className="p-1 rounded hover:bg-destructive/10"
+                            className="p-1 rounded hover:bg-muted-foreground/10"
                             onClick={(e) => {
                               e.stopPropagation();
                               setActionWatchlist(wl);

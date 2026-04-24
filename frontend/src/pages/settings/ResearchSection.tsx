@@ -5,7 +5,7 @@ import {
   XCircle,
   AlertTriangle,
   Key,
-  Trash2,
+  X,
   Save,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -356,7 +356,7 @@ export function ResearchSection() {
                   onClick={handleRemoveToken}
                   disabled={removing}
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
+                  <X className="h-4 w-4 mr-2" />
                   Remove
                 </Button>
               )}
@@ -538,7 +538,7 @@ export function ResearchSection() {
                 onClick={handleRemoveSACredentials}
                 disabled={saRemoving}
               >
-                <Trash2 className="h-4 w-4 mr-2" />
+                <X className="h-4 w-4 mr-2" />
                 Remove
               </Button>
             )}

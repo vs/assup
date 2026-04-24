@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, Trash2 } from "lucide-react";
+import { X } from "lucide-react";
 
 interface ConfigEditorProps {
   config: WheelScanConfig;
@@ -143,7 +143,7 @@ export function ConfigEditor({
           className="h-7 w-7 text-muted-foreground hover:text-destructive"
           onClick={onDelete}
         >
-          <Trash2 className="h-4 w-4" />
+          <X className="h-4 w-4" />
         </Button>
       </div>
 
