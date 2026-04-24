@@ -36,6 +36,8 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { timeAgo } from "@/utils/format";
+import { useTickerProfile } from "@/hooks/useTickerProfile";
+import { AreaChart, Area, YAxis, ResponsiveContainer } from "recharts";
 
 // --- Source Icons ---
 
@@ -1126,6 +1128,16 @@ function SkippedSourcesSection({ skipped }: { skipped: CollectionStatus[] }) {
   );
 }
 
+// --- Helpers ---
+
+function formatMarketCap(value: number | null): string {
+  if (value === null) return "\u2014";
+  if (value >= 1e12) return `${(value / 1e12).toFixed(1)}T`;
+  if (value >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(0)}M`;
+  return value.toLocaleString();
+}
+
 // --- Main Page ---
 
 export function ResearchReportPage() {
@@ -1137,6 +1149,8 @@ export function ResearchReportPage() {
   const [skipped, setSkipped] = useState<CollectionStatus[]>([]);
   const [collections, setCollections] = useState<CollectionDataEntry[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { data: profile } = useTickerProfile(symbol ?? null);
 
   const fetchData = useCallback(async () => {
     if (!symbol) return;
@@ -1250,6 +1264,85 @@ export function ResearchReportPage() {
           </span>
         )}
       </div>
+
+      {/* Profile Card */}
+      {profile && (
+        <Card>
+          <CardContent className="py-3 px-4">
+            <div className="flex items-start gap-6">
+              {/* Left: company info */}
+              <div className="flex-1 min-w-0 space-y-2">
+                <div>
+                  <span className="text-lg font-semibold">{profile.companyName}</span>
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {profile.sector && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                      {profile.sector}
+                    </span>
+                  )}
+                  {profile.industry && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                      {profile.industry}
+                    </span>
+                  )}
+                  {profile.marketPosition && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                      {profile.marketPosition}
+                    </span>
+                  )}
+                </div>
+                {profile.description && (
+                  <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
+                    {profile.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Right: metrics + sparkline */}
+              <div className="shrink-0 space-y-2 w-48">
+                <div className="flex justify-between text-xs">
+                  <div>
+                    <span className="text-muted-foreground">MCap </span>
+                    <span>{formatMarketCap(profile.marketCap)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">P/E </span>
+                    <span>{profile.peRatio !== null ? profile.peRatio.toFixed(1) : "\u2014"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Div </span>
+                    <span>{profile.dividendYield !== null ? `${profile.dividendYield.toFixed(2)}%` : "\u2014"}</span>
+                  </div>
+                </div>
+                {profile.chart.length > 0 && (
+                  <div className="h-[60px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={profile.chart}>
+                        <defs>
+                          <linearGradient id={`page-gradient-${symbol}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={profile.chart[profile.chart.length - 1].close >= profile.chart[0].close ? "#22c55e" : "#ef4444"} stopOpacity={0.3} />
+                            <stop offset="100%" stopColor={profile.chart[profile.chart.length - 1].close >= profile.chart[0].close ? "#22c55e" : "#ef4444"} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <YAxis domain={["dataMin", "dataMax"]} hide />
+                        <Area
+                          type="monotone"
+                          dataKey="close"
+                          stroke={profile.chart[profile.chart.length - 1].close >= profile.chart[0].close ? "#22c55e" : "#ef4444"}
+                          strokeWidth={1.5}
+                          fill={`url(#page-gradient-${symbol})`}
+                          isAnimationActive={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Chart + Company Info Panel (two columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
