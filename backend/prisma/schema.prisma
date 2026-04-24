@@ -519,9 +519,9 @@ model TickerProfile {
   symbol         String   @id @db.VarChar(20)
   companyName    String   @map("company_name") @db.VarChar(255)
   description    String   @db.Text
-  sector         String?  @db.VarChar(100)
+  sector         String?  @db.VarChar(255)
   industry       String?  @db.VarChar(255)
-  marketPosition String?  @map("market_position") @db.VarChar(100)
+  marketPosition String?  @map("market_position") @db.Text
   marketCap      Float?   @map("market_cap") @db.DoublePrecision
   peRatio        Float?   @map("pe_ratio") @db.DoublePrecision
   dividendYield  Float?   @map("dividend_yield") @db.DoublePrecision
