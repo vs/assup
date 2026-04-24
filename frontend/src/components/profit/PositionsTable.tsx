@@ -114,14 +114,12 @@ export function PositionsTable({
               <TableCell>
                 <div className="flex items-center">
                   <TickerHoverCard symbol={pos.underlying}>
-                    <a
-                      href={`https://www.tradingview.com/chart/?symbol=${pos.underlying}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <Link
+                      to={`/tickers/${pos.underlying}`}
                       className="font-medium hover:text-primary hover:underline"
                     >
                       {pos.displayName}
-                    </a>
+                    </Link>
                   </TickerHoverCard>
                   <ExternalLinks symbol={pos.underlying} />
                 </div>

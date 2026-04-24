@@ -497,14 +497,9 @@ function MonthProfitCard({
                               <TableCell>
                                 <div className="flex items-center">
                                   <TickerHoverCard symbol={trade.underlying}>
-                                    <a
-                                      href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="font-medium hover:text-primary hover:underline"
-                                    >
+                                    <Link to={`/tickers/${trade.underlying}`} className="font-medium hover:text-primary hover:underline">
                                       {formatTradeDisplayName(trade)}
-                                    </a>
+                                    </Link>
                                   </TickerHoverCard>
                                   <ExternalLinks symbol={trade.underlying} />
                                 </div>
@@ -588,14 +583,9 @@ function MonthProfitCard({
                               <TableCell>
                                 <div className="flex items-center">
                                   <TickerHoverCard symbol={trade.symbol}>
-                                    <a
-                                      href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="font-medium hover:text-primary hover:underline"
-                                    >
+                                    <Link to={`/tickers/${trade.symbol}`} className="font-medium hover:text-primary hover:underline">
                                       {trade.symbol}
-                                    </a>
+                                    </Link>
                                   </TickerHoverCard>
                                   <ExternalLinks symbol={trade.symbol} />
                                 </div>
@@ -1015,14 +1005,9 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
                   <TableCell>
                     <div className="flex items-center">
                       <TickerHoverCard symbol={trade.underlying}>
-                        <a
-                          href={`https://www.tradingview.com/chart/?symbol=${trade.underlying}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium hover:text-primary hover:underline"
-                        >
+                        <Link to={`/tickers/${trade.underlying}`} className="font-medium hover:text-primary hover:underline">
                           {formatTradeDisplayName(trade)}
-                        </a>
+                        </Link>
                       </TickerHoverCard>
                       <ExternalLinks symbol={trade.underlying} />
                     </div>
@@ -1106,14 +1091,9 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
                   <TableCell>
                     <div className="flex items-center">
                       <TickerHoverCard symbol={trade.symbol}>
-                        <a
-                          href={`https://www.tradingview.com/chart/?symbol=${trade.symbol}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium hover:text-primary hover:underline"
-                        >
+                        <Link to={`/tickers/${trade.symbol}`} className="font-medium hover:text-primary hover:underline">
                           {trade.symbol}
-                        </a>
+                        </Link>
                       </TickerHoverCard>
                       <ExternalLinks symbol={trade.symbol} />
                     </div>

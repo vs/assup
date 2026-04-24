@@ -837,14 +837,12 @@ function TickerRow({
       <TableCell>
         <span className="inline-flex items-center gap-1">
           <TickerHoverCard symbol={item.symbol}>
-            <a
-              href={`https://www.tradingview.com/chart/?symbol=${item.symbol}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              to={`/tickers/${item.symbol}`}
               className="font-medium hover:text-primary hover:underline"
             >
               {item.symbol}
-            </a>
+            </Link>
           </TickerHoverCard>
           <ExternalLinks symbol={item.symbol} />
         </span>
@@ -888,7 +886,7 @@ function TickerRow({
       <TableCell>
         {item.reportAge ? (
           <Link
-            to={`/analysis/${item.symbol}`}
+            to={`/tickers/${item.symbol}`}
             className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
           >
             <FileText className="h-3.5 w-3.5" />

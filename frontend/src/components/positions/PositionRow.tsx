@@ -1,5 +1,6 @@
 import type { Position, AssetClass, SparklinePoint } from "@assup/shared";
 import { formatCurrency, formatNumber, calculatePositionExposure } from "@assup/shared";
+import { Link } from "react-router-dom";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { AssetClassSelect, ExternalLinks } from "@/components/common";
@@ -48,14 +49,12 @@ export function PositionRow({
           ) : (
             <>
               <TickerHoverCard symbol={position.underlying || position.symbol}>
-                <a
-                  href={`https://www.tradingview.com/chart/?symbol=${position.underlying || position.symbol}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  to={`/tickers/${position.underlying || position.symbol}`}
                   className="font-medium hover:text-primary hover:underline"
                 >
                   {position.symbol}
-                </a>
+                </Link>
               </TickerHoverCard>
               <ExternalLinks symbol={position.underlying || position.symbol} />
             </>

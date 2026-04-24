@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
+import { Link } from "react-router-dom";
 import type { ExtendedOptionOpportunity } from "./types";
 import { Button } from "@/components/ui/button";
 import { ExternalLinks } from "@/components/common";
@@ -88,14 +89,12 @@ export const OpportunityRow = memo(function OpportunityRow({
     >
       <div className="pl-14 font-medium flex items-center">
         <TickerHoverCard symbol={opp.symbol}>
-          <a
-            href={`https://www.tradingview.com/chart/?symbol=${opp.symbol}`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            to={`/tickers/${opp.symbol}`}
             className="hover:text-primary hover:underline"
           >
             {contractName}
-          </a>
+          </Link>
         </TickerHoverCard>
         <ExternalLinks symbol={opp.symbol} />
       </div>
