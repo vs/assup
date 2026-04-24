@@ -19,7 +19,7 @@ import { ResearchSection } from "@/pages/settings/ResearchSection";
 
 function SymbolRedirect() {
   const { symbol } = useParams();
-  return <Navigate to={`/analysis/${symbol}`} replace />;
+  return <Navigate to={`/tickers/${symbol}`} replace />;
 }
 
 function App() {
@@ -33,7 +33,8 @@ function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/analysis" element={<WatchlistsPage />} />
-            <Route path="/analysis/:symbol" element={<ResearchReportPage />} />
+            <Route path="/tickers/:symbol" element={<ResearchReportPage />} />
+            <Route path="/analysis/:symbol" element={<SymbolRedirect />} />
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/profit" element={<ProfitPage />} />
             <Route path="/wheel" element={<WheelPage />} />
