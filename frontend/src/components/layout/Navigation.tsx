@@ -65,7 +65,7 @@ export function Navigation() {
 
   const connectionDot = (
     <span
-      className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${
+      className={`absolute top-0 right-0 h-2 w-2 rounded-full ${
         isConnected
           ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)] animate-breathing"
           : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]"
