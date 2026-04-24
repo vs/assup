@@ -54,13 +54,12 @@ import { ScannerDialog } from "@/components/research/ScannerDialog";
 import { Link } from "react-router-dom";
 import {
   Plus,
-  Trash2,
   Pencil,
   X,
   Search,
   GripVertical,
   Radar,
-  Zap,
+  RefreshCw,
   FileText,
   ArrowUp,
   ArrowDown,
@@ -77,13 +76,18 @@ export function WatchlistsPage() {
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<
-    "create" | "edit" | "addSymbol"
-  >("create");
+  const [dialogMode, setDialogMode] = useState<"create" | "addSymbol">(
+    "create"
+  );
   const [formData, setFormData] = useState({ name: "", symbol: "" });
   const [saving, setSaving] = useState(false);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [actionWatchlist, setActionWatchlist] = useState<Watchlist | null>(null);
+
+  // Inline rename state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renamingName, setRenamingName] = useState("");
 
   // Scanner dialog
   const [discoverOpen, setDiscoverOpen] = useState(false);
@@ -237,11 +241,41 @@ export function WatchlistsPage() {
     setDialogOpen(true);
   }
 
-  function openEditDialog() {
-    if (!selectedWatchlist) return;
-    setDialogMode("edit");
-    setFormData({ name: selectedWatchlist.name, symbol: "" });
-    setDialogOpen(true);
+  function startRename(wl: Watchlist) {
+    setRenamingId(wl.id);
+    setRenamingName(wl.name);
+  }
+
+  async function commitRename() {
+    if (!renamingId) return;
+    const trimmed = renamingName.trim();
+    if (!trimmed) {
+      setRenamingId(null);
+      return;
+    }
+    // Skip API call if name didn't change
+    const original = watchlists.find((w) => w.id === renamingId);
+    if (original && original.name === trimmed) {
+      setRenamingId(null);
+      return;
+    }
+    try {
+      await api.watchlists.update(renamingId, { name: trimmed });
+      const wlData = await api.watchlists.list();
+      setWatchlists(wlData);
+      if (selectedWatchlist?.id === renamingId) {
+        const full = await api.watchlists.get(renamingId);
+        setSelectedWatchlist(full);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rename");
+    } finally {
+      setRenamingId(null);
+    }
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
   }
 
   function openAddSymbolDialog() {
@@ -261,16 +295,6 @@ export function WatchlistsPage() {
         });
         setWatchlists((prev) => [...prev, newWl]);
         const full = await api.watchlists.get(newWl.id);
-        setSelectedWatchlist(full);
-      } else if (dialogMode === "edit" && selectedWatchlist) {
-        await api.watchlists.update(selectedWatchlist.id, {
-          name: formData.name.trim(),
-        });
-        const [wlData, full] = await Promise.all([
-          api.watchlists.list(),
-          api.watchlists.get(selectedWatchlist.id),
-        ]);
-        setWatchlists(wlData);
         setSelectedWatchlist(full);
       } else if (dialogMode === "addSymbol" && selectedWatchlist) {
         await api.watchlists.addItem(selectedWatchlist.id, {
@@ -292,12 +316,15 @@ export function WatchlistsPage() {
   }
 
   async function handleDeleteWatchlist() {
-    if (!selectedWatchlist) return;
+    if (!actionWatchlist) return;
 
     try {
-      await api.watchlists.delete(selectedWatchlist.id);
-      setSelectedWatchlist(null);
+      await api.watchlists.delete(actionWatchlist.id);
+      if (selectedWatchlist?.id === actionWatchlist.id) {
+        setSelectedWatchlist(null);
+      }
       setDeleteDialogOpen(false);
+      setActionWatchlist(null);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
@@ -569,7 +596,7 @@ export function WatchlistsPage() {
                     onDragOver={(e) => handleSidebarDragOver(e, wl.id)}
                     onDragLeave={handleSidebarDragLeave}
                     onDrop={(e) => handleSidebarDrop(e, wl.id)}
-                    className={`w-full px-4 py-3 text-left hover:bg-muted transition-colors ${
+                    className={`group w-full px-4 py-3 text-left hover:bg-muted transition-colors ${
                       selectedWatchlist?.id === wl.id ? "bg-muted" : ""
                     } ${
                       dragOverWatchlistId === wl.id
@@ -577,9 +604,69 @@ export function WatchlistsPage() {
                         : ""
                     }`}
                   >
-                    <div className="font-medium">{wl.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {wl._count?.items || 0} symbols
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0 flex-1">
+                        {renamingId === wl.id ? (
+                          <input
+                            autoFocus
+                            value={renamingName}
+                            onChange={(e) => setRenamingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                commitRename();
+                              } else if (e.key === "Escape") {
+                                cancelRename();
+                              }
+                            }}
+                            onBlur={() => commitRename()}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full bg-transparent border-b border-primary outline-none font-medium text-sm py-0"
+                          />
+                        ) : (
+                          <div
+                            className="font-medium truncate"
+                            onClick={(e) => {
+                              if (selectedWatchlist?.id === wl.id) {
+                                e.stopPropagation();
+                                startRename(wl);
+                              }
+                            }}
+                          >
+                            {wl.name}
+                          </div>
+                        )}
+                        <div className="text-sm text-muted-foreground">
+                          {wl._count?.items || 0} symbols
+                        </div>
+                      </div>
+                      {renamingId !== wl.id && (
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span
+                            role="button"
+                            className="p-1 rounded hover:bg-muted-foreground/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startRename(wl);
+                            }}
+                            title="Rename watchlist"
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                          </span>
+                          <span
+                            role="button"
+                            className="p-1 rounded hover:bg-destructive/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionWatchlist(wl);
+                              setDeleteDialogOpen(true);
+                            }}
+                            title="Delete watchlist"
+                          >
+                            <X className="h-3.5 w-3.5 text-muted-foreground" />
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </button>
                 ))}
@@ -601,10 +688,10 @@ export function WatchlistsPage() {
                     onClick={handleAnalyzeAll}
                     disabled={generatingMap.size > 0}
                   >
-                    <Zap className="h-4 w-4 mr-1" />
+                    <RefreshCw className="h-4 w-4 mr-1" />
                     {generatingMap.size > 0
-                      ? `Analyzing ${generatingMap.size}...`
-                      : "Analyze All"}
+                      ? `Updating ${generatingMap.size}...`
+                      : "Update All"}
                   </Button>
                   <Button
                     variant="outline"
@@ -613,20 +700,6 @@ export function WatchlistsPage() {
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     Add Symbol
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={openEditDialog}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteDialogOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               </CardHeader>
@@ -693,22 +766,16 @@ export function WatchlistsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dialogMode === "create"
-                ? "Create Watchlist"
-                : dialogMode === "edit"
-                  ? "Edit Watchlist"
-                  : "Add Symbol"}
+              {dialogMode === "create" ? "Create Watchlist" : "Add Symbol"}
             </DialogTitle>
             <DialogDescription className="sr-only">
               {dialogMode === "create"
                 ? "Create a new watchlist"
-                : dialogMode === "edit"
-                  ? "Edit watchlist details"
-                  : "Add a symbol to the watchlist"}
+                : "Add a symbol to the watchlist"}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {dialogMode !== "addSymbol" ? (
+            {dialogMode === "create" ? (
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
                 <Input
@@ -770,7 +837,7 @@ export function WatchlistsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Watchlist</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;{selectedWatchlist?.name}
+              Are you sure you want to delete &quot;{actionWatchlist?.name}
               &quot;? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -913,10 +980,10 @@ function TickerRow({
             className="h-8 w-[100px]"
             onClick={() => onGenerateReport(item.symbol)}
             disabled={isGenerating}
-            title="Analyze ticker"
+            title="Update ticker"
           >
-            <Zap
-              className={`h-3.5 w-3.5 mr-1 ${isGenerating ? "animate-pulse" : ""}`}
+            <RefreshCw
+              className={`h-3.5 w-3.5 mr-1 ${isGenerating ? "animate-spin" : ""}`}
             />
             {isGenerating
               ? generateProgress
@@ -924,7 +991,7 @@ function TickerRow({
                   ? generateProgress.slice(0, 12) + "..."
                   : generateProgress
                 : "Working..."
-              : "Analyze"}
+              : "Update"}
           </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Scan options">
             <Link to={`/scanner?symbol=${item.symbol}`}>
