@@ -102,8 +102,8 @@ async function callClaudeViaCLI(
 }
 
 function extractJson(text: string): string {
-  // Strip markdown fences
-  const fenceStripped = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  // Strip markdown fences (handle leading/trailing whitespace)
+  const fenceStripped = text.replace(/^\s*```(?:json)?\s*\n?/, "").replace(/\n?\s*```\s*$/, "");
 
   // Try the stripped text directly first
   try {

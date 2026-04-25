@@ -105,8 +105,8 @@ function buildUserPrompt(input: SynthesizerInput): string {
 }
 
 function extractJson(text: string): string {
-  // Strip markdown fences
-  const fenceStripped = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  // Strip markdown fences (handle leading/trailing whitespace)
+  const fenceStripped = text.replace(/^\s*```(?:json)?\s*\n?/, "").replace(/\n?\s*```\s*$/, "");
 
   // Try the stripped text directly first
   try {
@@ -139,14 +139,24 @@ function extractJson(text: string): string {
 }
 
 function repairJson(raw: string): string {
-  // Fix unescaped control characters inside JSON strings (common in Claude markdown output)
-  // Replace literal tabs and other control chars that aren't already escaped
-  let result = raw.replace(/[\x00-\x1f]/g, (ch) => {
-    if (ch === "\n") return "\\n";
-    if (ch === "\r") return "\\r";
-    if (ch === "\t") return "\\t";
-    return "";
-  });
+  // Fix unescaped control characters only inside JSON string values.
+  // Newlines between tokens are valid JSON whitespace and must be preserved.
+  let result = "";
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) { escape = false; result += ch; continue; }
+    if (ch === "\\" && inString) { escape = true; result += ch; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString && ch.charCodeAt(0) < 0x20) {
+      if (ch === "\n") { result += "\\n"; continue; }
+      if (ch === "\r") { result += "\\r"; continue; }
+      if (ch === "\t") { result += "\\t"; continue; }
+      continue; // skip other control chars
+    }
+    result += ch;
+  }
   // Remove trailing commas before } or ]
   result = result.replace(/,\s*([}\]])/g, "$1");
   return result;
