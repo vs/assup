@@ -76,7 +76,7 @@ export function PositionTable({
       <TableHeader>
         <TableRow>
           <SortableHead column="symbol" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Symbol</SortableHead>
-          <TableHead className="w-24">7D</TableHead>
+          <TableHead className="w-24">1M</TableHead>
           <SortableHead column="type" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Type</SortableHead>
           {showAssetClassColumn && (
             <SortableHead column="assetClass" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Asset Class</SortableHead>
