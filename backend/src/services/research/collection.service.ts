@@ -19,14 +19,20 @@ class CollectionService {
       throw new Error(`Unknown collector: ${source}`);
     }
 
-    // Check if existing data is still fresh
+    // Check if existing data is still fresh (skip records don't count as fresh —
+    // data source availability may have changed since the skip was recorded)
     if (!force) {
       const existing = await prisma.dataCollection.findFirst({
         where: { symbol, source },
         orderBy: { collectedAt: "desc" },
       });
 
-      if (existing && existing.expiresAt && existing.expiresAt > new Date()) {
+      if (
+        existing &&
+        existing.status !== "skipped" &&
+        existing.expiresAt &&
+        existing.expiresAt > new Date()
+      ) {
         return false;
       }
     }
