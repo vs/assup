@@ -1,105 +1,123 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { api } from "@/api";
 import type { SparklinePoint } from "@assup/shared";
 
-interface SparklineState {
-  data: Record<string, SparklinePoint[]>;
-  loading: Set<string>;
-  errors: Set<string>;
+// ---------------------------------------------------------------------------
+// Module-level cache shared across all useSparklines instances
+// ---------------------------------------------------------------------------
+
+interface CacheEntry {
+  data: SparklinePoint[];
+  fetchedAt: number;
 }
 
-export function useSparklines(symbols: string[]) {
-  const [state, setState] = useState<SparklineState>({
-    data: {},
-    loading: new Set(),
-    errors: new Set(),
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes – matches backend TTL
+
+const cache = new Map<string, CacheEntry>();
+const inflight = new Set<string>(); // symbols currently being fetched
+const listeners = new Set<() => void>();
+let cacheVersion = 0;
+
+function notifyListeners() {
+  cacheVersion++;
+  for (const l of listeners) l();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function getSnapshot() {
+  return cacheVersion;
+}
+
+function isCacheValid(key: string): boolean {
+  const entry = cache.get(key);
+  return !!entry && Date.now() - entry.fetchedAt < CACHE_TTL_MS;
+}
+
+async function fetchBatch(symbols: string[]) {
+  const toFetch = symbols.filter((s) => {
+    const key = s.toUpperCase();
+    return !isCacheValid(key) && !inflight.has(key);
   });
 
-  const fetchedRef = useRef<Set<string>>(new Set());
+  if (toFetch.length === 0) return;
 
-  const fetchSparklines = useCallback(async (newSymbols: string[]) => {
-    const toFetch = newSymbols.filter(
-      (s) => s.length > 0 && !fetchedRef.current.has(s.toUpperCase())
-    );
+  for (const s of toFetch) inflight.add(s.toUpperCase());
+  notifyListeners(); // signal loading state
 
-    if (toFetch.length === 0) return;
+  try {
+    const results = await api.historical.getBatchSparklines(toFetch);
 
-    // Mark as loading
-    setState((prev) => ({
-      ...prev,
-      loading: new Set([...prev.loading, ...toFetch.map((s) => s.toUpperCase())]),
-    }));
-
-    // Mark as fetched to prevent duplicate requests
-    toFetch.forEach((s) => fetchedRef.current.add(s.toUpperCase()));
-
-    try {
-      const results = await api.historical.getBatchSparklines(toFetch);
-
-      setState((prev) => {
-        const newData = { ...prev.data };
-        const newLoading = new Set(prev.loading);
-        const newErrors = new Set(prev.errors);
-
-        for (const symbol of toFetch) {
-          const upperSymbol = symbol.toUpperCase();
-          newLoading.delete(upperSymbol);
-
-          if (results[upperSymbol] && results[upperSymbol].length > 0) {
-            newData[upperSymbol] = results[upperSymbol];
-          } else {
-            newErrors.add(upperSymbol);
-          }
-        }
-
-        return { data: newData, loading: newLoading, errors: newErrors };
+    for (const s of toFetch) {
+      const key = s.toUpperCase();
+      const data = results[key];
+      cache.set(key, {
+        data: data && data.length > 0 ? data : [],
+        fetchedAt: Date.now(),
       });
-    } catch (error) {
-      console.error("Failed to fetch sparklines:", error);
-
-      setState((prev) => {
-        const newLoading = new Set(prev.loading);
-        const newErrors = new Set(prev.errors);
-
-        for (const symbol of toFetch) {
-          const upperSymbol = symbol.toUpperCase();
-          newLoading.delete(upperSymbol);
-          newErrors.add(upperSymbol);
-        }
-
-        return { ...prev, loading: newLoading, errors: newErrors };
-      });
+      inflight.delete(key);
     }
-  }, []);
+  } catch (error) {
+    console.error("Failed to fetch sparklines:", error);
+    for (const s of toFetch) {
+      const key = s.toUpperCase();
+      // Cache empty result so we don't retry immediately
+      cache.set(key, { data: [], fetchedAt: Date.now() });
+      inflight.delete(key);
+    }
+  }
+
+  notifyListeners();
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
+export function useSparklines(symbols: string[]) {
+  // Subscribe to cache changes
+  useSyncExternalStore(subscribe, getSnapshot);
 
   const symbolsKey = symbols.join(",");
+  const prevKeyRef = useRef("");
+
   useEffect(() => {
-    const currentSymbols = symbolsKey.split(",").filter(Boolean);
-    if (currentSymbols.length > 0) {
-      fetchSparklines(currentSymbols);
+    if (symbolsKey === prevKeyRef.current) return;
+    prevKeyRef.current = symbolsKey;
+
+    const current = symbolsKey.split(",").filter(Boolean);
+    if (current.length > 0) {
+      fetchBatch(current);
     }
-  }, [symbolsKey, fetchSparklines]);
+  }, [symbolsKey]);
 
   const getSparklineState = useCallback(
     (symbol: string) => {
-      const upperSymbol = symbol.toUpperCase();
+      const key = symbol.toUpperCase();
+      const entry = cache.get(key);
       return {
-        data: state.data[upperSymbol] || [],
-        loading: state.loading.has(upperSymbol),
-        error: state.errors.has(upperSymbol),
+        data: entry?.data || [],
+        loading: inflight.has(key),
+        error: !!entry && entry.data.length === 0 && !inflight.has(key),
       };
     },
-    [state]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cacheVersion]
   );
 
   const reset = useCallback(() => {
-    fetchedRef.current.clear();
-    setState({ data: {}, loading: new Set(), errors: new Set() });
+    cache.clear();
+    inflight.clear();
+    prevKeyRef.current = "";
+    notifyListeners();
   }, []);
 
   return {
     getSparklineState,
     reset,
-    isLoading: state.loading.size > 0,
+    isLoading: inflight.size > 0,
   };
 }
