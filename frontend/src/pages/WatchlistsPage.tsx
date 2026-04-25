@@ -715,7 +715,7 @@ export function WatchlistsPage() {
                         <TableRow>
                           <TableHead className="w-8" />
                           <SortableHead field="symbol" current={sortField} dir={sortDir} onToggle={toggleSort}>Symbol</SortableHead>
-                          <TableHead className="w-24">1M</TableHead>
+                          <TableHead className="w-24">1Y</TableHead>
                           <TableHead>Asset Class</TableHead>
                           <SortableHead field="recommendation" current={sortField} dir={sortDir} onToggle={toggleSort}>Recommendation</SortableHead>
                           <SortableHead field="reportAge" current={sortField} dir={sortDir} onToggle={toggleSort}>Report</SortableHead>

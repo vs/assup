@@ -148,14 +148,14 @@ class HistoricalDataService {
     this.isProcessing = false;
   }
 
-  private async fetchFromTWS(symbol: string, duration = "1 M"): Promise<PricePoint[]> {
+  private async fetchFromTWS(symbol: string, duration = "1 Y"): Promise<PricePoint[]> {
     if (!ibkrService.isConnected()) {
       throw new Error("Not connected to TWS");
     }
 
     const contract = new Stock(symbol.toUpperCase(), "SMART", "USD");
 
-    // Daily bars for sparklines (up to 1 month), weekly bars for longer durations
+    // Weekly bars for sparklines (1 year), daily for short durations
     const barSize = duration === "1 M" || duration === "7 D"
       ? BarSizeSetting.DAYS_ONE
       : BarSizeSetting.WEEKS_ONE;
