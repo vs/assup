@@ -26,6 +26,19 @@ export interface TickerDetails {
   marketCap: number | null;
 }
 
+export interface PolygonFinancials {
+  eps: number | null;
+  revenue: number | null;
+  netIncome: number | null;
+  grossProfit: number | null;
+  equity: number | null;
+  totalLiabilities: number | null;
+  operatingCashFlow: number | null;
+  sharesOutstanding: number | null;
+  fiscalPeriod: string | null;
+  fiscalYear: string | null;
+}
+
 // Shared rate limiter across all PolygonProvider instances
 let lastRequestTime = 0;
 let requestQueue: Promise<void> = Promise.resolve();
@@ -283,6 +296,54 @@ export class PolygonProvider implements MarketDataProvider {
     }
 
     return results;
+  }
+
+  /**
+   * Fetch financial statements from Polygon /vX/reference/financials.
+   * Returns the two most recent annual filings (for YoY growth calculations).
+   */
+  async getFinancials(symbol: string, limit = 2): Promise<PolygonFinancials[]> {
+    interface FinancialValue { value: number }
+    interface FinancialResult {
+      fiscal_period: string;
+      fiscal_year: string;
+      financials: {
+        income_statement: Record<string, FinancialValue>;
+        balance_sheet: Record<string, FinancialValue>;
+        cash_flow_statement: Record<string, FinancialValue>;
+      };
+    }
+
+    const data = await this.fetch<{ results: FinancialResult[] }>(
+      `/vX/reference/financials`,
+      {
+        ticker: symbol,
+        timeframe: "annual",
+        limit: String(limit),
+        sort: "filing_date",
+        order: "desc",
+        include_sources: "false",
+      }
+    );
+
+    return (data.results || []).map((r) => {
+      const inc = r.financials.income_statement || {};
+      const bs = r.financials.balance_sheet || {};
+      const cf = r.financials.cash_flow_statement || {};
+
+      return {
+        eps: inc.diluted_earnings_per_share?.value ?? inc.basic_earnings_per_share?.value ?? null,
+        revenue: inc.revenues?.value ?? null,
+        netIncome: inc.net_income_loss?.value ?? null,
+        grossProfit: inc.gross_profit?.value ?? null,
+        equity: bs.equity?.value ?? bs.equity_attributable_to_parent?.value ?? null,
+        totalLiabilities: bs.liabilities?.value ?? null,
+        operatingCashFlow: cf.net_cash_flow_from_operating_activities?.value ?? null,
+        sharesOutstanding: inc.basic_average_shares?.value ?? inc.diluted_average_shares?.value ?? null,
+        fiscalPeriod: r.fiscal_period ?? null,
+        fiscalYear: r.fiscal_year ?? null,
+      };
+    });
   }
 
   async getTickerDetails(symbol: string): Promise<TickerDetails> {
