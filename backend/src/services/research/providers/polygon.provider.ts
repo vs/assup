@@ -24,6 +24,7 @@ export interface TickerDetails {
   industry: string | null;
   type: string | null;
   marketCap: number | null;
+  sharesOutstanding: number | null;
 }
 
 export interface PolygonFinancials {
@@ -355,6 +356,8 @@ export class PolygonProvider implements MarketDataProvider {
         sic_description?: string;
         type?: string;
         market_cap?: number;
+        weighted_shares_outstanding?: number;
+        share_class_shares_outstanding?: number;
       } | null;
     }>(`/v3/reference/tickers/${symbol}`);
 
@@ -370,7 +373,17 @@ export class PolygonProvider implements MarketDataProvider {
       industry: r.sic_description || null,
       type: r.type || null,
       marketCap: r.market_cap ?? null,
+      sharesOutstanding: r.weighted_shares_outstanding ?? r.share_class_shares_outstanding ?? null,
     };
+  }
+
+  /** Get previous trading day's close price (available on free plan). */
+  async getPreviousClose(symbol: string): Promise<number | null> {
+    const data = await this.fetch<{
+      results: Array<{ c: number }>;
+    }>(`/v2/aggs/ticker/${symbol}/prev`, { adjusted: "true" });
+
+    return data.results?.[0]?.c ?? null;
   }
 }
 

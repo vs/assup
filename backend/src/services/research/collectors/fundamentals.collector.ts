@@ -104,19 +104,31 @@ function pctChange(current: number | null, previous: number | null): number | nu
 async function collectFromPolygon(symbol: string): Promise<CollectionResult> {
   const polygon = new PolygonProvider();
 
-  // Fetch financials (2 years for growth), ticker details, quote, and dividends in parallel
-  const [financials, details, quote, dividends] = await Promise.all([
-    polygon.getFinancials(symbol, 2),
+  // Free-tier endpoints: ticker details, previous close, dividends
+  const [details, price, dividends] = await Promise.all([
     polygon.getTickerDetails(symbol),
-    polygon.getQuote(symbol),
+    polygon.getPreviousClose(symbol),
     polygon.getDividendCalendar(symbol),
   ]);
 
+  // Paid-tier: financials (income statement, balance sheet, cash flow)
+  // Try it but don't fail if the plan doesn't support it
+  let financials: Awaited<ReturnType<typeof polygon.getFinancials>> = [];
+  try {
+    financials = await polygon.getFinancials(symbol, 2);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes("403") || msg.includes("NOT_AUTHORIZED")) {
+      console.log(`[fundamentals] ${symbol}: financials endpoint not available on current Polygon plan`);
+    } else {
+      throw err; // unexpected error — propagate
+    }
+  }
+
   const current = financials[0] ?? null;
   const previous = financials[1] ?? null;
-  const price = quote.last ?? quote.close;
 
-  // Derive fundamentals from financial statements
+  // Derive fundamentals from financial statements (if available)
   let pe: number | null = null;
   let eps: number | null = null;
   let epsGrowth: number | null = null;
@@ -140,57 +152,29 @@ async function collectFromPolygon(symbol: string): Promise<CollectionResult> {
     const shares = current.sharesOutstanding;
     const operatingCF = current.operatingCashFlow;
 
-    // P/E
-    if (price != null && eps != null && eps !== 0) {
-      pe = price / eps;
-    }
-
-    // Profit margin
-    if (netIncome != null && revenue != null && revenue !== 0) {
-      profitMargin = (netIncome / revenue) * 100;
-    }
-
-    // ROE
-    if (netIncome != null && equity != null && equity !== 0) {
-      roe = (netIncome / equity) * 100;
-    }
-
-    // Debt to equity
-    if (totalLiabilities != null && equity != null && equity !== 0) {
-      debtToEquity = (totalLiabilities / equity) * 100;
-    }
-
-    // Book value per share
-    if (equity != null && shares != null && shares > 0) {
-      bookValue = equity / shares;
-    }
-
-    // Price to book
-    if (price != null && bookValue != null && bookValue > 0) {
-      priceToBook = price / bookValue;
-    }
-
-    // Price to cash flow (per share)
+    if (price != null && eps != null && eps !== 0) pe = price / eps;
+    if (netIncome != null && revenue != null && revenue !== 0) profitMargin = (netIncome / revenue) * 100;
+    if (netIncome != null && equity != null && equity !== 0) roe = (netIncome / equity) * 100;
+    if (totalLiabilities != null && equity != null && equity !== 0) debtToEquity = (totalLiabilities / equity) * 100;
+    if (equity != null && shares != null && shares > 0) bookValue = equity / shares;
+    if (price != null && bookValue != null && bookValue > 0) priceToBook = price / bookValue;
     if (price != null && operatingCF != null && shares != null && shares > 0) {
       const cfPerShare = operatingCF / shares;
-      if (cfPerShare !== 0) {
-        priceToCashFlow = price / cfPerShare;
-      }
+      if (cfPerShare !== 0) priceToCashFlow = price / cfPerShare;
     }
-
-    // Market cap from shares if not in ticker details
-    if (marketCap == null && price != null && shares != null) {
-      marketCap = price * shares;
-    }
-
-    // Growth vs previous year
+    if (marketCap == null && price != null && shares != null) marketCap = price * shares;
     if (previous) {
       epsGrowth = pctChange(eps, previous.eps);
       revenueGrowth = pctChange(revenue, previous.revenue);
     }
   }
 
-  // Dividend yield: sum last 4 quarterly dividends (or last year's worth)
+  // Market cap fallback: ticker details shares × price
+  if (marketCap == null && price != null && details.sharesOutstanding != null) {
+    marketCap = price * details.sharesOutstanding;
+  }
+
+  // Dividend yield from trailing 12-month dividends
   if (price != null && price > 0 && dividends.length > 0) {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
@@ -200,6 +184,9 @@ async function collectFromPolygon(symbol: string): Promise<CollectionResult> {
       dividendYield = (annualDiv / price) * 100;
     }
   }
+
+  const dataPoints = [pe, eps, revenue, marketCap, dividendYield, roe, debtToEquity, profitMargin].filter((v) => v != null).length;
+  console.log(`[fundamentals] ${symbol}: Polygon collected ${dataPoints} data points (marketCap=${marketCap != null}, divYield=${dividendYield != null}, pe=${pe != null})`);
 
   return {
     source: "fundamentals",
@@ -214,13 +201,13 @@ async function collectFromPolygon(symbol: string): Promise<CollectionResult> {
       },
       fundamentals: {
         pe,
-        forwardPe: null, // not available from Polygon financials
+        forwardPe: null,
         eps,
         epsGrowth,
         dividendYield,
         revenue,
         marketCap,
-        beta: null, // not available from Polygon financials
+        beta: null,
         roe,
         debtToEquity,
         profitMargin,
