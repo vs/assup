@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useResearchJobs } from "@/hooks/useResearchJobs";
 import type {
   MarketScannerPreset,
   ScanCodeInfo,
@@ -74,6 +75,8 @@ const STOCK_TYPES = [
 ];
 
 export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDialogProps) {
+  const { getJobForSymbol, startJob } = useResearchJobs();
+  const [researchStarted, setResearchStarted] = useState(false);
   const [step, setStep] = useState<Step>("configure");
   const [scanCodes, setScanCodes] = useState<ScanCodeInfo[]>([]);
   const [presets, setPresets] = useState<MarketScannerPreset[]>([]);
@@ -99,12 +102,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [addingTickers, setAddingTickers] = useState(false);
 
-  // Per-ticker generation tracking
-  const [generationState, setGenerationState] = useState<
-    Map<string, { jobId?: string; status: "queued" | "generating" | "completed" | "failed"; progress?: string; error?: string }>
-  >(new Map());
   const [skippedSymbols, setSkippedSymbols] = useState<Set<string>>(new Set());
-  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
 
   // Preset editor state
   const [editingPreset, setEditingPreset] = useState<MarketScannerPreset | undefined>(undefined);
@@ -113,16 +111,6 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
   // Scan job polling state
   const [scanningMessage, setScanningMessage] = useState("Scanning...");
 
-  // Cleanup poll timers on unmount or close
-  useEffect(() => {
-    if (!open) {
-      for (const timer of pollTimers.current.values()) {
-        clearInterval(timer);
-      }
-      pollTimers.current.clear();
-    }
-  }, [open]);
-
   // Load scan codes and presets on open
   useEffect(() => {
     if (!open) return;
@@ -130,7 +118,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
     setError(null);
     setResults(null);
     setSelectedSymbols(new Set());
-    setGenerationState(new Map());
+    setResearchStarted(false);
     setSkippedSymbols(new Set());
     setShowPresetEditor(false);
     setEditingPreset(undefined);
@@ -317,14 +305,7 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
       }
       onTickersAdded(watchlist.id);
 
-      const toResearch = symbols;
-
-      // Initialize generation state
-      const initial = new Map(generationState);
-      for (const sym of toResearch) {
-        initial.set(sym, { status: "queued" });
-      }
-      setGenerationState(initial);
+      setResearchStarted(true);
 
       // Get research settings
       const researchSettings = await settingsApi
@@ -333,57 +314,16 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
         .catch(() => ({ synthesizerMode: undefined, model: undefined }));
 
       // Fire report generation for each
-      for (const sym of toResearch) {
+      for (const sym of symbols) {
         try {
           const { jobId } = await researchApi.generate(sym, {
             force: true,
             mode: researchSettings.synthesizerMode,
             model: researchSettings.model,
           });
-
-          setGenerationState((prev) => {
-            const next = new Map(prev);
-            next.set(sym, { jobId, status: "generating", progress: "Starting..." });
-            return next;
-          });
-
-          const timer = setInterval(async () => {
-            try {
-              const job = await researchApi.getJob(jobId);
-              if (job.status === "completed") {
-                clearInterval(timer);
-                pollTimers.current.delete(sym);
-                setGenerationState((prev) => {
-                  const next = new Map(prev);
-                  next.set(sym, { jobId, status: "completed" });
-                  return next;
-                });
-              } else if (job.status === "failed") {
-                clearInterval(timer);
-                pollTimers.current.delete(sym);
-                setGenerationState((prev) => {
-                  const next = new Map(prev);
-                  next.set(sym, { jobId, status: "failed", error: job.error || "Failed" });
-                  return next;
-                });
-              } else {
-                setGenerationState((prev) => {
-                  const next = new Map(prev);
-                  next.set(sym, { jobId, status: "generating", progress: job.progress || "Processing..." });
-                  return next;
-                });
-              }
-            } catch {
-              // Ignore poll errors, will retry on next interval
-            }
-          }, 2000);
-          pollTimers.current.set(sym, timer);
+          startJob(sym, jobId);
         } catch {
-          setGenerationState((prev) => {
-            const next = new Map(prev);
-            next.set(sym, { status: "failed", error: "Failed to start generation" });
-            return next;
-          });
+          // Individual generation failure — will show via context
         }
       }
     } catch (err) {
@@ -790,7 +730,6 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
                         isQualified={results.qualified.includes(item.symbol)}
                         isSelected={selectedSymbols.has(item.symbol)}
                         onToggle={() => toggleSymbol(item.symbol)}
-                        genState={generationState.get(item.symbol)}
                         isSkipped={skippedSymbols.has(item.symbol)}
                       />
                     ))}
@@ -808,29 +747,37 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
                   setStep("configure");
                   setResults(null);
                   setSelectedSymbols(new Set());
-                  setGenerationState(new Map());
                   setSkippedSymbols(new Set());
-                  for (const timer of pollTimers.current.values()) {
-                    clearInterval(timer);
-                  }
-                  pollTimers.current.clear();
+                  setResearchStarted(false);
                 }}
               >
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
               </Button>
               <div className="flex items-center gap-2">
-                {generationState.size > 0 && (
-                  <span className="text-sm text-muted-foreground">
-                    {Array.from(generationState.values()).filter((s) => s.status === "completed").length}/{generationState.size} done
-                  </span>
-                )}
-                {generationState.size === 0 && selectedSymbols.size > 0 && (
+                {(() => {
+                  const activeCount = results?.scored.filter((r) => {
+                    const job = getJobForSymbol(r.symbol);
+                    return job && (job.status === "queued" || job.status === "running");
+                  }).length ?? 0;
+                  const doneCount = results?.scored.filter((r) => {
+                    const job = getJobForSymbol(r.symbol);
+                    return job?.status === "completed";
+                  }).length ?? 0;
+                  const totalTracked = results?.scored.filter((r) => getJobForSymbol(r.symbol)).length ?? 0;
+
+                  return (activeCount > 0 || doneCount > 0) ? (
+                    <span className="text-sm text-muted-foreground">
+                      {doneCount}/{totalTracked} done
+                    </span>
+                  ) : null;
+                })()}
+                {!researchStarted && selectedSymbols.size > 0 && (
                   <span className="text-sm text-muted-foreground">
                     {selectedSymbols.size} selected
                   </span>
                 )}
-                {generationState.size === 0 ? (
+                {!researchStarted ? (
                   <>
                     <Button
                       variant="outline"
@@ -881,16 +828,23 @@ function ResultRow({
   isQualified,
   isSelected,
   onToggle,
-  genState,
   isSkipped,
 }: {
   item: ScannerResultItem;
   isQualified: boolean;
   isSelected: boolean;
   onToggle: () => void;
-  genState?: { jobId?: string; status: "queued" | "generating" | "completed" | "failed"; progress?: string; error?: string };
   isSkipped?: boolean;
 }) {
+  const { getJobForSymbol } = useResearchJobs();
+  const activeJob = getJobForSymbol(item.symbol);
+  const genState = activeJob
+    ? {
+        status: activeJob.status === "running" ? "generating" as const : activeJob.status,
+        progress: activeJob.progress ?? undefined,
+        error: activeJob.error ?? undefined,
+      }
+    : undefined;
   const tech = item.technical;
   const rsi = tech?.details.rsi14;
   const aboveSma200 = tech?.details.aboveSma200;
