@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { researchApi, settingsApi } from "@/api";
+import { useResearchJobs, useResearchJobFinished } from "@/hooks/useResearchJobs";
 import type {
   ResearchReport,
   AnalysisResult,
@@ -1138,8 +1139,6 @@ export function ResearchReportPage() {
   const [skipped, setSkipped] = useState<CollectionStatus[]>([]);
   const [collections, setCollections] = useState<CollectionDataEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [generateProgress, setGenerateProgress] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -1170,10 +1169,22 @@ export function ResearchReportPage() {
     fetchData();
   }, [fetchData]);
 
+  const { getJobForSymbol, startJob } = useResearchJobs();
+  const activeJob = symbol ? getJobForSymbol(symbol) : undefined;
+  const generating = activeJob ? activeJob.status === "queued" || activeJob.status === "running" : false;
+  const generateProgress = activeJob?.progress ?? null;
+
+  useResearchJobFinished((finishedSymbol, status, error) => {
+    if (finishedSymbol !== symbol) return;
+    if (status === "completed") {
+      fetchData();
+    } else {
+      setGenerateError(error || `Report generation failed for ${symbol}`);
+    }
+  });
+
   const handleAnalyze = useCallback(async () => {
     if (!symbol || generating) return;
-    setGenerating(true);
-    setGenerateProgress(null);
     setGenerateError(null);
     try {
       const researchSettings = await settingsApi
@@ -1186,31 +1197,13 @@ export function ResearchReportPage() {
         mode: researchSettings.synthesizerMode,
         model: researchSettings.model,
       });
-
-      const maxAttempts = 150;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const job = await researchApi.getJob(jobId);
-        if (job.progress) setGenerateProgress(job.progress);
-        if (job.status === "completed") {
-          fetchData();
-          return;
-        }
-        if (job.status === "failed") {
-          setGenerateError(job.error || `Report generation failed for ${symbol}`);
-          return;
-        }
-      }
-      setGenerateError(`Report generation timed out for ${symbol}`);
+      startJob(symbol, jobId);
     } catch (err) {
       setGenerateError(
         err instanceof Error ? err.message : `Failed to generate report for ${symbol}`
       );
-    } finally {
-      setGenerating(false);
-      setGenerateProgress(null);
     }
-  }, [symbol, generating, fetchData]);
+  }, [symbol, generating, startJob]);
 
   if (!symbol) {
     return (
