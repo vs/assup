@@ -50,6 +50,7 @@ import {
 import { ChartModal } from "@/components/ChartModal";
 import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
+import { useResearchJobs, useResearchJobFinished } from "@/hooks/useResearchJobs";
 import { ScannerDialog } from "@/components/research/ScannerDialog";
 import { Link } from "react-router-dom";
 import {
@@ -91,11 +92,6 @@ export function WatchlistsPage() {
 
   // Scanner dialog
   const [discoverOpen, setDiscoverOpen] = useState(false);
-
-  // Report generation state – tracks multiple concurrent analyses
-  const [generatingMap, setGeneratingMap] = useState<Map<string, string | null>>(
-    () => new Map()
-  );
 
   // Drag state for sidebar drop targets
   const [dragOverWatchlistId, setDragOverWatchlistId] = useState<string | null>(
@@ -160,6 +156,8 @@ export function WatchlistsPage() {
     });
     return items;
   }, [selectedWatchlist, sortField, sortDir]);
+
+  const { getJobForSymbol, startJob } = useResearchJobs();
 
   // Sparklines
   const symbols = useMemo(
@@ -367,21 +365,9 @@ export function WatchlistsPage() {
   }
 
   // --- Report generation ---
-  function setGeneratingProgress(symbol: string, progress: string | null) {
-    setGeneratingMap((prev) => new Map(prev).set(symbol, progress));
-  }
-
-  function clearGenerating(symbol: string) {
-    setGeneratingMap((prev) => {
-      const next = new Map(prev);
-      next.delete(symbol);
-      return next;
-    });
-  }
-
   async function handleGenerateReport(symbol: string) {
-    if (generatingMap.has(symbol)) return; // already running
-    setGeneratingProgress(symbol, null);
+    const existingJob = getJobForSymbol(symbol);
+    if (existingJob && (existingJob.status === "queued" || existingJob.status === "running")) return;
     setError(null);
     try {
       const researchSettings = await settingsApi
@@ -394,53 +380,41 @@ export function WatchlistsPage() {
         mode: researchSettings.synthesizerMode,
         model: researchSettings.model,
       });
-
-      const maxAttempts = 150;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const job = await researchApi.getJob(jobId);
-
-        if (job.progress) {
-          setGeneratingProgress(symbol, job.progress);
-        }
-
-        if (job.status === "completed") {
-          // Refresh watchlist to get updated enrichment data
-          if (selectedWatchlistRef.current) {
-            const full = await api.watchlists.get(
-              selectedWatchlistRef.current.id
-            );
-            setSelectedWatchlist(full);
-          }
-          return;
-        }
-
-        if (job.status === "failed") {
-          setError(job.error || `Report generation failed for ${symbol}`);
-          return;
-        }
-      }
-
-      setError(`Report generation timed out for ${symbol}`);
+      startJob(symbol, jobId);
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : `Failed to generate report for ${symbol}`
       );
-    } finally {
-      clearGenerating(symbol);
     }
   }
 
   async function handleAnalyzeAll() {
     if (!selectedWatchlist) return;
     for (const item of selectedWatchlist.items) {
-      if (!generatingMap.has(item.symbol)) {
+      const job = getJobForSymbol(item.symbol);
+      if (!job || (job.status !== "queued" && job.status !== "running")) {
         handleGenerateReport(item.symbol);
       }
     }
   }
+
+  useResearchJobFinished(async (finishedSymbol, status, error) => {
+    if (status === "failed") {
+      setError(error || `Report generation failed for ${finishedSymbol}`);
+      return;
+    }
+    // Refresh watchlist to get updated enrichment data
+    if (selectedWatchlistRef.current) {
+      try {
+        const full = await api.watchlists.get(selectedWatchlistRef.current.id);
+        setSelectedWatchlist(full);
+      } catch {
+        // Ignore refresh errors
+      }
+    }
+  });
 
   // --- Drag and drop ---
   function handleDragStart(e: React.DragEvent, item: WatchlistItem) {
@@ -682,17 +656,27 @@ export function WatchlistsPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>{selectedWatchlist.name}</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAnalyzeAll}
-                    disabled={generatingMap.size > 0}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-1" />
-                    {generatingMap.size > 0
-                      ? `Updating ${generatingMap.size}...`
-                      : "Update All"}
-                  </Button>
+                  {(() => {
+                    const generatingCount = selectedWatchlist?.items.filter(
+                      (item) => {
+                        const job = getJobForSymbol(item.symbol);
+                        return job && (job.status === "queued" || job.status === "running");
+                      }
+                    ).length ?? 0;
+                    return (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAnalyzeAll}
+                        disabled={generatingCount > 0}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                        {generatingCount > 0
+                          ? `Updating ${generatingCount}...`
+                          : "Update All"}
+                      </Button>
+                    );
+                  })()}
                   <Button
                     variant="outline"
                     size="sm"
@@ -730,7 +714,6 @@ export function WatchlistsPage() {
                             item={item}
                             assetClasses={assetClasses}
                             getSparklineState={getSparklineState}
-                            generatingMap={generatingMap}
                             onDragStart={handleDragStart}
                             onChartClick={setChartSymbol}
                             onAssignAssetClass={handleAssignAssetClass}
@@ -866,7 +849,6 @@ interface TickerRowProps {
     loading: boolean;
     error: boolean;
   };
-  generatingMap: Map<string, string | null>;
   onDragStart: (e: React.DragEvent, item: WatchlistItem) => void;
   onChartClick: (symbol: string) => void;
   onAssignAssetClass: (item: WatchlistItem, assetClassId: string) => void;
@@ -878,16 +860,17 @@ function TickerRow({
   item,
   assetClasses,
   getSparklineState,
-  generatingMap,
   onDragStart,
   onChartClick,
   onAssignAssetClass,
   onGenerateReport,
   onRemove,
 }: TickerRowProps) {
+  const { getJobForSymbol } = useResearchJobs();
+  const activeJob = getJobForSymbol(item.symbol);
+  const isGenerating = activeJob ? activeJob.status === "queued" || activeJob.status === "running" : false;
+  const generateProgress = activeJob?.progress ?? null;
   const sparkline = getSparklineState(item.symbol);
-  const isGenerating = generatingMap.has(item.symbol);
-  const generateProgress = generatingMap.get(item.symbol) ?? null;
 
   return (
     <TableRow
