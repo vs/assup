@@ -3,6 +3,7 @@ import { Layout } from "@/components/layout/Layout";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { MacroProvider } from "@/components/common/MacroProvider";
 import { TickerProfileProvider } from "@/components/common/TickerProfileProvider";
+import { ResearchJobsProvider } from "@/hooks/useResearchJobs";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { PositionsPage } from "@/pages/PositionsPage";
 import { WatchlistsPage } from "@/pages/WatchlistsPage";
@@ -27,6 +28,7 @@ function App() {
     <ErrorBoundary>
       <MacroProvider>
       <TickerProfileProvider>
+      <ResearchJobsProvider>
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -53,6 +55,7 @@ function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ResearchJobsProvider>
       </TickerProfileProvider>
       </MacroProvider>
     </ErrorBoundary>
