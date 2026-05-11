@@ -154,10 +154,16 @@ router.get(
 router.get(
   "/jobs",
   asyncHandler(async (req, res) => {
-    const status = req.query.status as string | undefined;
+    const rawStatus = req.query.status;
+    const status = Array.isArray(rawStatus)
+      ? (rawStatus as string[])
+      : typeof rawStatus === "string"
+        ? rawStatus
+        : undefined;
+    const type = req.query.type as string | undefined;
     const rawLimit = parseInt(req.query.limit as string, 10) || 50;
     const limit = Math.min(100, Math.max(1, rawLimit));
-    const jobs = await jobService.list({ status, limit });
+    const jobs = await jobService.list({ status, type, limit });
     res.json(jobs);
   })
 );
