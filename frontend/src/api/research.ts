@@ -49,6 +49,17 @@ export const researchApi = {
   getJob: (jobId: string) =>
     request<ResearchJob>(`/api/research/jobs/${jobId}`),
 
+  listJobs: (params?: { status?: string | string[]; type?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.status) {
+      const statuses = Array.isArray(params.status) ? params.status : [params.status];
+      statuses.forEach((s) => query.append("status", s));
+    }
+    if (params?.type) query.set("type", params.type);
+    const qs = query.toString();
+    return request<ResearchJob[]>(`/api/research/jobs${qs ? `?${qs}` : ""}`);
+  },
+
   // Status
   getClaudeStatus: () =>
     request<{ available: boolean; mode: string; error?: string; keyConfigured?: boolean; keySource?: string }>(
