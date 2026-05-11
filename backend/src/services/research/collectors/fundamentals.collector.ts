@@ -2,7 +2,7 @@ import { SecType } from "@stoqey/ib";
 import { ibkrService } from "../../ibkr.js";
 import { parseFundamentalRatiosTick } from "../providers/ibkr-xml-parser.js";
 import { PolygonProvider } from "../providers/polygon.provider.js";
-import type { Collector, CollectionResult } from "./types.js";
+import type { CollectedData, Collector, CollectionResult } from "./types.js";
 
 const STALENESS_MINUTES = 24 * 60; // 24 hours
 
@@ -259,12 +259,20 @@ export const fundamentalsCollector: Collector = {
   async collect(symbol: string): Promise<CollectionResult> {
     // Try IBKR first (has richer data: volatility, options, short interest)
     if (ibkrService.isConnected()) {
-      return collectFromIBKR(symbol);
+      const result = await collectFromIBKR(symbol);
+      const fundamentals = (result as CollectedData).data?.fundamentals as Record<string, unknown> | undefined;
+      const hasData = fundamentals && Object.values(fundamentals).some((v) => v != null);
+      if (hasData) {
+        console.log(`[fundamentals] ${symbol}: collected from IBKR`);
+        return result;
+      }
+      console.log(`[fundamentals] ${symbol}: IBKR returned empty fundamentals (tick 258 likely rejected)`);
+      // Fall through to Polygon
     }
 
     // Fall back to Polygon for fundamentals
     if (process.env.MARKET_DATA_API_KEY) {
-      console.log(`[fundamentals] IBKR not connected, using Polygon fallback for ${symbol}`);
+      console.log(`[fundamentals] ${symbol}: using Polygon fallback`);
       return collectFromPolygon(symbol);
     }
 

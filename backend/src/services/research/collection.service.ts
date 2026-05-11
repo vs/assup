@@ -19,21 +19,26 @@ class CollectionService {
       throw new Error(`Unknown collector: ${source}`);
     }
 
-    // Check if existing data is still fresh (skip records don't count as fresh —
-    // data source availability may have changed since the skip was recorded)
+    // Check if existing data is still fresh
     if (!force) {
       const existing = await prisma.dataCollection.findFirst({
         where: { symbol, source },
         orderBy: { collectedAt: "desc" },
       });
 
-      if (
-        existing &&
-        existing.status !== "skipped" &&
-        existing.expiresAt &&
-        existing.expiresAt > new Date()
-      ) {
-        return false;
+      if (existing && existing.expiresAt && existing.expiresAt > new Date()) {
+        // Skipped records are never fresh — data source availability may have changed
+        if (existing.status === "skipped") {
+          // fall through to re-collect
+        }
+        // Records with all-null primary data are not worth caching
+        // (e.g., IBKR fundamentals when tick 258 is rejected)
+        else if (this.hasEmptyPrimaryData(existing.data, source)) {
+          // fall through to re-collect
+        }
+        else {
+          return false;
+        }
       }
     }
 
@@ -95,6 +100,28 @@ class CollectionService {
     });
 
     return analysis.id;
+  }
+
+  /**
+   * Check if a collected record has empty primary data (all null values
+   * in the key data object). This happens e.g. when IBKR tick 258 is
+   * rejected — the record is "ok" but fundamentals are all null.
+   */
+  private hasEmptyPrimaryData(data: unknown, source: string): boolean {
+    if (!data || typeof data !== "object") return true;
+    const record = data as Record<string, unknown>;
+
+    // Each source has a "primary" nested object that should contain actual data
+    const primaryKeys: Record<string, string> = {
+      fundamentals: "fundamentals",
+      technical: "indicators",
+    };
+    const key = primaryKeys[source];
+    if (!key) return false; // unknown source — assume data is fine
+
+    const primary = record[key];
+    if (!primary || typeof primary !== "object") return true;
+    return Object.values(primary as Record<string, unknown>).every((v) => v == null);
   }
 
   /**
