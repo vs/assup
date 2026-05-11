@@ -704,6 +704,7 @@ class IBKRService {
       const error = err as { code?: number; message?: string };
 
       if (
+        error.code === 10089 || // Snapshot not available for contract type
         error.code === 10091 || // Subscription required
         error.code === 200 ||    // No security definition found
         error.code === 321 ||    // Snapshot not applicable to generic ticks
@@ -711,8 +712,11 @@ class IBKRService {
         error.message?.includes("No security definition") ||
         error.message?.includes("not applicable to generic ticks")
       ) {
-        // Expected for options without proper subscriptions or invalid contracts
-        console.debug(`Market data skip [${error.code}]: ${contract.symbol} $${contract.strike} ${contract.lastTradeDateOrContractMonth} ${contract.right}`);
+        // Expected for contracts without proper subscriptions or invalid definitions
+        const detail = contract.secType === SecType.OPT
+          ? `${contract.symbol} $${contract.strike} ${contract.lastTradeDateOrContractMonth} ${contract.right}`
+          : `${contract.symbol} (${contract.secType})`;
+        console.debug(`Market data skip [${error.code}]: ${detail}`);
         return null;
       }
       console.error(`Failed to get market data for ${contract.symbol}:`, err);
