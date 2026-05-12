@@ -24,6 +24,7 @@ import type { ScannerSubscription } from "@stoqey/ib";
 import { ScanCode, Instrument, LocationCode } from "@stoqey/ib";
 import type { ImportedTrade } from "@prisma/client";
 import { Subscription, lastValueFrom } from "rxjs";
+import { BadRequestError } from "../errors/index.js";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -1422,6 +1423,11 @@ class IBKRService {
             const errMsg = err instanceof Error ? err.message : String(err);
             if (errMsg.includes("no items retrieved")) {
               resolve([]);
+            } else if (errMsg.toLowerCase().includes("not allowed")) {
+              reject(new BadRequestError(
+                `Scan code "${params.scanCode}" is not available with your current TWS market data subscriptions. ` +
+                `Check your IBKR account subscriptions in Account Management.`
+              ));
             } else {
               reject(err);
             }
