@@ -71,6 +71,7 @@ interface TickerData {
   bid?: number;
   ask?: number;
   last?: number;
+  open?: number;
   close?: number;
   delta?: number;
   volume?: number;
@@ -668,6 +669,7 @@ class IBKRService {
       const lastTick = marketData.get(4) ?? marketData.get(68);      // LAST / DELAYED_LAST
       const volumeTick = marketData.get(8) ?? marketData.get(74);    // VOLUME / DELAYED_VOLUME
       const closeTick = marketData.get(9) ?? marketData.get(75);     // CLOSE / DELAYED_CLOSE
+      const openTick = marketData.get(14) ?? marketData.get(76);     // OPEN / DELAYED_OPEN
 
       // Extract delta and IV for options (IBApiNext tick types)
       // MODEL_OPTION_DELTA=10041, DELAYED_MODEL_OPTION_DELTA=10047
@@ -694,6 +696,7 @@ class IBKRService {
         bid: bidTick?.value,
         ask: askTick?.value,
         last: lastTick?.value,
+        open: openTick?.value,
         close: closeTick?.value,
         volume: volumeTick?.value,
         delta,

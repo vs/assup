@@ -143,7 +143,25 @@ class TickerProfileService {
       fundamentals = recentAnalysis.details as Record<string, any>;
     }
 
-    // 5. Assemble the profile — research report overrides Polygon data
+    // 5. Fetch previous close price from Polygon (free plan compatible)
+    let currentPrice: number | null = null;
+    let previousClose: number | null = null;
+    try {
+      if (process.env.MARKET_DATA_API_KEY) {
+        currentPrice = await this.polygonProvider.getPreviousClose(symbol);
+      }
+    } catch (err) {
+      console.warn(`Polygon previous close failed for ${symbol}:`, err);
+    }
+    // Fallback: derive from chart data
+    if (currentPrice == null && chartData.length > 0) {
+      currentPrice = chartData[chartData.length - 1].close;
+    }
+    if (chartData.length >= 2) {
+      previousClose = chartData[chartData.length - 2].close;
+    }
+
+    // 6. Assemble the profile — research report overrides Polygon data
     const companyOverview = report?.companyOverview as Record<string, any> | null;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + CACHE_TTL_MS);
@@ -163,18 +181,20 @@ class TickerProfileService {
         null,
       peRatio: fundamentals?.fundamentals?.pe ?? null,
       dividendYield: fundamentals?.fundamentals?.dividendYield ?? null,
+      currentPrice,
+      previousClose,
       fetchedAt: now,
       expiresAt,
     };
 
-    // 6. Cache profile
+    // 7. Cache profile
     await prisma.tickerProfile.upsert({
       where: { symbol },
       create: profileData,
       update: profileData,
     });
 
-    // 7. Cache chart data
+    // 8. Cache chart data
     if (chartData.length > 0) {
       await prisma.priceHistoryCache.upsert({
         where: { symbol },
@@ -213,6 +233,8 @@ class TickerProfileService {
       marketCap: profile.marketCap,
       peRatio: profile.peRatio,
       dividendYield: profile.dividendYield,
+      currentPrice: profile.currentPrice ?? (chartData.length > 0 ? chartData[chartData.length - 1].close : null),
+      previousClose: profile.previousClose ?? (chartData.length >= 2 ? chartData[chartData.length - 2].close : null),
       chart: chartData,
       recommendation: recommendation as any,
       confidence,

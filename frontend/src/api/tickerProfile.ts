@@ -4,6 +4,7 @@ import { request } from "./client";
 import type {
   TickerProfileResponse,
   TickerProfileBatchResponse,
+  TickerQuoteResponse,
 } from "@assup/shared";
 
 export const tickerProfileApi = {
@@ -15,4 +16,7 @@ export const tickerProfileApi = {
       method: "POST",
       body: JSON.stringify({ symbols }),
     }),
+
+  getQuote: (symbol: string) =>
+    request<TickerQuoteResponse>(`/api/ticker-profile/${encodeURIComponent(symbol)}/quote`),
 };

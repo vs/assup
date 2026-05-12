@@ -3,10 +3,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { tickerProfileApi } from "../api/tickerProfile";
-import type { TickerProfileResponse } from "@assup/shared";
+import type { TickerProfileResponse, TickerQuoteResponse } from "@assup/shared";
 
 const QUERY_KEY_PREFIX = "tickerProfile";
 const STALE_TIME = 5 * 60 * 1000; // 5 minutes
+const QUOTE_STALE_TIME = 30 * 1000; // 30 seconds
 
 export function useTickerProfile(symbol: string | null) {
   const upperSymbol = symbol?.toUpperCase() ?? null;
@@ -15,6 +16,18 @@ export function useTickerProfile(symbol: string | null) {
     queryFn: () => tickerProfileApi.getProfile(upperSymbol!),
     enabled: !!upperSymbol,
     staleTime: STALE_TIME,
+    retry: 1,
+  });
+}
+
+export function useTickerQuote(symbol: string | null, enabled = true) {
+  const upperSymbol = symbol?.toUpperCase() ?? null;
+  return useQuery<TickerQuoteResponse>({
+    queryKey: ["tickerQuote", upperSymbol],
+    queryFn: () => tickerProfileApi.getQuote(upperSymbol!),
+    enabled: !!upperSymbol && enabled,
+    staleTime: QUOTE_STALE_TIME,
+    refetchInterval: 60 * 1000, // refresh every 60s while visible
     retry: 1,
   });
 }

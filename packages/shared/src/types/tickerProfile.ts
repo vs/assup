@@ -12,9 +12,21 @@ export interface TickerProfileResponse {
   marketCap: number | null;
   peRatio: number | null;
   dividendYield: number | null;
+  currentPrice: number | null;
+  previousClose: number | null;
   chart: { date: string; close: number }[];
   recommendation: Recommendation | null;
   confidence: number | null;
 }
 
 export type TickerProfileBatchResponse = Record<string, TickerProfileResponse>;
+
+export interface TickerQuoteResponse {
+  symbol: string;
+  last: number | null;
+  open: number | null;
+  close: number | null;
+  bid: number | null;
+  ask: number | null;
+  volume: number | null;
+}

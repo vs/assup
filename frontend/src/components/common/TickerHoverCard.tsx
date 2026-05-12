@@ -3,9 +3,10 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { useTickerProfile } from "../../hooks/useTickerProfile";
+import { useTickerProfile, useTickerQuote } from "../../hooks/useTickerProfile";
 import { AreaChart, Area, YAxis, ResponsiveContainer } from "recharts";
 import type { Recommendation } from "@assup/shared";
+import { useState } from "react";
 
 interface TickerHoverCardProps {
   symbol: string;
@@ -53,8 +54,42 @@ function ProfileSkeleton() {
   );
 }
 
+function PriceDisplay({
+  last,
+  open,
+  close,
+}: {
+  last: number | null;
+  open: number | null;
+  close: number | null;
+}) {
+  if (last === null) return null;
+
+  // Change since today's open; fall back to previous close if open unavailable
+  const ref = open ?? close;
+  const change = ref != null ? last - ref : null;
+  const changePct = ref != null && ref !== 0
+    ? ((last - ref) / ref) * 100
+    : null;
+  const isPositive = change != null && change >= 0;
+  const changeColor = change == null ? "" : isPositive ? "text-green-600" : "text-red-600";
+
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-xl font-bold tracking-tight">${last.toFixed(2)}</span>
+      {change != null && changePct != null && (
+        <span className={`text-sm font-semibold ${changeColor}`}>
+          {isPositive ? "+" : ""}{change.toFixed(2)} ({isPositive ? "+" : ""}{changePct.toFixed(2)}%)
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
   const { data: profile, isLoading, isError } = useTickerProfile(symbol);
+  const [isOpen, setIsOpen] = useState(false);
+  const { data: quote } = useTickerQuote(symbol, isOpen);
 
   const chartColor =
     profile?.chart && profile.chart.length >= 2
@@ -64,7 +99,7 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
       : "#22c55e";
 
   return (
-    <HoverCard openDelay={300} closeDelay={100}>
+    <HoverCard openDelay={300} closeDelay={100} onOpenChange={setIsOpen}>
       <HoverCardTrigger asChild>{children}</HoverCardTrigger>
       <HoverCardContent
         className="w-auto p-0 border-border bg-popover"
@@ -108,6 +143,13 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
                 </div>
               )}
             </div>
+
+            {/* Price — the most prominent element (real-time from IBKR) */}
+            <PriceDisplay
+              last={quote?.last ?? profile.currentPrice}
+              open={quote?.open ?? null}
+              close={quote?.close ?? profile.previousClose}
+            />
 
             {/* Tags */}
             <div className="flex gap-1.5 flex-wrap">
