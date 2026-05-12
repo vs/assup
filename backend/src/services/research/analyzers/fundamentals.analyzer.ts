@@ -122,6 +122,36 @@ export const fundamentalsAnalyzer: Analyzer = {
       }
     }
 
+    // --- Dividend yield ---
+    if (fundamentals.dividendYield !== null && fundamentals.dividendYield !== undefined) {
+      dataPoints++;
+      if (fundamentals.dividendYield > 4) {
+        score += 1;
+        signals.push(`High dividend yield: ${fundamentals.dividendYield.toFixed(2)}%`);
+      } else if (fundamentals.dividendYield > 1) {
+        signals.push(`Dividend yield: ${fundamentals.dividendYield.toFixed(2)}%`);
+      } else if (fundamentals.dividendYield > 0) {
+        signals.push(`Low dividend yield: ${fundamentals.dividendYield.toFixed(2)}%`);
+      }
+    }
+
+    // --- Market cap ---
+    if (fundamentals.marketCap !== null && fundamentals.marketCap !== undefined) {
+      dataPoints++;
+      if (fundamentals.marketCap >= 200e9) {
+        signals.push(`Mega cap: $${(fundamentals.marketCap / 1e9).toFixed(0)}B`);
+      } else if (fundamentals.marketCap >= 10e9) {
+        signals.push(`Large cap: $${(fundamentals.marketCap / 1e9).toFixed(1)}B`);
+      } else if (fundamentals.marketCap >= 2e9) {
+        signals.push(`Mid cap: $${(fundamentals.marketCap / 1e9).toFixed(1)}B`);
+      } else if (fundamentals.marketCap >= 300e6) {
+        signals.push(`Small cap: $${(fundamentals.marketCap / 1e6).toFixed(0)}M`);
+      } else {
+        score -= 1;
+        signals.push(`Micro cap: $${(fundamentals.marketCap / 1e6).toFixed(0)}M`);
+      }
+    }
+
     // --- IV vs HV comparison ---
     if (volatility.implied !== null && volatility.historical30d !== null && volatility.historical30d > 0) {
       dataPoints++;
@@ -185,7 +215,7 @@ export const fundamentalsAnalyzer: Analyzer = {
     // Confidence scales with both signal strength and data availability.
     // A small baseline from dataRatio ensures that having data (even with
     // a neutral score) produces confidence above the 0.1 "no data" floor.
-    const maxDataPoints = 9;
+    const maxDataPoints = 11;
     const dataRatio = Math.min(dataPoints / maxDataPoints, 1);
     const signalConfidence = Math.min(Math.abs(score) / 5, 1) * (0.5 + 0.5 * dataRatio);
     const confidence = Math.max(signalConfidence, 0.1 + dataRatio * 0.2);

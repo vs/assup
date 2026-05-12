@@ -245,22 +245,62 @@ export const fundamentalsCollector: Collector = {
 
   async collect(symbol: string): Promise<CollectionResult> {
     // Try IBKR first (has richer data: volatility, options, short interest)
+    let ibkrResult: CollectionResult | null = null;
     if (ibkrService.isConnected()) {
-      const result = await collectFromIBKR(symbol);
-      const fundamentals = (result as CollectedData).data?.fundamentals as Record<string, unknown> | undefined;
+      ibkrResult = await collectFromIBKR(symbol);
+      const fundamentals = (ibkrResult as CollectedData).data?.fundamentals as Record<string, unknown> | undefined;
       const hasData = fundamentals && Object.values(fundamentals).some((v) => v != null);
       if (hasData) {
         console.log(`[fundamentals] ${symbol}: collected from IBKR`);
-        return result;
+        return ibkrResult;
       }
       console.log(`[fundamentals] ${symbol}: IBKR returned empty fundamentals (tick 258 likely rejected)`);
-      // Fall through to Polygon
+      // Fall through to Polygon, but keep IBKR result for non-fundamentals data
     }
 
     // Fall back to Polygon for fundamentals
     if (process.env.MARKET_DATA_API_KEY) {
       console.log(`[fundamentals] ${symbol}: using Polygon fallback`);
-      return collectFromPolygon(symbol);
+      const polygonResult = await collectFromPolygon(symbol);
+
+      // Merge IBKR non-fundamentals data (volatility, options, shortable)
+      // into Polygon result when IBKR was connected but tick 258 was rejected
+      if (ibkrResult) {
+        const ibkrData = (ibkrResult as CollectedData).data;
+        const polygonData = (polygonResult as CollectedData).data;
+        if (ibkrData && polygonData) {
+          const ibkr = ibkrData as Record<string, unknown>;
+          const poly = polygonData as Record<string, unknown>;
+          // Keep IBKR's volatility, options, and shortable data if Polygon's are empty
+          for (const key of ["volatility", "optionActivity", "shortable"] as const) {
+            const polySection = poly[key] as Record<string, unknown> | undefined;
+            const ibkrSection = ibkr[key] as Record<string, unknown> | undefined;
+            if (ibkrSection && Object.values(ibkrSection).some((v) => v != null)) {
+              if (!polySection || Object.values(polySection).every((v) => v == null)) {
+                poly[key] = ibkrSection;
+              }
+            }
+          }
+          // Use IBKR sector info if Polygon doesn't have it
+          const polySector = poly.sector as Record<string, unknown> | undefined;
+          const ibkrSector = ibkr.sector as Record<string, unknown> | undefined;
+          if (ibkrSector && Object.values(ibkrSector).some((v) => v != null)) {
+            if (!polySector || Object.values(polySector).every((v) => v == null)) {
+              poly.sector = ibkrSector;
+            }
+          }
+          console.log(`[fundamentals] ${symbol}: merged IBKR non-fundamentals into Polygon data`);
+        }
+      }
+
+      return polygonResult;
+    }
+
+    // If IBKR was connected but fundamentals were empty, still return it
+    // (has volatility, options, shortable data even without tick 258)
+    if (ibkrResult) {
+      console.log(`[fundamentals] ${symbol}: using IBKR result without fundamentals (no Polygon key)`);
+      return ibkrResult;
     }
 
     return {
