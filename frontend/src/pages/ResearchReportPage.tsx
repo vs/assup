@@ -4,7 +4,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { researchApi, settingsApi } from "@/api";
 import { useResearchJobs, useResearchJobFinished } from "@/hooks/useResearchJobs";
-import { useTickerProfile } from "@/hooks/useTickerProfile";
+import { useTickerProfile, useTickerQuote } from "@/hooks/useTickerProfile";
 import type {
   ResearchReport,
   AnalysisResult,
@@ -95,6 +95,14 @@ function fmtCap(v: number): string {
   if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
   if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
   return `$${v.toLocaleString()}`;
+}
+
+/** Format percentage with adaptive precision — avoids misleading "0.0%" for tiny values */
+function fmtPct(v: number, defaultDecimals = 1): string {
+  const abs = Math.abs(v);
+  if (abs === 0) return "0%";
+  if (abs < 0.1) return `${v.toFixed(2)}%`;
+  return `${v.toFixed(defaultDecimals)}%`;
 }
 
 
@@ -328,11 +336,11 @@ function CompanyInfoPanel({
               {profile.marketCap != null && (
                 <MetricItem label="Mkt Cap" value={fmtCap(profile.marketCap)} tip="Market Capitalization" />
               )}
-              {profile.peRatio != null && (
+              {profile.peRatio != null && profile.peRatio > 0 && (
                 <MetricItem
                   label="P/E"
                   value={fmt(profile.peRatio, 1)}
-                  color={profile.peRatio > 0 && profile.peRatio < 15 ? "green" : profile.peRatio > 40 ? "red" : undefined}
+                  color={profile.peRatio < 15 ? "green" : profile.peRatio > 40 ? "red" : undefined}
                   tip="Price-to-Earnings Ratio"
                 />
               )}
@@ -350,19 +358,19 @@ function CompanyInfoPanel({
               {fund.marketCap != null && (
                 <MetricItem label="Mkt Cap" value={fmtCap(fund.marketCap)} tip="Market Capitalization" />
               )}
-              {fund.pe != null && (
+              {fund.pe != null && (fund.pe as number) > 0 && (
                 <MetricItem
                   label="P/E"
                   value={fmt(fund.pe, 1)}
-                  color={fund.pe > 0 && fund.pe < 15 ? "green" : fund.pe > 40 ? "red" : undefined}
+                  color={(fund.pe as number) < 15 ? "green" : (fund.pe as number) > 40 ? "red" : undefined}
                   tip="Price-to-Earnings Ratio"
                 />
               )}
-              {fund.forwardPe != null && (
+              {fund.forwardPe != null && (fund.forwardPe as number) > 0 && (
                 <MetricItem
                   label="Fwd P/E"
                   value={fmt(fund.forwardPe, 1)}
-                  color={fund.forwardPe > 0 && fund.forwardPe < 15 ? "green" : fund.forwardPe > 30 ? "red" : undefined}
+                  color={(fund.forwardPe as number) < 15 ? "green" : (fund.forwardPe as number) > 30 ? "red" : undefined}
                   tip="Forward Price-to-Earnings Ratio (based on estimated future earnings)"
                 />
               )}
@@ -372,31 +380,31 @@ function CompanyInfoPanel({
               {fund.epsGrowth != null && (
                 <MetricItem
                   label="EPS Growth"
-                  value={`${fund.epsGrowth.toFixed(1)}%`}
-                  color={fund.epsGrowth > 20 ? "green" : fund.epsGrowth < -10 ? "red" : undefined}
+                  value={fmtPct(fund.epsGrowth as number)}
+                  color={(fund.epsGrowth as number) > 20 ? "green" : (fund.epsGrowth as number) < -10 ? "red" : undefined}
                 />
               )}
               {fund.revenueGrowth != null && (
                 <MetricItem
                   label="Rev Growth"
-                  value={`${fund.revenueGrowth.toFixed(1)}%`}
-                  color={fund.revenueGrowth > 15 ? "green" : fund.revenueGrowth < -5 ? "red" : undefined}
+                  value={fmtPct(fund.revenueGrowth as number)}
+                  color={(fund.revenueGrowth as number) > 15 ? "green" : (fund.revenueGrowth as number) < -5 ? "red" : undefined}
                   tip="Revenue Growth (year-over-year)"
                 />
               )}
               {fund.roe != null && (
                 <MetricItem
                   label="ROE"
-                  value={`${fund.roe.toFixed(1)}%`}
-                  color={fund.roe > 20 ? "green" : fund.roe < 5 ? "red" : undefined}
+                  value={fmtPct(fund.roe as number)}
+                  color={(fund.roe as number) > 20 ? "green" : (fund.roe as number) < 5 ? "red" : undefined}
                   tip="Return on Equity"
                 />
               )}
               {fund.profitMargin != null && (
                 <MetricItem
                   label="Margin"
-                  value={`${fund.profitMargin.toFixed(1)}%`}
-                  color={fund.profitMargin > 20 ? "green" : fund.profitMargin < 0 ? "red" : undefined}
+                  value={fmtPct(fund.profitMargin as number)}
+                  color={(fund.profitMargin as number) > 20 ? "green" : (fund.profitMargin as number) < 0 ? "red" : undefined}
                 />
               )}
               {fund.debtToEquity != null && (
@@ -735,7 +743,10 @@ function OptionsLandscapeSection({
                 const rows = byExpiry.get(exp)!;
                 const calls = rows.filter((r) => r.right === "C");
                 const puts = rows.filter((r) => r.right === "P");
-                const expAvgIV = rows.reduce((s, r) => s + (r.impliedVolatility ?? 0), 0) / rows.length;
+                const ivRows = rows.filter((r) => r.impliedVolatility != null && r.impliedVolatility > 0);
+                const expAvgIV = ivRows.length > 0
+                  ? ivRows.reduce((s, r) => s + r.impliedVolatility!, 0) / ivRows.length
+                  : null;
                 const expVol = rows.reduce((s, r) => s + r.volume, 0);
                 const isOpen = expandedExpiry.has(exp);
 
@@ -750,9 +761,11 @@ function OptionsLandscapeSection({
                         <span className="text-muted-foreground">
                           {calls.length}C / {puts.length}P
                         </span>
-                        <span className="text-muted-foreground">
-                          IV: {(expAvgIV * 100).toFixed(1)}%
-                        </span>
+                        {expAvgIV != null && (
+                          <span className="text-muted-foreground">
+                            IV: {(expAvgIV * 100).toFixed(1)}%
+                          </span>
+                        )}
                         <span className="text-muted-foreground">
                           Vol: {expVol.toLocaleString()}
                         </span>
@@ -1231,6 +1244,7 @@ export function ResearchReportPage() {
   }, [fetchData]);
 
   const { data: tickerProfile } = useTickerProfile(symbol ?? null);
+  const { data: tickerQuote } = useTickerQuote(symbol ?? null);
 
   const { getJobForSymbol, startJob } = useResearchJobs();
   const activeJob = symbol ? getJobForSymbol(symbol) : undefined;
@@ -1326,19 +1340,42 @@ export function ResearchReportPage() {
           Back
         </Button>
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1">
-            <span className="text-2xl font-bold">{symbol}</span>
-            {!report && tickerProfile?.companyName && (
-              <span className="text-lg text-muted-foreground">{tickerProfile.companyName}</span>
-            )}
-            <ExternalLinks symbol={symbol} />
-          </span>
-          {(report || tickerProfile?.recommendation) && (
-            <RecommendationBadge
-              recommendation={(report?.recommendation ?? tickerProfile?.recommendation)!}
-              confidence={report?.confidence ?? tickerProfile?.confidence ?? 0}
-            />
-          )}
+          <div>
+            <div className="inline-flex items-center gap-1">
+              <span className="text-2xl font-bold">{symbol}</span>
+              {!report && tickerProfile?.companyName && (
+                <span className="text-lg text-muted-foreground">{tickerProfile.companyName}</span>
+              )}
+              <ExternalLinks symbol={symbol} />
+              {(report || tickerProfile?.recommendation) && (
+                <RecommendationBadge
+                  recommendation={(report?.recommendation ?? tickerProfile?.recommendation)!}
+                  confidence={report?.confidence ?? tickerProfile?.confidence ?? 0}
+                />
+              )}
+            </div>
+            {/* Price — prominent display (real-time from IBKR) */}
+            {(() => {
+              const price = tickerQuote?.last ?? tickerProfile?.currentPrice;
+              if (price == null) return null;
+              const ref = tickerQuote?.open ?? tickerQuote?.close ?? tickerProfile?.previousClose;
+              const change = ref != null ? price - ref : null;
+              const changePct = ref != null && ref !== 0 ? ((price - ref) / ref) * 100 : null;
+              const isPositive = change != null && change >= 0;
+              return (
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-2xl font-bold tracking-tight">
+                    ${price.toFixed(2)}
+                  </span>
+                  {change != null && changePct != null && (
+                    <span className={`text-base font-semibold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                      {isPositive ? "+" : ""}{change.toFixed(2)} ({isPositive ? "+" : ""}{changePct.toFixed(2)}%)
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         </div>
         {report && (
           <span className="text-sm text-muted-foreground ml-auto">
