@@ -4,11 +4,13 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { researchApi, settingsApi } from "@/api";
 import { useResearchJobs, useResearchJobFinished } from "@/hooks/useResearchJobs";
+import { useTickerProfile } from "@/hooks/useTickerProfile";
 import type {
   ResearchReport,
   AnalysisResult,
   CollectionStatus,
   CollectionDataEntry,
+  TickerProfileResponse,
 } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
 
@@ -191,6 +193,7 @@ function CompanyInfoPanel({
   socialD,
   fundD,
   optD,
+  profile,
 }: {
   report: ResearchReport | null;
   analyses: AnalysisResult[];
@@ -198,6 +201,7 @@ function CompanyInfoPanel({
   socialD: Record<string, unknown>;
   fundD: Record<string, unknown>;
   optD: Record<string, unknown>;
+  profile?: TickerProfileResponse | null;
 }) {
   const technical = getAnalysis(analyses, "technical");
   const social = getAnalysis(analyses, "social");
@@ -228,7 +232,7 @@ function CompanyInfoPanel({
     <Card className="lg:col-span-2">
       <CardContent className="py-3 px-4 overflow-y-auto" style={{ maxHeight: 460 }}>
         {/* Company Overview */}
-        {report?.companyOverview && (
+        {report?.companyOverview ? (
           <InfoBullet label="Company">
             <div className="space-y-1">
               <div className="flex flex-wrap gap-1">
@@ -255,29 +259,86 @@ function CompanyInfoPanel({
               )}
             </div>
           </InfoBullet>
-        )}
+        ) : profile ? (
+          <InfoBullet label="Company">
+            <div className="space-y-1">
+              {profile.companyName && (
+                <p className="text-xs font-medium">{profile.companyName}</p>
+              )}
+              <div className="flex flex-wrap gap-1">
+                {profile.sector && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {profile.sector}
+                  </Badge>
+                )}
+                {profile.industry && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {profile.industry}
+                  </Badge>
+                )}
+                {profile.marketPosition && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    {profile.marketPosition}
+                  </Badge>
+                )}
+              </div>
+              {profile.description && (
+                <p className="text-xs text-muted-foreground line-clamp-3">
+                  {profile.description}
+                </p>
+              )}
+            </div>
+          </InfoBullet>
+        ) : null}
 
         {/* Recommendation */}
-        {report && (
-          <InfoBullet label="Recommendation">
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-lg font-bold capitalize ${
-                  report.recommendation === "buy"
-                    ? "text-green-600"
-                    : report.recommendation === "sell" ||
-                        report.recommendation === "avoid"
-                      ? "text-red-600"
-                      : report.recommendation === "wheel"
-                        ? "text-blue-600"
-                        : "text-amber-600"
-                }`}
-              >
-                {report.recommendation}
-              </span>
-              <span className="text-muted-foreground text-xs">
-                {Math.round(report.confidence * 100)}% confidence
-              </span>
+        {(report || profile?.recommendation) && (() => {
+          const rec = report?.recommendation ?? profile?.recommendation;
+          const conf = report?.confidence ?? profile?.confidence;
+          return (
+            <InfoBullet label="Recommendation">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-lg font-bold capitalize ${
+                    rec === "buy"
+                      ? "text-green-600"
+                      : rec === "sell" || rec === "avoid"
+                        ? "text-red-600"
+                        : rec === "wheel"
+                          ? "text-blue-600"
+                          : "text-amber-600"
+                  }`}
+                >
+                  {rec}
+                </span>
+                {conf != null && (
+                  <span className="text-muted-foreground text-xs">
+                    {Math.round(conf * 100)}% confidence
+                  </span>
+                )}
+              </div>
+            </InfoBullet>
+          );
+        })()}
+
+        {/* Fundamentals (from profile fallback) */}
+        {!fundamentalsAnalysis && profile && (profile.marketCap != null || profile.peRatio != null || profile.dividendYield != null) && (
+          <InfoBullet label="Fundamentals">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+              {profile.marketCap != null && (
+                <MetricItem label="Mkt Cap" value={fmtCap(profile.marketCap)} tip="Market Capitalization" />
+              )}
+              {profile.peRatio != null && (
+                <MetricItem
+                  label="P/E"
+                  value={fmt(profile.peRatio, 1)}
+                  color={profile.peRatio > 0 && profile.peRatio < 15 ? "green" : profile.peRatio > 40 ? "red" : undefined}
+                  tip="Price-to-Earnings Ratio"
+                />
+              )}
+              {profile.dividendYield != null && profile.dividendYield > 0 && (
+                <MetricItem label="Div Yield" value={`${profile.dividendYield.toFixed(2)}%`} tip="Dividend Yield (annual dividend / share price)" />
+              )}
             </div>
           </InfoBullet>
         )}
@@ -1169,6 +1230,8 @@ export function ResearchReportPage() {
     fetchData();
   }, [fetchData]);
 
+  const { data: tickerProfile } = useTickerProfile(symbol ?? null);
+
   const { getJobForSymbol, startJob } = useResearchJobs();
   const activeJob = symbol ? getJobForSymbol(symbol) : undefined;
   const generating = activeJob ? activeJob.status === "queued" || activeJob.status === "running" : false;
@@ -1265,12 +1328,15 @@ export function ResearchReportPage() {
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
             <span className="text-2xl font-bold">{symbol}</span>
+            {!report && tickerProfile?.companyName && (
+              <span className="text-lg text-muted-foreground">{tickerProfile.companyName}</span>
+            )}
             <ExternalLinks symbol={symbol} />
           </span>
-          {report && (
+          {(report || tickerProfile?.recommendation) && (
             <RecommendationBadge
-              recommendation={report.recommendation}
-              confidence={report.confidence}
+              recommendation={(report?.recommendation ?? tickerProfile?.recommendation)!}
+              confidence={report?.confidence ?? tickerProfile?.confidence ?? 0}
             />
           )}
         </div>
@@ -1339,6 +1405,7 @@ export function ResearchReportPage() {
           socialD={socialD}
           fundD={fundD}
           optD={optD}
+          profile={tickerProfile}
         />
       </div>
 
