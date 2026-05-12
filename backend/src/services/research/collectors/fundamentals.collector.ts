@@ -152,7 +152,7 @@ async function collectFromPolygon(symbol: string): Promise<CollectionResult> {
     const shares = current.sharesOutstanding;
     const operatingCF = current.operatingCashFlow;
 
-    if (price != null && eps != null && eps !== 0) pe = price / eps;
+    if (price != null && eps != null && eps > 0) pe = price / eps;
     if (netIncome != null && revenue != null && revenue !== 0) profitMargin = (netIncome / revenue) * 100;
     if (netIncome != null && equity != null && equity !== 0) roe = (netIncome / equity) * 100;
     if (totalLiabilities != null && equity != null && equity !== 0) debtToEquity = (totalLiabilities / equity) * 100;
