@@ -240,12 +240,12 @@ const applyLiveDataToSummary = (
     (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
   );
 
-  // Only count shares as wheel-related if the cached summary already indicated shares
-  // (the initial build checks the current cycle for share involvement)
+  // Show shares if: wheel cycle involves them, OR there's a CSP alongside stock
   const cachedHadShares = summary.currentPhase === "holding_shares" ||
     summary.currentPhase === "cc_open" ||
     (summary.activePhases && summary.activePhases.includes("holding_shares"));
-  const wheelSharesHeld = cachedHadShares && stockPos && stockPos.pos % 100 === 0;
+  const wheelSharesHeld = stockPos && stockPos.pos % 100 === 0 &&
+    (cachedHadShares || hasShortPut || hasShortCall);
 
   // Build active phases array
   const activePhases: ("csp_open" | "holding_shares" | "cc_open")[] = [];
@@ -687,9 +687,9 @@ export const wheelService = {
       (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
     );
 
-    // Only count shares as wheel-related if the current cycle involves shares
-    // and the position is a multiple of 100 (option assignments come in 100-share lots)
-    const wheelSharesHeld = currentCycle && currentCycle.shareQuantity > 0 && stockPos && stockPos.pos % 100 === 0;
+    // Show shares if: wheel cycle involves them, OR there's an option alongside stock
+    const wheelSharesHeld = stockPos && stockPos.pos % 100 === 0 &&
+      ((currentCycle && currentCycle.shareQuantity > 0) || hasShortPut || hasShortCall);
 
     // Build active phases array
     const activePhases: ("csp_open" | "holding_shares" | "cc_open")[] = [];
@@ -1231,6 +1231,9 @@ export const wheelService = {
         if (tradeType === "SOLD_PUT") {
           entryType = "sold_put";
           entryDescription = `Sold PUT $${trade.strike}`;
+        } else if (tradeType === "SOLD_CALL") {
+          entryType = "sold_call";
+          entryDescription = `Sold CALL $${trade.strike}`;
         } else if (tradeType === "ASSIGNED") {
           entryType = "assigned";
           const price = trade.strike || Math.abs(trade.proceeds / trade.quantity);
@@ -1251,8 +1254,8 @@ export const wheelService = {
         cycleTradeIndices = [];
 
         // Calculate initial capital deployed
-        if (tradeType === "SOLD_PUT" && trade.strike) {
-          // CSP: capital at risk is strike * 100 - premium received
+        if ((tradeType === "SOLD_PUT" || tradeType === "SOLD_CALL") && trade.strike) {
+          // Option sold: capital at risk is strike * 100 - premium received
           const premium = trade.proceeds + trade.commission;
           cycleCapitalDeployed = trade.strike * Math.abs(trade.quantity) * (trade.multiplier || 100) - premium;
           cyclePremiumReceived = premium;

@@ -76,7 +76,7 @@ export interface WheelCycle {
   durationDays: number;
   trades: WheelMatchedTrade[];
   // New fields for clarity
-  entryType: "sold_put" | "bought_shares" | "assigned";
+  entryType: "sold_put" | "bought_shares" | "assigned" | "sold_call";
   entryDescription: string; // "Sold PUT $145" or "Bought 100 @ $148"
   exitType: "called_away" | "sold_shares" | "put_expired" | "cc_expired" | "put_closed" | "cc_closed" | "in_progress";
   exitDescription: string | null; // "Called away @ $150" or null if in progress
