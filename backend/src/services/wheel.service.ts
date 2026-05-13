@@ -185,6 +185,42 @@ interface CachedIBKRData {
   optionPrices: Map<string, number>;  // key: "SYMBOL-STRIKE-EXPIRY-RIGHT" -> price per share
 }
 
+function buildActiveOptions(
+  shortOptionPositions: CachedIBKRData["positions"]
+): WheelTickerSummary["activeOptions"] {
+  const puts = shortOptionPositions.filter((p) => p.contract.right === "P");
+  const calls = shortOptionPositions.filter((p) => p.contract.right === "C");
+
+  const parseExpiry = (p: CachedIBKRData["positions"][0]) => {
+    const raw = p.contract.lastTradeDateOrContractMonth;
+    if (!raw) return null;
+    const d = new Date(raw.slice(0, 4) + "-" + raw.slice(4, 6) + "-" + raw.slice(6, 8));
+    return { date: d, formatted: d.toISOString().split("T")[0] };
+  };
+
+  const nearest = (list: typeof puts) => {
+    let best: (typeof puts)[0] | null = null;
+    let bestDate: Date | null = null;
+    for (const p of list) {
+      const parsed = parseExpiry(p);
+      if (parsed && (!bestDate || parsed.date < bestDate)) {
+        best = p;
+        bestDate = parsed.date;
+      }
+    }
+    if (!best || !bestDate) return null;
+    const dte = Math.ceil((bestDate.getTime() - nowInET().getTime()) / (1000 * 60 * 60 * 24));
+    return { strike: best.contract.strike!, expiry: bestDate.toISOString().split("T")[0], dte };
+  };
+
+  return {
+    nearestPut: nearest(puts),
+    nearestCall: nearest(calls),
+    totalPutContracts: puts.reduce((sum, p) => sum + Math.abs(p.pos), 0),
+    totalCallContracts: calls.reduce((sum, p) => sum + Math.abs(p.pos), 0),
+  };
+}
+
 const applyLiveDataToSummary = (
   summary: WheelTickerSummary,
   cachedData?: CachedIBKRData
@@ -204,14 +240,21 @@ const applyLiveDataToSummary = (
     (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
   );
 
+  // Only count shares as wheel-related if the cached summary already indicated shares
+  // (the initial build checks the current cycle for share involvement)
+  const cachedHadShares = summary.currentPhase === "holding_shares" ||
+    summary.currentPhase === "cc_open" ||
+    (summary.activePhases && summary.activePhases.includes("holding_shares"));
+  const wheelSharesHeld = cachedHadShares && stockPos && stockPos.pos % 100 === 0;
+
   // Build active phases array
   const activePhases: ("csp_open" | "holding_shares" | "cc_open")[] = [];
   if (hasShortPut) activePhases.push("csp_open");
-  if (stockPos) activePhases.push("holding_shares");
+  if (wheelSharesHeld) activePhases.push("holding_shares");
   if (hasShortCall) activePhases.push("cc_open");
 
-  const hasUncoveredShares = !!stockPos && !hasShortCall;
-  const liveShareQuantity = stockPos?.pos ?? 0;
+  const hasUncoveredShares = !!wheelSharesHeld && !hasShortCall;
+  const liveShareQuantity = wheelSharesHeld ? stockPos.pos : 0;
 
   // Primary phase: prefer option positions, fallback to shares
   const optionPos = shortOptionPositions[0] ?? null;
@@ -243,7 +286,7 @@ const applyLiveDataToSummary = (
       quantity: Math.abs(optionPos.pos),
       unrealizedPnl,
     };
-  } else if (stockPos) {
+  } else if (wheelSharesHeld) {
     currentPhase = "holding_shares";
     const costBasis = stockPos.pos * stockPos.avgCost;
     const unrealizedPnl = stockPos.marketValue !== undefined
@@ -316,6 +359,7 @@ const applyLiveDataToSummary = (
     hasUncoveredShares,
     shareQuantity: liveShareQuantity,
     currentPosition,
+    activeOptions: buildActiveOptions(shortOptionPositions),
     currentPrice,
     breakEven,
     percentBelowMarket,
@@ -643,14 +687,18 @@ export const wheelService = {
       (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
     );
 
+    // Only count shares as wheel-related if the current cycle involves shares
+    // and the position is a multiple of 100 (option assignments come in 100-share lots)
+    const wheelSharesHeld = currentCycle && currentCycle.shareQuantity > 0 && stockPos && stockPos.pos % 100 === 0;
+
     // Build active phases array
     const activePhases: ("csp_open" | "holding_shares" | "cc_open")[] = [];
     if (hasShortPut) activePhases.push("csp_open");
-    if (stockPos) activePhases.push("holding_shares");
+    if (wheelSharesHeld) activePhases.push("holding_shares");
     if (hasShortCall) activePhases.push("cc_open");
 
-    const hasUncoveredShares = !!stockPos && !hasShortCall;
-    const liveShareQuantity = stockPos?.pos ?? 0;
+    const hasUncoveredShares = !!wheelSharesHeld && !hasShortCall;
+    const liveShareQuantity = wheelSharesHeld ? stockPos.pos : 0;
 
     const optionPos = shortOptionPositions[0] ?? null;
     let currentPhase: WheelTickerSummary["currentPhase"] = "idle";
@@ -682,7 +730,7 @@ export const wheelService = {
         quantity: Math.abs(optionPos.pos),
         unrealizedPnl,
       };
-    } else if (stockPos) {
+    } else if (wheelSharesHeld) {
       currentPhase = "holding_shares";
       const costBasis = stockPos.pos * stockPos.avgCost;
       const unrealizedPnl = stockPos.marketValue !== undefined
@@ -770,6 +818,7 @@ export const wheelService = {
       cycleCount: cycles.length,
       completedCycles: completedCycles.length,
       currentPosition,
+      activeOptions: buildActiveOptions(shortOptionPositions),
       realizedPnL: tickerRealizedPnL,
       unrealizedPnL: tickerUnrealizedPnL,
       totalPnL,

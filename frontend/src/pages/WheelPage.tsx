@@ -60,6 +60,14 @@ function writeCache(key: string, value: unknown): void {
   } catch { /* localStorage unavailable */ }
 }
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Format "2026-03-28" to "Mar28" */
+function formatShortExpiry(expiry: string): string {
+  const [, m, d] = expiry.split("-");
+  return `${SHORT_MONTHS[parseInt(m, 10) - 1]}${parseInt(d, 10)}`;
+}
+
 export function WheelPage() {
   const [data, setData] = useState<WheelListResponse | null>(
     () => readCache<WheelListResponse>(CACHE_KEYS.tickers)
@@ -412,29 +420,39 @@ function WheelTickerCard({
         onClick={onToggle}
       >
         <div className="flex items-center">
-          <div className="flex items-center gap-2 w-[280px] shrink-0">
+          <div className="flex items-center gap-2 min-w-[200px] shrink-0">
             <CardTitle className="text-lg">
               <TickerHoverCard symbol={ticker.symbol}>
                 <span className="cursor-default">{ticker.symbol}</span>
               </TickerHoverCard>
             </CardTitle>
             {ticker.activePhases && ticker.activePhases.length > 0 ? (
-              ticker.activePhases.map((phase) => (
-                <Badge key={phase} className={phaseColors[phase]}>
-                  {phaseLabels[phase]}
-                  {phase === "holding_shares" && ticker.shareQuantity > 0 && (
-                    <span className="ml-1 opacity-75">{ticker.shareQuantity}</span>
-                  )}
-                </Badge>
-              ))
+              <>
+                {ticker.activePhases.includes("csp_open") && ticker.activeOptions?.nearestPut && (
+                  <Badge className={phaseColors.csp_open}>
+                    CSP ${ticker.activeOptions.nearestPut.strike} {formatShortExpiry(ticker.activeOptions.nearestPut.expiry)}
+                    {ticker.activeOptions.totalPutContracts > 1 && (
+                      <span className="ml-1 opacity-75">x{ticker.activeOptions.totalPutContracts}</span>
+                    )}
+                  </Badge>
+                )}
+                {ticker.activePhases.includes("holding_shares") && ticker.shareQuantity > 0 && (
+                  <Badge className={phaseColors.holding_shares}>
+                    {ticker.shareQuantity} shares
+                  </Badge>
+                )}
+                {ticker.activePhases.includes("cc_open") && ticker.activeOptions?.nearestCall && (
+                  <Badge className={phaseColors.cc_open}>
+                    CC ${ticker.activeOptions.nearestCall.strike} {formatShortExpiry(ticker.activeOptions.nearestCall.expiry)}
+                    {ticker.activeOptions.totalCallContracts > 1 && (
+                      <span className="ml-1 opacity-75">x{ticker.activeOptions.totalCallContracts}</span>
+                    )}
+                  </Badge>
+                )}
+              </>
             ) : (
               <Badge className={phaseColors[ticker.currentPhase]}>
                 {phaseLabels[ticker.currentPhase]}
-              </Badge>
-            )}
-            {ticker.hasUncoveredShares && (
-              <Badge variant="outline" className="border-orange-400 text-orange-600 bg-orange-50">
-                No CC
               </Badge>
             )}
           </div>
@@ -549,14 +567,15 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
     return <div className="py-4 text-center text-muted-foreground">No data</div>;
   }
 
-  // Filter cycles: always show in-progress, plus completed cycles from last 2 years
-  const twoYearsAgo = new Date();
-  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-  const twoYearsAgoStr = twoYearsAgo.toISOString().split("T")[0];
-  const recentCycles = detail.cycles.filter(
-    (cycle) => cycle.status === "in_progress" || cycle.startDate >= twoYearsAgoStr
-  );
-  const hasOlderCycles = detail.cycles.length > recentCycles.length;
+  const INITIAL_CYCLE_LIMIT = 5;
+  const [showAllCycles, setShowAllCycles] = useState(false);
+
+  // Show last N cycles by default (always including in-progress ones)
+  const allCycles = detail.cycles;
+  const recentCycles = showAllCycles
+    ? allCycles
+    : allCycles.slice(-INITIAL_CYCLE_LIMIT);
+  const hasOlderCycles = allCycles.length > INITIAL_CYCLE_LIMIT;
 
   // Default to the last cycle if none selected
   const selectedCycle = recentCycles.find((c) => c.cycleNumber === selectedCycleNumber)
@@ -566,6 +585,19 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
     <div className="space-y-4">
       {/* Cycle Summary Cards */}
       <div className="flex gap-4 overflow-x-auto p-2">
+        {hasOlderCycles && !showAllCycles && (
+          <Card
+            className="min-w-[120px] cursor-pointer transition-all hover:bg-muted/50 flex items-center justify-center border-dashed"
+            onClick={() => setShowAllCycles(true)}
+          >
+            <CardContent className="pt-4 text-center">
+              <div className="text-sm text-muted-foreground">
+                {allCycles.length - recentCycles.length} more
+                {allCycles.length - recentCycles.length === 1 ? " cycle" : " cycles"}
+              </div>
+            </CardContent>
+          </Card>
+        )}
         {recentCycles.map((cycle) => (
           <Card
             key={cycle.cycleNumber}
@@ -635,16 +667,6 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       {recentCycles.length === 0 && detail.cycles.length === 0 && (
         <div className="text-center text-muted-foreground py-4">
           No wheel cycles found. Sell a PUT or buy shares to start tracking.
-        </div>
-      )}
-      {recentCycles.length === 0 && hasOlderCycles && (
-        <div className="text-center text-muted-foreground py-4">
-          {detail.cycles.length} older cycle{detail.cycles.length !== 1 ? "s" : ""} not shown (started before {twoYearsAgoStr}).
-        </div>
-      )}
-      {hasOlderCycles && recentCycles.length > 0 && (
-        <div className="text-center text-xs text-muted-foreground py-2">
-          + {detail.cycles.length - recentCycles.length} older cycle{detail.cycles.length - recentCycles.length !== 1 ? "s" : ""} not shown
         </div>
       )}
     </div>

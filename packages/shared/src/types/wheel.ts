@@ -113,6 +113,13 @@ export interface WheelTickerSummary {
     premium?: number;
     unrealizedPnl?: number;
   } | null;
+  /** Summary of active short option positions */
+  activeOptions: {
+    nearestPut: { strike: number; expiry: string; dte: number } | null;
+    nearestCall: { strike: number; expiry: string; dte: number } | null;
+    totalPutContracts: number;
+    totalCallContracts: number;
+  };
   // P&L fields
   realizedPnL: number;
   unrealizedPnL: number;
