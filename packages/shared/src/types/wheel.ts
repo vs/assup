@@ -91,6 +91,12 @@ export interface WheelCycle {
 export interface WheelTickerSummary {
   symbol: string;
   currentPhase: "csp_open" | "holding_shares" | "cc_open" | "idle";
+  /** All active phases when multiple positions exist (e.g. CSP + CC + shares) */
+  activePhases: ("csp_open" | "holding_shares" | "cc_open")[];
+  /** True when holding shares but no covered call is open */
+  hasUncoveredShares: boolean;
+  /** Number of shares held (0 if none) */
+  shareQuantity: number;
   adjustedCostBasis: number; // per share
   totalPremiums: number;
   currentPrice: number | null;

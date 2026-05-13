@@ -194,18 +194,31 @@ const applyLiveDataToSummary = (
   const positions = cachedData.positions ?? [];
   const symbol = summary.symbol;
 
-  const optionPos = positions.find(
-    (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos !== 0
+  // Find ALL short option positions for this symbol (not just the first)
+  const shortOptionPositions = positions.filter(
+    (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos < 0
   );
+  const hasShortPut = shortOptionPositions.some((p) => p.contract.right === "P");
+  const hasShortCall = shortOptionPositions.some((p) => p.contract.right === "C");
   const stockPos = positions.find(
     (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
   );
 
+  // Build active phases array
+  const activePhases: ("csp_open" | "holding_shares" | "cc_open")[] = [];
+  if (hasShortPut) activePhases.push("csp_open");
+  if (stockPos) activePhases.push("holding_shares");
+  if (hasShortCall) activePhases.push("cc_open");
+
+  const hasUncoveredShares = !!stockPos && !hasShortCall;
+  const liveShareQuantity = stockPos?.pos ?? 0;
+
+  // Primary phase: prefer option positions, fallback to shares
+  const optionPos = shortOptionPositions[0] ?? null;
   let currentPhase: WheelTickerSummary["currentPhase"] = "idle";
   let currentPosition: WheelTickerSummary["currentPosition"] = null;
 
-  if (optionPos && optionPos.pos < 0) {
-    // Short option position
+  if (optionPos) {
     const isCall = optionPos.contract.right === "C";
     currentPhase = isCall ? "cc_open" : "csp_open";
 
@@ -299,6 +312,9 @@ const applyLiveDataToSummary = (
   return {
     ...summary,
     currentPhase,
+    activePhases,
+    hasUncoveredShares,
+    shareQuantity: liveShareQuantity,
     currentPosition,
     currentPrice,
     breakEven,
@@ -617,18 +633,30 @@ export const wheelService = {
     // Use cached positions or empty array
     const positions = cachedData?.positions ?? [];
 
-    const optionPos = positions.find(
-      (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos !== 0
+    // Find ALL short option positions for this symbol
+    const shortOptionPositions = positions.filter(
+      (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos < 0
     );
+    const hasShortPut = shortOptionPositions.some((p) => p.contract.right === "P");
+    const hasShortCall = shortOptionPositions.some((p) => p.contract.right === "C");
     const stockPos = positions.find(
       (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
     );
 
+    // Build active phases array
+    const activePhases: ("csp_open" | "holding_shares" | "cc_open")[] = [];
+    if (hasShortPut) activePhases.push("csp_open");
+    if (stockPos) activePhases.push("holding_shares");
+    if (hasShortCall) activePhases.push("cc_open");
+
+    const hasUncoveredShares = !!stockPos && !hasShortCall;
+    const liveShareQuantity = stockPos?.pos ?? 0;
+
+    const optionPos = shortOptionPositions[0] ?? null;
     let currentPhase: WheelTickerSummary["currentPhase"] = "idle";
     let currentPosition: WheelTickerSummary["currentPosition"] = null;
 
-    if (optionPos && optionPos.pos < 0) {
-      // Short option position
+    if (optionPos) {
       const isCall = optionPos.contract.right === "C";
       currentPhase = isCall ? "cc_open" : "csp_open";
 
@@ -731,6 +759,9 @@ export const wheelService = {
     return {
       symbol,
       currentPhase,
+      activePhases,
+      hasUncoveredShares,
+      shareQuantity: liveShareQuantity,
       adjustedCostBasis,
       totalPremiums,
       currentPrice,

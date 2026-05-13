@@ -386,14 +386,14 @@ function WheelTickerCard({
 }) {
   const navigate = useNavigate();
 
-  const phaseLabels: Record<WheelTickerSummary["currentPhase"], string> = {
-    csp_open: "CSP Open",
-    holding_shares: "Holding Shares",
-    cc_open: "CC Open",
+  const phaseLabels: Record<string, string> = {
+    csp_open: "CSP",
+    holding_shares: "Shares",
+    cc_open: "CC",
     idle: "Idle",
   };
 
-  const phaseColors: Record<WheelTickerSummary["currentPhase"], string> = {
+  const phaseColors: Record<string, string> = {
     csp_open: "bg-yellow-100 text-yellow-800",
     holding_shares: "bg-blue-100 text-blue-800",
     cc_open: "bg-purple-100 text-purple-800",
@@ -412,15 +412,31 @@ function WheelTickerCard({
         onClick={onToggle}
       >
         <div className="flex items-center">
-          <div className="flex items-center gap-3 w-[200px] shrink-0">
+          <div className="flex items-center gap-2 w-[280px] shrink-0">
             <CardTitle className="text-lg">
               <TickerHoverCard symbol={ticker.symbol}>
                 <span className="cursor-default">{ticker.symbol}</span>
               </TickerHoverCard>
             </CardTitle>
-            <Badge className={phaseColors[ticker.currentPhase]}>
-              {phaseLabels[ticker.currentPhase]}
-            </Badge>
+            {ticker.activePhases && ticker.activePhases.length > 0 ? (
+              ticker.activePhases.map((phase) => (
+                <Badge key={phase} className={phaseColors[phase]}>
+                  {phaseLabels[phase]}
+                  {phase === "holding_shares" && ticker.shareQuantity > 0 && (
+                    <span className="ml-1 opacity-75">{ticker.shareQuantity}</span>
+                  )}
+                </Badge>
+              ))
+            ) : (
+              <Badge className={phaseColors[ticker.currentPhase]}>
+                {phaseLabels[ticker.currentPhase]}
+              </Badge>
+            )}
+            {ticker.hasUncoveredShares && (
+              <Badge variant="outline" className="border-orange-400 text-orange-600 bg-orange-50">
+                No CC
+              </Badge>
+            )}
           </div>
           <div className="mx-4" onClick={(e) => e.stopPropagation()}>
             <Sparkline
