@@ -42,7 +42,7 @@ export function SellOptionDialog({
   useEffect(() => {
     if (open && opportunity) {
       setQuantity(1);
-      setLimitPrice(opportunity.midPrice);
+      setLimitPrice(Math.round(opportunity.midPrice * 100) / 100);
       setTif("DAY");
       setError(null);
       setSuccess(null);
@@ -57,7 +57,7 @@ export function SellOptionDialog({
 
   const handleUseMid = () => {
     if (opportunity) {
-      setLimitPrice(opportunity.midPrice);
+      setLimitPrice(Math.round(opportunity.midPrice * 100) / 100);
     }
   };
 
@@ -104,6 +104,8 @@ export function SellOptionDialog({
   });
 
   const totalPremium = quantity * limitPrice * 100;
+  const premiumPct = opportunity.strike > 0 ? (limitPrice / opportunity.strike) * 100 : 0;
+  const annualYield = opportunity.daysToExpiry > 0 ? (premiumPct * 365) / opportunity.daysToExpiry : 0;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -209,11 +211,23 @@ export function SellOptionDialog({
             </div>
           </div>
 
-          {/* Total premium */}
-          <div className="p-3 rounded-md bg-primary/10 text-center">
-            <div className="text-sm text-muted-foreground">Total Premium (Credit)</div>
-            <div className="text-xl font-bold">
-              {formatCurrency(totalPremium, { maximumFractionDigits: 2 })}
+          {/* Total premium + metrics */}
+          <div className="p-3 rounded-md bg-primary/10">
+            <div className="text-center">
+              <div className="text-sm text-muted-foreground">Total Premium (Credit)</div>
+              <div className="text-xl font-bold">
+                {formatCurrency(totalPremium, { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-primary/20 text-center">
+              <div>
+                <div className="text-xs text-muted-foreground">Premium %</div>
+                <div className="font-mono font-medium">{premiumPct.toFixed(2)}%</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Annual Yield</div>
+                <div className="font-mono font-bold">{annualYield.toFixed(1)}%</div>
+              </div>
             </div>
           </div>
 
