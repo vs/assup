@@ -38,6 +38,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle,
+  Info,
   Loader2,
   Play,
   Plus,
@@ -48,6 +49,11 @@ import {
   ArrowLeft,
   FlaskConical,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { ScannerPresetEditor } from "./ScannerPresetEditor";
 
 type Step = "configure" | "scanning" | "results";
@@ -683,11 +689,11 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
             {/* Summary */}
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>
-                {results.discovered.length} discovered, {results.scored.length} scored
+                {results.discovered.length} found from TWS, {results.scored.length} analyzed
               </span>
               {results.qualified.length > 0 && (
                 <Badge variant="secondary">
-                  {results.qualified.length} qualified
+                  {results.qualified.length} passed filters
                 </Badge>
               )}
               {skippedSymbols.size > 0 && (
@@ -716,10 +722,18 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
                       </TableHead>
                       <TableHead className="w-12">#</TableHead>
                       <TableHead>Company</TableHead>
-                      <TableHead>Score</TableHead>
-                      <TableHead>RSI</TableHead>
-                      <TableHead>SMA200</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
+                      <TableHead>
+                        <ColumnHeader label="Technical Score" tooltip="Composite score (0-100) based on RSI, trend direction, and moving average alignment" />
+                      </TableHead>
+                      <TableHead>
+                        <ColumnHeader label="RSI (14)" tooltip="Relative Strength Index over 14 days. Below 30 = oversold (bullish), above 70 = overbought (bearish)" />
+                      </TableHead>
+                      <TableHead>
+                        <ColumnHeader label="vs. SMA 200" tooltip="Whether the current price is above or below the 200-day simple moving average (long-term trend indicator)" />
+                      </TableHead>
+                      <TableHead className="text-center">
+                        <ColumnHeader label="Filter" tooltip="Whether the stock passed all enabled technical filter criteria (RSI threshold, SMA position, trend)" className="justify-center" />
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -818,6 +832,24 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// --- Column Header with Tooltip ---
+
+function ColumnHeader({ label, tooltip, className }: { label: string; tooltip: string; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center gap-1 cursor-help ${className ?? ""}`}>
+          {label}
+          <Info className="h-3 w-3 text-muted-foreground/60" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[250px]">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -932,9 +964,20 @@ function ResultRow({
           </span>
         ) : passed != null ? (
           passed ? (
-            <Check className="h-4 w-4 text-green-600 mx-auto" />
+            <Badge variant="outline" className="text-xs text-green-600 border-green-600/30">
+              Passed
+            </Badge>
           ) : (
-            <span className="text-red-600 text-xs font-medium">Fail</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="text-xs text-red-600 border-red-600/30 cursor-help">
+                  Filtered
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-[220px]">
+                Did not meet one or more technical filter criteria (RSI, SMA, trend)
+              </TooltipContent>
+            </Tooltip>
           )
         ) : (
           <span className="text-sm text-muted-foreground">--</span>
