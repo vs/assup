@@ -7,6 +7,7 @@ import { useTickerProfile, useTickerQuote } from "../../hooks/useTickerProfile";
 import { AreaChart, Area, YAxis, ResponsiveContainer } from "recharts";
 import type { Recommendation } from "@assup/shared";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 interface TickerHoverCardProps {
   symbol: string;
@@ -119,9 +120,9 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
             {/* Header: symbol + company name | recommendation */}
             <div className="flex justify-between items-start">
               <div className="min-w-0">
-                <span className="font-bold text-base">
+                <Link to={`/tickers/${profile.symbol}`} className="font-bold text-base hover:underline">
                   {profile.symbol}
-                </span>{" "}
+                </Link>{" "}
                 <span className="text-sm text-muted-foreground">
                   {profile.companyName}
                 </span>
