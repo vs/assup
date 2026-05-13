@@ -97,6 +97,8 @@ export interface WheelTickerSummary {
   hasUncoveredShares: boolean;
   /** Number of shares held (0 if none) */
   shareQuantity: number;
+  /** IBKR average cost per share (actual purchase price, not premium-adjusted) */
+  positionAvgCost: number | null;
   adjustedCostBasis: number; // per share
   totalPremiums: number;
   currentPrice: number | null;

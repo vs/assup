@@ -255,6 +255,7 @@ const applyLiveDataToSummary = (
 
   const hasUncoveredShares = !!wheelSharesHeld && !hasShortCall;
   const liveShareQuantity = wheelSharesHeld ? stockPos.pos : 0;
+  const positionAvgCost = wheelSharesHeld ? stockPos.avgCost : null;
 
   // Primary phase: prefer option positions, fallback to shares
   const optionPos = shortOptionPositions[0] ?? null;
@@ -358,6 +359,7 @@ const applyLiveDataToSummary = (
     activePhases,
     hasUncoveredShares,
     shareQuantity: liveShareQuantity,
+    positionAvgCost,
     currentPosition,
     activeOptions: buildActiveOptions(shortOptionPositions),
     currentPrice,
@@ -699,6 +701,7 @@ export const wheelService = {
 
     const hasUncoveredShares = !!wheelSharesHeld && !hasShortCall;
     const liveShareQuantity = wheelSharesHeld ? stockPos.pos : 0;
+    const positionAvgCost = wheelSharesHeld ? stockPos.avgCost : null;
 
     const optionPos = shortOptionPositions[0] ?? null;
     let currentPhase: WheelTickerSummary["currentPhase"] = "idle";
@@ -810,6 +813,7 @@ export const wheelService = {
       activePhases,
       hasUncoveredShares,
       shareQuantity: liveShareQuantity,
+      positionAvgCost,
       adjustedCostBasis,
       totalPremiums,
       currentPrice,
