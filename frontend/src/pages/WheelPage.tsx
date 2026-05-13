@@ -433,19 +433,25 @@ function WheelTickerCard({
                     {ticker.shareQuantity} @ ${(ticker.positionAvgCost ?? ticker.adjustedCostBasis).toFixed(2)}
                   </Badge>
                 )}
-                {ticker.activePhases.includes("cc_open") && ticker.activeOptions?.nearestCall && (
+                {ticker.activePhases.includes("cc_open") && (
                   <Badge className={phaseColors.cc_open}>
-                    CC {formatShortExpiry(ticker.activeOptions.nearestCall.expiry)} ${ticker.activeOptions.nearestCall.strike}
-                    {ticker.activeOptions.totalCallContracts > 1 && (
-                      <span className="ml-1 opacity-75">x{ticker.activeOptions.totalCallContracts}</span>
+                    CC
+                    {ticker.activeOptions?.nearestCall && (
+                      <> {formatShortExpiry(ticker.activeOptions.nearestCall.expiry)} ${ticker.activeOptions.nearestCall.strike}</>
+                    )}
+                    {(ticker.activeOptions?.totalCallContracts ?? 0) > 1 && (
+                      <span className="ml-1 opacity-75">x{ticker.activeOptions!.totalCallContracts}</span>
                     )}
                   </Badge>
                 )}
-                {ticker.activePhases.includes("csp_open") && ticker.activeOptions?.nearestPut && (
+                {ticker.activePhases.includes("csp_open") && (
                   <Badge className={phaseColors.csp_open}>
-                    CSP {formatShortExpiry(ticker.activeOptions.nearestPut.expiry)} ${ticker.activeOptions.nearestPut.strike}
-                    {ticker.activeOptions.totalPutContracts > 1 && (
-                      <span className="ml-1 opacity-75">x{ticker.activeOptions.totalPutContracts}</span>
+                    CSP
+                    {ticker.activeOptions?.nearestPut && (
+                      <> {formatShortExpiry(ticker.activeOptions.nearestPut.expiry)} ${ticker.activeOptions.nearestPut.strike}</>
+                    )}
+                    {(ticker.activeOptions?.totalPutContracts ?? 0) > 1 && (
+                      <span className="ml-1 opacity-75">x{ticker.activeOptions!.totalPutContracts}</span>
                     )}
                   </Badge>
                 )}
