@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -238,7 +238,7 @@ function CompanyInfoPanel({
 
   return (
     <Card className="lg:col-span-2">
-      <CardContent className="py-3 px-4 overflow-y-auto" style={{ maxHeight: 460 }}>
+      <CardContent className="py-3 px-4">
         {/* Company Overview */}
         {report?.companyOverview ? (
           <InfoBullet label="Company">
@@ -1282,6 +1282,42 @@ export function ResearchReportPage() {
     }
   }, [symbol, generating, startJob]);
 
+  // Memoize chart so it doesn't re-mount when quote/profile data refreshes
+  const chartElement = useMemo(
+    () => symbol ? (
+      <Card className="lg:col-span-3 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="overflow-hidden" style={{ height: 460 }}>
+            <div style={{ height: 490 }}>
+              <AdvancedRealTimeChart
+                symbol={symbol}
+                theme="light"
+                autosize
+                interval="D"
+                range="12M"
+                hide_side_toolbar
+                allow_symbol_change={false}
+                style="1"
+                studies={
+                  [
+                    "RSI@tv-basicstudies",
+                    "MAExp@tv-basicstudies",
+                  ] as never
+                }
+                {...{
+                  studies_overrides: {
+                    "moving average exponential.length": 200,
+                  },
+                }}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    ) : null,
+    [symbol],
+  );
+
   if (!symbol) {
     return (
       <div className="py-12 text-center text-muted-foreground">
@@ -1329,7 +1365,7 @@ export function ResearchReportPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <Button
           variant="ghost"
           size="sm"
@@ -1339,46 +1375,37 @@ export function ResearchReportPage() {
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        <div className="flex items-center gap-3">
-          <div>
-            <div className="inline-flex items-center gap-1">
-              <span className="text-2xl font-bold">{symbol}</span>
-              {!report && tickerProfile?.companyName && (
-                <span className="text-lg text-muted-foreground">{tickerProfile.companyName}</span>
+        <span className="text-2xl font-bold">{symbol}</span>
+        <ExternalLinks symbol={symbol} />
+        {(report || tickerProfile?.recommendation) && (
+          <RecommendationBadge
+            recommendation={(report?.recommendation ?? tickerProfile?.recommendation)!}
+            confidence={report?.confidence ?? tickerProfile?.confidence ?? 0}
+          />
+        )}
+        {(() => {
+          const price = tickerQuote?.last ?? tickerProfile?.currentPrice;
+          if (price == null) return null;
+          const ref = tickerQuote?.open ?? tickerQuote?.close ?? tickerProfile?.previousClose;
+          const change = ref != null ? price - ref : null;
+          const changePct = ref != null && ref !== 0 ? ((price - ref) / ref) * 100 : null;
+          const isPositive = change != null && change >= 0;
+          return (
+            <>
+              <span className="text-2xl font-bold tracking-tight">
+                ${price.toFixed(2)}
+              </span>
+              {change != null && changePct != null && (
+                <span className={`text-sm font-semibold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                  {isPositive ? "+" : ""}{change.toFixed(2)} ({isPositive ? "+" : ""}{changePct.toFixed(2)}%)
+                </span>
               )}
-              <ExternalLinks symbol={symbol} />
-              {(report || tickerProfile?.recommendation) && (
-                <RecommendationBadge
-                  recommendation={(report?.recommendation ?? tickerProfile?.recommendation)!}
-                  confidence={report?.confidence ?? tickerProfile?.confidence ?? 0}
-                />
-              )}
-            </div>
-            {/* Price — prominent display (real-time from IBKR) */}
-            {(() => {
-              const price = tickerQuote?.last ?? tickerProfile?.currentPrice;
-              if (price == null) return null;
-              const ref = tickerQuote?.open ?? tickerQuote?.close ?? tickerProfile?.previousClose;
-              const change = ref != null ? price - ref : null;
-              const changePct = ref != null && ref !== 0 ? ((price - ref) / ref) * 100 : null;
-              const isPositive = change != null && change >= 0;
-              return (
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-2xl font-bold tracking-tight">
-                    ${price.toFixed(2)}
-                  </span>
-                  {change != null && changePct != null && (
-                    <span className={`text-base font-semibold ${isPositive ? "text-green-600" : "text-red-600"}`}>
-                      {isPositive ? "+" : ""}{change.toFixed(2)} ({isPositive ? "+" : ""}{changePct.toFixed(2)}%)
-                    </span>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
+            </>
+          );
+        })()}
+        <div className="flex-1" />
         {report && (
-          <span className="text-sm text-muted-foreground ml-auto">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
             Updated {timeAgo(report.createdAt)}
           </span>
         )}
@@ -1387,7 +1414,7 @@ export function ResearchReportPage() {
           size="sm"
           onClick={handleAnalyze}
           disabled={generating}
-          className={`gap-1.5${!report ? " ml-auto" : ""}`}
+          className="gap-1.5"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
           {generating ? (generateProgress || "Updating...") : "Update"}
@@ -1402,37 +1429,8 @@ export function ResearchReportPage() {
 
       {/* Chart + Company Info Panel (two columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Chart — 3 of 5 columns */}
-        <Card className="lg:col-span-3 overflow-hidden">
-          <CardContent className="p-0">
-            {/* Outer clips the copyright, inner is taller to push it out */}
-            <div className="overflow-hidden" style={{ height: 460 }}>
-              <div style={{ height: 490 }}>
-                <AdvancedRealTimeChart
-                  symbol={symbol}
-                  theme="light"
-                  autosize
-                  interval="D"
-                  range="12M"
-                  hide_side_toolbar
-                  allow_symbol_change={false}
-                  style="1"
-                  studies={
-                    [
-                      "RSI@tv-basicstudies",
-                      "MAExp@tv-basicstudies",
-                    ] as never
-                  }
-                  {...{
-                    studies_overrides: {
-                      "moving average exponential.length": 200,
-                    },
-                  }}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Chart — 3 of 5 columns (memoized to prevent re-mount on parent re-renders) */}
+        {chartElement}
 
         {/* Company Info Panel — 2 of 5 columns */}
         <CompanyInfoPanel
