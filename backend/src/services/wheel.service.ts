@@ -850,6 +850,15 @@ export const wheelService = {
       return 0;
     });
 
+    // Record original stock trade quantities before split adjustment
+    // Used to filter out non-wheel stock trades (hold strategy buys/sells)
+    const originalStockQty = new Map<RawTrade, number>();
+    for (const trade of trades) {
+      if (trade.secType === "STK") {
+        originalStockQty.set(trade, Math.abs(trade.quantity));
+      }
+    }
+
     // Adjust trades for stock splits to normalize all values to post-split terms
     const splits = await prisma.corporateAction.findMany({
       where: {
@@ -891,6 +900,18 @@ export const wheelService = {
         }
       }
     }
+
+    // Filter out non-wheel stock trades (hold strategy buys/sells).
+    // A stock trade is considered a wheel trade if:
+    // - it's an assignment (wasAssigned=true), OR
+    // - both original and split-adjusted quantities are multiples of 100
+    const filteredTrades = trades.filter(trade => {
+      if (trade.secType !== "STK") return true;
+      if (trade.wasAssigned) return true;
+      const origQty = originalStockQty.get(trade) ?? Math.abs(trade.quantity);
+      const adjQty = Math.abs(trade.quantity);
+      return origQty % 100 === 0 && adjQty % 100 === 0;
+    });
 
     // Build lookup maps for assigned PUTs and CALLs
     // Key: "YYYY-MM-DD:strike" -> true
@@ -951,8 +972,8 @@ export const wheelService = {
     let cycleCapitalDeployed = 0;
     let cyclePremiumReceived = 0; // Track total premium for capital calculation
 
-    for (let tradeIdx = 0; tradeIdx < trades.length; tradeIdx++) {
-      const trade = trades[tradeIdx];
+    for (let tradeIdx = 0; tradeIdx < filteredTrades.length; tradeIdx++) {
+      const trade = filteredTrades[tradeIdx];
       const isOption = trade.secType === "OPT";
       const isStock = trade.secType === "STK";
       const isSell = trade.buySell === "SELL";
@@ -1229,7 +1250,7 @@ export const wheelService = {
         const hasOptionTrades = (currentCycle.trades as any[]).some((t) => optionTradeTypes.includes(t.type));
         if (hasOptionTrades) {
           // Convert raw trades to matched trades using tracked indices (not date range)
-          const rawTrades = cycleTradeIndices.map(i => trades[i]);
+          const rawTrades = cycleTradeIndices.map(i => filteredTrades[i]);
           currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
           cycles.push(currentCycle);
         }
@@ -1293,7 +1314,7 @@ export const wheelService = {
         : null;
 
       // Convert raw trades to matched trades using tracked indices (not date range)
-      const rawTrades = cycleTradeIndices.map(i => trades[i]);
+      const rawTrades = cycleTradeIndices.map(i => filteredTrades[i]);
       currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
       cycles.push(currentCycle);
     }
