@@ -81,11 +81,17 @@ const tradeSelect = {
   realizedPnl: true,
 };
 
+// Bump this version whenever the cycle reconstruction algorithm changes
+// to automatically invalidate stale caches.
+const WHEEL_CACHE_VERSION = 3;
+
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
-  JSON.parse(JSON.stringify(summary)) as Prisma.InputJsonValue;
+  JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
 
 const parseSummary = (value: Prisma.JsonValue): WheelTickerSummary | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const obj = value as Record<string, unknown>;
+  if (obj._cacheVersion !== WHEEL_CACHE_VERSION) return null;
   return value as unknown as WheelTickerSummary;
 };
 
@@ -458,6 +464,7 @@ export const wheelService = {
       const stats = tradeStatsBySymbol.get(tracker.symbol);
       const hasTodayTrades = (todayTradesBySymbol.get(tracker.symbol)?.length ?? 0) > 0;
       const cacheValid = cache &&
+        parseSummary(cache.summary as Prisma.JsonValue) !== null &&
         dateKey(cache.startDate) === dateKey(tracker.startDate) &&
         stats &&
         cache.tradeCount === stats.tradeCount &&
@@ -838,8 +845,9 @@ export const wheelService = {
            !existingTradeIds.has((t as unknown as { tradeId?: string }).tradeId!)
     );
 
-    // Merge and sort by date, with STK trades before OPT trades on the same day
-    // This ensures assignments are processed correctly: stock delivery happens before option close
+    // Merge and sort by date with deterministic intra-day ordering:
+    // 1. STK before OPT (assignment stock delivery before option close)
+    // 2. Within OPT: closes before opens (so rolling properly ends one cycle and starts another)
     const trades = [...dbTrades, ...newExecutions].sort((a, b) => {
       const dateA = new Date(a.tradeDate).getTime();
       const dateB = new Date(b.tradeDate).getTime();
@@ -847,6 +855,13 @@ export const wheelService = {
       // Same day: STK before OPT (assignment stock delivery before option close)
       if (a.secType === "STK" && b.secType === "OPT") return -1;
       if (a.secType === "OPT" && b.secType === "STK") return 1;
+      // Same day, both OPT: close before open (enables cycle boundary detection on rolls)
+      if (a.secType === "OPT" && b.secType === "OPT") {
+        const aIsClose = a.openClose === "C";
+        const bIsClose = b.openClose === "C";
+        if (aIsClose && !bIsClose) return -1;
+        if (!aIsClose && bIsClose) return 1;
+      }
       return 0;
     });
 
@@ -904,13 +919,12 @@ export const wheelService = {
     // Filter out non-wheel stock trades (hold strategy buys/sells).
     // A stock trade is considered a wheel trade if:
     // - it's an assignment (wasAssigned=true), OR
-    // - both original and split-adjusted quantities are multiples of 100
+    // - its original (pre-split-adjustment) quantity is a multiple of 100
     const filteredTrades = trades.filter(trade => {
       if (trade.secType !== "STK") return true;
       if (trade.wasAssigned) return true;
       const origQty = originalStockQty.get(trade) ?? Math.abs(trade.quantity);
-      const adjQty = Math.abs(trade.quantity);
-      return origQty % 100 === 0 && adjQty % 100 === 0;
+      return origQty % 100 === 0;
     });
 
     // Build lookup maps for assigned PUTs and CALLs
@@ -925,6 +939,87 @@ export const wheelService = {
       } else if (opt.right === "C") {
         assignedCalls.set(key, true);
       }
+    }
+
+    // Generate synthetic expiration trades for options that expired without a close
+    // trade record (IBKR doesn't generate trade records for worthless expirations).
+    // Without these, optionPosition gets stuck and cycles never properly end.
+    const openOptionLegs = new Map<string, { qty: number; expiry: Date; right: string; strike: number; symbol: string; underlying: string | null }>();
+    for (const trade of filteredTrades) {
+      if (trade.secType !== "OPT" || !trade.expiry || !trade.strike || !trade.right) continue;
+      const key = `${trade.right}:${trade.strike}:${trade.expiry.toISOString().split("T")[0]}`;
+      if (trade.buySell === "SELL") {
+        const existing = openOptionLegs.get(key);
+        if (existing) {
+          existing.qty += Math.abs(trade.quantity);
+        } else {
+          openOptionLegs.set(key, {
+            qty: Math.abs(trade.quantity),
+            expiry: trade.expiry,
+            right: trade.right,
+            strike: trade.strike,
+            symbol: trade.symbol,
+            underlying: trade.underlying,
+          });
+        }
+      } else if (trade.buySell === "BUY") {
+        const existing = openOptionLegs.get(key);
+        if (existing) {
+          existing.qty -= Math.abs(trade.quantity);
+          if (existing.qty <= 0) openOptionLegs.delete(key);
+        }
+      }
+    }
+
+    const now = new Date();
+    let syntheticCount = 0;
+    for (const [, leg] of openOptionLegs) {
+      if (leg.qty <= 0 || leg.expiry >= now) continue;
+      // Don't generate expiration for assigned options (they have stock trades instead)
+      const expiryStr = leg.expiry.toISOString().split("T")[0];
+      const assignedKey = `${expiryStr}:${leg.strike}`;
+      const wasAssigned = (leg.right === "P" && assignedPuts.has(assignedKey)) ||
+                          (leg.right === "C" && assignedCalls.has(assignedKey));
+      if (wasAssigned) continue;
+
+      filteredTrades.push({
+        id: `synthetic-exp-${syntheticCount++}`,
+        tradeDate: leg.expiry,
+        symbol: leg.symbol,
+        underlying: leg.underlying,
+        secType: "OPT",
+        strike: leg.strike,
+        expiry: leg.expiry,
+        right: leg.right,
+        quantity: leg.qty,
+        tradePrice: 0,
+        proceeds: 0,
+        commission: 0,
+        buySell: "BUY",
+        openClose: "C",
+        wasAssigned: false,
+        multiplier: 100,
+        costBasis: null,
+        realizedPnl: null,
+      });
+    }
+
+    // Re-sort after adding synthetic trades
+    if (syntheticCount > 0) {
+      filteredTrades.sort((a, b) => {
+        const dateA = new Date(a.tradeDate).getTime();
+        const dateB = new Date(b.tradeDate).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        if (a.secType === "STK" && b.secType === "OPT") return -1;
+        if (a.secType === "OPT" && b.secType === "STK") return 1;
+        if (a.secType === "OPT" && b.secType === "OPT") {
+          const aIsClose = a.openClose === "C";
+          const bIsClose = b.openClose === "C";
+          if (aIsClose && !bIsClose) return -1;
+          if (!aIsClose && bIsClose) return 1;
+        }
+        return 0;
+      });
     }
 
     // Helper to find matching assigned option for a stock trade
