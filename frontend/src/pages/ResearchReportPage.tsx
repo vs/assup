@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { researchApi, settingsApi } from "@/api";
+import { researchApi, settingsApi, scannerApi } from "@/api";
 import { useResearchJobs, useResearchJobFinished } from "@/hooks/useResearchJobs";
 import { useTickerProfile, useTickerQuote } from "@/hooks/useTickerProfile";
 import type {
@@ -11,7 +11,9 @@ import type {
   CollectionStatus,
   CollectionDataEntry,
   TickerProfileResponse,
+  OptionTypeFilter,
 } from "@assup/shared";
+import { DEFAULT_SCANNER_CRITERIA } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,6 +29,7 @@ import {
   ChevronDown,
   Activity,
   RefreshCw,
+  Search,
 } from "lucide-react";
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import {
@@ -1282,6 +1285,28 @@ export function ResearchReportPage() {
     }
   }, [symbol, generating, startJob]);
 
+  const [scanningType, setScanningType] = useState<OptionTypeFilter | null>(null);
+
+  const handleScan = useCallback(async (optionType: OptionTypeFilter) => {
+    if (!symbol || scanningType) return;
+    setScanningType(optionType);
+    try {
+      await scannerApi.jobs.create({
+        criteria: {
+          ...DEFAULT_SCANNER_CRITERIA,
+          optionTypes: optionType,
+          specificSymbol: symbol,
+        },
+      });
+    } catch (err) {
+      setGenerateError(
+        err instanceof Error ? err.message : `Failed to start ${optionType} scan for ${symbol}`
+      );
+    } finally {
+      setScanningType(null);
+    }
+  }, [symbol, scanningType]);
+
   // Memoize chart so it doesn't re-mount when quote/profile data refreshes
   const chartElement = useMemo(
     () => symbol ? (
@@ -1409,6 +1434,26 @@ export function ResearchReportPage() {
             Updated {timeAgo(report.createdAt)}
           </span>
         )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleScan("PUT")}
+          disabled={scanningType !== null}
+          className="gap-1.5"
+        >
+          <Search className={`h-3.5 w-3.5 ${scanningType === "PUT" ? "animate-pulse" : ""}`} />
+          {scanningType === "PUT" ? "Scanning..." : "Scan Puts"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleScan("CALL")}
+          disabled={scanningType !== null}
+          className="gap-1.5"
+        >
+          <Search className={`h-3.5 w-3.5 ${scanningType === "CALL" ? "animate-pulse" : ""}`} />
+          {scanningType === "CALL" ? "Scanning..." : "Scan Calls"}
+        </Button>
         <Button
           variant="outline"
           size="sm"
