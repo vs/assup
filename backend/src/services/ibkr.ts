@@ -178,15 +178,14 @@ class IBKRService {
         },
       });
 
-      // Subscribe to errors
+      // Subscribe to errors — surface TWS messages, suppress noisy expected ones
       this.api.error.subscribe({
         next: (err) => {
-          // Only log non-fatal errors, don't disconnect
-          // Skip error 200 (no security definition) and 10091 (additional subscription required)
-          // as these are expected during options scanning and handled gracefully
           const code = Number(err.code);
-          if (code && code < 2000 && code !== 200 && code !== 321 && code !== 10091) {
-            console.error(`TWS Error ${err.code}: ${err.error?.message}`);
+          // Suppress high-volume expected errors during scanning
+          if (code === 200 || code === 321) return;
+          if (code && err.error?.message) {
+            console.error(`TWS Error ${err.code}: ${err.error.message}`);
           }
         },
       });
@@ -717,10 +716,7 @@ class IBKRService {
         error.message?.includes("not applicable to generic ticks")
       ) {
         // Expected for contracts without proper subscriptions or invalid definitions
-        const detail = contract.secType === SecType.OPT
-          ? `${contract.symbol} $${contract.strike} ${contract.lastTradeDateOrContractMonth} ${contract.right}`
-          : `${contract.symbol} (${contract.secType})`;
-        console.debug(`Market data skip [${error.code}]: ${detail}`);
+        // TWS error already logged by the global error handler
         return null;
       }
       console.error(`Failed to get market data for ${contract.symbol}:`, err);
@@ -768,8 +764,7 @@ class IBKRService {
               reason: err instanceof Error ? err.message : String(err)
             };
           }
-          // Silently skip contracts that fail - just log at debug level
-          console.debug(`Skipped contract ${contract.symbol} ${contract.strike} ${contract.right}:`, err);
+          // Contract-level errors already logged by the global TWS error handler
         }
       });
 
@@ -781,12 +776,9 @@ class IBKRService {
       }
     }
 
-    // Log summary
-    if (contracts.length > 0) {
-      console.log(`Market data batch: ${successCount} succeeded, ${failCount} failed out of ${contracts.length} total`);
-      if (firstFailure && failCount > 0) {
-        console.log(`First failure example: ${firstFailure.contract.symbol} $${firstFailure.contract.strike} ${firstFailure.contract.lastTradeDateOrContractMonth} [class=${firstFailure.contract.tradingClass ?? 'unset'}] - ${firstFailure.reason}`);
-      }
+    // Log summary only when there are failures
+    if (failCount > 0) {
+      console.log(`Market data batch: ${successCount}/${contracts.length} succeeded (${failCount} failed)`);
     }
 
     return results;
