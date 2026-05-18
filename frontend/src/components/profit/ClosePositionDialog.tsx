@@ -171,6 +171,9 @@ export function ClosePositionDialog({
   });
 
   const totalCost = quantity * limitPrice * 100;
+  const premiumPct = position.strike > 0 ? (limitPrice / position.strike) * 100 : 0;
+  const daysToExpiry = Math.max(0, Math.ceil((new Date(position.expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  const annualYield = daysToExpiry > 0 ? (premiumPct * 365) / daysToExpiry : 0;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -278,13 +281,25 @@ export function ClosePositionDialog({
             </div>
           </div>
 
-          {/* Total cost */}
-          <div className="p-3 rounded-md bg-primary/10 text-center">
-            <div className="text-sm text-muted-foreground">
-              Total {action === "BUY" ? "Cost (Debit)" : "Premium (Credit)"}
+          {/* Total cost + metrics */}
+          <div className="p-3 rounded-md bg-primary/10">
+            <div className="text-center">
+              <div className="text-sm text-muted-foreground">
+                Total {action === "BUY" ? "Cost (Debit)" : "Premium (Credit)"}
+              </div>
+              <div className="text-xl font-bold">
+                {formatCurrency(totalCost, { maximumFractionDigits: 2 })}
+              </div>
             </div>
-            <div className="text-xl font-bold">
-              {formatCurrency(totalCost, { maximumFractionDigits: 2 })}
+            <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-primary/20 text-center">
+              <div>
+                <div className="text-xs text-muted-foreground">Premium %</div>
+                <div className="font-mono font-medium">{premiumPct.toFixed(2)}%</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Annual Yield</div>
+                <div className="font-mono font-bold">{annualYield.toFixed(1)}%</div>
+              </div>
             </div>
           </div>
 
