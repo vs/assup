@@ -515,6 +515,72 @@ model WheelScanResult {
   @@map("wheel_scan_results")
 }
 
+model WheelStrategy {
+  id                      String    @id @default(uuid()) @db.Uuid
+  name                    String    @db.VarChar(100)
+  enabled                 Boolean   @default(true)
+
+  // CSP criteria
+  minMarketCap            Float     @default(5000000000) @map("min_market_cap") @db.DoublePrecision
+  cspMinDte               Int       @default(25) @map("csp_min_dte")
+  cspMaxDte               Int       @default(35) @map("csp_max_dte")
+  cspMaxDelta             Float     @default(-0.34) @map("csp_max_delta") @db.DoublePrecision
+  cspMinRoi               Float     @default(2.5) @map("csp_min_roi") @db.DoublePrecision
+  cspMaxRoi               Float     @default(3.5) @map("csp_max_roi") @db.DoublePrecision
+
+  // CC criteria
+  ccMinDte                Int       @default(5) @map("cc_min_dte")
+  ccMaxDte                Int       @default(10) @map("cc_max_dte")
+  ccMinRoi                Float?    @map("cc_min_roi") @db.DoublePrecision
+
+  // Diversification
+  maxPositions            Int       @default(10) @map("max_positions")
+  maxPerAssetClass        Int       @default(2) @map("max_per_asset_class")
+  targetAssetClasses      String[]  @map("target_asset_classes") @db.Uuid
+
+  // Fundamental filter
+  acceptedRecommendations String[]  @default(["buy", "wheel"]) @map("accepted_recommendations")
+  minResearchConfidence   Float?    @map("min_research_confidence") @db.DoublePrecision
+  requireFreshReport      Boolean   @default(true) @map("require_fresh_report")
+  reportMaxAgeDays        Int       @default(7) @map("report_max_age_days")
+
+  // Schedule
+  intervalHours           Float?    @map("interval_hours") @db.DoublePrecision
+  cronExpression          String?   @map("cron_expression") @db.VarChar(100)
+
+  // Runtime state
+  lastRunAt               DateTime? @map("last_run_at") @db.Timestamptz
+  nextRunAt               DateTime? @map("next_run_at") @db.Timestamptz
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  scans WheelStrategyScan[]
+
+  @@map("wheel_strategies")
+}
+
+model WheelStrategyScan {
+  id                  String    @id @default(uuid()) @db.Uuid
+  strategyId          String    @map("strategy_id") @db.Uuid
+  status              String    @db.VarChar(20)
+  phase               String?   @db.VarChar(30)
+  totalCandidates     Int       @default(0) @map("total_candidates")
+  processedCandidates Int       @default(0) @map("processed_candidates")
+  cspResults          Json?     @map("csp_results") @db.JsonB
+  ccResults           Json?     @map("cc_results") @db.JsonB
+  skippedTickers      Json?     @map("skipped_tickers") @db.JsonB
+  startedAt           DateTime? @map("started_at") @db.Timestamptz
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz
+  errorMessage        String?   @map("error_message") @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  strategy WheelStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId])
+  @@index([status])
+  @@map("wheel_strategy_scans")
+}
+
 model TickerProfile {
   symbol         String   @id @db.VarChar(20)
   companyName    String   @map("company_name") @db.VarChar(255)
