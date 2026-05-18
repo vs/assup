@@ -18,3 +18,4 @@ export * from "./wheel.js";
 export * from "./research.js";
 export * from "./wheelScanner.js";
 export * from "./tickerProfile.js";
+export * from "./wheelStrategy.js";
