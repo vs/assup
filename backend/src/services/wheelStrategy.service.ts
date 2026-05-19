@@ -1,6 +1,8 @@
 // backend/src/services/wheelStrategy.service.ts
 import { prisma } from "../db/index.js";
 import { sseService } from "./sse.js";
+import { getUnderinvestedClasses } from "./allocation.service.js";
+import { getMarketDataProvider } from "./research/providers/index.js";
 import type {
   WheelStrategy,
   WheelStrategyInput,
@@ -171,8 +173,103 @@ class WheelStrategyService {
   }
 
   // Stub methods — implemented in subsequent tasks
-  private async phaseDiscovery(_scanId: string, _strategy: any): Promise<DiscoveredTicker[]> {
-    return [];
+  private async phaseDiscovery(scanId: string, strategy: any): Promise<DiscoveredTicker[]> {
+    this.emitProgress(scanId, "discovery", 0, 1);
+
+    // 1. Get underinvested asset classes
+    const underinvested = await getUnderinvestedClasses();
+    if (underinvested.length === 0) {
+      console.log("[WheelStrategy] No underinvested asset classes found");
+      return [];
+    }
+
+    // 2. Filter to target classes if specified
+    const targetClasses = strategy.targetAssetClasses.length > 0
+      ? underinvested.filter((c: any) => strategy.targetAssetClasses.includes(c.id))
+      : underinvested;
+
+    if (targetClasses.length === 0) return [];
+
+    // 3. Get existing wheel tracker symbols to exclude
+    const trackedSymbols = (await prisma.wheelTracker.findMany({ select: { symbol: true } }))
+      .map((t: { symbol: string }) => t.symbol);
+
+    // 4. Get WheelScanConfigs for seed tickers and keywords
+    const configs = await prisma.wheelScanConfig.findMany({
+      where: { assetClassId: { in: targetClasses.map((c: any) => c.id) }, enabled: true },
+    });
+    const configByClass = new Map(configs.map((c: any) => [c.assetClassId, c]));
+
+    const provider = getMarketDataProvider();
+    const discovered: DiscoveredTicker[] = [];
+    const seenSymbols = new Set(trackedSymbols);
+    const CAP_PER_CLASS = 30;
+
+    for (let i = 0; i < targetClasses.length; i++) {
+      const cls = targetClasses[i];
+      const config = configByClass.get(cls.id);
+      let classTickers: DiscoveredTicker[] = [];
+
+      // Note: cls.difference is negative (currentPct - targetPct), Math.abs gives positive shortfall
+      const allocationNeed = Math.abs(cls.difference);
+
+      if (config?.seedTickers) {
+        for (const symbol of config.seedTickers) {
+          if (!seenSymbols.has(symbol)) {
+            seenSymbols.add(symbol);
+            classTickers.push({
+              symbol,
+              assetClassId: cls.id,
+              assetClassName: cls.name,
+              marketCap: 0,
+              lastPrice: 0,
+              allocationNeed,
+            });
+          }
+        }
+      }
+
+      // Search via Polygon keywords
+      if (config?.searchKeywords) {
+        for (const keyword of config.searchKeywords) {
+          try {
+            const results = await provider.searchTickers({
+              search: keyword,
+              market: "stocks",
+              active: true,
+            });
+            for (const r of results.slice(0, 50)) {
+              if (!seenSymbols.has(r.symbol) && (r.marketCap ?? 0) >= strategy.minMarketCap) {
+                seenSymbols.add(r.symbol);
+                classTickers.push({
+                  symbol: r.symbol,
+                  assetClassId: cls.id,
+                  assetClassName: cls.name,
+                  marketCap: r.marketCap ?? 0,
+                  lastPrice: r.lastPrice ?? 0,
+                  allocationNeed,
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`[WheelStrategy] Keyword search "${keyword}" failed:`, err);
+          }
+        }
+      }
+
+      classTickers = classTickers.slice(0, CAP_PER_CLASS);
+      discovered.push(...classTickers);
+
+      this.emitProgress(scanId, "discovery", i + 1, targetClasses.length);
+    }
+
+    await prisma.wheelStrategyScan.update({
+      where: { id: scanId },
+      data: { totalCandidates: discovered.length },
+    });
+
+    console.log(`[WheelStrategy] Discovered ${discovered.length} candidates across ${targetClasses.length} classes`);
+    return discovered;
   }
 
   private async phaseFundamentals(_scanId: string, _strategy: any, _tickers: DiscoveredTicker[], _skipped: SkippedTicker[]): Promise<FundamentalTicker[]> {
