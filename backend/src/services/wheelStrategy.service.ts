@@ -3,6 +3,7 @@ import { prisma } from "../db/index.js";
 import { sseService } from "./sse.js";
 import { getUnderinvestedClasses } from "./allocation.service.js";
 import { getMarketDataProvider } from "./research/providers/index.js";
+import { pipelineService } from "./research/pipeline.service.js";
 import type {
   WheelStrategy,
   WheelStrategyInput,
@@ -272,8 +273,75 @@ class WheelStrategyService {
     return discovered;
   }
 
-  private async phaseFundamentals(_scanId: string, _strategy: any, _tickers: DiscoveredTicker[], _skipped: SkippedTicker[]): Promise<FundamentalTicker[]> {
-    return [];
+  private async phaseFundamentals(
+    scanId: string,
+    strategy: any,
+    tickers: DiscoveredTicker[],
+    skipped: SkippedTicker[],
+  ): Promise<FundamentalTicker[]> {
+    if (tickers.length === 0) return [];
+    this.emitProgress(scanId, "fundamentals", 0, tickers.length);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - strategy.reportMaxAgeDays);
+
+    const accepted: FundamentalTicker[] = [];
+
+    for (let i = 0; i < tickers.length; i++) {
+      const ticker = tickers[i];
+
+      // Find most recent research report
+      const report = await prisma.researchReport.findFirst({
+        where: { symbol: ticker.symbol },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!report) {
+        if (strategy.requireFreshReport) {
+          skipped.push({ symbol: ticker.symbol, reason: "No research report available" });
+          // Trigger background report generation for next cycle
+          pipelineService.generateReport(ticker.symbol).catch((err: unknown) => {
+            console.error(`[WheelStrategy] Background report generation failed for ${ticker.symbol}:`, err);
+          });
+        }
+        this.emitProgress(scanId, "fundamentals", i + 1, tickers.length);
+        continue;
+      }
+
+      // Check freshness
+      if (strategy.requireFreshReport && report.createdAt < cutoffDate) {
+        skipped.push({ symbol: ticker.symbol, reason: `Report too old (${report.createdAt.toISOString().split("T")[0]})` });
+        // Trigger refresh
+        pipelineService.generateReport(ticker.symbol).catch(() => {});
+        this.emitProgress(scanId, "fundamentals", i + 1, tickers.length);
+        continue;
+      }
+
+      // Check recommendation
+      if (!strategy.acceptedRecommendations.includes(report.recommendation)) {
+        skipped.push({ symbol: ticker.symbol, reason: `Recommendation: ${report.recommendation}` });
+        this.emitProgress(scanId, "fundamentals", i + 1, tickers.length);
+        continue;
+      }
+
+      // Check confidence
+      if (strategy.minResearchConfidence != null && report.confidence < strategy.minResearchConfidence) {
+        skipped.push({ symbol: ticker.symbol, reason: `Low confidence: ${report.confidence}` });
+        this.emitProgress(scanId, "fundamentals", i + 1, tickers.length);
+        continue;
+      }
+
+      accepted.push({
+        ...ticker,
+        researchRecommendation: report.recommendation,
+        researchConfidence: report.confidence,
+      });
+
+      this.emitProgress(scanId, "fundamentals", i + 1, tickers.length);
+    }
+
+    console.log(`[WheelStrategy] Fundamentals: ${accepted.length}/${tickers.length} passed`);
+    return accepted;
   }
 
   private async phaseEarnings(_scanId: string, _strategy: any, _tickers: FundamentalTicker[], _skipped: SkippedTicker[]): Promise<EarningsSafeTicker[]> {
