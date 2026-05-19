@@ -344,8 +344,57 @@ class WheelStrategyService {
     return accepted;
   }
 
-  private async phaseEarnings(_scanId: string, _strategy: any, _tickers: FundamentalTicker[], _skipped: SkippedTicker[]): Promise<EarningsSafeTicker[]> {
-    return [];
+  private async phaseEarnings(
+    scanId: string,
+    strategy: any,
+    tickers: FundamentalTicker[],
+    skipped: SkippedTicker[],
+  ): Promise<EarningsSafeTicker[]> {
+    if (tickers.length === 0) return [];
+    this.emitProgress(scanId, "earnings", 0, tickers.length);
+
+    const maxExpiration = new Date();
+    maxExpiration.setDate(maxExpiration.getDate() + strategy.cspMaxDte);
+
+    const provider = getMarketDataProvider();
+    const accepted: EarningsSafeTicker[] = [];
+
+    for (let i = 0; i < tickers.length; i++) {
+      const ticker = tickers[i];
+      let earningsDate: string | null = null;
+
+      try {
+        const events = await provider.getEarningsCalendar(ticker.symbol);
+        // Find next upcoming earnings
+        const now = new Date();
+        const upcoming = events
+          .filter((e) => new Date(e.date) > now)
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        if (upcoming.length > 0) {
+          earningsDate = upcoming[0].date;
+          const earningsDateObj = new Date(earningsDate);
+
+          if (earningsDateObj <= maxExpiration) {
+            skipped.push({
+              symbol: ticker.symbol,
+              reason: `Earnings on ${earningsDate} before max expiry ${maxExpiration.toISOString().split("T")[0]}`,
+            });
+            this.emitProgress(scanId, "earnings", i + 1, tickers.length);
+            continue;
+          }
+        }
+      } catch (err) {
+        // If earnings data unavailable, allow the ticker through (conservative)
+        console.warn(`[WheelStrategy] Earnings check failed for ${ticker.symbol}:`, err);
+      }
+
+      accepted.push({ ...ticker, earningsDate });
+      this.emitProgress(scanId, "earnings", i + 1, tickers.length);
+    }
+
+    console.log(`[WheelStrategy] Earnings: ${accepted.length}/${tickers.length} passed`);
+    return accepted;
   }
 
   private async phaseContracts(_scanId: string, _strategy: any, _tickers: EarningsSafeTicker[], _skipped: SkippedTicker[]): Promise<ContractTicker[]> {
