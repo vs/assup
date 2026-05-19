@@ -5,6 +5,7 @@ import { getUnderinvestedClasses } from "./allocation.service.js";
 import { getMarketDataProvider } from "./research/providers/index.js";
 import { pipelineService } from "./research/pipeline.service.js";
 import { ibkrService } from "./ibkr.js";
+import { wheelService } from "./wheel.service.js";
 import {
   withLiveMarketData,
   getUnderlyingPrice,
@@ -550,12 +551,167 @@ class WheelStrategyService {
     };
   }
 
-  private phaseRanking(_strategy: any, _tickers: ContractTicker[]): CspResultItem[] {
-    return [];
+  private phaseRanking(strategy: any, tickers: ContractTicker[]): CspResultItem[] {
+    if (tickers.length === 0) return [];
+
+    // Score each candidate
+    const scored = tickers.map((t) => {
+      // ROI score (50%): normalize premiumPercent to 0-100 scale (0-5% range)
+      const roiScore = Math.min(100, (t.contract.premiumPercent / 5) * 100);
+
+      // Research confidence score (25%): confidence is already 0-1
+      const confidenceScore = t.researchConfidence * 100;
+
+      // Allocation need score (25%): 0-10% shortfall maps to 0-100
+      const allocationScore = Math.min(100, (t.allocationNeed / 10) * 100);
+
+      const compositeScore = roiScore * 0.5 + confidenceScore * 0.25 + allocationScore * 0.25;
+
+      return { ...t, compositeScore };
+    });
+
+    // Sort by composite score descending
+    scored.sort((a, b) => b.compositeScore - a.compositeScore);
+
+    // Apply diversification constraints
+    const selected: CspResultItem[] = [];
+    const classCount = new Map<string, number>();
+
+    for (const t of scored) {
+      if (selected.length >= strategy.maxPositions) break;
+
+      const currentClassCount = classCount.get(t.assetClassId) ?? 0;
+      if (currentClassCount >= strategy.maxPerAssetClass) continue;
+
+      classCount.set(t.assetClassId, currentClassCount + 1);
+      selected.push({
+        symbol: t.symbol,
+        assetClassId: t.assetClassId,
+        assetClassName: t.assetClassName,
+        researchRecommendation: t.researchRecommendation as any,
+        researchConfidence: t.researchConfidence,
+        earningsDate: t.earningsDate,
+        contract: t.contract,
+        compositeScore: t.compositeScore,
+        allocationNeed: t.allocationNeed,
+        marketCap: t.marketCap,
+        lastPrice: t.lastPrice,
+      });
+    }
+
+    console.log(`[WheelStrategy] Ranking: selected ${selected.length} from ${tickers.length} candidates`);
+    return selected;
   }
 
-  private async phaseCcScanning(_scanId: string, _strategy: any): Promise<CcResultItem[]> {
-    return [];
+  private async phaseCcScanning(scanId: string, strategy: any): Promise<CcResultItem[]> {
+    // Get wheel tracker tickers with live data
+    let summaries;
+    try {
+      summaries = await wheelService.getTrackedTickers();
+    } catch (err) {
+      console.warn("[WheelStrategy] Could not fetch wheel tracker data for CC scan:", err);
+      return [];
+    }
+
+    // Filter to positions with uncovered shares
+    const uncovered = summaries.filter((s) => s.hasUncoveredShares && s.shareQuantity > 0);
+    if (uncovered.length === 0) return [];
+
+    const results: CcResultItem[] = [];
+
+    await withLiveMarketData(async () => {
+      for (const summary of uncovered) {
+        try {
+          const chain = await ibkrService.getOptionChain(summary.symbol);
+          if (!chain || chain.length === 0) continue;
+
+          const underlyingPrice = summary.currentPrice;
+          if (!underlyingPrice) continue;
+
+          // Filter strikes above current price (OTM calls)
+          const filtered = filterChainByStrike(chain, underlyingPrice, 100, 120);
+
+          const getDte = (exp: string): number => {
+            const expDate = new Date(
+              exp.substring(0, 4) + "-" + exp.substring(4, 6) + "-" + exp.substring(6, 8),
+            );
+            return Math.ceil((expDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          };
+
+          // Filter by CC DTE range
+          const dteFiltered = filtered.filter((entry) => {
+            const dte = getDte(entry.expiration);
+            return dte >= strategy.ccMinDte && dte <= strategy.ccMaxDte;
+          });
+
+          const callContracts = dteFiltered.map((entry) => ({ entry, contract: entry.call }));
+
+          if (callContracts.length === 0) continue;
+
+          const marketData = await ibkrService.getMarketDataBatch(
+            callContracts.map((c) => c.contract),
+          );
+
+          let bestContract: CcResultItem["contract"] | null = null;
+          let bestRoi = 0;
+
+          for (const { entry } of callContracts) {
+            const key = `${summary.symbol}_${entry.expiration}_${entry.strike}_CALL`;
+            const data = marketData.get(key);
+            if (!data) continue;
+
+            const bid = data.bid ?? 0;
+            const ask = data.ask ?? 0;
+            if (bid <= 0) continue;
+
+            const dte = getDte(entry.expiration);
+            const metrics = calcOptionMetrics(bid, ask, entry.strike, dte);
+
+            // Check minimum ROI if set
+            if (strategy.ccMinRoi != null && metrics.premiumPercent < strategy.ccMinRoi) continue;
+
+            if (metrics.premiumPercent > bestRoi) {
+              bestRoi = metrics.premiumPercent;
+              const expFormatted = `${entry.expiration.substring(0, 4)}-${entry.expiration.substring(4, 6)}-${entry.expiration.substring(6, 8)}`;
+              bestContract = {
+                strike: entry.strike,
+                expiration: expFormatted,
+                daysToExpiry: dte,
+                delta: data.delta ?? null,
+                bid,
+                ask,
+                midPrice: metrics.midPrice,
+                premiumPercent: metrics.premiumPercent,
+                annualizedReturn: metrics.annualizedReturn,
+              };
+            }
+          }
+
+          if (bestContract) {
+            // Look up asset class assignment for this symbol
+            const assignment = await prisma.securityAssignment.findFirst({
+              where: { symbol: summary.symbol },
+              include: { assetClass: true },
+            });
+
+            results.push({
+              symbol: summary.symbol,
+              assetClassId: assignment?.assetClassId ?? "",
+              assetClassName: assignment?.assetClass?.name ?? "Unassigned",
+              currentPrice: underlyingPrice,
+              costBasis: summary.adjustedCostBasis,
+              sharesHeld: summary.shareQuantity,
+              contract: bestContract,
+            });
+          }
+        } catch (err) {
+          console.warn(`[WheelStrategy] CC scan failed for ${summary.symbol}:`, err);
+        }
+      }
+    });
+
+    console.log(`[WheelStrategy] CC scan: ${results.length} suggestions from ${uncovered.length} uncovered positions`);
+    return results;
   }
 
   private async phaseFinalize(
