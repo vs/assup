@@ -4,6 +4,13 @@ import { sseService } from "./sse.js";
 import { getUnderinvestedClasses } from "./allocation.service.js";
 import { getMarketDataProvider } from "./research/providers/index.js";
 import { pipelineService } from "./research/pipeline.service.js";
+import { ibkrService } from "./ibkr.js";
+import {
+  withLiveMarketData,
+  getUnderlyingPrice,
+  filterChainByStrike,
+  calcOptionMetrics,
+} from "../utils/options.js";
 import type {
   WheelStrategy,
   WheelStrategyInput,
@@ -397,8 +404,150 @@ class WheelStrategyService {
     return accepted;
   }
 
-  private async phaseContracts(_scanId: string, _strategy: any, _tickers: EarningsSafeTicker[], _skipped: SkippedTicker[]): Promise<ContractTicker[]> {
-    return [];
+  private async phaseContracts(
+    scanId: string,
+    strategy: any,
+    tickers: EarningsSafeTicker[],
+    skipped: SkippedTicker[],
+  ): Promise<ContractTicker[]> {
+    if (tickers.length === 0) return [];
+    this.emitProgress(scanId, "contracts", 0, tickers.length);
+
+    const accepted: ContractTicker[] = [];
+    const BATCH_SIZE = 3;
+    const BATCH_DELAY_MS = 2000;
+
+    await withLiveMarketData(async () => {
+      for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+        const batch = tickers.slice(i, i + BATCH_SIZE);
+
+        const results = await Promise.allSettled(
+          batch.map((ticker) => this.scanTickerContracts(ticker, strategy)),
+        );
+
+        for (let j = 0; j < results.length; j++) {
+          const result = results[j];
+          const ticker = batch[j];
+
+          if (result.status === "fulfilled" && result.value) {
+            accepted.push(result.value);
+          } else if (result.status === "rejected") {
+            skipped.push({
+              symbol: ticker.symbol,
+              reason: `Contract scan failed: ${result.reason}`,
+            });
+          } else {
+            // Fulfilled but no matching contract
+            skipped.push({
+              symbol: ticker.symbol,
+              reason: "No contracts matching criteria",
+            });
+          }
+
+          this.emitProgress(scanId, "contracts", i + j + 1, tickers.length);
+        }
+
+        // Rate limiting delay between batches
+        if (i + BATCH_SIZE < tickers.length) {
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+        }
+      }
+    });
+
+    console.log(`[WheelStrategy] Contracts: ${accepted.length}/${tickers.length} have matching contracts`);
+    return accepted;
+  }
+
+  private async scanTickerContracts(
+    ticker: EarningsSafeTicker,
+    strategy: any,
+  ): Promise<ContractTicker | null> {
+    const underlyingPrice = await getUnderlyingPrice(ticker.symbol);
+    if (!underlyingPrice) return null;
+
+    const chain = await ibkrService.getOptionChain(ticker.symbol);
+    if (!chain || chain.length === 0) return null;
+
+    // Filter by strike range (near money, 80-105% of price for puts)
+    const filtered = filterChainByStrike(chain, underlyingPrice, 80, 105);
+
+    const getDte = (exp: string): number => {
+      const expDate = new Date(
+        exp.substring(0, 4) + "-" + exp.substring(4, 6) + "-" + exp.substring(6, 8),
+      );
+      return Math.ceil((expDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    };
+
+    // Filter by DTE
+    const dteFiltered = filtered.filter((entry) => {
+      const dte = getDte(entry.expiration);
+      return dte >= strategy.cspMinDte && dte <= strategy.cspMaxDte;
+    });
+
+    if (dteFiltered.length === 0) return null;
+
+    // Get put contracts for market data
+    const putContracts = dteFiltered.map((entry) => ({ entry, contract: entry.put }));
+
+    if (putContracts.length === 0) return null;
+
+    // Fetch market data in batch
+    const marketData = await ibkrService.getMarketDataBatch(
+      putContracts.map((p) => p.contract),
+    );
+
+    // Evaluate each contract
+    let bestContract: ContractTicker["contract"] | null = null;
+    let bestRoi = 0;
+
+    for (const { entry } of putContracts) {
+      const key = `${ticker.symbol}_${entry.expiration}_${entry.strike}_PUT`;
+      const data = marketData.get(key);
+      if (!data) continue;
+
+      const bid = data.bid ?? 0;
+      const ask = data.ask ?? 0;
+      if (bid <= 0) continue;
+
+      const dte = getDte(entry.expiration);
+      const metrics = calcOptionMetrics(bid, ask, entry.strike, dte);
+
+      // Delta filter (stored as negative in strategy, data is negative for puts)
+      const delta = data.delta ?? null;
+      if (delta != null) {
+        if (Math.abs(delta) > Math.abs(strategy.cspMaxDelta)) continue;
+      }
+
+      // ROI filter
+      if (metrics.premiumPercent < strategy.cspMinRoi || metrics.premiumPercent > strategy.cspMaxRoi) {
+        continue;
+      }
+
+      // Track best by ROI
+      if (metrics.premiumPercent > bestRoi) {
+        bestRoi = metrics.premiumPercent;
+        const expFormatted = `${entry.expiration.substring(0, 4)}-${entry.expiration.substring(4, 6)}-${entry.expiration.substring(6, 8)}`;
+        bestContract = {
+          strike: entry.strike,
+          expiration: expFormatted,
+          daysToExpiry: dte,
+          delta,
+          bid,
+          ask,
+          midPrice: metrics.midPrice,
+          premiumPercent: metrics.premiumPercent,
+          annualizedReturn: metrics.annualizedReturn,
+        };
+      }
+    }
+
+    if (!bestContract) return null;
+
+    return {
+      ...ticker,
+      lastPrice: underlyingPrice,
+      contract: bestContract,
+    };
   }
 
   private phaseRanking(_strategy: any, _tickers: ContractTicker[]): CspResultItem[] {
