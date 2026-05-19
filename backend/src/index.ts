@@ -28,6 +28,7 @@ import { scanJobService } from "./services/scanJob.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
 import { initAnalyzers } from "./services/research/analyzers/index.js";
 import { schedulerService } from "./services/research/scheduler.service.js";
+import { wheelStrategyScheduler } from "./services/wheelStrategy.scheduler.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -207,15 +208,21 @@ app.listen(PORT, () => {
     schedulerService.start();
     console.log("Research scheduler started");
   }
+
+  wheelStrategyScheduler.start().catch((err) => {
+    console.error("Failed to start wheel strategy scheduler:", err);
+  });
 });
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
   schedulerService.stop();
+  wheelStrategyScheduler.stop();
   process.exit(0);
 });
 
 process.on("SIGINT", () => {
   schedulerService.stop();
+  wheelStrategyScheduler.stop();
   process.exit(0);
 });
