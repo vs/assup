@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from "node-cron";
-import cronParser from "cron-parser";
+import { CronExpressionParser } from "cron-parser";
 import { prisma } from "../db/index.js";
 import { wheelStrategyService } from "./wheelStrategy.service.js";
 
@@ -87,10 +87,10 @@ class WheelStrategyScheduler {
 
   async updateNextRunAt(strategyId: string, cronExpr: string): Promise<void> {
     try {
-      const interval = cronParser.parseExpression(cronExpr, {
+      const expr = CronExpressionParser.parse(cronExpr, {
         tz: "America/New_York",
       });
-      const nextRun = interval.next().toDate();
+      const nextRun = expr.next().toDate();
       await prisma.wheelStrategy.update({
         where: { id: strategyId },
         data: { nextRunAt: nextRun },
