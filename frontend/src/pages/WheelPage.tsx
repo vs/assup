@@ -6,11 +6,16 @@ import type {
   WheelSuggestion,
   WheelMatchedTrade,
   SparklinePoint,
+  WheelStrategy,
+  WheelStrategyInput,
+  WheelStrategyScan,
+  WheelStrategyExecuteInput,
 } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   PageHeader,
   ErrorAlert,
@@ -38,6 +43,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { wheelStrategyApi } from "@/api/wheelStrategy";
+import { StrategyConfig } from "@/components/wheelStrategy/StrategyConfig";
+import { ScanResults } from "@/components/wheelStrategy/ScanResults";
+import { StatusBar } from "@/components/wheelStrategy/StatusBar";
 
 const CACHE_KEYS = {
   tickers: "wheel-tickers-cache",
@@ -84,6 +93,16 @@ export function WheelPage() {
   const [newSymbol, setNewSymbol] = useState("");
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
+  // Strategy tab state
+  const [strategy, setStrategy] = useState<WheelStrategy | null>(null);
+  const [latestScan, setLatestScan] = useState<WheelStrategyScan | null>(null);
+  const [scanHistory, setScanHistory] = useState<WheelStrategyScan[]>([]);
+  const [activeScanId, setActiveScanId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [strategyLoaded, setStrategyLoaded] = useState(false);
+
   const sparklineSymbols = useMemo(
     () => data?.tickers.map((t) => t.symbol) ?? [],
     [data?.tickers]
@@ -125,6 +144,87 @@ export function WheelPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Load strategy data when Strategy tab is activated
+  const loadStrategyData = useCallback(async () => {
+    if (strategyLoaded) return;
+    try {
+      const strategies = await wheelStrategyApi.strategies.list();
+      if (strategies.length > 0) {
+        const strat = strategies[0];
+        setStrategy(strat);
+        // Load latest scan and history
+        const [scans] = await Promise.all([
+          wheelStrategyApi.scans.list(strat.id, 10),
+        ]);
+        setScanHistory(scans);
+        // Use the first scan (most recent) as the latest
+        if (scans.length > 0) {
+          setLatestScan(scans[0]);
+        }
+      }
+      setStrategyLoaded(true);
+    } catch (err) {
+      console.error("Failed to load strategy data:", err);
+    }
+  }, [strategyLoaded]);
+
+  const refreshScanData = useCallback(async () => {
+    if (!strategy) return;
+    try {
+      const scans = await wheelStrategyApi.scans.list(strategy.id, 10);
+      setScanHistory(scans);
+      if (scans.length > 0) {
+        setLatestScan(scans[0]);
+      }
+      setActiveScanId(null);
+      setScanning(false);
+    } catch (err) {
+      console.error("Failed to refresh scan data:", err);
+    }
+  }, [strategy]);
+
+  const handleStrategySave = useCallback(async (input: WheelStrategyInput) => {
+    setSaving(true);
+    try {
+      if (strategy) {
+        const updated = await wheelStrategyApi.strategies.update(strategy.id, input);
+        setStrategy(updated);
+      } else {
+        const created = await wheelStrategyApi.strategies.create(input);
+        setStrategy(created);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save strategy");
+    } finally {
+      setSaving(false);
+    }
+  }, [strategy]);
+
+  const handleScanNow = useCallback(async () => {
+    if (!strategy) return;
+    setScanning(true);
+    try {
+      const { scanId } = await wheelStrategyApi.scans.start(strategy.id);
+      setActiveScanId(scanId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start scan");
+      setScanning(false);
+    }
+  }, [strategy]);
+
+  const handleExecute = useCallback(async (input: WheelStrategyExecuteInput) => {
+    if (!latestScan) return;
+    setExecuting(true);
+    try {
+      const result = await wheelStrategyApi.scans.execute(latestScan.id, input);
+      alert(`Order placed: ${result.action} ${result.quantity} ${result.symbol} (Order #${result.orderId})`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to place order");
+    } finally {
+      setExecuting(false);
+    }
+  }, [latestScan]);
 
   const handleAddTicker = async () => {
     if (!newSymbol.trim()) return;
@@ -282,68 +382,106 @@ export function WheelPage() {
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Aggregate Metrics */}
-      {data && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <MetricCard
-            label="Capital Deployed"
-            value={formatCurrency(data.metrics.capitalDeployed)}
-          />
-          <MetricCard
-            label="Realized P&L"
-            value={(data.metrics.totalRealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalRealizedPnL)}
-            className={data.metrics.totalRealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
-          />
-          <MetricCard
-            label="Unrealized P&L"
-            value={(data.metrics.totalUnrealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalUnrealizedPnL)}
-            className={data.metrics.totalUnrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
-          />
-          <MetricCard
-            label="Yield"
-            value={`${data.metrics.premiumYieldAnnualized.toFixed(1)}%`}
-          />
-          <MetricCard
-            label="Active Wheels"
-            value={data.metrics.activeWheels.toString()}
-          />
-          <MetricCard
-            label="Completed Cycles"
-            value={data.metrics.completedCycles.toString()}
-          />
-        </div>
-      )}
+      <Tabs defaultValue="tracker" onValueChange={(value) => {
+        if (value === "strategy") loadStrategyData();
+      }}>
+        <TabsList>
+          <TabsTrigger value="tracker">Tracker</TabsTrigger>
+          <TabsTrigger value="strategy">Strategy</TabsTrigger>
+        </TabsList>
 
-      {/* Ticker Cards */}
-      <div className="space-y-4">
-        {data?.tickers.map((ticker) => {
-          const sparkline = getSparklineState(ticker.symbol);
-          return (
-            <WheelTickerCard
-              key={ticker.symbol}
-              ticker={ticker}
-              isExpanded={expandedTicker === ticker.symbol}
-              onToggle={() =>
-                setExpandedTicker(
-                  expandedTicker === ticker.symbol ? null : ticker.symbol
-                )
-              }
-              onRemove={() => handleRemoveTicker(ticker.symbol)}
-              sparklineData={sparkline.data}
-              sparklineLoading={sparkline.loading}
-              sparklineError={sparkline.error}
-              onChartClick={() => setChartSymbol(ticker.symbol)}
+        <TabsContent value="tracker">
+          {/* Aggregate Metrics */}
+          {data && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <MetricCard
+                label="Capital Deployed"
+                value={formatCurrency(data.metrics.capitalDeployed)}
+              />
+              <MetricCard
+                label="Realized P&L"
+                value={(data.metrics.totalRealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalRealizedPnL)}
+                className={data.metrics.totalRealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
+              />
+              <MetricCard
+                label="Unrealized P&L"
+                value={(data.metrics.totalUnrealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalUnrealizedPnL)}
+                className={data.metrics.totalUnrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
+              />
+              <MetricCard
+                label="Yield"
+                value={`${data.metrics.premiumYieldAnnualized.toFixed(1)}%`}
+              />
+              <MetricCard
+                label="Active Wheels"
+                value={data.metrics.activeWheels.toString()}
+              />
+              <MetricCard
+                label="Completed Cycles"
+                value={data.metrics.completedCycles.toString()}
+              />
+            </div>
+          )}
+
+          {/* Ticker Cards */}
+          <div className="space-y-4 mt-4">
+            {data?.tickers.map((ticker) => {
+              const sparkline = getSparklineState(ticker.symbol);
+              return (
+                <WheelTickerCard
+                  key={ticker.symbol}
+                  ticker={ticker}
+                  isExpanded={expandedTicker === ticker.symbol}
+                  onToggle={() =>
+                    setExpandedTicker(
+                      expandedTicker === ticker.symbol ? null : ticker.symbol
+                    )
+                  }
+                  onRemove={() => handleRemoveTicker(ticker.symbol)}
+                  sparklineData={sparkline.data}
+                  sparklineLoading={sparkline.loading}
+                  sparklineError={sparkline.error}
+                  onChartClick={() => setChartSymbol(ticker.symbol)}
+                />
+              );
+            })}
+            {data?.tickers.length === 0 && (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  No tickers tracked yet. Add a ticker or select from suggestions.
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="strategy">
+          <div className="space-y-6">
+            <StrategyConfig
+              strategy={strategy}
+              onSave={handleStrategySave}
+              onScanNow={handleScanNow}
+              saving={saving}
+              scanning={scanning}
             />
-          );
-        })}
-        {data?.tickers.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              No tickers tracked yet. Add a ticker or select from suggestions.
-            </CardContent>
-          </Card>
-        )}
-      </div>
+
+            {strategy && (
+              <StatusBar
+                strategy={strategy}
+                scans={scanHistory}
+                activeScanId={activeScanId}
+                onScanComplete={refreshScanData}
+              />
+            )}
+
+            <ScanResults
+              scan={latestScan}
+              onExecute={handleExecute}
+              executing={executing}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <ChartModal
         symbol={chartSymbol}
