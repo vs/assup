@@ -4,10 +4,26 @@
  * and combo order placement via IBKR.
  */
 
+import {
+  Contract,
+  SecType,
+  OptionType,
+  OrderAction,
+  OrderType,
+  TimeInForce,
+} from "@stoqey/ib";
+import type { Order } from "@stoqey/ib";
+import { ibkrService } from "./ibkr.js";
+import { withLiveMarketData } from "../utils/options.js";
+import { parseExpirationDate } from "../utils/market.js";
 import type {
   IronCondorAnalyzeRequest,
   IronCondorAnalyzeResponse,
   IronCondorLeg,
+  IronCondorChainResponse,
+  IronCondorChainStrike,
+  IronCondorOrderRequest,
+  IronCondorOrderResponse,
 } from "@assup/shared";
 
 // --- Black-Scholes ---
@@ -170,4 +186,232 @@ export function analyze(req: IronCondorAnalyzeRequest): IronCondorAnalyzeRespons
     riskRewardRatio: Math.round(riskRewardRatio * 100) / 100,
     payoffCurve,
   };
+}
+
+// --- Chain Fetch ---
+
+/**
+ * Fetch options chain for an index (SPX) from IBKR.
+ * Uses SecType.IND (not STK) and handles SPX/SPXW trading classes.
+ * Only fetches market data for strikes within ±15% of underlying price.
+ */
+export async function getChain(symbol: string, targetDte: number): Promise<IronCondorChainResponse> {
+  const api = ibkrService.getApi();
+  if (!api || !api.isConnected) {
+    throw new Error("Not connected to TWS");
+  }
+
+  // 1. Get underlying price
+  const underlyingContract: Contract = {
+    symbol,
+    secType: SecType.IND,
+    exchange: "CBOE",
+    currency: "USD",
+  };
+
+  const underlyingData = await ibkrService.getMarketData(underlyingContract);
+  const underlyingPrice = underlyingData?.last ?? underlyingData?.close ?? 0;
+  if (underlyingPrice <= 0) {
+    throw new Error(`Could not get price for ${symbol}`);
+  }
+
+  // 2. Get contract details for the index
+  const details = await api.getContractDetails(underlyingContract);
+  if (!details || details.length === 0) {
+    throw new Error(`No contract details found for ${symbol}`);
+  }
+
+  // 3. Get security definitions for options
+  const secDefs = await api.getSecDefOptParams(
+    symbol,
+    "",
+    SecType.IND,
+    details[0].contract.conId!,
+  );
+
+  if (!secDefs || secDefs.length === 0) {
+    throw new Error(`No options available for ${symbol}`);
+  }
+
+  // Prefer SPXW (weeklies, includes 0DTE/1DTE) over SPX (monthly only)
+  const spxwDefs = secDefs.filter(d => d.tradingClass === "SPXW");
+  const spxDefs = secDefs.filter(d => d.tradingClass === "SPX");
+  const activeDefs = spxwDefs.length > 0 ? spxwDefs : spxDefs.length > 0 ? spxDefs : secDefs;
+  const tradingClass = activeDefs[0]?.tradingClass ?? symbol;
+  const multiplier = Number(activeDefs[0]?.multiplier ?? 100);
+
+  // 4. Collect all available expirations
+  const allExpirations = new Set<string>();
+  for (const def of activeDefs) {
+    if (def.expirations) {
+      for (const exp of def.expirations) allExpirations.add(exp);
+    }
+  }
+
+  const expirations = Array.from(allExpirations).sort();
+
+  // 5. Find the expiration closest to target DTE
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let selectedExpiration = expirations[0] ?? "";
+
+  for (const exp of expirations) {
+    const expDate = parseExpirationDate(exp);
+    const dte = Math.floor((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (dte >= targetDte) {
+      selectedExpiration = exp;
+      break;
+    }
+  }
+
+  // 6. Collect strikes for selected expiration (within ±15% of underlying)
+  const minStrike = underlyingPrice * 0.85;
+  const maxStrike = underlyingPrice * 1.15;
+  const strikes = new Set<number>();
+
+  for (const def of activeDefs) {
+    if (!def.strikes) continue;
+    for (const strike of def.strikes) {
+      if (strike >= minStrike && strike <= maxStrike) {
+        strikes.add(strike);
+      }
+    }
+  }
+
+  const sortedStrikes = Array.from(strikes).sort((a, b) => a - b);
+
+  // 7. Build contracts and fetch market data
+  const chain: IronCondorChainStrike[] = [];
+
+  await withLiveMarketData(async () => {
+    const contracts: Contract[] = [];
+
+    for (const strike of sortedStrikes) {
+      for (const right of [OptionType.Put, OptionType.Call] as const) {
+        const contract: Contract = {
+          symbol,
+          secType: SecType.OPT,
+          exchange: "SMART",
+          currency: "USD",
+          lastTradeDateOrContractMonth: selectedExpiration,
+          strike,
+          right,
+          multiplier,
+          tradingClass,
+        };
+        contracts.push(contract);
+      }
+    }
+
+    // Batch fetch market data
+    const marketData = await ibkrService.getMarketDataBatch(contracts);
+
+    // Group by strike
+    const strikeMap = new Map<number, { put: any; call: any }>();
+
+    for (const [, data] of marketData) {
+      const strike = data.contract.strike!;
+      const type = data.contract.right === OptionType.Put ? "put" : "call";
+
+      if (!strikeMap.has(strike)) {
+        strikeMap.set(strike, { put: null, call: null });
+      }
+
+      const option = {
+        conId: data.contract.conId ?? 0,
+        bid: data.bid ?? 0,
+        ask: data.ask ?? 0,
+        mid: data.bid != null && data.ask != null ? (data.bid + data.ask) / 2 : 0,
+        last: data.last ?? 0,
+        delta: Math.abs(data.delta ?? 0),
+        iv: (data.impliedVolatility ?? 0) * 100,
+      };
+
+      strikeMap.get(strike)![type] = option;
+    }
+
+    for (const strike of sortedStrikes) {
+      const data = strikeMap.get(strike);
+      chain.push({
+        strike,
+        put: data?.put ?? null,
+        call: data?.call ?? null,
+      });
+    }
+  });
+
+  return {
+    underlyingPrice,
+    expirations,
+    selectedExpiration,
+    chain,
+  };
+}
+
+// --- Combo Order ---
+
+/**
+ * Place an iron condor as a multi-leg combo (BAG) order via IBKR.
+ */
+export async function placeComboOrder(req: IronCondorOrderRequest): Promise<IronCondorOrderResponse> {
+  const api = ibkrService.getApi();
+  if (!api || !api.isConnected) {
+    throw new Error("Not connected to TWS");
+  }
+
+  // Build BAG contract
+  const comboContract: Contract = {
+    symbol: req.symbol,
+    secType: "BAG" as SecType,
+    exchange: "SMART",
+    currency: "USD",
+    comboLegs: req.legs.map(leg => ({
+      conId: leg.conId,
+      ratio: 1,
+      action: leg.side === "BUY" ? OrderAction.BUY : OrderAction.SELL,
+      exchange: leg.exchange,
+    })),
+  };
+
+  // Build order — action is "SELL" for a net credit combo (iron condor receives premium)
+  // IBKR convention: SELL combo with positive limit price = receive credit
+  const order: Order = {
+    action: OrderAction.SELL,
+    totalQuantity: req.quantity,
+    orderType: OrderType.LMT,
+    lmtPrice: req.limitPrice,
+    tif: TimeInForce.DAY,
+    transmit: true,
+    smartComboRoutingParams: [
+      { tag: "NonGuaranteed", value: "1" },
+    ],
+  };
+
+  const orderId = await api.placeNewOrder(comboContract, order);
+
+  // Wait for order confirmation (same pattern as ibkrService.placeOrder)
+  const maxWaitMs = 3000;
+  const pollIntervalMs = 500;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    try {
+      const orders = await ibkrService.getAllOpenOrders();
+      const found = orders.find((o) => o.orderId === orderId);
+      if (found) {
+        const status = found.orderStatus?.status || found.orderState?.status;
+        if (status === "Cancelled" || status === "Inactive") {
+          throw new Error(`Order was ${status.toLowerCase()} by TWS`);
+        }
+        if (status === "PreSubmitted" || status === "Submitted" || status === "Filled") {
+          return { orderId, status };
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("Order was")) throw err;
+    }
+  }
+
+  return { orderId, status: "Submitted" };
 }

@@ -373,6 +373,10 @@ class IBKRService {
     return { ...this.connectionStatus };
   }
 
+  getApi(): IBApiNext | null {
+    return this.api;
+  }
+
   subscribe(listener: (status: ConnectionStatus) => void): () => void {
     this.statusListeners.add(listener);
     listener(this.connectionStatus);
