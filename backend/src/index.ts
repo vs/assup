@@ -25,6 +25,7 @@ import wheelStrategyRouter from "./routes/wheelStrategy.js";
 import researchRouter from "./routes/research.js";
 import wheelScannerRouter from "./routes/wheelScanner.js";
 import tickerProfileRouter from "./routes/tickerProfile.js";
+import ironCondorRouter from "./routes/ironCondor.js";
 import { scanJobService } from "./services/scanJob.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
 import { initAnalyzers } from "./services/research/analyzers/index.js";
@@ -99,6 +100,9 @@ app.use("/api/wheel-strategy", wheelStrategyRouter);
 app.use("/api/research", researchRouter);
 app.use("/api/wheel-scanner", wheelScannerRouter);
 app.use("/api/ticker-profile", tickerProfileRouter);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use("/api/iron-condor/order", orderLimiter as any);
+app.use("/api/iron-condor", ironCondorRouter);
 
 app.get("/api/health", asyncHandler(async (req, res) => {
   const assetClassCount = await prisma.assetClass.count();
