@@ -11,6 +11,7 @@ import {
   TrendingUp,
   RefreshCw,
   Landmark,
+  Layers,
   Settings,
   Menu,
   X,
@@ -51,6 +52,7 @@ const navItems = [
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
+  { to: "/iron-condor", label: "Iron Condor", icon: Layers },
   { to: "/taxes", label: "Taxes", icon: Landmark },
 ];
 

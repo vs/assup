@@ -10,6 +10,7 @@ import { WatchlistsPage } from "@/pages/WatchlistsPage";
 import { ScannerPage } from "@/pages/ScannerPage";
 import { ProfitPage } from "@/pages/ProfitPage";
 import { WheelPage } from "@/pages/WheelPage";
+import { IronCondorPage } from "@/pages/IronCondorPage";
 import { TaxesPage } from "@/pages/TaxesPage";
 import { ResearchReportPage } from "@/pages/ResearchReportPage";
 import { SettingsPage } from "@/pages/SettingsPage";
@@ -40,6 +41,7 @@ function App() {
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/profit" element={<ProfitPage />} />
             <Route path="/wheel" element={<WheelPage />} />
+            <Route path="/iron-condor" element={<IronCondorPage />} />
             <Route path="/taxes" element={<TaxesPage />} />
             <Route path="/watchlists" element={<Navigate to="/analysis" replace />} />
             <Route path="/watchlists/:symbol" element={<SymbolRedirect />} />
