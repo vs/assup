@@ -2,7 +2,7 @@
  * Confirmation dialog for placing an iron condor combo order.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,15 @@ export function PlaceIronCondorDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Reset state when dialog opens or credit changes
+  useEffect(() => {
+    if (open) {
+      setLimitPrice(netCreditMid);
+      setError(null);
+      setSuccess(false);
+    }
+  }, [open, netCreditMid]);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -98,7 +107,7 @@ export function PlaceIronCondorDialog({
               onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
             />
             <p className="text-xs text-muted-foreground">
-              Max profit: ${(limitPrice * 100 * quantity).toLocaleString()} {"\u00B7"} Max loss: -${((Math.max(...legs.filter(l => l.side === "BUY").map(l => l.strike)) - Math.min(...legs.filter(l => l.side === "SELL").map(l => l.strike)) - limitPrice) * 100 * quantity).toLocaleString()}
+              Max profit: ${(limitPrice * 100 * quantity).toLocaleString()} · Max loss: -${maxLoss.toLocaleString()}
             </p>
           </div>
 

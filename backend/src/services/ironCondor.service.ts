@@ -74,11 +74,15 @@ const SPX_MULTIPLIER = 100;
 export function analyze(req: IronCondorAnalyzeRequest): IronCondorAnalyzeResponse {
   const { underlyingPrice, legs, daysToExpiry, quantity } = req;
 
-  // Identify legs by role
-  const buyPut = legs.find(l => l.type === "PUT" && l.side === "BUY")!;
-  const sellPut = legs.find(l => l.type === "PUT" && l.side === "SELL")!;
-  const sellCall = legs.find(l => l.type === "CALL" && l.side === "SELL")!;
-  const buyCall = legs.find(l => l.type === "CALL" && l.side === "BUY")!;
+  // Identify legs by role — validate all 4 roles are present
+  const buyPut = legs.find(l => l.type === "PUT" && l.side === "BUY");
+  const sellPut = legs.find(l => l.type === "PUT" && l.side === "SELL");
+  const sellCall = legs.find(l => l.type === "CALL" && l.side === "SELL");
+  const buyCall = legs.find(l => l.type === "CALL" && l.side === "BUY");
+
+  if (!buyPut || !sellPut || !sellCall || !buyCall) {
+    throw new Error("Iron condor requires exactly one BUY PUT, one SELL PUT, one SELL CALL, and one BUY CALL leg");
+  }
 
   // Net credit calculation (conservative: sell at bid, buy at ask)
   const creditBid = (sellPut.bid - buyPut.ask) + (sellCall.bid - buyCall.ask);
@@ -373,10 +377,12 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
     })),
   };
 
-  // Build order — action is "SELL" for a net credit combo (iron condor receives premium)
-  // IBKR convention: SELL combo with positive limit price = receive credit
+  // Build order — action is "BUY" for the combo.
+  // IBKR BAG convention: order-level action = BUY, each ComboLeg specifies its own action.
+  // The net credit is received because the sold legs generate more premium than the bought legs cost.
+  // Limit price is the net credit we want to receive (positive = credit for the combo).
   const order: Order = {
-    action: OrderAction.SELL,
+    action: OrderAction.BUY,
     totalQuantity: req.quantity,
     orderType: OrderType.LMT,
     lmtPrice: req.limitPrice,
