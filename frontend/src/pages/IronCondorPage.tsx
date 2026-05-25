@@ -4,7 +4,7 @@
  * Top bar with parameters. Delta-guided leg selection with manual override.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,8 +68,6 @@ export function IronCondorPage() {
   const [error, setError] = useState<string | null>(null);
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
 
-  const analyzeTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
-
   // --- Fetch chain ---
   const fetchChain = useCallback(async (dte?: number) => {
     setChainLoading(true);
@@ -127,39 +125,39 @@ export function IronCondorPage() {
   }, [autoSelectLegs]);
 
   // --- Analyze ---
-  const triggerAnalyze = useCallback(() => {
+  useEffect(() => {
     if (!chainData || !selectedLegs.buyPut || !selectedLegs.sellPut || !selectedLegs.sellCall || !selectedLegs.buyCall) {
       setAnalysis(null);
       return;
     }
 
-    clearTimeout(analyzeTimeout.current);
-    analyzeTimeout.current = setTimeout(async () => {
+    const getLeg = (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {
+      const entry = chainData.chain.find((c: IronCondorChainStrike) => c.strike === strike);
+      const option = type === "PUT" ? entry?.put : entry?.call;
+      return {
+        strike,
+        type,
+        side,
+        iv: option?.iv ?? 0,
+        bid: option?.bid ?? 0,
+        ask: option?.ask ?? 0,
+      };
+    };
+
+    const expDate = chainData.selectedExpiration;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expMs = new Date(
+      parseInt(expDate.slice(0, 4)),
+      parseInt(expDate.slice(4, 6)) - 1,
+      parseInt(expDate.slice(6, 8)),
+    ).getTime();
+    const dte = Math.max(0, Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)));
+
+    let cancelled = false;
+    const timeout = setTimeout(async () => {
       setAnalyzeLoading(true);
       try {
-        const getLeg = (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {
-          const entry = chainData.chain.find(c => c.strike === strike);
-          const option = type === "PUT" ? entry?.put : entry?.call;
-          return {
-            strike,
-            type,
-            side,
-            iv: option?.iv ?? 0,
-            bid: option?.bid ?? 0,
-            ask: option?.ask ?? 0,
-          };
-        };
-
-        const expDate = chainData.selectedExpiration;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const expMs = new Date(
-          parseInt(expDate.slice(0, 4)),
-          parseInt(expDate.slice(4, 6)) - 1,
-          parseInt(expDate.slice(6, 8)),
-        ).getTime();
-        const dte = Math.max(0, Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)));
-
         const result = await api.ironCondor.analyze({
           underlyingPrice: chainData.underlyingPrice,
           legs: [
@@ -171,19 +169,23 @@ export function IronCondorPage() {
           daysToExpiry: dte,
           quantity,
         });
-        setAnalysis(result);
+        if (!cancelled) setAnalysis(result);
       } catch (err) {
         console.error("Analyze failed:", err);
+        if (!cancelled) {
+          setAnalysis(null);
+          setError(err instanceof Error ? err.message : "Analysis failed");
+        }
       } finally {
-        setAnalyzeLoading(false);
+        if (!cancelled) setAnalyzeLoading(false);
       }
-    }, 200); // 200ms debounce
-  }, [chainData, selectedLegs, quantity]);
+    }, 200);
 
-  useEffect(() => {
-    triggerAnalyze();
-    return () => clearTimeout(analyzeTimeout.current);
-  }, [triggerAnalyze]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [chainData, selectedLegs, quantity]);
 
   // --- Leg selection handler ---
   const handleSelectLeg = useCallback((strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {

@@ -160,18 +160,20 @@ export function analyze(req: IronCondorAnalyzeRequest): IronCondorAnalyzeRespons
   const T = Math.max(daysToExpiry / 365, 1 / (365 * 24));
   let expectedValue = 0;
 
-  for (let i = 0; i < payoffCurve.length - 1; i++) {
-    const p1 = payoffCurve[i];
-    const p2 = payoffCurve[i + 1];
-    const midPrice = (p1.price + p2.price) / 2;
-    const midPnl = (p1.pnl + p2.pnl) / 2;
-    // Lognormal probability density
-    const logReturn = Math.log(midPrice / underlyingPrice);
-    const mean = -0.5 * sigma * sigma * T;
-    const std = sigma * Math.sqrt(T);
-    const density = Math.exp(-0.5 * ((logReturn - mean) / std) ** 2) / (std * Math.sqrt(2 * Math.PI) * midPrice);
-    const width = p2.price - p1.price;
-    expectedValue += midPnl * density * width;
+  if (sigma > 0) {
+    for (let i = 0; i < payoffCurve.length - 1; i++) {
+      const p1 = payoffCurve[i];
+      const p2 = payoffCurve[i + 1];
+      const midPrice = (p1.price + p2.price) / 2;
+      const midPnl = (p1.pnl + p2.pnl) / 2;
+      // Lognormal probability density
+      const logReturn = Math.log(midPrice / underlyingPrice);
+      const mean = -0.5 * sigma * sigma * T;
+      const std = sigma * Math.sqrt(T);
+      const density = Math.exp(-0.5 * ((logReturn - mean) / std) ** 2) / (std * Math.sqrt(2 * Math.PI) * midPrice);
+      const width = p2.price - p1.price;
+      expectedValue += midPnl * density * width;
+    }
   }
 
   return {
