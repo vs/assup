@@ -49,7 +49,7 @@ export function IronCondorPage() {
   // Parameters
   const [symbol] = useState("SPX");
   const [targetDte, setTargetDte] = useState(1);
-  const [quantity, setQuantity] = useState(2);
+  const [quantity, setQuantity] = useState(1);
   const [putDelta, setPutDelta] = useState(7);
   const [callDelta, setCallDelta] = useState(3.5);
   const [wingWidth, setWingWidth] = useState(100);
