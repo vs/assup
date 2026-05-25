@@ -68,7 +68,7 @@ export function IronCondorPage() {
   const [error, setError] = useState<string | null>(null);
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
 
-  const analyzeTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const analyzeTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // --- Fetch chain ---
   const fetchChain = useCallback(async (dte?: number) => {
@@ -163,10 +163,10 @@ export function IronCondorPage() {
         const result = await api.ironCondor.analyze({
           underlyingPrice: chainData.underlyingPrice,
           legs: [
-            getLeg(selectedLegs.buyPut, "PUT", "BUY"),
-            getLeg(selectedLegs.sellPut, "PUT", "SELL"),
-            getLeg(selectedLegs.sellCall, "CALL", "SELL"),
-            getLeg(selectedLegs.buyCall, "CALL", "BUY"),
+            getLeg(selectedLegs.buyPut!, "PUT", "BUY"),
+            getLeg(selectedLegs.sellPut!, "PUT", "SELL"),
+            getLeg(selectedLegs.sellCall!, "CALL", "SELL"),
+            getLeg(selectedLegs.buyCall!, "CALL", "BUY"),
           ],
           daysToExpiry: dte,
           quantity,
@@ -263,7 +263,7 @@ export function IronCondorPage() {
               <SelectValue placeholder="Select expiration" />
             </SelectTrigger>
             <SelectContent>
-              {(chainData?.expirations ?? []).map(exp => (
+              {(chainData?.expirations ?? []).map((exp: string) => (
                 <SelectItem key={exp} value={exp}>{formatExpiration(exp)}</SelectItem>
               ))}
             </SelectContent>
@@ -381,7 +381,6 @@ export function IronCondorPage() {
           legs={orderLegs}
           quantity={quantity}
           netCreditMid={analysis.netCredit.mid}
-          maxProfit={analysis.maxProfit}
           maxLoss={Math.max(analysis.maxLossPut, analysis.maxLossCall)}
         />
       )}

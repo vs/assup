@@ -24,7 +24,6 @@ interface PlaceIronCondorDialogProps {
   legs: IronCondorOrderLeg[];
   quantity: number;
   netCreditMid: number;
-  maxProfit: number;
   maxLoss: number;
 }
 
@@ -35,7 +34,6 @@ export function PlaceIronCondorDialog({
   legs,
   quantity,
   netCreditMid,
-  maxProfit,
   maxLoss,
 }: PlaceIronCondorDialogProps) {
   const [limitPrice, setLimitPrice] = useState(netCreditMid);
