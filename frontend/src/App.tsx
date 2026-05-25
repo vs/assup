@@ -41,7 +41,7 @@ function App() {
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/profit" element={<ProfitPage />} />
             <Route path="/wheel" element={<WheelPage />} />
-            <Route path="/iron-condor" element={<IronCondorPage />} />
+            <Route path="/spreads" element={<IronCondorPage />} />
             <Route path="/taxes" element={<TaxesPage />} />
             <Route path="/watchlists" element={<Navigate to="/analysis" replace />} />
             <Route path="/watchlists/:symbol" element={<SymbolRedirect />} />
