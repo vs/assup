@@ -323,17 +323,22 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
         strikeMap.set(strike, { put: null, call: null });
       }
 
-      // Use || instead of ?? to catch NaN values from IBKR
-      const bid = Number.isFinite(data.bid) ? data.bid! : 0;
-      const ask = Number.isFinite(data.ask) ? data.ask! : 0;
+      // IBKR returns NaN or negative values (-1, -2) for unavailable data.
+      // Clamp all values to 0 minimum to avoid NaN/negative propagation.
+      const safeNum = (v: number | undefined, min = 0) => {
+        if (v == null || !Number.isFinite(v) || v < min) return 0;
+        return v;
+      };
+      const bid = safeNum(data.bid);
+      const ask = safeNum(data.ask);
       const option = {
         conId: data.contract.conId ?? 0,
         bid,
         ask,
         mid: bid > 0 && ask > 0 ? (bid + ask) / 2 : 0,
-        last: Number.isFinite(data.last) ? data.last! : 0,
-        delta: Number.isFinite(data.delta) ? Math.abs(data.delta!) : 0,
-        iv: Number.isFinite(data.impliedVolatility) ? data.impliedVolatility! * 100 : 0,
+        last: safeNum(data.last),
+        delta: Math.abs(safeNum(data.delta, -Infinity)),
+        iv: safeNum(data.impliedVolatility) * 100,
       };
 
       strikeMap.get(strike)![type] = option;
