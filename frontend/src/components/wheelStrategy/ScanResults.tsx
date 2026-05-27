@@ -4,7 +4,15 @@ import type {
   CspResultItem,
   CcResultItem,
 } from "@assup/shared";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
@@ -24,7 +32,7 @@ function formatMarketCap(value: number): string {
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function scoreBadgeClass(score: number): string {
@@ -39,16 +47,61 @@ function recommendationVariant(rec: string): "success" | "danger" | "secondary" 
   return "secondary";
 }
 
-function MetricRow({ label, value }: { label: string; value: React.ReactNode }) {
+function CspTable({
+  items,
+  onExecute,
+  executing,
+}: {
+  items: CspResultItem[];
+  onExecute: (input: WheelStrategyExecuteInput) => void;
+  executing?: boolean;
+}) {
   return (
-    <div className="flex justify-between items-center text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums">{value}</span>
-    </div>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold">
+          CSP Candidates
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            ({items.length} result{items.length !== 1 ? "s" : ""})
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-0 pb-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Symbol</TableHead>
+              <TableHead className="text-right">Score</TableHead>
+              <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Mkt Cap</TableHead>
+              <TableHead className="text-right">Alloc Need</TableHead>
+              <TableHead>Earnings</TableHead>
+              <TableHead className="text-right">Strike</TableHead>
+              <TableHead>Expiration</TableHead>
+              <TableHead className="text-right">Delta</TableHead>
+              <TableHead className="text-right">Bid / Ask</TableHead>
+              <TableHead className="text-right">Prem %</TableHead>
+              <TableHead className="text-right">Ann. Return</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => (
+              <CspRow
+                key={`${item.symbol}-${item.contract.strike}-${item.contract.expiration}`}
+                item={item}
+                onExecute={onExecute}
+                executing={executing}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
-function CspCard({
+function CspRow({
   item,
   onExecute,
   executing,
@@ -71,91 +124,158 @@ function CspCard({
   }
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-3">
-        {/* Header: symbol, score */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-lg font-bold">{item.symbol}</span>
-            <Badge variant="outline" className="text-xs">{item.assetClassName}</Badge>
-            <Badge
-              variant={recommendationVariant(item.researchRecommendation)}
-              className="text-xs capitalize"
-            >
-              {item.researchRecommendation}
-            </Badge>
-          </div>
-          <span
-            className={`shrink-0 inline-flex items-center rounded-full border px-2.5 py-0.5 text-sm font-bold tabular-nums ${scoreBadgeClass(item.compositeScore)}`}
-          >
-            {Math.round(item.compositeScore)}
+    <TableRow>
+      {/* Symbol + badges */}
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium">{item.symbol}</span>
+          <Badge variant="outline">{item.assetClassName}</Badge>
+          <Badge variant={recommendationVariant(item.researchRecommendation)} className="capitalize">
+            {item.researchRecommendation}
+          </Badge>
+        </div>
+      </TableCell>
+
+      {/* Score */}
+      <TableCell className="text-right">
+        <span
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 font-bold tabular-nums ${scoreBadgeClass(item.compositeScore)}`}
+        >
+          {Math.round(item.compositeScore)}
+        </span>
+      </TableCell>
+
+      {/* Price */}
+      <TableCell className="text-right font-mono">
+        ${item.lastPrice.toFixed(2)}
+      </TableCell>
+
+      {/* Market Cap */}
+      <TableCell className="text-right font-mono">
+        {formatMarketCap(item.marketCap)}
+      </TableCell>
+
+      {/* Allocation Need */}
+      <TableCell className="text-right font-mono">
+        {item.allocationNeed.toFixed(1)}%
+      </TableCell>
+
+      {/* Earnings */}
+      <TableCell>
+        {item.earningsDate ? (
+          <span>
+            <span className="text-green-600 font-medium">Safe</span>
+            {" · "}
+            {formatDate(item.earningsDate)}
           </span>
-        </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
 
-        {/* Earnings */}
-        <div className="text-xs text-muted-foreground">
-          {item.earningsDate ? (
-            <>
-              <span className="text-green-600 font-medium">Safe</span>
-              {" "}· Earnings {formatDate(item.earningsDate)}
-            </>
-          ) : (
-            <span>No upcoming earnings</span>
-          )}
-        </div>
+      {/* Strike */}
+      <TableCell className="text-right font-mono">
+        ${contract.strike.toFixed(0)}
+      </TableCell>
 
-        {/* Stock info */}
-        <div className="space-y-1">
-          <MetricRow label="Last Price" value={`$${item.lastPrice.toFixed(2)}`} />
-          <MetricRow label="Market Cap" value={formatMarketCap(item.marketCap)} />
-          <MetricRow label="Allocation Need" value={`${item.allocationNeed.toFixed(1)}%`} />
-        </div>
+      {/* Expiration + DTE */}
+      <TableCell>
+        {formatDate(contract.expiration)}
+        <span className="text-muted-foreground ml-1">({contract.daysToExpiry}d)</span>
+      </TableCell>
 
-        {/* Divider */}
-        <div className="border-t" />
+      {/* Delta */}
+      <TableCell className="text-right font-mono">
+        {contract.delta != null ? contract.delta.toFixed(2) : "—"}
+      </TableCell>
 
-        {/* Contract info */}
-        <div className="space-y-1">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-            Contract
-          </div>
-          <MetricRow label="Strike" value={`$${contract.strike.toFixed(0)}`} />
-          <MetricRow label="Expiration" value={formatDate(contract.expiration)} />
-          <MetricRow label="DTE" value={`${contract.daysToExpiry}d`} />
-          {contract.delta != null && (
-            <MetricRow label="Delta" value={contract.delta.toFixed(2)} />
-          )}
-          <MetricRow
-            label="Bid / Ask"
-            value={`$${contract.bid.toFixed(2)} / $${contract.ask.toFixed(2)}`}
-          />
-          <MetricRow label="Mid Price" value={`$${contract.midPrice.toFixed(2)}`} />
-          <MetricRow label="Premium %" value={`${contract.premiumPercent.toFixed(2)}%`} />
-          <MetricRow label="Ann. Return" value={`${contract.annualizedReturn.toFixed(1)}%`} />
-        </div>
+      {/* Bid / Ask */}
+      <TableCell className="text-right font-mono">
+        ${contract.bid.toFixed(2)} / ${contract.ask.toFixed(2)}
+      </TableCell>
 
-        {/* Action */}
+      {/* Premium % */}
+      <TableCell className="text-right font-mono">
+        {contract.premiumPercent.toFixed(2)}%
+      </TableCell>
+
+      {/* Annualized Return */}
+      <TableCell className="text-right font-mono font-semibold">
+        {contract.annualizedReturn.toFixed(1)}%
+      </TableCell>
+
+      {/* Action */}
+      <TableCell>
         <Button
-          className="w-full"
           size="sm"
+          variant="outline"
           onClick={handleSellPut}
           disabled={executing}
         >
           {executing ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              Placing...
-            </>
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             "Sell Put"
           )}
         </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function CcTable({
+  items,
+  onExecute,
+  executing,
+}: {
+  items: CcResultItem[];
+  onExecute: (input: WheelStrategyExecuteInput) => void;
+  executing?: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold">
+          Covered Call Suggestions
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            ({items.length} result{items.length !== 1 ? "s" : ""})
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-0 pb-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Symbol</TableHead>
+              <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Cost Basis</TableHead>
+              <TableHead className="text-right">P&L</TableHead>
+              <TableHead className="text-right">Shares</TableHead>
+              <TableHead className="text-right">Strike</TableHead>
+              <TableHead>Expiration</TableHead>
+              <TableHead className="text-right">Bid / Ask</TableHead>
+              <TableHead className="text-right">Prem %</TableHead>
+              <TableHead className="text-right">Ann. Return</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => (
+              <CcRow
+                key={`${item.symbol}-${item.contract.strike}-${item.contract.expiration}`}
+                item={item}
+                onExecute={onExecute}
+                executing={executing}
+              />
+            ))}
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   );
 }
 
-function CcCard({
+function CcRow({
   item,
   onExecute,
   executing,
@@ -181,73 +301,87 @@ function CcCard({
   }
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-3">
-        {/* Header */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-lg font-bold">{item.symbol}</span>
-          <Badge variant="secondary" className="text-xs">Assigned</Badge>
-          <Badge variant="outline" className="text-xs">{item.assetClassName}</Badge>
+    <TableRow>
+      {/* Symbol + badges */}
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium">{item.symbol}</span>
+          <Badge variant="secondary">Assigned</Badge>
+          <Badge variant="outline">{item.assetClassName}</Badge>
         </div>
+      </TableCell>
 
-        {/* Stock position info */}
-        <div className="space-y-1">
-          <MetricRow label="Current Price" value={`$${item.currentPrice.toFixed(2)}`} />
-          <MetricRow label="Cost Basis" value={`$${item.costBasis.toFixed(2)}`} />
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-muted-foreground">P&amp;L</span>
-            <span className={`font-medium tabular-nums ${isProfitable ? "text-green-600" : "text-red-600"}`}>
-              {isProfitable ? "+" : ""}{pnl.toFixed(2)} ({isProfitable ? "+" : ""}{pnlPct.toFixed(1)}%)
-            </span>
-          </div>
-          <MetricRow label="Shares Held" value={item.sharesHeld.toLocaleString()} />
-        </div>
+      {/* Current Price */}
+      <TableCell className="text-right font-mono">
+        ${item.currentPrice.toFixed(2)}
+      </TableCell>
 
-        {/* Divider */}
-        <div className="border-t" />
+      {/* Cost Basis */}
+      <TableCell className="text-right font-mono">
+        ${item.costBasis.toFixed(2)}
+      </TableCell>
 
-        {/* Contract info */}
-        <div className="space-y-1">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-            Contract
-          </div>
-          <MetricRow label="Strike" value={`$${contract.strike.toFixed(0)}`} />
-          <MetricRow label="Expiration" value={formatDate(contract.expiration)} />
-          <MetricRow label="DTE" value={`${contract.daysToExpiry}d`} />
-          <MetricRow
-            label="Bid / Ask"
-            value={`$${contract.bid.toFixed(2)} / $${contract.ask.toFixed(2)}`}
-          />
-          <MetricRow label="Mid Price" value={`$${contract.midPrice.toFixed(2)}`} />
-          <MetricRow label="Premium %" value={`${contract.premiumPercent.toFixed(2)}%`} />
-          <MetricRow label="Ann. Return" value={`${contract.annualizedReturn.toFixed(1)}%`} />
-        </div>
+      {/* P&L */}
+      <TableCell className="text-right font-mono">
+        <span className={isProfitable ? "text-green-600" : "text-red-600"}>
+          {isProfitable ? "+" : ""}{pnl.toFixed(2)} ({isProfitable ? "+" : ""}{pnlPct.toFixed(1)}%)
+        </span>
+      </TableCell>
 
-        {/* Action */}
+      {/* Shares */}
+      <TableCell className="text-right font-mono">
+        {item.sharesHeld.toLocaleString()}
+      </TableCell>
+
+      {/* Strike */}
+      <TableCell className="text-right font-mono">
+        ${contract.strike.toFixed(0)}
+      </TableCell>
+
+      {/* Expiration + DTE */}
+      <TableCell>
+        {formatDate(contract.expiration)}
+        <span className="text-muted-foreground ml-1">({contract.daysToExpiry}d)</span>
+      </TableCell>
+
+      {/* Bid / Ask */}
+      <TableCell className="text-right font-mono">
+        ${contract.bid.toFixed(2)} / ${contract.ask.toFixed(2)}
+      </TableCell>
+
+      {/* Premium % */}
+      <TableCell className="text-right font-mono">
+        {contract.premiumPercent.toFixed(2)}%
+      </TableCell>
+
+      {/* Annualized Return */}
+      <TableCell className="text-right font-mono font-semibold">
+        {contract.annualizedReturn.toFixed(1)}%
+      </TableCell>
+
+      {/* Action */}
+      <TableCell>
         <Button
-          className="w-full"
           size="sm"
+          variant="outline"
           onClick={handleSellCall}
           disabled={executing}
         >
           {executing ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              Placing...
-            </>
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             "Sell Call"
           )}
         </Button>
-      </CardContent>
-    </Card>
+      </TableCell>
+    </TableRow>
   );
 }
 
 export function ScanResults({ scan, onExecute, executing }: ScanResultsProps) {
   if (!scan) {
     return (
-      <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+      <div className="flex items-center justify-center h-40 text-muted-foreground">
         No scan selected. Run a scan to see results.
       </div>
     );
@@ -261,7 +395,7 @@ export function ScanResults({ scan, onExecute, executing }: ScanResultsProps) {
 
   if (!hasCsp && !hasCc) {
     return (
-      <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+      <div className="flex items-center justify-center h-40 text-muted-foreground">
         {scan.status === "completed"
           ? "No candidates found for this scan."
           : scan.status === "running" || scan.status === "pending"
@@ -271,52 +405,15 @@ export function ScanResults({ scan, onExecute, executing }: ScanResultsProps) {
     );
   }
 
-  // CSP results are expected to be pre-sorted by compositeScore descending from backend,
-  // but we sort here as a safety measure.
   const sortedCsp = [...cspResults].sort((a, b) => b.compositeScore - a.compositeScore);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {hasCsp && (
-        <section>
-          <h3 className="text-base font-semibold mb-3">
-            CSP Candidates
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({cspResults.length} result{cspResults.length !== 1 ? "s" : ""})
-            </span>
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {sortedCsp.map((item) => (
-              <CspCard
-                key={`${item.symbol}-${item.contract.strike}-${item.contract.expiration}`}
-                item={item}
-                onExecute={onExecute}
-                executing={executing}
-              />
-            ))}
-          </div>
-        </section>
+        <CspTable items={sortedCsp} onExecute={onExecute} executing={executing} />
       )}
-
       {hasCc && (
-        <section>
-          <h3 className="text-base font-semibold mb-3">
-            Covered Call Suggestions
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({ccResults.length} result{ccResults.length !== 1 ? "s" : ""})
-            </span>
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {ccResults.map((item) => (
-              <CcCard
-                key={`${item.symbol}-${item.contract.strike}-${item.contract.expiration}`}
-                item={item}
-                onExecute={onExecute}
-                executing={executing}
-              />
-            ))}
-          </div>
-        </section>
+        <CcTable items={ccResults} onExecute={onExecute} executing={executing} />
       )}
     </div>
   );
