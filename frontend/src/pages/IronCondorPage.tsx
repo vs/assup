@@ -53,11 +53,6 @@ function findClosestDelta(chain: IronCondorChainStrike[], targetDelta: number, t
   return best;
 }
 
-/** Spread mode display name for labels */
-function spreadModeLabel(mode: SpreadMode): string {
-  return SPREAD_MODES.find(m => m.value === mode)?.label ?? mode;
-}
-
 export function IronCondorPage() {
   // Parameters
   const [symbol, setSymbol] = useState<string>("SPX");
@@ -165,7 +160,7 @@ export function IronCondorPage() {
     const expMs = new Date(parseInt(expDate.slice(0, 4)), parseInt(expDate.slice(4, 6)) - 1, parseInt(expDate.slice(6, 8))).getTime();
     const dte = Math.max(0, Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)));
 
-    const legs = [];
+    const legs: ReturnType<typeof getLeg>[] = [];
     if (hasPutSide) {
       legs.push(getLeg(selectedLegs.buyPut!, "PUT", "BUY"));
       legs.push(getLeg(selectedLegs.sellPut!, "PUT", "SELL"));
