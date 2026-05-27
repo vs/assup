@@ -2,6 +2,8 @@
  * Iron Condor Builder types
  */
 
+export type SpreadMode = "put-spread" | "call-spread" | "iron-condor";
+
 export interface IronCondorChainOption {
   conId: number;
   bid: number;
@@ -42,20 +44,21 @@ export interface IronCondorAnalyzeRequest {
   legs: IronCondorLeg[];
   daysToExpiry: number;
   quantity: number;
+  mode: SpreadMode;
 }
 
 export interface IronCondorAnalyzeResponse {
   netCredit: { bid: number; ask: number; mid: number };
   maxProfit: number;
-  maxLossPut: number;
-  maxLossCall: number;
-  breakEvenLow: number;
-  breakEvenHigh: number;
-  breakEvenLowPercent: number;
-  breakEvenHighPercent: number;
+  maxLossPut: number | null;
+  maxLossCall: number | null;
+  breakEvenLow: number | null;
+  breakEvenHigh: number | null;
+  breakEvenLowPercent: number | null;
+  breakEvenHighPercent: number | null;
   probabilityOfProfit: number;
-  probabilityOfMaxLossPut: number;
-  probabilityOfMaxLossCall: number;
+  probabilityOfMaxLossPut: number | null;
+  probabilityOfMaxLossCall: number | null;
   expectedValue: number;
   riskRewardRatio: number;
   payoffCurve: Array<{ price: number; pnl: number }>;
@@ -82,10 +85,13 @@ export interface IronCondorOrderResponse {
   status: string;
 }
 
-/** Client-side state for selected iron condor legs */
-export interface IronCondorSelectedLegs {
+/** Client-side state for selected spread legs */
+export interface SpreadSelectedLegs {
   buyPut: number | null;
   sellPut: number | null;
   sellCall: number | null;
   buyCall: number | null;
 }
+
+/** @deprecated Use SpreadSelectedLegs */
+export type IronCondorSelectedLegs = SpreadSelectedLegs;

@@ -22,10 +22,17 @@ const legSchema = z.object({
 
 export const ironCondorAnalyzeSchema = z.object({
   underlyingPrice: z.number().positive("Underlying price must be positive"),
-  legs: z.array(legSchema).length(4, "Iron condor requires exactly 4 legs"),
+  legs: z.array(legSchema).min(2).max(4),
   daysToExpiry: z.number().min(0, "DTE must be non-negative"),
   quantity: z.number().int().positive("Quantity must be positive"),
-});
+  mode: z.enum(["put-spread", "call-spread", "iron-condor"]),
+}).refine(
+  (data) => {
+    const expectedLegs = data.mode === "iron-condor" ? 4 : 2;
+    return data.legs.length === expectedLegs;
+  },
+  { message: "Leg count must match spread mode (2 for spreads, 4 for iron condor)" },
+);
 
 export type IronCondorAnalyzeInput = z.infer<typeof ironCondorAnalyzeSchema>;
 
@@ -40,7 +47,7 @@ const orderLegSchema = z.object({
 
 export const ironCondorOrderSchema = z.object({
   symbol: z.string().min(1).max(20).toUpperCase(),
-  legs: z.array(orderLegSchema).length(4, "Iron condor requires exactly 4 legs"),
+  legs: z.array(orderLegSchema).min(2).max(4),
   quantity: z.number().int().positive("Quantity must be positive"),
   limitPrice: z.number().positive("Limit price must be positive"),
 });
