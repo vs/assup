@@ -1,7 +1,7 @@
 /**
- * Iron Condor Builder page.
+ * Spreads builder page.
+ * Supports put spreads, call spreads, and iron condors on SPX/RUT.
  * Two-column layout: options chain on the left, analysis on the right.
- * Top bar with parameters. Delta-guided leg selection with manual override.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -19,15 +19,23 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { api } from "@/api";
 import { OptionsChainTable } from "@/components/iron-condor/OptionsChainTable";
-import { IronCondorAnalysis } from "@/components/iron-condor/IronCondorAnalysis";
-import { PlaceIronCondorDialog } from "@/components/iron-condor/PlaceIronCondorDialog";
+import { SpreadAnalysis } from "@/components/iron-condor/SpreadAnalysis";
+import { PlaceSpreadDialog } from "@/components/iron-condor/PlaceSpreadDialog";
 import type {
+  SpreadMode,
   IronCondorChainResponse,
   IronCondorChainStrike,
   IronCondorAnalyzeResponse,
   IronCondorOrderLeg,
-  IronCondorSelectedLegs,
+  SpreadSelectedLegs,
 } from "@assup/shared";
+
+const SUPPORTED_SYMBOLS = ["SPX", "XSP", "RUT"] as const;
+const SPREAD_MODES: { value: SpreadMode; label: string }[] = [
+  { value: "put-spread", label: "Put Spread" },
+  { value: "call-spread", label: "Call Spread" },
+  { value: "iron-condor", label: "Iron Condor" },
+];
 
 function findClosestDelta(chain: IronCondorChainStrike[], targetDelta: number, type: "PUT" | "CALL"): number | null {
   let best: number | null = null;
@@ -36,7 +44,7 @@ function findClosestDelta(chain: IronCondorChainStrike[], targetDelta: number, t
   for (const entry of chain) {
     const option = type === "PUT" ? entry.put : entry.call;
     if (!option || option.delta === 0) continue;
-    const diff = Math.abs(option.delta * 100 - targetDelta); // delta in % units
+    const diff = Math.abs(option.delta * 100 - targetDelta);
     if (diff < bestDiff) {
       bestDiff = diff;
       best = entry.strike;
@@ -45,9 +53,15 @@ function findClosestDelta(chain: IronCondorChainStrike[], targetDelta: number, t
   return best;
 }
 
+/** Spread mode display name for labels */
+function spreadModeLabel(mode: SpreadMode): string {
+  return SPREAD_MODES.find(m => m.value === mode)?.label ?? mode;
+}
+
 export function IronCondorPage() {
   // Parameters
-  const [symbol] = useState("SPX");
+  const [symbol, setSymbol] = useState<string>("SPX");
+  const [mode, setMode] = useState<SpreadMode>("put-spread");
   const [targetDte, setTargetDte] = useState(1);
   const [quantity, setQuantity] = useState(1);
   const [putDelta, setPutDelta] = useState(7);
@@ -57,7 +71,7 @@ export function IronCondorPage() {
   // Data
   const [chainData, setChainData] = useState<IronCondorChainResponse | null>(null);
   const [selectedExpiration, setSelectedExpiration] = useState<string>("");
-  const [selectedLegs, setSelectedLegs] = useState<IronCondorSelectedLegs>({
+  const [selectedLegs, setSelectedLegs] = useState<SpreadSelectedLegs>({
     buyPut: null, sellPut: null, sellCall: null, buyCall: null,
   });
   const [analysis, setAnalysis] = useState<IronCondorAnalyzeResponse | null>(null);
@@ -68,12 +82,15 @@ export function IronCondorPage() {
   const [error, setError] = useState<string | null>(null);
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
 
+  const hasPutSide = mode === "put-spread" || mode === "iron-condor";
+  const hasCallSide = mode === "call-spread" || mode === "iron-condor";
+
   // --- Fetch chain ---
-  const fetchChain = useCallback(async (dte?: number) => {
+  const fetchChain = useCallback(async (sym?: string, dte?: number) => {
     setChainLoading(true);
     setError(null);
     try {
-      const data = await api.ironCondor.getChain(symbol, dte ?? targetDte);
+      const data = await api.ironCondor.getChain(sym ?? symbol, dte ?? targetDte);
       setChainData(data);
       setSelectedExpiration(data.selectedExpiration);
     } catch (err) {
@@ -88,36 +105,40 @@ export function IronCondorPage() {
     fetchChain();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Auto-select legs based on deltas ---
+  // --- Auto-select legs based on deltas and mode ---
   const autoSelectLegs = useCallback(() => {
     if (!chainData) return;
 
-    const sellPutStrike = findClosestDelta(chainData.chain, putDelta, "PUT");
-    const sellCallStrike = findClosestDelta(chainData.chain, callDelta, "CALL");
+    const newLegs: SpreadSelectedLegs = { buyPut: null, sellPut: null, sellCall: null, buyCall: null };
 
-    if (!sellPutStrike || !sellCallStrike) return;
+    if (hasPutSide) {
+      const sellPutStrike = findClosestDelta(chainData.chain, putDelta, "PUT");
+      if (sellPutStrike) {
+        const buyPutTarget = sellPutStrike - wingWidth;
+        const snappedBuyPut = chainData.chain.reduce((closest, entry) =>
+          Math.abs(entry.strike - buyPutTarget) < Math.abs(closest - buyPutTarget) ? entry.strike : closest,
+          chainData.chain[0]?.strike ?? buyPutTarget,
+        );
+        newLegs.sellPut = sellPutStrike;
+        newLegs.buyPut = snappedBuyPut;
+      }
+    }
 
-    // Wings at configured distance
-    const buyPutStrike = sellPutStrike - wingWidth;
-    const buyCallStrike = sellCallStrike + wingWidth;
+    if (hasCallSide) {
+      const sellCallStrike = findClosestDelta(chainData.chain, callDelta, "CALL");
+      if (sellCallStrike) {
+        const buyCallTarget = sellCallStrike + wingWidth;
+        const snappedBuyCall = chainData.chain.reduce((closest, entry) =>
+          Math.abs(entry.strike - buyCallTarget) < Math.abs(closest - buyCallTarget) ? entry.strike : closest,
+          chainData.chain[chainData.chain.length - 1]?.strike ?? buyCallTarget,
+        );
+        newLegs.sellCall = sellCallStrike;
+        newLegs.buyCall = snappedBuyCall;
+      }
+    }
 
-    // Snap to nearest available strikes
-    const snappedBuyPut = chainData.chain.reduce((closest, entry) =>
-      Math.abs(entry.strike - buyPutStrike) < Math.abs(closest - buyPutStrike) ? entry.strike : closest,
-      chainData.chain[0]?.strike ?? buyPutStrike,
-    );
-    const snappedBuyCall = chainData.chain.reduce((closest, entry) =>
-      Math.abs(entry.strike - buyCallStrike) < Math.abs(closest - buyCallStrike) ? entry.strike : closest,
-      chainData.chain[chainData.chain.length - 1]?.strike ?? buyCallStrike,
-    );
-
-    setSelectedLegs({
-      buyPut: snappedBuyPut,
-      sellPut: sellPutStrike,
-      sellCall: sellCallStrike,
-      buyCall: snappedBuyCall,
-    });
-  }, [chainData, putDelta, callDelta, wingWidth]);
+    setSelectedLegs(newLegs);
+  }, [chainData, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide]);
 
   // Auto-select when chain data or params change
   useEffect(() => {
@@ -126,33 +147,33 @@ export function IronCondorPage() {
 
   // --- Analyze ---
   useEffect(() => {
-    if (!chainData || !selectedLegs.buyPut || !selectedLegs.sellPut || !selectedLegs.sellCall || !selectedLegs.buyCall) {
-      setAnalysis(null);
-      return;
-    }
+    if (!chainData) { setAnalysis(null); return; }
+
+    // Guard: require mode-relevant legs
+    if (hasPutSide && (!selectedLegs.buyPut || !selectedLegs.sellPut)) { setAnalysis(null); return; }
+    if (hasCallSide && (!selectedLegs.sellCall || !selectedLegs.buyCall)) { setAnalysis(null); return; }
 
     const getLeg = (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {
       const entry = chainData.chain.find((c: IronCondorChainStrike) => c.strike === strike);
       const option = type === "PUT" ? entry?.put : entry?.call;
-      return {
-        strike,
-        type,
-        side,
-        iv: option?.iv ?? 0,
-        bid: option?.bid ?? 0,
-        ask: option?.ask ?? 0,
-      };
+      return { strike, type, side, iv: option?.iv ?? 0, bid: option?.bid ?? 0, ask: option?.ask ?? 0 };
     };
 
     const expDate = chainData.selectedExpiration;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const expMs = new Date(
-      parseInt(expDate.slice(0, 4)),
-      parseInt(expDate.slice(4, 6)) - 1,
-      parseInt(expDate.slice(6, 8)),
-    ).getTime();
+    const expMs = new Date(parseInt(expDate.slice(0, 4)), parseInt(expDate.slice(4, 6)) - 1, parseInt(expDate.slice(6, 8))).getTime();
     const dte = Math.max(0, Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)));
+
+    const legs = [];
+    if (hasPutSide) {
+      legs.push(getLeg(selectedLegs.buyPut!, "PUT", "BUY"));
+      legs.push(getLeg(selectedLegs.sellPut!, "PUT", "SELL"));
+    }
+    if (hasCallSide) {
+      legs.push(getLeg(selectedLegs.sellCall!, "CALL", "SELL"));
+      legs.push(getLeg(selectedLegs.buyCall!, "CALL", "BUY"));
+    }
 
     let cancelled = false;
     const timeout = setTimeout(async () => {
@@ -160,32 +181,22 @@ export function IronCondorPage() {
       try {
         const result = await api.ironCondor.analyze({
           underlyingPrice: chainData.underlyingPrice,
-          legs: [
-            getLeg(selectedLegs.buyPut!, "PUT", "BUY"),
-            getLeg(selectedLegs.sellPut!, "PUT", "SELL"),
-            getLeg(selectedLegs.sellCall!, "CALL", "SELL"),
-            getLeg(selectedLegs.buyCall!, "CALL", "BUY"),
-          ],
+          legs,
           daysToExpiry: dte,
           quantity,
+          mode,
         });
         if (!cancelled) setAnalysis(result);
       } catch (err) {
         console.error("Analyze failed:", err);
-        if (!cancelled) {
-          setAnalysis(null);
-          setError(err instanceof Error ? err.message : "Analysis failed");
-        }
+        if (!cancelled) { setAnalysis(null); setError(err instanceof Error ? err.message : "Analysis failed"); }
       } finally {
         if (!cancelled) setAnalyzeLoading(false);
       }
     }, 200);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
-  }, [chainData, selectedLegs, quantity]);
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [chainData, selectedLegs, quantity, mode, hasPutSide, hasCallSide]);
 
   // --- Leg selection handler ---
   const handleSelectLeg = useCallback((strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {
@@ -201,43 +212,54 @@ export function IronCondorPage() {
   // --- Expiration change ---
   const handleExpirationChange = useCallback((exp: string) => {
     setSelectedExpiration(exp);
-    // Calculate DTE for new expiration and re-fetch
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const expMs = new Date(
-      parseInt(exp.slice(0, 4)),
-      parseInt(exp.slice(4, 6)) - 1,
-      parseInt(exp.slice(6, 8)),
-    ).getTime();
+    const expMs = new Date(parseInt(exp.slice(0, 4)), parseInt(exp.slice(4, 6)) - 1, parseInt(exp.slice(6, 8))).getTime();
     const dte = Math.max(0, Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)));
     setTargetDte(dte);
-    fetchChain(dte);
+    fetchChain(undefined, dte);
   }, [fetchChain]);
+
+  // --- Symbol change ---
+  const handleSymbolChange = useCallback((sym: string) => {
+    setSymbol(sym);
+    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
+    setAnalysis(null);
+    fetchChain(sym);
+  }, [fetchChain]);
+
+  // --- Mode change ---
+  const handleModeChange = useCallback((newMode: SpreadMode) => {
+    setMode(newMode);
+    // Explicitly reset all legs — autoSelectLegs will repopulate the relevant ones
+    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
+    setAnalysis(null);
+  }, []);
 
   // --- Build order legs ---
   const orderLegs = useMemo((): IronCondorOrderLeg[] => {
-    if (!chainData || !selectedLegs.buyPut || !selectedLegs.sellPut || !selectedLegs.sellCall || !selectedLegs.buyCall) return [];
+    if (!chainData) return [];
+
+    if (hasPutSide && (!selectedLegs.buyPut || !selectedLegs.sellPut)) return [];
+    if (hasCallSide && (!selectedLegs.sellCall || !selectedLegs.buyCall)) return [];
 
     const makeLeg = (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL"): IronCondorOrderLeg => {
       const entry = chainData.chain.find(c => c.strike === strike);
       const option = type === "PUT" ? entry?.put : entry?.call;
-      return {
-        conId: option?.conId ?? 0,
-        strike,
-        type,
-        side,
-        expiration: chainData.selectedExpiration,
-        exchange: "SMART",
-      };
+      return { conId: option?.conId ?? 0, strike, type, side, expiration: chainData.selectedExpiration, exchange: "SMART" };
     };
 
-    return [
-      makeLeg(selectedLegs.buyPut, "PUT", "BUY"),
-      makeLeg(selectedLegs.sellPut, "PUT", "SELL"),
-      makeLeg(selectedLegs.sellCall, "CALL", "SELL"),
-      makeLeg(selectedLegs.buyCall, "CALL", "BUY"),
-    ];
-  }, [chainData, selectedLegs]);
+    const legs: IronCondorOrderLeg[] = [];
+    if (hasPutSide) {
+      legs.push(makeLeg(selectedLegs.buyPut!, "PUT", "BUY"));
+      legs.push(makeLeg(selectedLegs.sellPut!, "PUT", "SELL"));
+    }
+    if (hasCallSide) {
+      legs.push(makeLeg(selectedLegs.sellCall!, "CALL", "SELL"));
+      legs.push(makeLeg(selectedLegs.buyCall!, "CALL", "BUY"));
+    }
+    return legs;
+  }, [chainData, selectedLegs, hasPutSide, hasCallSide]);
 
   // Format expiration for display
   const formatExpiration = (exp: string) => {
@@ -249,13 +271,49 @@ export function IronCondorPage() {
     return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} (${dte} DTE)`;
   };
 
+  // Max loss for order dialog
+  const maxLoss = analysis
+    ? Math.max(...[analysis.maxLossPut, analysis.maxLossCall].filter((v): v is number => v != null))
+    : 0;
+
   return (
     <div className="space-y-4">
       {/* Top bar */}
       <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-muted/30">
+        {/* Symbol picker */}
         <div className="flex items-center gap-2">
           <Label className="text-[10px] uppercase text-muted-foreground">Symbol</Label>
-          <div className="border rounded-md px-3 py-1.5 text-sm font-semibold bg-background">{symbol}</div>
+          <div className="flex rounded-md border overflow-hidden">
+            {SUPPORTED_SYMBOLS.map(sym => (
+              <button
+                key={sym}
+                onClick={() => handleSymbolChange(sym)}
+                className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  symbol === sym ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+                }`}
+              >
+                {sym}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Mode picker */}
+        <div className="flex items-center gap-2">
+          <Label className="text-[10px] uppercase text-muted-foreground">Type</Label>
+          <div className="flex rounded-md border overflow-hidden">
+            {SPREAD_MODES.map(m => (
+              <button
+                key={m.value}
+                onClick={() => handleModeChange(m.value)}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  mode === m.value ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -285,20 +343,24 @@ export function IronCondorPage() {
 
         <div className="flex items-center gap-2">
           <Label className="text-[10px] uppercase text-muted-foreground">Target Deltas</Label>
-          <Input
-            type="number"
-            step={0.5}
-            value={putDelta}
-            onChange={(e) => setPutDelta(parseFloat(e.target.value) || 7)}
-            className="w-16 h-8 text-sm text-center border-red-300 text-red-600"
-          />
-          <Input
-            type="number"
-            step={0.5}
-            value={callDelta}
-            onChange={(e) => setCallDelta(parseFloat(e.target.value) || 3.5)}
-            className="w-16 h-8 text-sm text-center border-green-300 text-green-600"
-          />
+          {hasPutSide && (
+            <Input
+              type="number"
+              step={0.5}
+              value={putDelta}
+              onChange={(e) => setPutDelta(parseFloat(e.target.value) || 7)}
+              className="w-16 h-8 text-sm text-center border-red-300 text-red-600"
+            />
+          )}
+          {hasCallSide && (
+            <Input
+              type="number"
+              step={0.5}
+              value={callDelta}
+              onChange={(e) => setCallDelta(parseFloat(e.target.value) || 3.5)}
+              className="w-16 h-8 text-sm text-center border-green-300 text-green-600"
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -320,12 +382,7 @@ export function IronCondorPage() {
           </div>
         )}
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchChain()}
-          disabled={chainLoading}
-        >
+        <Button variant="outline" size="sm" onClick={() => fetchChain()} disabled={chainLoading}>
           {chainLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           <span className="ml-1">Refresh</span>
         </Button>
@@ -348,12 +405,13 @@ export function IronCondorPage() {
               selectedLegs={selectedLegs}
               underlyingPrice={chainData.underlyingPrice}
               onSelectLeg={handleSelectLeg}
+              mode={mode}
             />
           </div>
 
           {/* Right: Analysis */}
           <div className="border rounded-lg p-4 bg-muted/20">
-            <IronCondorAnalysis
+            <SpreadAnalysis
               analysis={analysis}
               selectedLegs={selectedLegs}
               chain={chainData.chain}
@@ -361,6 +419,8 @@ export function IronCondorPage() {
               quantity={quantity}
               loading={analyzeLoading}
               onPlaceOrder={() => setOrderDialogOpen(true)}
+              mode={mode}
+              symbol={symbol}
             />
           </div>
         </div>
@@ -376,14 +436,15 @@ export function IronCondorPage() {
 
       {/* Order dialog */}
       {analysis && (
-        <PlaceIronCondorDialog
+        <PlaceSpreadDialog
           open={orderDialogOpen}
           onOpenChange={setOrderDialogOpen}
           symbol={symbol}
           legs={orderLegs}
           quantity={quantity}
           netCreditMid={analysis.netCredit.mid}
-          maxLoss={Math.max(analysis.maxLossPut, analysis.maxLossCall)}
+          maxLoss={maxLoss}
+          mode={mode}
         />
       )}
     </div>

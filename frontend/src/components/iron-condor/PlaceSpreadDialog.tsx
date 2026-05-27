@@ -1,5 +1,5 @@
 /**
- * Confirmation dialog for placing an iron condor combo order.
+ * Confirmation dialog for placing a spread combo order.
  */
 
 import { useState, useEffect } from "react";
@@ -15,9 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/api";
-import type { IronCondorOrderLeg } from "@assup/shared";
+import type { IronCondorOrderLeg, SpreadMode } from "@assup/shared";
 
-interface PlaceIronCondorDialogProps {
+interface PlaceSpreadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   symbol: string;
@@ -25,9 +25,18 @@ interface PlaceIronCondorDialogProps {
   quantity: number;
   netCreditMid: number;
   maxLoss: number;
+  mode: SpreadMode;
 }
 
-export function PlaceIronCondorDialog({
+function spreadModeLabel(mode: SpreadMode): string {
+  switch (mode) {
+    case "put-spread": return "Put Spread";
+    case "call-spread": return "Call Spread";
+    case "iron-condor": return "Iron Condor";
+  }
+}
+
+export function PlaceSpreadDialog({
   open,
   onOpenChange,
   symbol,
@@ -35,13 +44,13 @@ export function PlaceIronCondorDialog({
   quantity,
   netCreditMid,
   maxLoss,
-}: PlaceIronCondorDialogProps) {
+  mode,
+}: PlaceSpreadDialogProps) {
   const [limitPrice, setLimitPrice] = useState(netCreditMid);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Reset state when dialog opens or credit changes
   useEffect(() => {
     if (open) {
       setLimitPrice(netCreditMid);
@@ -54,17 +63,9 @@ export function PlaceIronCondorDialog({
     setSubmitting(true);
     setError(null);
     try {
-      await api.ironCondor.placeOrder({
-        symbol,
-        legs,
-        quantity,
-        limitPrice,
-      });
+      await api.ironCondor.placeOrder({ symbol, legs, quantity, limitPrice });
       setSuccess(true);
-      setTimeout(() => {
-        onOpenChange(false);
-        setSuccess(false);
-      }, 1500);
+      setTimeout(() => { onOpenChange(false); setSuccess(false); }, 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Order failed");
     } finally {
@@ -72,18 +73,19 @@ export function PlaceIronCondorDialog({
     }
   };
 
+  const label = spreadModeLabel(mode);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Place Iron Condor</DialogTitle>
+          <DialogTitle>Place {label}</DialogTitle>
           <DialogDescription>
-            Review and confirm your {symbol} iron condor order
+            Review and confirm your {symbol} {label.toLowerCase()} order
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Legs summary */}
           <div className="border rounded-lg p-3 space-y-1 text-sm">
             {legs.map((leg, i) => (
               <div key={i} className="flex justify-between">
@@ -95,7 +97,6 @@ export function PlaceIronCondorDialog({
             ))}
           </div>
 
-          {/* Limit price */}
           <div className="space-y-2">
             <Label>Net Credit (Limit Price)</Label>
             <Input
