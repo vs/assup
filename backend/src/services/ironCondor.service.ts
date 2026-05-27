@@ -26,6 +26,12 @@ import type {
   IronCondorOrderResponse,
 } from "@assup/shared";
 
+const SYMBOL_CONFIG: Record<string, { tradingClass: string; multiplier: number }> = {
+  SPX: { tradingClass: "SPXW", multiplier: 100 },
+  XSP: { tradingClass: "XSPW", multiplier: 100 },
+  RUT: { tradingClass: "RUTW", multiplier: 100 },
+};
+
 // --- Black-Scholes ---
 
 /** Cumulative standard normal distribution (Abramowitz & Stegun approximation) */
@@ -69,93 +75,134 @@ function probabilityITM(
 
 // --- Analysis ---
 
-const SPX_MULTIPLIER = 100;
+const DEFAULT_MULTIPLIER = 100;
 
 export function analyze(req: IronCondorAnalyzeRequest): IronCondorAnalyzeResponse {
-  const { underlyingPrice, legs, daysToExpiry, quantity } = req;
+  const { underlyingPrice, legs, daysToExpiry, quantity, mode } = req;
+  const multiplier = DEFAULT_MULTIPLIER;
 
-  // Identify legs by role — validate all 4 roles are present
+  // Identify legs by role — only require legs relevant to the mode
   const buyPut = legs.find(l => l.type === "PUT" && l.side === "BUY");
   const sellPut = legs.find(l => l.type === "PUT" && l.side === "SELL");
   const sellCall = legs.find(l => l.type === "CALL" && l.side === "SELL");
   const buyCall = legs.find(l => l.type === "CALL" && l.side === "BUY");
 
-  if (!buyPut || !sellPut || !sellCall || !buyCall) {
-    throw new Error("Iron condor requires exactly one BUY PUT, one SELL PUT, one SELL CALL, and one BUY CALL leg");
+  const hasPutSpread = mode === "put-spread" || mode === "iron-condor";
+  const hasCallSpread = mode === "call-spread" || mode === "iron-condor";
+
+  if (hasPutSpread && (!buyPut || !sellPut)) {
+    throw new Error("Put spread requires one BUY PUT and one SELL PUT leg");
+  }
+  if (hasCallSpread && (!sellCall || !buyCall)) {
+    throw new Error("Call spread requires one SELL CALL and one BUY CALL leg");
   }
 
   // Net credit calculation (conservative: sell at bid, buy at ask)
-  const creditBid = (sellPut.bid - buyPut.ask) + (sellCall.bid - buyCall.ask);
-  const creditAsk = (sellPut.ask - buyPut.bid) + (sellCall.ask - buyCall.bid);
+  let creditBid = 0;
+  let creditAsk = 0;
+  if (hasPutSpread) {
+    creditBid += sellPut!.bid - buyPut!.ask;
+    creditAsk += sellPut!.ask - buyPut!.bid;
+  }
+  if (hasCallSpread) {
+    creditBid += sellCall!.bid - buyCall!.ask;
+    creditAsk += sellCall!.ask - buyCall!.bid;
+  }
   const creditMid = (creditBid + creditAsk) / 2;
-
   const netCredit = { bid: creditBid, ask: creditAsk, mid: creditMid };
 
   // Max profit = net credit received
-  const maxProfit = creditMid * SPX_MULTIPLIER * quantity;
+  const maxProfit = creditMid * multiplier * quantity;
 
-  // Max loss per side = (wing width - net credit) * multiplier * quantity
-  const putWingWidth = sellPut.strike - buyPut.strike;
-  const callWingWidth = buyCall.strike - sellCall.strike;
-  const maxLossPut = (putWingWidth - creditMid) * SPX_MULTIPLIER * quantity;
-  const maxLossCall = (callWingWidth - creditMid) * SPX_MULTIPLIER * quantity;
+  // Max loss per side
+  let maxLossPut: number | null = null;
+  let maxLossCall: number | null = null;
+  if (hasPutSpread) {
+    const putWingWidth = sellPut!.strike - buyPut!.strike;
+    maxLossPut = (putWingWidth - creditMid) * multiplier * quantity;
+  }
+  if (hasCallSpread) {
+    const callWingWidth = buyCall!.strike - sellCall!.strike;
+    maxLossCall = (callWingWidth - creditMid) * multiplier * quantity;
+  }
 
   // Breakevens
-  const breakEvenLow = sellPut.strike - creditMid;
-  const breakEvenHigh = sellCall.strike + creditMid;
-  const breakEvenLowPercent = ((underlyingPrice - breakEvenLow) / underlyingPrice) * 100;
-  const breakEvenHighPercent = ((breakEvenHigh - underlyingPrice) / underlyingPrice) * 100;
+  let breakEvenLow: number | null = null;
+  let breakEvenHigh: number | null = null;
+  let breakEvenLowPercent: number | null = null;
+  let breakEvenHighPercent: number | null = null;
+  if (hasPutSpread) {
+    breakEvenLow = sellPut!.strike - creditMid;
+    breakEvenLowPercent = ((underlyingPrice - breakEvenLow) / underlyingPrice) * 100;
+  }
+  if (hasCallSpread) {
+    breakEvenHigh = sellCall!.strike + creditMid;
+    breakEvenHighPercent = ((breakEvenHigh - underlyingPrice) / underlyingPrice) * 100;
+  }
 
-  // Probabilities using Black-Scholes with per-leg IV
-  // Use breakeven prices (not short strikes) for probability of profit
-  const pBelowBreakEvenLow = probabilityITM(underlyingPrice, breakEvenLow, sellPut.iv, daysToExpiry, "PUT");
-  const pAboveBreakEvenHigh = probabilityITM(underlyingPrice, breakEvenHigh, sellCall.iv, daysToExpiry, "CALL");
-  const pBelowBuyPut = probabilityITM(underlyingPrice, buyPut.strike, buyPut.iv, daysToExpiry, "PUT");
-  const pAboveBuyCall = probabilityITM(underlyingPrice, buyCall.strike, buyCall.iv, daysToExpiry, "CALL");
+  // Probabilities using Black-Scholes
+  let pBelowBreakEvenLow = 0;
+  let pAboveBreakEvenHigh = 0;
+  let probabilityOfMaxLossPut: number | null = null;
+  let probabilityOfMaxLossCall: number | null = null;
 
-  // P(profit) = probability of staying between breakeven points
+  if (hasPutSpread) {
+    pBelowBreakEvenLow = probabilityITM(underlyingPrice, breakEvenLow!, sellPut!.iv, daysToExpiry, "PUT");
+    probabilityOfMaxLossPut = probabilityITM(underlyingPrice, buyPut!.strike, buyPut!.iv, daysToExpiry, "PUT");
+  }
+  if (hasCallSpread) {
+    pAboveBreakEvenHigh = probabilityITM(underlyingPrice, breakEvenHigh!, sellCall!.iv, daysToExpiry, "CALL");
+    probabilityOfMaxLossCall = probabilityITM(underlyingPrice, buyCall!.strike, buyCall!.iv, daysToExpiry, "CALL");
+  }
+
   const probabilityOfProfit = Math.max(0, Math.min(1, 1 - pBelowBreakEvenLow - pAboveBreakEvenHigh));
-  const probabilityOfMaxLossPut = pBelowBuyPut;
-  const probabilityOfMaxLossCall = pAboveBuyCall;
 
   // Risk/reward ratio
-  const worstLoss = Math.max(maxLossPut, maxLossCall);
+  const losses = [maxLossPut, maxLossCall].filter((v): v is number => v != null);
+  const worstLoss = Math.max(...losses);
   const riskRewardRatio = maxProfit > 0 ? worstLoss / maxProfit : Infinity;
 
-  // Payoff curve: generate points from buyPut strike - 5% to buyCall strike + 5%
-  const rangeMin = buyPut.strike * 0.95;
-  const rangeMax = buyCall.strike * 1.05;
+  // Payoff curve
+  let rangeMin: number;
+  let rangeMax: number;
+  if (mode === "put-spread") {
+    rangeMin = buyPut!.strike * 0.95;
+    rangeMax = sellPut!.strike * 1.05;
+  } else if (mode === "call-spread") {
+    rangeMin = sellCall!.strike * 0.95;
+    rangeMax = buyCall!.strike * 1.05;
+  } else {
+    rangeMin = buyPut!.strike * 0.95;
+    rangeMax = buyCall!.strike * 1.05;
+  }
+
   const numPoints = 100;
   const step = (rangeMax - rangeMin) / numPoints;
   const payoffCurve: Array<{ price: number; pnl: number }> = [];
 
   for (let price = rangeMin; price <= rangeMax; price += step) {
-    let pnl = creditMid; // start with credit received
+    let pnl = creditMid;
 
-    // Put spread P&L
-    if (price < sellPut.strike) {
-      pnl -= (sellPut.strike - price);
+    if (hasPutSpread) {
+      if (price < sellPut!.strike) pnl -= (sellPut!.strike - price);
+      if (price < buyPut!.strike) pnl += (buyPut!.strike - price);
     }
-    if (price < buyPut.strike) {
-      pnl += (buyPut.strike - price);
-    }
-
-    // Call spread P&L
-    if (price > sellCall.strike) {
-      pnl -= (price - sellCall.strike);
-    }
-    if (price > buyCall.strike) {
-      pnl += (price - buyCall.strike);
+    if (hasCallSpread) {
+      if (price > sellCall!.strike) pnl -= (price - sellCall!.strike);
+      if (price > buyCall!.strike) pnl += (price - buyCall!.strike);
     }
 
     payoffCurve.push({
       price: Math.round(price * 100) / 100,
-      pnl: Math.round(pnl * SPX_MULTIPLIER * quantity * 100) / 100,
+      pnl: Math.round(pnl * multiplier * quantity * 100) / 100,
     });
   }
 
-  // Expected value: numerical integration using payoff curve and probability density
-  const avgIV = (sellPut.iv + sellCall.iv) / 2;
+  // Expected value
+  const ivForEV: number[] = [];
+  if (hasPutSpread) ivForEV.push(sellPut!.iv);
+  if (hasCallSpread) ivForEV.push(sellCall!.iv);
+  const avgIV = ivForEV.reduce((a, b) => a + b, 0) / ivForEV.length;
   const sigma = avgIV / 100;
   const T = Math.max(daysToExpiry / 365, 1 / (365 * 24));
   let expectedValue = 0;
@@ -166,7 +213,6 @@ export function analyze(req: IronCondorAnalyzeRequest): IronCondorAnalyzeRespons
       const p2 = payoffCurve[i + 1];
       const midPrice = (p1.price + p2.price) / 2;
       const midPnl = (p1.pnl + p2.pnl) / 2;
-      // Lognormal probability density
       const logReturn = Math.log(midPrice / underlyingPrice);
       const mean = -0.5 * sigma * sigma * T;
       const std = sigma * Math.sqrt(T);
@@ -179,15 +225,15 @@ export function analyze(req: IronCondorAnalyzeRequest): IronCondorAnalyzeRespons
   return {
     netCredit,
     maxProfit: Math.round(maxProfit * 100) / 100,
-    maxLossPut: Math.round(maxLossPut * 100) / 100,
-    maxLossCall: Math.round(maxLossCall * 100) / 100,
-    breakEvenLow: Math.round(breakEvenLow * 100) / 100,
-    breakEvenHigh: Math.round(breakEvenHigh * 100) / 100,
-    breakEvenLowPercent: Math.round(breakEvenLowPercent * 100) / 100,
-    breakEvenHighPercent: Math.round(breakEvenHighPercent * 100) / 100,
+    maxLossPut: maxLossPut != null ? Math.round(maxLossPut * 100) / 100 : null,
+    maxLossCall: maxLossCall != null ? Math.round(maxLossCall * 100) / 100 : null,
+    breakEvenLow: breakEvenLow != null ? Math.round(breakEvenLow * 100) / 100 : null,
+    breakEvenHigh: breakEvenHigh != null ? Math.round(breakEvenHigh * 100) / 100 : null,
+    breakEvenLowPercent: breakEvenLowPercent != null ? Math.round(breakEvenLowPercent * 100) / 100 : null,
+    breakEvenHighPercent: breakEvenHighPercent != null ? Math.round(breakEvenHighPercent * 100) / 100 : null,
     probabilityOfProfit: Math.round(probabilityOfProfit * 10000) / 10000,
-    probabilityOfMaxLossPut: Math.round(probabilityOfMaxLossPut * 10000) / 10000,
-    probabilityOfMaxLossCall: Math.round(probabilityOfMaxLossCall * 10000) / 10000,
+    probabilityOfMaxLossPut: probabilityOfMaxLossPut != null ? Math.round(probabilityOfMaxLossPut * 10000) / 10000 : null,
+    probabilityOfMaxLossCall: probabilityOfMaxLossCall != null ? Math.round(probabilityOfMaxLossCall * 10000) / 10000 : null,
     expectedValue: Math.round(expectedValue * 100) / 100,
     riskRewardRatio: Math.round(riskRewardRatio * 100) / 100,
     payoffCurve,
@@ -239,12 +285,13 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
     throw new Error(`No options available for ${symbol}`);
   }
 
-  // Prefer SPXW (weeklies, includes 0DTE/1DTE) over SPX (monthly only)
-  const spxwDefs = secDefs.filter(d => d.tradingClass === "SPXW");
-  const spxDefs = secDefs.filter(d => d.tradingClass === "SPX");
-  const activeDefs = spxwDefs.length > 0 ? spxwDefs : spxDefs.length > 0 ? spxDefs : secDefs;
+  // Use symbol-specific trading class
+  const config = SYMBOL_CONFIG[symbol];
+  if (!config) throw new Error(`Unsupported symbol: ${symbol}. Supported: ${Object.keys(SYMBOL_CONFIG).join(", ")}`);
+  const preferredDefs = secDefs.filter(d => d.tradingClass === config.tradingClass);
+  const activeDefs = preferredDefs.length > 0 ? preferredDefs : secDefs;
   const tradingClass = activeDefs[0]?.tradingClass ?? symbol;
-  const multiplier = Number(activeDefs[0]?.multiplier ?? 100);
+  const multiplier = Number(activeDefs[0]?.multiplier ?? config.multiplier);
 
   // 4. Collect all available expirations
   const allExpirations = new Set<string>();
