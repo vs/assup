@@ -21,6 +21,8 @@ import { api } from "@/api";
 import { OptionsChainTable } from "@/components/iron-condor/OptionsChainTable";
 import { SpreadAnalysis } from "@/components/iron-condor/SpreadAnalysis";
 import { PlaceSpreadDialog } from "@/components/iron-condor/PlaceSpreadDialog";
+import { ActiveSpreadsList } from "@/components/iron-condor/ActiveSpreadsList";
+import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
 import type {
   SpreadMode,
   IronCondorChainResponse,
@@ -28,6 +30,7 @@ import type {
   IronCondorAnalyzeResponse,
   IronCondorOrderLeg,
   SpreadSelectedLegs,
+  ActiveSpread,
 } from "@assup/shared";
 
 const SUPPORTED_SYMBOLS = ["SPX", "XSP", "RUT"] as const;
@@ -77,6 +80,11 @@ export function IronCondorPage() {
   const [error, setError] = useState<string | null>(null);
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
 
+  // Active spreads
+  const [activeSpreads, setActiveSpreads] = useState<ActiveSpread[]>([]);
+  const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+
   const hasPutSide = mode === "put-spread" || mode === "iron-condor";
   const hasCallSide = mode === "call-spread" || mode === "iron-condor";
 
@@ -88,6 +96,7 @@ export function IronCondorPage() {
       const data = await api.ironCondor.getChain(sym ?? symbol, dte ?? targetDte);
       setChainData(data);
       setSelectedExpiration(data.selectedExpiration);
+      fetchActiveSpreads();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch chain");
     } finally {
@@ -95,9 +104,20 @@ export function IronCondorPage() {
     }
   }, [symbol, targetDte]);
 
+  // --- Fetch active spreads ---
+  const fetchActiveSpreads = useCallback(async () => {
+    try {
+      const data = await api.ironCondor.getActiveSpreads();
+      setActiveSpreads(data);
+    } catch {
+      // Silent — active spreads are supplementary, don't block the page
+    }
+  }, []);
+
   // Initial fetch
   useEffect(() => {
     fetchChain();
+    fetchActiveSpreads();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Auto-select legs based on deltas and mode ---
@@ -230,6 +250,15 @@ export function IronCondorPage() {
     setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
     setAnalysis(null);
   }, []);
+
+  const handleCloseSpread = useCallback((spread: ActiveSpread) => {
+    setClosingSpread(spread);
+    setCloseDialogOpen(true);
+  }, []);
+
+  const handleCloseSuccess = useCallback(() => {
+    fetchActiveSpreads();
+  }, [fetchActiveSpreads]);
 
   // --- Build order legs ---
   const orderLegs = useMemo((): IronCondorOrderLeg[] => {
@@ -390,6 +419,13 @@ export function IronCondorPage() {
         </Alert>
       )}
 
+      {/* Active spreads */}
+      <ActiveSpreadsList
+        spreads={activeSpreads}
+        symbol={symbol}
+        onClose={handleCloseSpread}
+      />
+
       {/* Main content: two columns */}
       {chainData && (
         <div className="grid grid-cols-2 gap-4">
@@ -442,6 +478,14 @@ export function IronCondorPage() {
           mode={mode}
         />
       )}
+
+      {/* Close spread dialog */}
+      <CloseSpreadDialog
+        open={closeDialogOpen}
+        onOpenChange={setCloseDialogOpen}
+        spread={closingSpread}
+        onSuccess={handleCloseSuccess}
+      />
     </div>
   );
 }
