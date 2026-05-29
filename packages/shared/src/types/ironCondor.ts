@@ -95,3 +95,31 @@ export interface SpreadSelectedLegs {
 
 /** @deprecated Use SpreadSelectedLegs */
 export type IronCondorSelectedLegs = SpreadSelectedLegs;
+
+/** A single leg of an active spread position */
+export interface ActiveSpreadLeg {
+  conId: number;
+  strike: number;
+  right: "P" | "C";
+  side: "BUY" | "SELL";
+  position: number;
+  avgCost: number;
+  marketValue: number | null;
+  unrealizedPnl: number | null;
+  midPrice: number | null;
+  exchange: string;
+}
+
+/** An active spread/condor reconstructed from IBKR positions */
+export interface ActiveSpread {
+  id: string;
+  type: SpreadMode;
+  symbol: string;
+  expiry: string;
+  quantity: number;
+  legs: ActiveSpreadLeg[];
+  totalPnl: number | null;
+  netPremium: number;
+  closeMidPrice: number | null;
+  orphanLegs: ActiveSpreadLeg[];
+}

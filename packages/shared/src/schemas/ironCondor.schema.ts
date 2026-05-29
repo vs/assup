@@ -53,3 +53,12 @@ export const ironCondorOrderSchema = z.object({
 });
 
 export type IronCondorOrderInput = z.infer<typeof ironCondorOrderSchema>;
+
+export const closeSpreadOrderSchema = z.object({
+  symbol: z.string().min(1).max(20).toUpperCase(),
+  legs: z.array(orderLegSchema).min(2).max(4),
+  quantity: z.number().int().positive("Quantity must be positive"),
+  limitPrice: z.number().min(0, "Limit price must be non-negative"),
+});
+
+export type CloseSpreadOrderInput = z.infer<typeof closeSpreadOrderSchema>;
