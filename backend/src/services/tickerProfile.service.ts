@@ -55,22 +55,34 @@ class TickerProfileService {
   ): Promise<Record<string, TickerProfileResponse>> {
     const results: Record<string, TickerProfileResponse> = {};
     const toFetch: string[] = [];
+    const upperSymbols = symbols.map((s) => s.toUpperCase());
 
-    for (const symbol of symbols) {
-      const upper = symbol.toUpperCase();
-      const cached = await prisma.tickerProfile.findUnique({
-        where: { symbol: upper },
-      });
-      const cachedChart = await prisma.priceHistoryCache.findUnique({
-        where: { symbol: upper },
-      });
+    // Batch-fetch all cached data in 3 queries instead of 3N
+    const [cachedProfiles, cachedCharts, latestReports] = await Promise.all([
+      prisma.tickerProfile.findMany({
+        where: { symbol: { in: upperSymbols } },
+      }),
+      prisma.priceHistoryCache.findMany({
+        where: { symbol: { in: upperSymbols } },
+      }),
+      prisma.researchReport.findMany({
+        where: { symbol: { in: upperSymbols } },
+        orderBy: { createdAt: "desc" },
+        distinct: ["symbol"],
+      }),
+    ]);
+
+    const profileMap = new Map(cachedProfiles.map((p) => [p.symbol, p]));
+    const chartMap = new Map(cachedCharts.map((c) => [c.symbol, c]));
+    const reportMap = new Map(latestReports.map((r) => [r.symbol, r]));
+
+    const now = new Date();
+    for (const upper of upperSymbols) {
+      const cached = profileMap.get(upper);
+      const cachedChart = chartMap.get(upper);
 
       if (cached && cachedChart) {
-        const now = new Date();
-        const report = await prisma.researchReport.findFirst({
-          where: { symbol: upper },
-          orderBy: { createdAt: "desc" },
-        });
+        const report = reportMap.get(upper);
         results[upper] = this.assembleResponse(
           cached,
           cachedChart.data as any[],
