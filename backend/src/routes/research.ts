@@ -28,7 +28,7 @@ import {
 
 import { z } from "zod";
 import { validate } from "../services/research/middleware/validate.js";
-import { NotFoundError } from "../services/research/errors/AppError.js";
+import { NotFoundError } from "../errors/AppError.js";
 
 const router = Router();
 
