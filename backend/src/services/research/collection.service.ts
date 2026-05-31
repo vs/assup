@@ -159,11 +159,13 @@ class CollectionService {
       }
     }
 
-    // Update lastAnalyzedAt on all watchlist items for this symbol
-    await prisma.watchlistItem.updateMany({
-      where: { symbol },
-      data: { lastAnalyzedAt: new Date() },
-    });
+    // Update lastAnalyzedAt only if at least one analysis was produced
+    if (analysisIds.length > 0) {
+      await prisma.watchlistItem.updateMany({
+        where: { symbol },
+        data: { lastAnalyzedAt: new Date() },
+      });
+    }
 
     return analysisIds;
   }

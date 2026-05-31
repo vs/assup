@@ -14,7 +14,7 @@ export interface SkippedCollection {
 export type CollectionResult = CollectedData | SkippedCollection;
 
 export function isSkipped(r: CollectionResult): r is SkippedCollection {
-  return "_tag" in r && r._tag === "skipped";
+  return typeof r === "object" && r !== null && "_tag" in r && r._tag === "skipped";
 }
 
 export interface Collector {
