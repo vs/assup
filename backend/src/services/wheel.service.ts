@@ -748,17 +748,21 @@ export const wheelService = {
     }
 
     // Calculate adjusted cost basis
-    // Start with the entry strike (assignment price or first CSP strike), subtract all premiums
+    // Start with the actual cost basis source, subtract all premiums collected
     let adjustedCostBasis = 0;
 
     if (currentCycle) {
-      // Check if we have an assignment in the cycle
       const hasAssignment = currentCycle.trades.some((t) => t.status === "assigned");
       if (hasAssignment) {
-        // Use entryStrike from cycle (assignment price) - premium adjustment
+        // Shares were assigned through the wheel - use assignment price adjusted by premiums
         adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
+      } else if (positionAvgCost !== null && wheelSharesHeld) {
+        // Shares held from before this cycle (e.g. bought long ago, now selling CCs)
+        // Use actual IBKR cost basis, not the call strike
+        const shares = currentCycle.shareQuantity || liveShareQuantity || 100;
+        adjustedCostBasis = positionAvgCost - (currentCycle.totalPremium / shares);
       } else {
-        // No assignment yet, use CSP entry strike
+        // CSP phase - no shares yet, use put strike as potential cost basis
         adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / 100);
       }
     }
@@ -1003,12 +1007,14 @@ export const wheelService = {
     // Filter out non-wheel stock trades (hold strategy buys/sells).
     // A stock trade is considered a wheel trade if:
     // - it's an assignment (wasAssigned=true), OR
-    // - its original (pre-split-adjustment) quantity is a multiple of 100
+    // - its original (pre-split-adjustment) quantity is a multiple of 100, OR
+    // - its post-split-adjusted quantity is a multiple of 100 (e.g., 10 shares pre-split → 100 post-split)
     const filteredTrades = trades.filter(trade => {
       if (trade.secType !== "STK") return true;
       if (trade.wasAssigned) return true;
       const origQty = originalStockQty.get(trade) ?? Math.abs(trade.quantity);
-      return origQty % 100 === 0;
+      if (origQty % 100 === 0) return true;
+      return Math.abs(trade.quantity) % 100 === 0;
     });
 
     // Build lookup maps for assigned PUTs and CALLs
