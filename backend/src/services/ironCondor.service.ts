@@ -26,9 +26,16 @@ import type {
   IronCondorOrderResponse,
 } from "@assup/shared";
 
-const SYMBOL_CONFIG: Record<string, { tradingClass: string; multiplier: number }> = {
+const SYMBOL_CONFIG: Record<string, {
+  tradingClass: string;
+  multiplier: number;
+  /** IBKR symbol for the option contracts (e.g. XSP options are listed under SPX with tradingClass XSPW) */
+  optionSymbol?: string;
+  /** Divisor to derive this symbol's price from the optionSymbol's price (e.g. XSP = SPX / 10) */
+  priceDivisor?: number;
+}> = {
   SPX: { tradingClass: "SPXW", multiplier: 100 },
-  XSP: { tradingClass: "XSPW", multiplier: 100 },
+  XSP: { tradingClass: "XSPW", multiplier: 100, optionSymbol: "SPX", priceDivisor: 10 },
   RUT: { tradingClass: "RUTW", multiplier: 100 },
 };
 
@@ -253,21 +260,31 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
     throw new Error("Not connected to TWS");
   }
 
-  // 1. Get underlying price
+  // Use symbol-specific config
+  const config = SYMBOL_CONFIG[symbol];
+  if (!config) throw new Error(`Unsupported symbol: ${symbol}. Supported: ${Object.keys(SYMBOL_CONFIG).join(", ")}`);
+
+  // In IBKR, some options are listed under a different symbol than the index
+  // (e.g. XSP options are listed under SPX with tradingClass XSPW)
+  const optionSymbol = config.optionSymbol ?? symbol;
+
+  // 1. Get underlying price from the actual index
   const underlyingContract: Contract = {
-    symbol,
+    symbol: optionSymbol,
     secType: SecType.IND,
     exchange: "CBOE",
     currency: "USD",
   };
 
   const underlyingData = await ibkrService.getMarketData(underlyingContract);
-  const underlyingPrice = underlyingData?.last ?? underlyingData?.close ?? 0;
-  if (underlyingPrice <= 0) {
+  const rawPrice = underlyingData?.last ?? underlyingData?.close ?? 0;
+  if (rawPrice <= 0) {
     throw new Error(`Could not get price for ${symbol}`);
   }
+  // Scale price for mini indices (e.g. XSP = SPX / 10)
+  const underlyingPrice = rawPrice / (config.priceDivisor ?? 1);
 
-  // 2. Get contract details for the index
+  // 2. Get contract details for the option underlying
   const details = await api.getContractDetails(underlyingContract);
   if (!details || details.length === 0) {
     throw new Error(`No contract details found for ${symbol}`);
@@ -275,7 +292,7 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
 
   // 3. Get security definitions for options
   const secDefs = await api.getSecDefOptParams(
-    symbol,
+    optionSymbol,
     "",
     SecType.IND,
     details[0].contract.conId!,
@@ -285,9 +302,7 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
     throw new Error(`No options available for ${symbol}`);
   }
 
-  // Use symbol-specific trading class
-  const config = SYMBOL_CONFIG[symbol];
-  if (!config) throw new Error(`Unsupported symbol: ${symbol}. Supported: ${Object.keys(SYMBOL_CONFIG).join(", ")}`);
+  // Filter for the symbol-specific trading class
   const preferredDefs = secDefs.filter(d => d.tradingClass === config.tradingClass);
   const activeDefs = preferredDefs.length > 0 ? preferredDefs : secDefs;
   const tradingClass = activeDefs[0]?.tradingClass ?? symbol;
@@ -342,7 +357,7 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
     for (const strike of sortedStrikes) {
       for (const right of [OptionType.Put, OptionType.Call] as const) {
         const contract: Contract = {
-          symbol,
+          symbol: optionSymbol,
           secType: SecType.OPT,
           exchange: "SMART",
           currency: "USD",
@@ -420,9 +435,11 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
     throw new Error("Not connected to TWS");
   }
 
-  // Build BAG contract
+  // Build BAG contract — use the IBKR option symbol (e.g. XSP options use SPX)
+  const config = SYMBOL_CONFIG[req.symbol];
+  const bagSymbol = config?.optionSymbol ?? req.symbol;
   const comboContract: Contract = {
-    symbol: req.symbol,
+    symbol: bagSymbol,
     secType: "BAG" as SecType,
     exchange: "SMART",
     currency: "USD",
