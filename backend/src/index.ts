@@ -209,7 +209,7 @@ app.use(errorHandler);
 initCollectors();
 initAnalyzers();
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   scanJobService.init();
 
@@ -225,14 +225,27 @@ app.listen(PORT, () => {
 });
 
 // Graceful shutdown
-process.on("SIGTERM", () => {
+async function shutdown(signal: string) {
+  console.log(`${signal} received, shutting down gracefully...`);
   schedulerService.stop();
   wheelStrategyScheduler.stop();
-  process.exit(0);
-});
 
-process.on("SIGINT", () => {
-  schedulerService.stop();
-  wheelStrategyScheduler.stop();
-  process.exit(0);
-});
+  // Stop accepting new connections and drain existing ones
+  server.close(async () => {
+    try {
+      await prisma.$disconnect();
+    } catch (err) {
+      console.error("Error disconnecting Prisma:", err);
+    }
+    process.exit(0);
+  });
+
+  // Force exit if drain takes too long
+  setTimeout(() => {
+    console.error("Shutdown timed out, forcing exit");
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
