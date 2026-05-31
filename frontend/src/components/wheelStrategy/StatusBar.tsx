@@ -48,11 +48,14 @@ export function StatusBar({ strategy, scans, activeScanId, onScanComplete }: Sta
   const [expandedScanId, setExpandedScanId] = useState<string | null>(null);
 
   // Reset progress when active scan changes
+  const [prevScanId, setPrevScanId] = useState(activeScanId);
+  if (activeScanId !== prevScanId) {
+    if (!activeScanId) setProgress(null);
+    setPrevScanId(activeScanId);
+  }
+
   useEffect(() => {
-    if (!activeScanId) {
-      setProgress(null);
-      return;
-    }
+    if (!activeScanId) return;
 
     const remove = sseManager.addListener("wheel_strategy", (rawData) => {
       const data = rawData as WheelStrategyProgress;

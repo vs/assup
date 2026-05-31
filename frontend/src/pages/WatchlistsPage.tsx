@@ -1009,7 +1009,7 @@ function SortableHead({
   field: string;
   current: string;
   dir: "asc" | "desc";
-  onToggle: (field: any) => void;
+  onToggle: (field: string) => void;
   className?: string;
   children: React.ReactNode;
 }) {

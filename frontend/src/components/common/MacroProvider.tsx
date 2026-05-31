@@ -29,7 +29,7 @@ export function MacroProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     researchApi
-      .refreshMacro()
+      .getMacro()
       .then(setMacro)
       .catch(() => {});
   }, []);

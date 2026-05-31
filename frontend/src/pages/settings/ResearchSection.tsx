@@ -221,7 +221,7 @@ export function ResearchSection() {
     try {
       const result = await researchApi.testSAConnection();
       setSaTestResult(result);
-    } catch (err) {
+    } catch {
       setSaTestResult({ ok: false, hasData: false });
     } finally {
       setSaTesting(false);

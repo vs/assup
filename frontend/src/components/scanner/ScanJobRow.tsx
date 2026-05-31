@@ -2,7 +2,7 @@
  * ScanJobRow - displays a single scan job with expand/collapse
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { ScanJob } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -30,13 +30,13 @@ interface ScanJobRowProps {
 
 export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowProps) {
   const [expanded, setExpanded] = useState(job.status === "running");
+  const [prevOpCount, setPrevOpCount] = useState(job.opportunities.length);
 
   // Auto-expand when first results arrive during a running scan
-  useEffect(() => {
-    if (job.status === "running" && job.opportunities.length > 0) {
-      setExpanded(true);
-    }
-  }, [job.status, job.opportunities.length]);
+  if (job.status === "running" && job.opportunities.length > 0 && prevOpCount === 0) {
+    setExpanded(true);
+    setPrevOpCount(job.opportunities.length);
+  }
 
   const isRunning = job.status === "running";
   const isCompleted = job.status === "completed";

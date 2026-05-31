@@ -113,7 +113,7 @@ export function WheelPage() {
 
   useEffect(() => {
     if (data?.tickers?.length) {
-      prefetch(data.tickers.map((t: any) => t.symbol));
+      prefetch(data.tickers.map((t: { symbol: string }) => t.symbol));
     }
   }, [data?.tickers, prefetch]);
 
@@ -691,6 +691,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   );
   const [loading, setLoading] = useState(() => readCache(cacheKey) === null);
   const [selectedCycleNumber, setSelectedCycleNumber] = useState<number | null>(null);
+  const [showAllCycles, setShowAllCycles] = useState(false);
 
   useEffect(() => {
     api.wheel
@@ -712,7 +713,6 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   }
 
   const INITIAL_CYCLE_LIMIT = 5;
-  const [showAllCycles, setShowAllCycles] = useState(false);
 
   // Show last N cycles by default (always including in-progress ones)
   const allCycles = detail.cycles;
