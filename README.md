@@ -22,10 +22,10 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
 | Backend | Node.js, TypeScript, Express, Prisma |
 | Frontend | React 19, Vite, Tailwind CSS v4, shadcn/ui |
 | Database | PostgreSQL 16 |
-| Research | Separate Express microservice, Polygon.io, Anthropic Claude |
+| Research | Integrated in backend, Polygon.io, Anthropic Claude |
 | IBKR API | `@stoqey/ib` |
 | Desktop | Tauri (Rust) |
-| Monorepo | npm workspaces (`packages/shared`, `backend`, `frontend`, `research`, `desktop`) |
+| Monorepo | npm workspaces (`packages/shared`, `backend`, `frontend`, `desktop`) |
 
 ## Prerequisites
 
@@ -56,13 +56,11 @@ See [IBKR.md](IBKR.md) for detailed IBKR setup including FLEX Query configuratio
    ```bash
    docker-compose exec backend npx prisma migrate deploy
    docker-compose exec backend npm run db:seed
-   docker-compose exec research npx prisma migrate deploy
    ```
 
 5. Access the application:
    - Frontend: http://localhost:8080
    - Backend API: http://localhost:3000
-   - Research API: http://localhost:3002
 
 ### Development Mode
 
@@ -77,7 +75,7 @@ Frontend dev server runs on http://localhost:5173 with HMR.
 
 **Start PostgreSQL:**
 ```bash
-docker-compose up -d postgres research-db
+docker-compose up -d postgres
 ```
 
 **Backend:**
@@ -87,7 +85,8 @@ npm install
 export DATABASE_URL="postgresql://assup:assup_dev@localhost:5432/assup"
 export IB_HOST=127.0.0.1
 export IB_PORT=7496
-export RESEARCH_API_URL=http://localhost:3002
+export ANTHROPIC_API_KEY=<your-key>
+export MARKET_DATA_API_KEY=<your-polygon-key>
 npm run db:migrate
 npm run db:seed
 npm run dev
@@ -100,34 +99,15 @@ npm install
 npm run dev
 ```
 
-**Research service:**
-```bash
-cd research
-npm install
-export DATABASE_URL="postgresql://research:research_dev@localhost:5433/research"
-export ANTHROPIC_API_KEY=<your-key>
-export MARKET_DATA_API_KEY=<your-polygon-key>
-npm run db:migrate
-npm run dev
-```
-
 ## Environment Variables
-
-### Core (backend)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | — |
 | `IB_HOST` | TWS host | `127.0.0.1` |
 | `IB_PORT` | TWS API port | `7496` |
-| `RESEARCH_API_URL` | Research service URL | `http://localhost:3002` |
-
-### Research service
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | Research PostgreSQL connection string | — |
 | `ANTHROPIC_API_KEY` | Claude API key for report synthesis | — |
 | `MARKET_DATA_API_KEY` | Polygon.io API key | — |
 | `MARKET_DATA_PROVIDER` | Market data provider | `polygon` |
-| `SEEKING_ALPHA_API_KEY` | Seeking Alpha API key | — |
+| `SYNTHESIZER_MODE` | `api` or `cli` for report synthesis | `api` |
+| `SCHEDULER_ENABLED` | Enable research scheduler | `false` |

@@ -67,13 +67,10 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Hydrate on mount
+  // Hydrate on mount and re-hydrate on tab focus
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate is async (fetch then setState), not synchronous
     hydrate();
-  }, [hydrate]);
-
-  // Re-hydrate on tab focus (mirrors useScanJobs pattern)
-  useEffect(() => {
     const handleFocus = () => hydrate();
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);

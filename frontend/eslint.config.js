@@ -25,6 +25,9 @@ export default defineConfig([
         varsIgnorePattern: '^_',
         ignoreRestSiblings: true,
       }],
+      'react-refresh/only-export-components': ['error', {
+        allowExportNames: ['useMacro', 'useTickerProfileContext', 'useResearchJobs', 'useResearchJobFinished'],
+      }],
     },
   },
 ])
