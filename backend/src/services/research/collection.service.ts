@@ -114,7 +114,7 @@ class CollectionService {
     // Each source has a "primary" nested object that should contain actual data
     const primaryKeys: Record<string, string> = {
       fundamentals: "fundamentals",
-      technical: "indicators",
+      technical: "ohlcv",
     };
     const key = primaryKeys[source];
     if (!key) return false; // unknown source — assume data is fine
@@ -159,13 +159,13 @@ class CollectionService {
       }
     }
 
-    // Update lastAnalyzedAt only if at least one analysis was produced
-    if (analysisIds.length > 0) {
-      await prisma.watchlistItem.updateMany({
-        where: { symbol },
-        data: { lastAnalyzedAt: new Date() },
-      });
-    }
+    // Update lastAnalyzedAt after a collection+analysis pass completes,
+    // even if no new analyses were produced (e.g. all sources skipped).
+    // This prevents the scheduler from treating the symbol as permanently stale.
+    await prisma.watchlistItem.updateMany({
+      where: { symbol },
+      data: { lastAnalyzedAt: new Date() },
+    });
 
     return analysisIds;
   }
