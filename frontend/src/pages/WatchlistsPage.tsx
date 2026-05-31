@@ -67,6 +67,8 @@ import {
   SortAsc,
 } from "lucide-react";
 
+type SortField = "addedAt" | "symbol" | "recommendation" | "reportAge";
+
 export function WatchlistsPage() {
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [selectedWatchlist, setSelectedWatchlist] =
@@ -114,7 +116,6 @@ export function WatchlistsPage() {
   }, [watchlists, wlSort]);
 
   // Item sort state
-  type SortField = "addedAt" | "symbol" | "recommendation" | "reportAge";
   type SortDir = "asc" | "desc";
   const [sortField, setSortField] = useState<SortField>("addedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -1006,10 +1007,10 @@ function SortableHead({
   className,
   children,
 }: {
-  field: string;
-  current: string;
+  field: SortField;
+  current: SortField;
   dir: "asc" | "desc";
-  onToggle: (field: string) => void;
+  onToggle: (field: SortField) => void;
   className?: string;
   children: React.ReactNode;
 }) {

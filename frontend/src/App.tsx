@@ -1,23 +1,25 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { MacroProvider } from "@/components/common/MacroProvider";
 import { TickerProfileProvider } from "@/components/common/TickerProfileProvider";
 import { ResearchJobsProvider } from "@/hooks/useResearchJobs";
-import { DashboardPage } from "@/pages/DashboardPage";
-import { PositionsPage } from "@/pages/PositionsPage";
-import { WatchlistsPage } from "@/pages/WatchlistsPage";
-import { ScannerPage } from "@/pages/ScannerPage";
-import { ProfitPage } from "@/pages/ProfitPage";
-import { WheelPage } from "@/pages/WheelPage";
-import { IronCondorPage } from "@/pages/IronCondorPage";
-import { TaxesPage } from "@/pages/TaxesPage";
-import { ResearchReportPage } from "@/pages/ResearchReportPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { ImportsSection } from "@/pages/settings/ImportsSection";
-import { AssetClassesSection } from "@/pages/settings/AssetClassesSection";
-import { ExchangeRatesSection } from "@/pages/settings/ExchangeRatesSection";
-import { ResearchSection } from "@/pages/settings/ResearchSection";
+
+const DashboardPage = lazy(() => import("@/pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
+const PositionsPage = lazy(() => import("@/pages/PositionsPage").then((m) => ({ default: m.PositionsPage })));
+const WatchlistsPage = lazy(() => import("@/pages/WatchlistsPage").then((m) => ({ default: m.WatchlistsPage })));
+const ScannerPage = lazy(() => import("@/pages/ScannerPage").then((m) => ({ default: m.ScannerPage })));
+const ProfitPage = lazy(() => import("@/pages/ProfitPage").then((m) => ({ default: m.ProfitPage })));
+const WheelPage = lazy(() => import("@/pages/WheelPage").then((m) => ({ default: m.WheelPage })));
+const IronCondorPage = lazy(() => import("@/pages/IronCondorPage").then((m) => ({ default: m.IronCondorPage })));
+const TaxesPage = lazy(() => import("@/pages/TaxesPage").then((m) => ({ default: m.TaxesPage })));
+const ResearchReportPage = lazy(() => import("@/pages/ResearchReportPage").then((m) => ({ default: m.ResearchReportPage })));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const ImportsSection = lazy(() => import("@/pages/settings/ImportsSection").then((m) => ({ default: m.ImportsSection })));
+const AssetClassesSection = lazy(() => import("@/pages/settings/AssetClassesSection").then((m) => ({ default: m.AssetClassesSection })));
+const ExchangeRatesSection = lazy(() => import("@/pages/settings/ExchangeRatesSection").then((m) => ({ default: m.ExchangeRatesSection })));
+const ResearchSection = lazy(() => import("@/pages/settings/ResearchSection").then((m) => ({ default: m.ResearchSection })));
 
 function SymbolRedirect() {
   const { symbol } = useParams();
@@ -31,6 +33,7 @@ function App() {
       <TickerProfileProvider>
       <ResearchJobsProvider>
       <BrowserRouter>
+        <Suspense fallback={null}>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />
@@ -56,6 +59,7 @@ function App() {
             </Route>
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
       </ResearchJobsProvider>
       </TickerProfileProvider>
