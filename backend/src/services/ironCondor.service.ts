@@ -321,7 +321,7 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
   // 5. Find the expiration closest to target DTE
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  let selectedExpiration = expirations[0] ?? "";
+  let selectedExpiration = expirations[expirations.length - 1] ?? "";
 
   for (const exp of expirations) {
     const expDate = parseExpirationDate(exp);

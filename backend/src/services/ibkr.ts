@@ -147,7 +147,7 @@ class IBKRService {
     this.isConnecting = true;
 
     const host = process.env.IB_HOST || "127.0.0.1";
-    const port = parseInt(process.env.IB_PORT || "7497", 10);
+    const port = parseInt(process.env.IB_PORT || "7496", 10);
 
     console.log(`Connecting to TWS at ${host}:${port}...`);
 

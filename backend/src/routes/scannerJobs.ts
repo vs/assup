@@ -13,6 +13,7 @@ import { sseService } from "../services/sse.js";
 import { scanSymbols } from "../services/optionScan.service.js";
 import { scannerCriteriaSchema } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
+import { isIgnorablePositionError } from "../utils/errorUtils.js";
 import { z } from "zod";
 import type { OptionOpportunity } from "@assup/shared";
 import { Prisma } from "@prisma/client";
@@ -158,8 +159,7 @@ async function executeJobScan(
         }
       });
     } catch (err: unknown) {
-      const error = err as { message?: string; code?: string };
-      if (!error.message?.includes("does not support positions") && error.code !== "timeout") {
+      if (!isIgnorablePositionError(err)) {
         throw err;
       }
     }
