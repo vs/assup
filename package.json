@@ -7,8 +7,7 @@
     "packages/*",
     "backend",
     "frontend",
-    "desktop",
-    "research"
+    "desktop"
   ],
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",

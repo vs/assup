@@ -12,7 +12,6 @@ COPY tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY frontend/package.json ./frontend/
 COPY backend/package.json ./backend/
-COPY research/package.json ./research/
 COPY desktop/package.json ./desktop/
 
 # Install dependencies without running postinstall scripts
