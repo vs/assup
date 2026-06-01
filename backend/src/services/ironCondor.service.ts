@@ -348,7 +348,33 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
 
   const sortedStrikes = Array.from(strikes).sort((a, b) => a - b);
 
-  // 7. Build contracts and fetch market data
+  // 7. Resolve conIds for all option contracts in the selected expiration.
+  // A single getContractDetails call with just the expiration + tradingClass
+  // returns all strikes, giving us conIds without per-strike API calls.
+  const conIdMap = new Map<string, number>(); // "strike:right" -> conId
+  try {
+    const resolveContract: Contract = {
+      symbol: optionSymbol,
+      secType: SecType.OPT,
+      exchange: "SMART",
+      currency: "USD",
+      lastTradeDateOrContractMonth: selectedExpiration,
+      tradingClass,
+      multiplier,
+    };
+    const allDetails = await api.getContractDetails(resolveContract);
+    for (const d of allDetails) {
+      const c = d.contract;
+      if (c.conId && c.strike != null && c.right) {
+        conIdMap.set(`${c.strike}:${c.right}`, c.conId);
+      }
+    }
+  } catch {
+    // Non-fatal — conIds will be 0 and orders won't work, but chain display still functions
+    console.warn(`[getChain] Failed to resolve conIds for ${symbol} ${selectedExpiration}`);
+  }
+
+  // 8. Build contracts and fetch market data
   const chain: IronCondorChainStrike[] = [];
 
   await withLiveMarketData(async () => {
@@ -356,6 +382,7 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
 
     for (const strike of sortedStrikes) {
       for (const right of [OptionType.Put, OptionType.Call] as const) {
+        const conId = conIdMap.get(`${strike}:${right}`);
         const contract: Contract = {
           symbol: optionSymbol,
           secType: SecType.OPT,
@@ -366,6 +393,7 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
           right,
           multiplier,
           tradingClass,
+          ...(conId ? { conId } : {}),
         };
         contracts.push(contract);
       }
@@ -379,7 +407,8 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
 
     for (const [, data] of marketData) {
       const strike = data.contract.strike!;
-      const type = data.contract.right === OptionType.Put ? "put" : "call";
+      const right = data.contract.right;
+      const type = right === OptionType.Put ? "put" : "call";
 
       if (!strikeMap.has(strike)) {
         strikeMap.set(strike, { put: null, call: null });
@@ -393,8 +422,9 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
       };
       const bid = safeNum(data.bid);
       const ask = safeNum(data.ask);
+      const resolvedConId = data.contract.conId ?? conIdMap.get(`${strike}:${right}`) ?? 0;
       const option = {
-        conId: data.contract.conId ?? 0,
+        conId: resolvedConId,
         bid,
         ask,
         mid: bid > 0 && ask > 0 ? (bid + ask) / 2 : 0,
