@@ -466,7 +466,7 @@ export function IronCondorPage() {
       )}
 
       {/* Order dialog */}
-      {analysis && (
+      {analysis && chainData && (
         <PlaceSpreadDialog
           open={orderDialogOpen}
           onOpenChange={setOrderDialogOpen}
@@ -476,6 +476,7 @@ export function IronCondorPage() {
           netCreditMid={analysis.netCredit.mid}
           maxLoss={maxLoss}
           mode={mode}
+          chain={chainData.chain}
         />
       )}
 
