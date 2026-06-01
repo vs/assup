@@ -11,15 +11,12 @@ import { isMarketOpen } from "../utils/index.js";
 // Track running jobs with their abort controllers
 const runningJobs = new Map<string, AbortController>();
 
-// Cleanup interval handle
-let cleanupInterval: NodeJS.Timeout | null = null;
-
 /**
  * Initialize the service - start cleanup interval
  */
 function initScanJobService(): void {
   // Run cleanup every 10 minutes
-  cleanupInterval = setInterval(() => {
+  setInterval(() => {
     cleanupExpiredJobs().catch(console.error);
   }, 10 * 60 * 1000);
 

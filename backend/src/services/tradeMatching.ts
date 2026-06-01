@@ -97,13 +97,6 @@ export function groupOptionTrades(
   const completeGroups: Array<{ key: string; trades: OptionTradeInput[] }> = [];
 
   for (const [key, groupTrades] of exactGroups) {
-    const hasOpen = groupTrades.some(t => t.openClose === "O" ||
-      (t.openClose === null && groupTrades.indexOf(t) === 0));
-    const hasClose = groupTrades.some(t => t.openClose === "C" ||
-      (t.openClose === null && groupTrades.some(other =>
-        other !== t && (other.openClose === "O" || groupTrades.indexOf(other) < groupTrades.indexOf(t))
-      )));
-
     // Check if group has both opens and closes by looking at trade directions
     const sorted = [...groupTrades].sort((a, b) => a.tradeDate.getTime() - b.tradeDate.getTime());
     const hasSells = sorted.some(t => t.buySell === "SELL");
@@ -341,8 +334,6 @@ export function groupOptionTrades(
     //   - costBasis = premium paid (absolute value of negative proceeds from open)
     //   - sellPrice = proceeds from selling (positive proceeds from close)
     //   - profit = sellPrice - costBasis - commissions
-
-    const totalCommission = sorted.reduce((sum, t) => sum + t.commission, 0);
 
     let costBasis = 0;
     let sellPrice = 0;

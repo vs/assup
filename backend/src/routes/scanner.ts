@@ -9,7 +9,7 @@ import { prisma } from "../db/index.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { ibkrService } from "../services/ibkr.js";
-import { allocationService, getUnderinvestedClasses } from "../services/allocation.service.js";
+import { getUnderinvestedClasses } from "../services/allocation.service.js";
 import { sseService } from "../services/sse.js";
 import { scanSymbols } from "../services/optionScan.service.js";
 import {
