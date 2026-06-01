@@ -20,7 +20,6 @@ export { historicalApi } from "./historical";
 export { profitApi } from "./profit";
 export { wheelApi } from "./wheel";
 export { researchApi } from "./research";
-export { wheelScannerApi } from "./wheelScanner";
 export { exchangeRatesApi } from "./exchangeRates";
 export { ironCondorApi } from "./ironCondor";
 
@@ -37,7 +36,6 @@ import { historicalApi } from "./historical";
 import { profitApi } from "./profit";
 import { wheelApi } from "./wheel";
 import { researchApi } from "./research";
-import { wheelScannerApi } from "./wheelScanner";
 import { exchangeRatesApi } from "./exchangeRates";
 import { ironCondorApi } from "./ironCondor";
 
@@ -54,7 +52,6 @@ export const api = {
   profit: profitApi,
   wheel: wheelApi,
   research: researchApi,
-  wheelScanner: wheelScannerApi,
   exchangeRates: exchangeRatesApi,
   ironCondor: ironCondorApi,
 };
