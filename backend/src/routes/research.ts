@@ -27,7 +27,7 @@ import {
 } from "../services/research/collectors/sa-rapidapi.js";
 
 import { z } from "zod";
-import { validate } from "../services/research/middleware/validate.js";
+import { validate } from "../middleware/validate.js";
 import { NotFoundError } from "../errors/AppError.js";
 
 const router = Router();

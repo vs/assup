@@ -5,7 +5,8 @@ import { SMA, RSI } from "technicalindicators";
 import { prisma } from "./db.js";
 import { ibkrService } from "../ibkr.js";
 import type { MarketScannerParams, ScannerResult } from "../ibkr.js";
-import { NotFoundError } from "./errors/AppError.js";
+import { NotFoundError } from "../../errors/AppError.js";
+import { stockContract } from "../../utils/options.js";
 import type {
   MarketScanResult,
   ScannerResultItem,
@@ -14,15 +15,6 @@ import type {
 } from "@assup/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-function stockContract(symbol: string) {
-  return {
-    symbol,
-    secType: SecType.STK,
-    exchange: "SMART",
-    currency: "USD",
-  };
-}
 
 /**
  * Fetch daily bars for a symbol over the given number of years.

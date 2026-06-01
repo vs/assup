@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z, ZodError } from "zod";
 import type { Request, Response, NextFunction } from "express";
-import { validate, formatZodError } from "../../../services/research/middleware/validate.js";
+import { validate, formatZodError } from "../../../middleware/validate.js";
 
 function mockReq(overrides: Partial<Request> = {}): Request {
   return { body: {}, query: {}, params: {}, ...overrides } as unknown as Request;
