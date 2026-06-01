@@ -131,6 +131,7 @@ class IBKRService {
   };
   private statusListeners: Set<(status: ConnectionStatus) => void> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private statusWatchdog: ReturnType<typeof setInterval> | null = null;
   private isConnecting = false;
 
   // Account data
@@ -140,6 +141,28 @@ class IBKRService {
 
   constructor() {
     this.connect();
+    this.startStatusWatchdog();
+  }
+
+  /**
+   * Periodically reconcile connectionStatus with api.isConnected.
+   * The connectionState observable can miss transitions during auto-reconnect
+   * or terminate after an error, leaving the tracked status stale.
+   */
+  private startStatusWatchdog() {
+    this.statusWatchdog = setInterval(() => {
+      const actual = this.api?.isConnected ?? false;
+      if (actual !== this.connectionStatus.connected) {
+        console.log(
+          `Connection status drift detected: tracked=${this.connectionStatus.connected}, actual=${actual}`,
+        );
+        if (actual) {
+          this.handleConnected();
+        } else {
+          this.handleDisconnected();
+        }
+      }
+    }, 5000);
   }
 
   private connect() {
@@ -349,6 +372,10 @@ class IBKRService {
   }
 
   private cleanup() {
+    if (this.statusWatchdog) {
+      clearInterval(this.statusWatchdog);
+      this.statusWatchdog = null;
+    }
     if (this.accountSubscription) {
       this.accountSubscription.unsubscribe();
       this.accountSubscription = null;
@@ -370,7 +397,10 @@ class IBKRService {
   // Public API
 
   getStatus(): ConnectionStatus {
-    return { ...this.connectionStatus };
+    // Use api.isConnected as the source of truth — the cached
+    // connectionStatus.connected can lag behind after auto-reconnect.
+    const connected = this.api?.isConnected ?? false;
+    return { ...this.connectionStatus, connected };
   }
 
   getApi(): IBApiNext | null {
