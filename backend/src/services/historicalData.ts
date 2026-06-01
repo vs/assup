@@ -1,5 +1,5 @@
 import { ibkrService } from "./ibkr.js";
-import { Bar, BarSizeSetting, WhatToShow, Stock } from "@stoqey/ib";
+import { Bar, BarSizeSetting, WhatToShow, Stock, Contract, SecType } from "@stoqey/ib";
 
 interface PricePoint {
   date: string;
@@ -153,7 +153,12 @@ class HistoricalDataService {
       throw new Error("Not connected to TWS");
     }
 
-    const contract = new Stock(symbol.toUpperCase(), "SMART", "USD");
+    const sym = symbol.toUpperCase();
+    // Indices (SPX, XSP, RUT, VIX, etc.) need SecType.IND, not STK
+    const INDEX_SYMBOLS = new Set(["SPX", "XSP", "RUT", "VIX", "DJX", "NDX"]);
+    const contract: Contract = INDEX_SYMBOLS.has(sym)
+      ? { symbol: sym, secType: SecType.IND, exchange: "CBOE", currency: "USD" }
+      : new Stock(sym, "SMART", "USD");
 
     // Weekly bars for sparklines (1 year), daily for short durations
     const barSize = duration === "1 M" || duration === "7 D"
