@@ -3,9 +3,11 @@
  * Puts on left, strike in center, calls on right.
  * Selected legs highlighted with colored borders and labels.
  * Click behavior depends on spread mode.
+ * Auto-scrolls to the primary sell leg on load.
  */
 
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Crosshair } from "lucide-react";
 import type { IronCondorChainStrike, SpreadSelectedLegs, SpreadMode } from "@assup/shared";
 
 interface OptionsChainTableProps {
@@ -53,12 +55,14 @@ const ChainRow = memo(function ChainRow({
   isAtMoney,
   onSelectLeg,
   mode,
+  rowRef,
 }: {
   entry: IronCondorChainStrike;
   selectedLegs: SpreadSelectedLegs;
   isAtMoney: boolean;
   onSelectLeg: (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => void;
   mode: SpreadMode;
+  rowRef?: React.Ref<HTMLDivElement>;
 }) {
   const label = getLegLabel(entry.strike, selectedLegs);
   const style = getLegStyle(entry.strike, selectedLegs);
@@ -92,7 +96,7 @@ const ChainRow = memo(function ChainRow({
     : "opacity-30 px-0.5";
 
   return (
-    <div className={`my-0.5 ${style}`}>
+    <div ref={rowRef} className={`my-0.5 ${style}`}>
       <div className="grid gap-1 py-1 px-1 text-xs" style={{ gridTemplateColumns: "50px 50px 45px 40px 70px 40px 45px 50px 50px" }}>
         {/* Put side */}
         <div className={`text-right ${putCellClass}`} onClick={handlePutClick}>
@@ -138,59 +142,106 @@ const ChainRow = memo(function ChainRow({
 });
 
 export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSelectLeg, mode }: OptionsChainTableProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sellRowRef = useRef<HTMLDivElement>(null);
+
   const atMoneyStrike = chain.reduce((closest: number, entry: IronCondorChainStrike) => {
     return Math.abs(entry.strike - underlyingPrice) < Math.abs(closest - underlyingPrice)
       ? entry.strike
       : closest;
   }, chain[0]?.strike ?? 0);
 
+  // Determine primary sell strike to scroll to
+  const scrollTarget = mode === "put-spread"
+    ? selectedLegs.sellPut
+    : mode === "call-spread"
+      ? selectedLegs.sellCall
+      : selectedLegs.sellPut ?? selectedLegs.sellCall;
+
+  const scrollToSellRow = useCallback(() => {
+    if (sellRowRef.current) {
+      sellRowRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, []);
+
+  // Auto-scroll to the sell leg when chain loads or sell strike changes
+  useEffect(() => {
+    if (sellRowRef.current && scrollRef.current) {
+      sellRowRef.current.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+  }, [scrollTarget, chain]);
+
   const putActive = mode === "put-spread" || mode === "iron-condor";
   const callActive = mode === "call-spread" || mode === "iron-condor";
 
+  const [expanded, setExpanded] = useState(true);
+
   return (
     <div>
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold mb-1">Options Chain</h3>
-        <p className="text-xs text-muted-foreground">
-          {putActive && <>Click the <span className="text-red-600 font-medium">put side</span> to move put legs. </>}
-          {callActive && <>Click the <span className="text-green-600 font-medium">call side</span> to move call legs. </>}
-          Strikes are auto-selected based on your target deltas above.
-        </p>
+      <div className="flex items-center gap-2 mb-2">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 text-left"
+        >
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          <h3 className="text-sm font-semibold">Options Chain</h3>
+          <span className="text-xs text-muted-foreground">{chain.length} strikes</span>
+        </button>
+        {expanded && scrollTarget && (
+          <button
+            onClick={scrollToSellRow}
+            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
+            title="Scroll to recommended strike"
+          >
+            <Crosshair className="h-3.5 w-3.5" />
+            Locate
+          </button>
+        )}
       </div>
 
-      {/* Header */}
-      <div className="grid gap-1 px-1 text-[10px] text-muted-foreground uppercase font-medium pb-1 border-b" style={{ gridTemplateColumns: "50px 50px 45px 40px 70px 40px 45px 50px 50px" }}>
-        <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Bid</div>
-        <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Ask</div>
-        <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Delta</div>
-        <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>IV</div>
-        <div className="text-center font-semibold text-foreground">Strike</div>
-        <div className={!callActive ? "opacity-30" : ""}>IV</div>
-        <div className={!callActive ? "opacity-30" : ""}>Delta</div>
-        <div className={!callActive ? "opacity-30" : ""}>Bid</div>
-        <div className={!callActive ? "opacity-30" : ""}>Ask</div>
-      </div>
-      <div className="flex mb-1">
-        {putActive && <div className="flex-1 text-center text-[10px] font-semibold text-red-600">{"\u2190"} PUTS (click to set put legs)</div>}
-        {!putActive && <div className="flex-1" />}
-        <div className="w-[70px]" />
-        {callActive && <div className="flex-1 text-center text-[10px] font-semibold text-green-600">CALLS (click to set call legs) {"\u2192"}</div>}
-        {!callActive && <div className="flex-1" />}
-      </div>
+      {expanded && (
+        <>
+          <p className="text-xs text-muted-foreground mb-2 ml-6">
+            {putActive && <>Click the <span className="text-red-600 font-medium">put side</span> to move put legs. </>}
+            {callActive && <>Click the <span className="text-green-600 font-medium">call side</span> to move call legs. </>}
+          </p>
 
-      {/* Scrollable chain */}
-      <div className="max-h-[500px] overflow-y-auto">
-        {chain.map((entry: IronCondorChainStrike) => (
-          <ChainRow
-            key={entry.strike}
-            entry={entry}
-            selectedLegs={selectedLegs}
-            isAtMoney={entry.strike === atMoneyStrike}
-            onSelectLeg={onSelectLeg}
-            mode={mode}
-          />
-        ))}
-      </div>
+          {/* Header */}
+          <div className="grid gap-1 px-1 text-[10px] text-muted-foreground uppercase font-medium pb-1 border-b" style={{ gridTemplateColumns: "50px 50px 45px 40px 70px 40px 45px 50px 50px" }}>
+            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Bid</div>
+            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Ask</div>
+            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Delta</div>
+            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>IV</div>
+            <div className="text-center font-semibold text-foreground">Strike</div>
+            <div className={!callActive ? "opacity-30" : ""}>IV</div>
+            <div className={!callActive ? "opacity-30" : ""}>Delta</div>
+            <div className={!callActive ? "opacity-30" : ""}>Bid</div>
+            <div className={!callActive ? "opacity-30" : ""}>Ask</div>
+          </div>
+          <div className="flex mb-1">
+            {putActive && <div className="flex-1 text-center text-[10px] font-semibold text-red-600">{"\u2190"} PUTS (click to set put legs)</div>}
+            {!putActive && <div className="flex-1" />}
+            <div className="w-[70px]" />
+            {callActive && <div className="flex-1 text-center text-[10px] font-semibold text-green-600">CALLS (click to set call legs) {"\u2192"}</div>}
+            {!callActive && <div className="flex-1" />}
+          </div>
+
+          {/* Scrollable chain — ~12 rows visible */}
+          <div ref={scrollRef} className="max-h-[360px] overflow-y-auto">
+            {chain.map((entry: IronCondorChainStrike) => (
+              <ChainRow
+                key={entry.strike}
+                entry={entry}
+                selectedLegs={selectedLegs}
+                isAtMoney={entry.strike === atMoneyStrike}
+                onSelectLeg={onSelectLeg}
+                mode={mode}
+                rowRef={entry.strike === scrollTarget ? sellRowRef : undefined}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

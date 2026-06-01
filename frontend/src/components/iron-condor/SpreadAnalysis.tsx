@@ -219,27 +219,53 @@ export function SpreadAnalysis({
             />
           </div>
 
-          {/* Detailed metrics */}
-          <div className="border rounded-lg p-3 bg-card">
-            <div className="text-[10px] text-muted-foreground uppercase font-medium mb-2">Detailed Metrics</div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {analysis.breakEvenLow != null && (
-                <div><span className="text-muted-foreground">Breakeven Low:</span> <span className="font-medium">{analysis.breakEvenLow.toLocaleString()}</span> <span className="text-muted-foreground">({analysis.breakEvenLowPercent!.toFixed(1)}% down)</span></div>
-              )}
-              {analysis.breakEvenHigh != null && (
-                <div><span className="text-muted-foreground">Breakeven High:</span> <span className="font-medium">{analysis.breakEvenHigh.toLocaleString()}</span> <span className="text-muted-foreground">({analysis.breakEvenHighPercent!.toFixed(1)}% up)</span></div>
-              )}
-              {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && (
-                <div><span className="text-muted-foreground">Profit Range:</span> <span className="font-medium">{(analysis.breakEvenHigh - analysis.breakEvenLow).toFixed(0)} pts</span></div>
-              )}
-              <div><span className="text-muted-foreground">Expected Value:</span> <span className={`font-medium ${analysis.expectedValue >= 0 ? "text-green-600" : "text-red-600"}`}>${analysis.expectedValue.toLocaleString()}</span></div>
-              {analysis.probabilityOfMaxLossPut != null && (
-                <div><span className="text-muted-foreground">P(Max Loss Put):</span> <span className="text-red-600 font-medium">{(analysis.probabilityOfMaxLossPut * 100).toFixed(1)}%</span></div>
-              )}
-              {analysis.probabilityOfMaxLossCall != null && (
-                <div><span className="text-muted-foreground">P(Max Loss Call):</span> <span className="text-red-600 font-medium">{(analysis.probabilityOfMaxLossCall * 100).toFixed(1)}%</span></div>
-              )}
+          {/* Scenario breakdown */}
+          <div className="border rounded-lg p-3 bg-card space-y-3">
+            <div className="text-xs text-muted-foreground uppercase font-medium">What happens at expiration</div>
+
+            {/* Profit scenario */}
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-green-700">
+                {symbol} stays between{" "}
+                {analysis.breakEvenLow != null && <>{analysis.breakEvenLow.toLocaleString()}</>}
+                {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && " and "}
+                {analysis.breakEvenHigh != null && <>{analysis.breakEvenHigh.toLocaleString()}</>}
+                {analysis.breakEvenLow == null && analysis.breakEvenHigh != null && <> below {analysis.breakEvenHigh.toLocaleString()}</>}
+                {analysis.breakEvenHigh == null && analysis.breakEvenLow != null && <> above {analysis.breakEvenLow.toLocaleString()}</>}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                You keep the credit. Max profit <span className="text-green-600 font-semibold">+${analysis.maxProfit.toLocaleString()}</span>.
+                {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && (
+                  <> That's a <span className="font-medium">{(analysis.breakEvenHigh - analysis.breakEvenLow).toFixed(0)}-point</span> profit range.</>
+                )}
+              </div>
             </div>
+
+            {/* Loss scenarios */}
+            {analysis.breakEvenLow != null && analysis.probabilityOfMaxLossPut != null && (
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-red-600">
+                  {symbol} drops below {analysis.breakEvenLow.toLocaleString()} ({analysis.breakEvenLowPercent!.toFixed(1)}% down)
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  You start losing money. Full loss at the buy put strike.
+                  {" "}<span className="text-red-600 font-medium">{(analysis.probabilityOfMaxLossPut * 100).toFixed(1)}%</span> chance of max loss on the downside.
+                </div>
+              </div>
+            )}
+
+            {analysis.breakEvenHigh != null && analysis.probabilityOfMaxLossCall != null && (
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-red-600">
+                  {symbol} rises above {analysis.breakEvenHigh.toLocaleString()} ({analysis.breakEvenHighPercent!.toFixed(1)}% up)
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  You start losing money. Full loss at the buy call strike.
+                  {" "}<span className="text-red-600 font-medium">{(analysis.probabilityOfMaxLossCall * 100).toFixed(1)}%</span> chance of max loss on the upside.
+                </div>
+              </div>
+            )}
+
           </div>
         </>
       )}
