@@ -62,7 +62,7 @@ export function IronCondorPage() {
   const [mode, setMode] = useState<SpreadMode>("put-spread");
   const [targetDte, setTargetDte] = useState(1);
   const [quantity, setQuantity] = useState(1);
-  const [putDelta, setPutDelta] = useState(7);
+  const [putDelta, setPutDelta] = useState(3.5);
   const [callDelta, setCallDelta] = useState(3.5);
   const [wingWidth, setWingWidth] = useState(100);
 
@@ -426,10 +426,10 @@ export function IronCondorPage() {
         onClose={handleCloseSpread}
       />
 
-      {/* Main content: two columns */}
+      {/* Main content: stacked layout */}
       {chainData && (
-        <div className="grid grid-cols-2 gap-4">
-          {/* Left: Options Chain */}
+        <div className="space-y-4">
+          {/* Options Chain */}
           <div className="border rounded-lg p-4">
             <OptionsChainTable
               chain={chainData.chain}
@@ -440,7 +440,7 @@ export function IronCondorPage() {
             />
           </div>
 
-          {/* Right: Analysis */}
+          {/* Analysis */}
           <div className="border rounded-lg p-4 bg-muted/20">
             <SpreadAnalysis
               analysis={analysis}
