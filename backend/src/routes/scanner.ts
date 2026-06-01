@@ -4,7 +4,6 @@
  */
 
 import { Router } from "express";
-import { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
@@ -12,6 +11,7 @@ import { ibkrService } from "../services/ibkr.js";
 import { getUnderinvestedClasses } from "../services/allocation.service.js";
 import { sseService } from "../services/sse.js";
 import { scanSymbols } from "../services/optionScan.service.js";
+import { resolveSymbolAssignments } from "../services/scannerSymbols.service.js";
 import {
   scannerPresetCreateSchema,
   scannerPresetUpdateSchema,
@@ -20,7 +20,6 @@ import {
 } from "@assup/shared";
 import type { ScannerCriteria } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
-import { isIgnorablePositionError } from "../utils/index.js";
 
 const router = Router();
 
@@ -144,48 +143,15 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    let uniqueSymbols: string[];
+    const symbolAssignments = await resolveSymbolAssignments({
+      specificSymbol: criteria.specificSymbol,
+      targetAssetClasses: criteria.targetAssetClasses,
+    });
 
-    // If specificSymbol is provided, use only that symbol
-    if (criteria.specificSymbol) {
-      uniqueSymbols = [criteria.specificSymbol.toUpperCase()];
-    } else {
-      // Get symbols from positions and watchlists
-      const symbolsSet = new Set<string>();
-
-      // Get symbols from current positions
-      try {
-        const positions = await ibkrService.getPositions();
-        positions.forEach((pos) => {
-          if (pos.contract.secType === "STK" && pos.contract.symbol) {
-            symbolsSet.add(pos.contract.symbol);
-          }
-        });
-      } catch (err: unknown) {
-        if (!isIgnorablePositionError(err)) {
-          throw err;
-        }
-      }
-
-      // Get symbols from all watchlists
-      const watchlistItems = await prisma.watchlistItem.findMany({
-        where: {
-          secType: "STK",
-        },
-        select: {
-          symbol: true,
-        },
-      });
-
-      watchlistItems.forEach((item) => symbolsSet.add(item.symbol));
-
-      uniqueSymbols = Array.from(symbolsSet);
-    }
-
-    if (uniqueSymbols.length === 0) {
+    if (symbolAssignments.length === 0) {
       res.json({
         criteria,
-        targetAssetClasses: [],
+        targetAssetClasses: criteria.targetAssetClasses || [],
         symbolsScanned: [],
         opportunities: [],
         message: "No symbols found in positions or watchlists",
@@ -193,56 +159,13 @@ router.post(
       return;
     }
 
-    // Get asset class assignments for these symbols
-    const assignmentWhere: Prisma.SecurityAssignmentWhereInput = {
-      symbol: { in: uniqueSymbols },
-      secType: "STK",
-      ...(criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0
-        ? { assetClassId: { in: criteria.targetAssetClasses } }
-        : {}),
-    };
-
-    const assignments = await prisma.securityAssignment.findMany({
-      where: assignmentWhere,
-      include: { assetClass: true },
-    });
-
-    // Filter symbols to only those with assignments (if targetAssetClasses specified)
-    const filteredSymbols = criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0
-      ? assignments.map(a => a.symbol)
-      : uniqueSymbols;
-
-    if (filteredSymbols.length === 0) {
-      res.json({
-        criteria,
-        targetAssetClasses: criteria.targetAssetClasses || [],
-        symbolsScanned: [],
-        opportunities: [],
-        message: criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0
-          ? "No symbols found with assignments to the selected asset classes"
-          : "No symbols found in positions or watchlists",
-      });
-      return;
-    }
-
-    // Create symbol to asset class mapping
-    const symbolAssignments = filteredSymbols.map((symbol) => {
-      const assignment = assignments.find((a) => a.symbol === symbol);
-      return {
-        symbol,
-        assetClass: assignment
-          ? { name: assignment.assetClass.name, color: assignment.assetClass.color }
-          : { name: "Unassigned", color: "#6b7280" },
-      };
-    });
-
     // Scan for options opportunities
     const opportunities = await scanOptionsForSymbols(symbolAssignments, criteria);
 
     res.json({
       criteria,
       targetAssetClasses: criteria.targetAssetClasses || [],
-      symbolsScanned: filteredSymbols,
+      symbolsScanned: symbolAssignments.map((s) => s.symbol),
       opportunities,
     });
   })

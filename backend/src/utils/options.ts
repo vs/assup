@@ -149,3 +149,12 @@ export function getDaysToExpiry(expiration: string, today: Date = new Date()): n
   const expirationDate = parseExpirationDate(expiration);
   return Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
+
+// --- Contract Helpers ---
+
+/**
+ * Build a standard SMART-routed stock contract for IBKR API calls.
+ */
+export function stockContract(symbol: string) {
+  return { symbol, secType: SecType.STK, exchange: "SMART", currency: "USD" };
+}

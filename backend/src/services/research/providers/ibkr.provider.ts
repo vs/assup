@@ -18,11 +18,8 @@ import {
   getReferencePrice,
   filterChainByStrike,
   marketDataKey,
+  stockContract,
 } from "../../../utils/options.js";
-
-function stockContract(symbol: string) {
-  return { symbol, secType: SecType.STK, exchange: "SMART", currency: "USD" };
-}
 
 class IBKRProvider implements MarketDataProvider {
   name = "ibkr";

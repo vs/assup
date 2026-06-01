@@ -16,6 +16,8 @@ import type {
 } from "@assup/shared";
 
 class TaxExportService {
+  private static readonly VALUE_TEST_THRESHOLD = 100_000;
+
   /**
    * Generate XLSX export for tax reporting
    */
@@ -86,8 +88,8 @@ class TaxExportService {
       },
       valueTest: {
         grossProceedsCzk: stockTrades.grossProceedsCzk,
-        thresholdCzk: 100_000,
-        isExempt: stockTrades.grossProceedsCzk < 100_000,
+        thresholdCzk: TaxExportService.VALUE_TEST_THRESHOLD,
+        isExempt: stockTrades.grossProceedsCzk < TaxExportService.VALUE_TEST_THRESHOLD,
       },
       missingRecords: [],
       canExport: true,

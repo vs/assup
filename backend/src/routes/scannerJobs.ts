@@ -13,10 +13,9 @@ import { sseService } from "../services/sse.js";
 import { scanSymbols } from "../services/optionScan.service.js";
 import { scannerCriteriaSchema } from "@assup/shared";
 import { NotFoundError, IBKRConnectionError } from "../errors/index.js";
-import { isIgnorablePositionError } from "../utils/errorUtils.js";
 import { z } from "zod";
 import type { OptionOpportunity } from "@assup/shared";
-import { Prisma } from "@prisma/client";
+import { resolveSymbolAssignments } from "../services/scannerSymbols.service.js";
 
 const router = Router();
 
@@ -143,75 +142,17 @@ async function executeJobScan(
   signal: AbortSignal,
   progress: { setTotalSymbols: (n: number) => Promise<void>; symbolComplete: (s: string, ac: string, opps: OptionOpportunity[]) => Promise<void> }
 ): Promise<void> {
-  // Collect symbols from positions and watchlists
-  let uniqueSymbols: string[];
-
-  if (criteria.specificSymbol) {
-    uniqueSymbols = [criteria.specificSymbol.toUpperCase()];
-  } else {
-    const symbolsSet = new Set<string>();
-
-    try {
-      const positions = await ibkrService.getPositions();
-      positions.forEach((pos) => {
-        if (pos.contract.secType === "STK" && pos.contract.symbol) {
-          symbolsSet.add(pos.contract.symbol);
-        }
-      });
-    } catch (err: unknown) {
-      if (!isIgnorablePositionError(err)) {
-        throw err;
-      }
-    }
-
-    const watchlistItems = await prisma.watchlistItem.findMany({
-      where: { secType: "STK" },
-      select: { symbol: true },
-    });
-    watchlistItems.forEach((item) => symbolsSet.add(item.symbol));
-
-    uniqueSymbols = Array.from(symbolsSet);
-  }
-
-  if (uniqueSymbols.length === 0) {
-    return;
-  }
-
-  // Get asset class assignments
-  const assignmentWhere: Prisma.SecurityAssignmentWhereInput = {
-    symbol: { in: uniqueSymbols },
-    secType: "STK",
-  };
-
-  if (criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0) {
-    assignmentWhere.assetClassId = { in: criteria.targetAssetClasses };
-  }
-
-  const assignments = await prisma.securityAssignment.findMany({
-    where: assignmentWhere,
-    include: { assetClass: true },
+  const resolved = await resolveSymbolAssignments({
+    specificSymbol: criteria.specificSymbol,
+    targetAssetClasses: criteria.targetAssetClasses,
   });
 
-  const filteredSymbols =
-    criteria.targetAssetClasses && criteria.targetAssetClasses.length > 0
-      ? assignments.map((a) => a.symbol)
-      : uniqueSymbols;
-
-  if (filteredSymbols.length === 0) {
+  if (resolved.length === 0) {
     return;
   }
 
-  // Build symbol-to-asset-class map
   const symbolAssignments = new Map(
-    filteredSymbols.map((symbol) => {
-      const assignment = assignments.find((a) => a.symbol === symbol);
-      return [
-        symbol,
-        assignment
-          ? { name: assignment.assetClass.name, color: assignment.assetClass.color }
-          : { name: "Unassigned", color: "#6b7280" },
-      ] as const;
-    })
+    resolved.map((r) => [r.symbol, r.assetClass] as const)
   );
 
   // Delegate to shared scan logic
