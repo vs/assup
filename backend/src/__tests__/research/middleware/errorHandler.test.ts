@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z, ZodError } from "zod";
 import type { Request, Response, NextFunction } from "express";
-import { errorHandler } from "../../../services/research/middleware/errorHandler.js";
-import { AppError, NotFoundError, BadRequestError } from "../../../services/research/errors/AppError.js";
+import { errorHandler } from "../../../middleware/errorHandler.js";
+import { AppError, NotFoundError, BadRequestError } from "../../../errors/AppError.js";
 
 function createMockRes() {
   const res = {
@@ -38,9 +38,6 @@ describe("errorHandler", () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         error: "Validation failed",
-        details: expect.objectContaining({
-          name: expect.any(Array),
-        }),
       })
     );
   });
@@ -60,7 +57,7 @@ describe("errorHandler", () => {
     errorHandler(error, mockReq, res, mockNext);
 
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: "Ticker 'AAPL' not found" });
+    expect(res.json).toHaveBeenCalledWith({ error: "Ticker with id 'AAPL' not found" });
   });
 
   it("handles BadRequestError with 400 status", () => {

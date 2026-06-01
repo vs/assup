@@ -23,7 +23,6 @@ import taxesRouter from "./routes/taxes.js";
 import wheelRouter from "./routes/wheel.js";
 import wheelStrategyRouter from "./routes/wheelStrategy.js";
 import researchRouter from "./routes/research.js";
-import wheelScannerRouter from "./routes/wheelScanner.js";
 import tickerProfileRouter from "./routes/tickerProfile.js";
 import ironCondorRouter from "./routes/ironCondor.js";
 import spreadsRouter from "./routes/spreads.js";
@@ -99,7 +98,6 @@ app.use("/api/taxes", taxesRouter);
 app.use("/api/wheel", wheelRouter);
 app.use("/api/wheel-strategy", wheelStrategyRouter);
 app.use("/api/research", researchRouter);
-app.use("/api/wheel-scanner", wheelScannerRouter);
 app.use("/api/ticker-profile", tickerProfileRouter);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use("/api/iron-condor/order", orderLimiter as any);
