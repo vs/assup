@@ -2,7 +2,7 @@
  * ScanJobRow - displays a single scan job with expand/collapse
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ScanJob } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,14 +29,18 @@ interface ScanJobRowProps {
 }
 
 export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowProps) {
-  const [expanded, setExpanded] = useState(job.status === "running");
-  const [prevOpCount, setPrevOpCount] = useState(job.opportunities.length);
+  const [expanded, setExpanded] = useState(
+    job.status === "running" || job.opportunities.length > 0
+  );
 
   // Auto-expand when first results arrive during a running scan
-  if (job.status === "running" && job.opportunities.length > 0 && prevOpCount === 0) {
-    setExpanded(true);
-    setPrevOpCount(job.opportunities.length);
-  }
+  const hasOpportunities = job.opportunities.length > 0;
+  useEffect(() => {
+    if (job.status === "running" && hasOpportunities) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time expansion on first results, not a cascading render
+      setExpanded(true);
+    }
+  }, [hasOpportunities, job.status]);
 
   const isRunning = job.status === "running";
   const isCompleted = job.status === "completed";
