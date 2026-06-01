@@ -15,21 +15,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/api";
-import type { ActiveSpread, SpreadMode } from "@assup/shared";
+import type { ActiveSpread } from "@assup/shared";
+import { spreadModeLabel } from "./utils";
 
 interface CloseSpreadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   spread: ActiveSpread | null;
   onSuccess: () => void;
-}
-
-function spreadModeLabel(mode: SpreadMode): string {
-  switch (mode) {
-    case "put-spread": return "Put Spread";
-    case "call-spread": return "Call Spread";
-    case "iron-condor": return "Iron Condor";
-  }
 }
 
 export function CloseSpreadDialog({ open, onOpenChange, spread, onSuccess }: CloseSpreadDialogProps) {

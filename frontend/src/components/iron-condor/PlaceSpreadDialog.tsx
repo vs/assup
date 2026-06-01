@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/api";
 import type { IronCondorOrderLeg, IronCondorChainStrike, SpreadMode } from "@assup/shared";
+import { spreadModeLabel } from "./utils";
 
 interface PlaceSpreadDialogProps {
   open: boolean;
@@ -35,14 +36,6 @@ interface PlaceSpreadDialogProps {
   maxLoss: number;
   mode: SpreadMode;
   chain: IronCondorChainStrike[];
-}
-
-function spreadModeLabel(mode: SpreadMode): string {
-  switch (mode) {
-    case "put-spread": return "Put Spread";
-    case "call-spread": return "Call Spread";
-    case "iron-condor": return "Iron Condor";
-  }
 }
 
 function getOption(chain: IronCondorChainStrike[], strike: number, type: "PUT" | "CALL") {

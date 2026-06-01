@@ -5,6 +5,7 @@
 import { Button } from "@/components/ui/button";
 import { PayoffDiagram } from "./PayoffDiagram";
 import type { IronCondorAnalyzeResponse, IronCondorChainStrike, SpreadSelectedLegs, SpreadMode } from "@assup/shared";
+import { spreadModeLabel } from "./utils";
 
 interface SpreadAnalysisProps {
   analysis: IronCondorAnalyzeResponse | null;
@@ -21,14 +22,6 @@ interface SpreadAnalysisProps {
 function getOptionForStrike(chain: IronCondorChainStrike[], strike: number, type: "PUT" | "CALL") {
   const entry = chain.find(c => c.strike === strike);
   return type === "PUT" ? entry?.put : entry?.call;
-}
-
-function spreadModeLabel(mode: SpreadMode): string {
-  switch (mode) {
-    case "put-spread": return "Put Spread";
-    case "call-spread": return "Call Spread";
-    case "iron-condor": return "Iron Condor";
-  }
 }
 
 export function SpreadAnalysis({

@@ -6,20 +6,13 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
-import type { ActiveSpread, ActiveSpreadLeg, SpreadMode } from "@assup/shared";
+import type { ActiveSpread, ActiveSpreadLeg } from "@assup/shared";
+import { spreadModeLabel } from "./utils";
 
 interface ActiveSpreadsListProps {
   spreads: ActiveSpread[];
   symbol: string;
   onClose: (spread: ActiveSpread) => void;
-}
-
-function spreadModeLabel(mode: SpreadMode): string {
-  switch (mode) {
-    case "put-spread": return "Put Spread";
-    case "call-spread": return "Call Spread";
-    case "iron-condor": return "Iron Condor";
-  }
 }
 
 function formatExpiry(expiry: string): string {
