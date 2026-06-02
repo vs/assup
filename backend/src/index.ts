@@ -27,6 +27,7 @@ import researchRouter from "./routes/research.js";
 import tickerProfileRouter from "./routes/tickerProfile.js";
 import ironCondorRouter from "./routes/ironCondor.js";
 import spreadsRouter from "./routes/spreads.js";
+import spreadStreamRouter from "./routes/spreadStream.js";
 import { scanJobService } from "./services/scanJob.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
 import { initAnalyzers } from "./services/research/analyzers/index.js";
@@ -105,6 +106,7 @@ app.use("/api/iron-condor/order", orderLimiter as any);
 app.use("/api/iron-condor", ironCondorRouter);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use("/api/spreads/close", orderLimiter as any);
+app.use("/api/spreads", spreadStreamRouter);
 app.use("/api/spreads", spreadsRouter);
 
 app.get("/api/health", asyncHandler(async (req, res) => {
