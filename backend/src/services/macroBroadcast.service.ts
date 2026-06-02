@@ -55,8 +55,8 @@ class MacroBroadcastService {
       ibkrService.getMarketData(SPX_CONTRACT).catch(() => null),
     ]);
 
-    const vix = vixData?.last ?? vixData?.close ?? null;
-    const sp500Index = spxData?.last ?? spxData?.close ?? null;
+    const vix = vixData?.last || vixData?.close || null;
+    const sp500Index = spxData?.last || spxData?.close || null;
 
     if (vix == null && sp500Index == null) return null;
 
