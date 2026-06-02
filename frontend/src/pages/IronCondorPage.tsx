@@ -18,6 +18,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { api } from "@/api";
+import { settingsApi } from "@/api/settings";
 import { OptionsChainTable } from "@/components/iron-condor/OptionsChainTable";
 import { SpreadAnalysis } from "@/components/iron-condor/SpreadAnalysis";
 import { PlaceSpreadDialog } from "@/components/iron-condor/PlaceSpreadDialog";
@@ -33,7 +34,7 @@ import type {
   ActiveSpread,
 } from "@assup/shared";
 
-const SUPPORTED_SYMBOLS = ["SPX", "XSP", "RUT"] as const;
+const DEFAULT_SYMBOLS = ["SPX", "XSP", "RUT"];
 const SPREAD_MODES: { value: SpreadMode; label: string }[] = [
   { value: "put-spread", label: "Put Spread" },
   { value: "call-spread", label: "Call Spread" },
@@ -57,6 +58,9 @@ function findClosestDelta(chain: IronCondorChainStrike[], targetDelta: number, t
 }
 
 export function IronCondorPage() {
+  // Configurable symbols from settings
+  const [symbols, setSymbols] = useState<string[]>(DEFAULT_SYMBOLS);
+
   // Parameters
   const [symbol, setSymbol] = useState<string>("SPX");
   const [mode, setMode] = useState<SpreadMode>("put-spread");
@@ -84,6 +88,18 @@ export function IronCondorPage() {
   const [activeSpreads, setActiveSpreads] = useState<ActiveSpread[]>([]);
   const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+
+  // Load symbols from settings
+  useEffect(() => {
+    settingsApi.get<{ symbols: string[] }>("spreads")
+      .then(r => {
+        if (r.value?.symbols?.length > 0) {
+          setSymbols(r.value.symbols);
+          setSymbol(r.value.symbols[0]);
+        }
+      })
+      .catch(() => {}); // Use defaults
+  }, []);
 
   const hasPutSide = mode === "put-spread" || mode === "iron-condor";
   const hasCallSide = mode === "call-spread" || mode === "iron-condor";
@@ -308,7 +324,7 @@ export function IronCondorPage() {
         <div className="flex items-center gap-2">
           <Label className="text-[10px] uppercase text-muted-foreground">Symbol</Label>
           <div className="flex rounded-md border overflow-hidden">
-            {SUPPORTED_SYMBOLS.map(sym => (
+            {symbols.map(sym => (
               <button
                 key={sym}
                 onClick={() => handleSymbolChange(sym)}

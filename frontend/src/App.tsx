@@ -20,6 +20,7 @@ const ImportsSection = lazy(() => import("@/pages/settings/ImportsSection").then
 const AssetClassesSection = lazy(() => import("@/pages/settings/AssetClassesSection").then((m) => ({ default: m.AssetClassesSection })));
 const ExchangeRatesSection = lazy(() => import("@/pages/settings/ExchangeRatesSection").then((m) => ({ default: m.ExchangeRatesSection })));
 const ResearchSection = lazy(() => import("@/pages/settings/ResearchSection").then((m) => ({ default: m.ResearchSection })));
+const SpreadsSection = lazy(() => import("@/pages/settings/SpreadsSection").then((m) => ({ default: m.SpreadsSection })));
 
 function SymbolRedirect() {
   const { symbol } = useParams();
@@ -56,6 +57,7 @@ function App() {
               <Route path="asset-classes" element={<AssetClassesSection />} />
               <Route path="exchange-rates" element={<ExchangeRatesSection />} />
               <Route path="research" element={<ResearchSection />} />
+              <Route path="spreads" element={<SpreadsSection />} />
             </Route>
           </Route>
         </Routes>

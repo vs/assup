@@ -260,19 +260,21 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
     throw new Error("Not connected to TWS");
   }
 
-  // Use symbol-specific config
-  const config = SYMBOL_CONFIG[symbol];
-  if (!config) throw new Error(`Unsupported symbol: ${symbol}. Supported: ${Object.keys(SYMBOL_CONFIG).join(", ")}`);
+  // Use symbol-specific config if known, otherwise default to stock
+  const config = SYMBOL_CONFIG[symbol] ?? { tradingClass: symbol, multiplier: 100 };
+  const isIndex = symbol in SYMBOL_CONFIG;
 
   // In IBKR, some options are listed under a different symbol than the index
   // (e.g. XSP options are listed under SPX with tradingClass XSPW)
   const optionSymbol = config.optionSymbol ?? symbol;
+  const secType = isIndex ? SecType.IND : SecType.STK;
+  const exchange = isIndex ? "CBOE" : "SMART";
 
-  // 1. Get underlying price from the actual index
+  // 1. Get underlying price
   const underlyingContract: Contract = {
     symbol: optionSymbol,
-    secType: SecType.IND,
-    exchange: "CBOE",
+    secType,
+    exchange,
     currency: "USD",
   };
 
@@ -294,7 +296,7 @@ export async function getChain(symbol: string, targetDte: number): Promise<IronC
   const secDefs = await api.getSecDefOptParams(
     optionSymbol,
     "",
-    SecType.IND,
+    secType,
     details[0].contract.conId!,
   );
 

@@ -6,6 +6,7 @@ const settingsTabs = [
   { to: "/settings/asset-classes", label: "Asset Classes" },
   { to: "/settings/exchange-rates", label: "Exchange Rates" },
   { to: "/settings/research", label: "Research" },
+  { to: "/settings/spreads", label: "Spreads" },
 ];
 
 export function SettingsPage() {
