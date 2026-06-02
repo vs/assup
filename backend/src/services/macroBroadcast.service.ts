@@ -8,9 +8,7 @@
 import { Contract, SecType } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
 import { sseService } from "./sse.js";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "../db/index.js";
 
 const VIX_CONTRACT: Contract = { symbol: "VIX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
 const SPX_CONTRACT: Contract = { symbol: "SPX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
