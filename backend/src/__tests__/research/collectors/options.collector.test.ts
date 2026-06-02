@@ -6,6 +6,8 @@ vi.mock("../../../services/ibkr.js", () => ({
   ibkrService: {
     isConnected: vi.fn(),
     setMarketDataType: vi.fn(),
+    acquireLiveMarketData: vi.fn(),
+    releaseLiveMarketData: vi.fn(),
   },
 }));
 
@@ -79,20 +81,18 @@ describe("optionsCollector", () => {
     expect(mockProvider.getOptionsChain).toHaveBeenCalledWith("AAPL", 4);
   });
 
-  it("switches to live/frozen data and reverts to delayed", async () => {
+  it("acquires and releases live market data", async () => {
     mockProvider.getOptionsChain.mockResolvedValue([
       { symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 0, impliedVolatility: 0.3, delta: 0.5, gamma: null, theta: null },
     ]);
     await optionsCollector.collect("AAPL");
-    // Should switch to Frozen (2) since isMarketOpen returns false
-    expect(mockIbkrService.setMarketDataType).toHaveBeenCalledWith(2);
-    // Should revert to Delayed (3)
-    expect(mockIbkrService.setMarketDataType).toHaveBeenCalledWith(3);
+    expect(mockIbkrService.acquireLiveMarketData).toHaveBeenCalled();
+    expect(mockIbkrService.releaseLiveMarketData).toHaveBeenCalled();
   });
 
-  it("reverts to delayed even when getOptionsChain fails", async () => {
+  it("releases live market data even when getOptionsChain fails", async () => {
     mockProvider.getOptionsChain.mockRejectedValue(new Error("TWS error"));
     await expect(optionsCollector.collect("AAPL")).rejects.toThrow("TWS error");
-    expect(mockIbkrService.setMarketDataType).toHaveBeenLastCalledWith(3);
+    expect(mockIbkrService.releaseLiveMarketData).toHaveBeenCalled();
   });
 });
