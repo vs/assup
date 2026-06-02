@@ -123,3 +123,11 @@ export interface ActiveSpread {
   closeMidPrice: number | null;
   orphanLegs: ActiveSpreadLeg[];
 }
+
+export type {
+  SpreadStreamInitEvent,
+  ChainUpdateEvent,
+  PositionsUpdateEvent,
+  StreamErrorEvent,
+  SpreadStreamEvent,
+} from "./spreadStream.js";
