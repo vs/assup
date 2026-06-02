@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import type { MacroAnalysis } from "@assup/shared";
 import { researchApi } from "@/api";
+import { useMacroUpdates } from "@/hooks/useSSE";
 
 interface MacroContextValue {
   macro: MacroAnalysis | null;
@@ -27,12 +28,21 @@ export function MacroProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setRefreshing(false));
   }, []);
 
+  // Initial fetch from API
   useEffect(() => {
     researchApi
       .getMacro()
       .then(setMacro)
       .catch(() => {});
   }, []);
+
+  // Live updates via SSE — merges live VIX/SPX into the current macro state
+  useMacroUpdates((data) => {
+    const update = data as MacroAnalysis;
+    if (update?.details) {
+      setMacro(update);
+    }
+  });
 
   return (
     <MacroContext.Provider value={{ macro, refresh, refreshing }}>

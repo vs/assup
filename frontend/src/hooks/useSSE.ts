@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getApiBase } from "@/lib/apiConfig";
 
-type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job" | "wheel_scanner" | "research_job" | "wheel_strategy";
+type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job" | "wheel_scanner" | "research_job" | "wheel_strategy" | "macro";
 
 // Singleton SSE connection manager
 // Pauses when tab is hidden to avoid exhausting Chrome's 6-connection-per-origin
@@ -230,6 +230,26 @@ export function usePositionUpdates(onUpdate: () => void) {
     const unsubscribe = sseManager.subscribe();
     const removeListener = sseManager.addListener("position", () => {
       callbackRef.current();
+    });
+
+    return () => {
+      removeListener();
+      unsubscribe();
+    };
+  }, []);
+}
+
+// Hook that receives live macro data updates
+export function useMacroUpdates(onUpdate: (data: unknown) => void) {
+  const callbackRef = useRef(onUpdate);
+  useEffect(() => {
+    callbackRef.current = onUpdate;
+  });
+
+  useEffect(() => {
+    const unsubscribe = sseManager.subscribe();
+    const removeListener = sseManager.addListener("macro", (data) => {
+      callbackRef.current(data);
     });
 
     return () => {

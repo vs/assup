@@ -4,6 +4,7 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { ibkrService } from "./services/ibkr.js";
 import { sseService } from "./services/sse.js";
+import { macroBroadcastService } from "./services/macroBroadcast.service.js";
 import { prisma } from "./db/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { asyncHandler } from "./middleware/asyncHandler.js";
@@ -210,6 +211,7 @@ initAnalyzers();
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   scanJobService.init();
+  macroBroadcastService.start();
 
   // Start research scheduler if enabled
   if (process.env.SCHEDULER_ENABLED === "true") {
