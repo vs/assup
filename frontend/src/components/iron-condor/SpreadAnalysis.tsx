@@ -13,7 +13,6 @@ interface SpreadAnalysisProps {
   chain: IronCondorChainStrike[];
   underlyingPrice: number;
   quantity: number;
-  loading: boolean;
   onPlaceOrder: () => void;
   mode: SpreadMode;
   symbol: string;
@@ -30,7 +29,6 @@ export function SpreadAnalysis({
   chain,
   underlyingPrice,
   quantity,
-  loading,
   onPlaceOrder,
   mode,
   symbol,
@@ -274,7 +272,7 @@ export function SpreadAnalysis({
       <Button
         className="w-full"
         size="lg"
-        disabled={!legsReady || !analysis || loading}
+        disabled={!legsReady || !analysis}
         onClick={onPlaceOrder}
       >
         {analysis
