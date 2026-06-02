@@ -67,6 +67,36 @@ const ChainRow = memo(function ChainRow({
   const label = getLegLabel(entry.strike, selectedLegs);
   const style = getLegStyle(entry.strike, selectedLegs);
 
+  const prevValues = useRef({
+    putBid: entry.put?.bid,
+    putAsk: entry.put?.ask,
+    callBid: entry.call?.bid,
+    callAsk: entry.call?.ask,
+  });
+
+  const [flashCells, setFlashCells] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const flashes: Record<string, boolean> = {};
+    if (prevValues.current.putBid !== entry.put?.bid) flashes.putBid = true;
+    if (prevValues.current.putAsk !== entry.put?.ask) flashes.putAsk = true;
+    if (prevValues.current.callBid !== entry.call?.bid) flashes.callBid = true;
+    if (prevValues.current.callAsk !== entry.call?.ask) flashes.callAsk = true;
+
+    prevValues.current = {
+      putBid: entry.put?.bid,
+      putAsk: entry.put?.ask,
+      callBid: entry.call?.bid,
+      callAsk: entry.call?.ask,
+    };
+
+    if (Object.keys(flashes).length > 0) {
+      setFlashCells(flashes);
+      const timer = setTimeout(() => setFlashCells({}), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [entry.put?.bid, entry.put?.ask, entry.call?.bid, entry.call?.ask]);
+
   const putActive = mode === "put-spread" || mode === "iron-condor";
   const callActive = mode === "call-spread" || mode === "iron-condor";
 
@@ -100,10 +130,14 @@ const ChainRow = memo(function ChainRow({
       <div className="grid gap-1 py-1 px-1 text-xs" style={{ gridTemplateColumns: "50px 50px 45px 40px 70px 40px 45px 50px 50px" }}>
         {/* Put side */}
         <div className={`text-right ${putCellClass}`} onClick={handlePutClick}>
-          {formatPrice(entry.put?.bid)}
+          <span className={`transition-colors duration-300 rounded px-0.5${flashCells.putBid ? " bg-blue-500/20" : ""}`}>
+            {formatPrice(entry.put?.bid)}
+          </span>
         </div>
         <div className={`text-right ${putCellClass}`} onClick={handlePutClick}>
-          {formatPrice(entry.put?.ask)}
+          <span className={`transition-colors duration-300 rounded px-0.5${flashCells.putAsk ? " bg-blue-500/20" : ""}`}>
+            {formatPrice(entry.put?.ask)}
+          </span>
         </div>
         <div className={`text-right text-red-600 ${putCellClass}`} onClick={handlePutClick}>
           {formatDelta(entry.put?.delta)}
@@ -126,10 +160,14 @@ const ChainRow = memo(function ChainRow({
           {formatDelta(entry.call?.delta)}
         </div>
         <div className={callCellClass} onClick={handleCallClick}>
-          {formatPrice(entry.call?.bid)}
+          <span className={`transition-colors duration-300 rounded px-0.5${flashCells.callBid ? " bg-blue-500/20" : ""}`}>
+            {formatPrice(entry.call?.bid)}
+          </span>
         </div>
         <div className={callCellClass} onClick={handleCallClick}>
-          {formatPrice(entry.call?.ask)}
+          <span className={`transition-colors duration-300 rounded px-0.5${flashCells.callAsk ? " bg-blue-500/20" : ""}`}>
+            {formatPrice(entry.call?.ask)}
+          </span>
         </div>
       </div>
       {label && (
