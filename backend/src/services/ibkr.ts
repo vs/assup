@@ -1507,6 +1507,62 @@ class IBKRService {
     });
   }
 
+  subscribeMarketData(
+    contract: Contract,
+    onUpdate: (data: StreamTickData) => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    if (!this.api) throw new Error("Not connected to TWS");
+
+    const mdContract =
+      contract.secType === SecType.OPT
+        ? { ...contract, exchange: "SMART" }
+        : contract;
+
+    const subscription = this.api
+      .getMarketData(mdContract, "", false, false)
+      .subscribe({
+        next: (update) => {
+          const data: StreamTickData = {};
+
+          const all = update.all;
+          if (!all) return;
+
+          // Standard ticks (same tick types as existing getMarketData)
+          if (all.has(1)) data.bid = all.get(1)!.value;
+          else if (all.has(66)) data.bid = all.get(66)!.value;
+          if (all.has(2)) data.ask = all.get(2)!.value;
+          else if (all.has(67)) data.ask = all.get(67)!.value;
+          if (all.has(4)) data.last = all.get(4)!.value;
+          else if (all.has(68)) data.last = all.get(68)!.value;
+
+          // Option greeks
+          if (contract.secType === SecType.OPT) {
+            const deltaVal =
+              all.get(10041)?.value ??
+              all.get(10047)?.value ??
+              all.get(10005)?.value;
+            if (deltaVal !== undefined) data.delta = deltaVal;
+
+            const ivVal =
+              all.get(10044)?.value ??
+              all.get(10050)?.value ??
+              all.get(24)?.value;
+            if (ivVal !== undefined) data.impliedVolatility = ivVal;
+          }
+
+          onUpdate(data);
+        },
+        error: (err) => {
+          if (onError) onError(err);
+        },
+      });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }
+
   async disconnect() {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
