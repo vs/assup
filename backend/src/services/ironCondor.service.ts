@@ -14,7 +14,7 @@ import {
 } from "@stoqey/ib";
 import type { Order } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
-import { withLiveMarketData } from "../utils/options.js";
+import { withLiveMarketData, SYMBOL_CONFIG } from "../utils/options.js";
 import { parseExpirationDate } from "../utils/market.js";
 import type {
   IronCondorAnalyzeRequest,
@@ -25,19 +25,6 @@ import type {
   IronCondorOrderRequest,
   IronCondorOrderResponse,
 } from "@assup/shared";
-
-const SYMBOL_CONFIG: Record<string, {
-  tradingClass: string;
-  multiplier: number;
-  /** IBKR symbol for the option contracts (e.g. XSP options are listed under SPX with tradingClass XSPW) */
-  optionSymbol?: string;
-  /** Divisor to derive this symbol's price from the optionSymbol's price (e.g. XSP = SPX / 10) */
-  priceDivisor?: number;
-}> = {
-  SPX: { tradingClass: "SPXW", multiplier: 100 },
-  XSP: { tradingClass: "XSPW", multiplier: 100, optionSymbol: "SPX", priceDivisor: 10 },
-  RUT: { tradingClass: "RUTW", multiplier: 100 },
-};
 
 // --- Black-Scholes ---
 

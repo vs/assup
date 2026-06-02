@@ -8,6 +8,33 @@ import { SecType } from "@stoqey/ib";
 import { ibkrService, type OptionChainEntry } from "../services/ibkr.js";
 import { parseExpirationDate } from "./market.js";
 
+// --- Symbol Configuration ---
+
+/**
+ * Index-specific option configuration: trading class, multiplier,
+ * and optional symbol/price mapping for mini indices (e.g. XSP → SPX/10).
+ */
+export const SYMBOL_CONFIG: Record<
+  string,
+  {
+    tradingClass: string;
+    multiplier: number;
+    /** IBKR symbol for the option contracts (e.g. XSP options are listed under SPX with tradingClass XSPW) */
+    optionSymbol?: string;
+    /** Divisor to derive this symbol's price from the optionSymbol's price (e.g. XSP = SPX / 10) */
+    priceDivisor?: number;
+  }
+> = {
+  SPX: { tradingClass: "SPXW", multiplier: 100 },
+  XSP: {
+    tradingClass: "XSPW",
+    multiplier: 100,
+    optionSymbol: "SPX",
+    priceDivisor: 10,
+  },
+  RUT: { tradingClass: "RUTW", multiplier: 100 },
+};
+
 // --- Market Data Type Switching ---
 
 /**
