@@ -6,7 +6,7 @@
 
 import { SecType } from "@stoqey/ib";
 import { ibkrService, type OptionChainEntry } from "../services/ibkr.js";
-import { isMarketOpen, parseExpirationDate } from "./market.js";
+import { parseExpirationDate } from "./market.js";
 
 // --- Market Data Type Switching ---
 
@@ -15,21 +15,11 @@ import { isMarketOpen, parseExpirationDate } from "./market.js";
  * reverting to Delayed when done. Used by scanner routes, scan jobs, and research collector.
  */
 export async function withLiveMarketData<T>(fn: () => Promise<T>): Promise<T> {
-  const type = isMarketOpen() ? 1 : 2;
-  try {
-    ibkrService.setMarketDataType(type as 1 | 2);
-  } catch {
-    // continue with whatever type is active
-  }
-
+  ibkrService.acquireLiveMarketData();
   try {
     return await fn();
   } finally {
-    try {
-      ibkrService.setMarketDataType(3); // Delayed
-    } catch {
-      // ignore
-    }
+    ibkrService.releaseLiveMarketData();
   }
 }
 

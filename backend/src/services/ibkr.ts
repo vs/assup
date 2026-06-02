@@ -25,6 +25,7 @@ import { ScanCode, Instrument, LocationCode } from "@stoqey/ib";
 import type { ImportedTrade } from "@prisma/client";
 import { Subscription, lastValueFrom } from "rxjs";
 import { BadRequestError } from "../errors/index.js";
+import { isMarketOpen } from "../utils/market.js";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -76,6 +77,15 @@ interface TickerData {
   close?: number;
   delta?: number;
   volume?: number;
+  impliedVolatility?: number;
+}
+
+export interface StreamTickData {
+  bid?: number;
+  ask?: number;
+  last?: number;
+  close?: number;
+  delta?: number;
   impliedVolatility?: number;
 }
 
@@ -671,6 +681,31 @@ class IBKRService {
     const typeNames = { 1: "Live", 2: "Frozen", 3: "Delayed", 4: "Delayed-Frozen" };
     this.api.setMarketDataType(type);
     console.log(`Set market data type to: ${typeNames[type]} (${type})`);
+  }
+
+  private liveMarketDataRefCount = 0;
+
+  acquireLiveMarketData(): void {
+    this.liveMarketDataRefCount++;
+    if (this.liveMarketDataRefCount === 1) {
+      const type = isMarketOpen() ? 1 : 2;
+      try {
+        this.setMarketDataType(type as 1 | 2);
+      } catch {
+        // continue with whatever type is active
+      }
+    }
+  }
+
+  releaseLiveMarketData(): void {
+    this.liveMarketDataRefCount = Math.max(0, this.liveMarketDataRefCount - 1);
+    if (this.liveMarketDataRefCount === 0) {
+      try {
+        this.setMarketDataType(3);
+      } catch {
+        // ignore
+      }
+    }
   }
 
   // Get market data for a contract (bid, ask, last)
