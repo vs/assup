@@ -156,6 +156,11 @@ export class SpreadStreamSession {
     const multiplier = Number(
       activeDefs[0]?.multiplier ?? config.multiplier,
     );
+
+    // Acquire live market data BEFORE conId resolution — IBKR may reject
+    // contract lookups when market data type is delayed for some instruments
+    ibkrService.acquireLiveMarketData();
+
     const conIdMap = await this.resolveConIds(
       api,
       optionSymbol,
@@ -165,32 +170,23 @@ export class SpreadStreamSession {
       multiplier,
     );
 
-    // 6. Build initial chain (prices zeroed)
-    const chain: IronCondorChainStrike[] = strikes.map((strike) => ({
-      strike,
-      put: conIdMap.has(`${strike}:P`)
-        ? {
-            conId: conIdMap.get(`${strike}:P`)!,
-            bid: 0,
-            ask: 0,
-            mid: 0,
-            last: 0,
-            delta: 0,
-            iv: 0,
-          }
-        : null,
-      call: conIdMap.has(`${strike}:C`)
-        ? {
-            conId: conIdMap.get(`${strike}:C`)!,
-            bid: 0,
-            ask: 0,
-            mid: 0,
-            last: 0,
-            delta: 0,
-            iv: 0,
-          }
-        : null,
-    }));
+    // 6. Build initial chain — include entries for ALL strikes even without conIds.
+    // Strikes without conIds still get streaming data, just can't be used for orders.
+    const chain: IronCondorChainStrike[] = strikes.map((strike) => {
+      const putConId = conIdMap.get(`${strike}:P`);
+      const callConId = conIdMap.get(`${strike}:C`);
+      return {
+        strike,
+        put: {
+          conId: putConId ?? 0,
+          bid: 0, ask: 0, mid: 0, last: 0, delta: 0, iv: 0,
+        },
+        call: {
+          conId: callConId ?? 0,
+          bid: 0, ask: 0, mid: 0, last: 0, delta: 0, iv: 0,
+        },
+      };
+    });
 
     // 7. Send init event
     this.sendEvent("init", {
@@ -200,10 +196,7 @@ export class SpreadStreamSession {
       chain,
     } satisfies SpreadStreamInitEvent);
 
-    // 8. Acquire live market data type
-    ibkrService.acquireLiveMarketData();
-
-    // 9. Reserve market data lines and subscribe
+    // 8. Reserve market data lines and subscribe
     const totalContracts = strikes.length * 2 + 1;
     const linesGranted = marketDataLineRegistry.reserve(
       this.sessionId,
