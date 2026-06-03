@@ -36,6 +36,7 @@ export class SpreadStreamSession {
   private unsubscribers: Array<() => void> = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+  private positionInterval: ReturnType<typeof setInterval> | null = null;
   private tickBuffer: Record<string, TickBufferEntry> = {};
   private underlyingPriceBuffer: number | null = null;
   private destroyed = false;
@@ -302,6 +303,9 @@ export class SpreadStreamSession {
       }
     });
     this.unsubscribers.push(unsubIbkr);
+
+    // 13. Refresh positions periodically (every 10s) to catch new fills
+    this.positionInterval = setInterval(() => this.fetchAndSendPositions(), 10000);
   }
 
   private async resolveConIds(
@@ -393,6 +397,7 @@ export class SpreadStreamSession {
 
     if (this.flushInterval) clearInterval(this.flushInterval);
     if (this.keepaliveInterval) clearInterval(this.keepaliveInterval);
+    if (this.positionInterval) clearInterval(this.positionInterval);
 
     marketDataLineRegistry.release(this.sessionId);
     ibkrService.releaseLiveMarketData();

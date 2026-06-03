@@ -447,7 +447,6 @@ export function IronCondorPage() {
       {/* Active spreads */}
       <ActiveSpreadsList
         spreads={spreads}
-        symbol={symbol}
         onClose={handleCloseSpread}
       />
 

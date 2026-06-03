@@ -11,7 +11,6 @@ import { spreadModeLabel } from "./utils";
 
 interface ActiveSpreadsListProps {
   spreads: ActiveSpread[];
-  symbol: string;
   onClose: (spread: ActiveSpread) => void;
 }
 
@@ -135,19 +134,14 @@ function SpreadCard({ spread, onClose }: { spread: ActiveSpread; onClose: () => 
   );
 }
 
-export function ActiveSpreadsList({ spreads, symbol, onClose }: ActiveSpreadsListProps) {
+export function ActiveSpreadsList({ spreads, onClose }: ActiveSpreadsListProps) {
   const [collapsed, setCollapsed] = useState(false);
 
-  const filtered = spreads.filter(s => s.symbol === symbol);
-  const matchedSpreads = filtered.filter(s => s.legs.length > 0);
-  const orphanEntries = filtered.filter(s => s.orphanLegs.length > 0);
+  const matchedSpreads = spreads.filter(s => s.legs.length > 0);
+  const orphanEntries = spreads.filter(s => s.orphanLegs.length > 0);
   const allOrphans = orphanEntries.flatMap(s => s.orphanLegs);
 
   const count = matchedSpreads.length;
-
-  if (count === 0 && allOrphans.length === 0) {
-    return null;
-  }
 
   return (
     <div className="border rounded-lg p-3 bg-muted/20">
@@ -166,6 +160,10 @@ export function ActiveSpreadsList({ spreads, symbol, onClose }: ActiveSpreadsLis
 
       {!collapsed && (
         <div className="mt-3 space-y-2">
+          {count === 0 && allOrphans.length === 0 && (
+            <div className="text-sm text-muted-foreground py-2 px-1">No active spread positions</div>
+          )}
+
           {matchedSpreads.map(spread => (
             <SpreadCard key={spread.id} spread={spread} onClose={() => onClose(spread)} />
           ))}
