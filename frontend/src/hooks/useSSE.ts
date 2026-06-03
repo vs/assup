@@ -16,6 +16,8 @@ class SSEManager {
   private reconnectInterval = 5000;
   private subscriberCount = 0;
   private visibilityBound = false;
+  // Cache last "connection" event so late listeners get the current IBKR status
+  private _lastConnectionData: unknown = null;
 
   get connected() {
     return this._connected;
@@ -88,6 +90,11 @@ class SSEManager {
             return;
           }
 
+          // Cache connection status for late listeners
+          if (message.type === "connection") {
+            this._lastConnectionData = message.data;
+          }
+
           // Notify listeners for this event type
           const listeners = this.listeners.get(message.type);
           if (listeners) {
@@ -142,6 +149,11 @@ class SSEManager {
       this.listeners.set(type, new Set());
     }
     this.listeners.get(type)!.add(callback);
+
+    // Replay last cached connection status for new listeners
+    if (type === "connection" && this._lastConnectionData !== null) {
+      callback(this._lastConnectionData);
+    }
 
     return () => {
       this.listeners.get(type)?.delete(callback);

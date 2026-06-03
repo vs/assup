@@ -172,7 +172,7 @@ class IBKRService {
           this.handleDisconnected();
         }
       }
-    }, 5000);
+    }, 2000);
   }
 
   private connect() {
@@ -376,8 +376,9 @@ class IBKRService {
   }
 
   private notifyListeners() {
+    const status = this.getStatus();
     for (const listener of this.statusListeners) {
-      listener(this.connectionStatus);
+      listener(status);
     }
   }
 
