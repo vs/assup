@@ -49,6 +49,8 @@ function formatIV(iv: number | undefined): string {
   return iv.toFixed(1);
 }
 
+const GRID_COLS = "1fr 1fr 1fr 0.8fr 0.7fr 1.3fr 0.7fr 0.8fr 1fr 1fr 1fr";
+
 const ChainRow = memo(function ChainRow({
   entry,
   selectedLegs,
@@ -119,16 +121,16 @@ const ChainRow = memo(function ChainRow({
   }, [entry.strike, selectedLegs.sellCall, onSelectLeg, callActive]);
 
   const putCellClass = putActive
-    ? "cursor-pointer hover:bg-red-100/60 rounded px-0.5"
-    : "opacity-30 px-0.5";
+    ? "cursor-pointer hover:bg-red-100/60 rounded px-1"
+    : "opacity-30 px-1";
   const callCellClass = callActive
-    ? "cursor-pointer hover:bg-green-100/60 rounded px-0.5"
-    : "opacity-30 px-0.5";
+    ? "cursor-pointer hover:bg-green-100/60 rounded px-1"
+    : "opacity-30 px-1";
 
   return (
     <div ref={rowRef} className={`my-0.5 ${style}`}>
-      <div className="grid gap-1.5 py-1.5 px-2 text-sm" style={{ gridTemplateColumns: "60px 60px 50px 46px 80px 46px 50px 60px 60px" }}>
-        {/* Put side */}
+      <div className="grid gap-0.5 py-2 px-3 tabular-nums" style={{ gridTemplateColumns: GRID_COLS }}>
+        {/* Put side: Bid, Ask, Mid, Delta, IV */}
         <div className={`text-right ${putCellClass}`} onClick={handlePutClick}>
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.putBid ? " bg-blue-500/20" : ""}`}>
             {formatPrice(entry.put?.bid)}
@@ -138,6 +140,9 @@ const ChainRow = memo(function ChainRow({
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.putAsk ? " bg-blue-500/20" : ""}`}>
             {formatPrice(entry.put?.ask)}
           </span>
+        </div>
+        <div className={`text-right font-medium ${putCellClass}`} onClick={handlePutClick}>
+          {formatPrice(entry.put?.mid)}
         </div>
         <div className={`text-right text-red-600 ${putCellClass}`} onClick={handlePutClick}>
           {formatDelta(entry.put?.delta)}
@@ -152,12 +157,15 @@ const ChainRow = memo(function ChainRow({
           {isAtMoney && " \u25C6"}
         </div>
 
-        {/* Call side */}
+        {/* Call side: IV, Delta, Mid, Bid, Ask */}
         <div className={`text-muted-foreground ${!callActive ? "opacity-30" : ""}`}>
           {formatIV(entry.call?.iv)}
         </div>
         <div className={`text-green-600 ${callCellClass}`} onClick={handleCallClick}>
           {formatDelta(entry.call?.delta)}
+        </div>
+        <div className={`font-medium ${callCellClass}`} onClick={handleCallClick}>
+          {formatPrice(entry.call?.mid)}
         </div>
         <div className={callCellClass} onClick={handleCallClick}>
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.callBid ? " bg-blue-500/20" : ""}`}>
@@ -171,7 +179,7 @@ const ChainRow = memo(function ChainRow({
         </div>
       </div>
       {label && (
-        <div className={`text-[10px] px-2 pb-1 ${label.color}`}>
+        <div className={`text-xs px-3 pb-1 ${label.color}`}>
           {label.text.includes("SELL") ? "\u25BC" : "\u25B2"} {label.text}
         </div>
       )}
@@ -365,14 +373,16 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
       {expanded && (
         <>
           {/* Header */}
-          <div className="grid gap-1.5 px-2 text-[11px] text-muted-foreground uppercase font-medium pb-1.5 border-b" style={{ gridTemplateColumns: "60px 60px 50px 46px 80px 46px 50px 60px 60px" }}>
+          <div className="grid gap-0.5 px-3 text-xs text-muted-foreground uppercase font-medium pb-2 border-b" style={{ gridTemplateColumns: GRID_COLS }}>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Bid</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Ask</div>
+            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Mid</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Delta</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>IV</div>
             <div className="text-center font-semibold text-foreground">Strike</div>
             <div className={!callActive ? "opacity-30" : ""}>IV</div>
             <div className={!callActive ? "opacity-30" : ""}>Delta</div>
+            <div className={!callActive ? "opacity-30" : ""}>Mid</div>
             <div className={!callActive ? "opacity-30" : ""}>Bid</div>
             <div className={!callActive ? "opacity-30" : ""}>Ask</div>
           </div>

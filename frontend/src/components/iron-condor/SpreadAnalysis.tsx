@@ -50,12 +50,12 @@ export function SpreadAnalysis({
   // Build leg list for display
   const legEntries: { strike: number | null; type: "PUT" | "CALL"; side: "BUY" | "SELL"; label: string }[] = [];
   if (hasPutSide) {
-    legEntries.push({ strike: selectedLegs.buyPut, type: "PUT", side: "BUY", label: "Buy Put (protection)" });
-    legEntries.push({ strike: selectedLegs.sellPut, type: "PUT", side: "SELL", label: "Sell Put (income)" });
+    legEntries.push({ strike: selectedLegs.buyPut, type: "PUT", side: "BUY", label: "protection" });
+    legEntries.push({ strike: selectedLegs.sellPut, type: "PUT", side: "SELL", label: "income" });
   }
   if (hasCallSide) {
-    legEntries.push({ strike: selectedLegs.sellCall, type: "CALL", side: "SELL", label: "Sell Call (income)" });
-    legEntries.push({ strike: selectedLegs.buyCall, type: "CALL", side: "BUY", label: "Buy Call (protection)" });
+    legEntries.push({ strike: selectedLegs.sellCall, type: "CALL", side: "SELL", label: "income" });
+    legEntries.push({ strike: selectedLegs.buyCall, type: "CALL", side: "BUY", label: "protection" });
   }
 
   // Compute display values
@@ -92,8 +92,8 @@ export function SpreadAnalysis({
     <div className="space-y-4">
       {/* Recommendation summary */}
       {analysis && (
-        <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
-          <div className="text-xs font-semibold text-blue-700 uppercase mb-2">Recommended {spreadModeLabel(mode)}</div>
+        <div className="border rounded-lg p-5 bg-blue-50 border-blue-200">
+          <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Recommended {spreadModeLabel(mode)}</div>
           <p className="text-sm text-blue-900 leading-relaxed">
             Sell the <strong>{shortStrikesText}</strong> with <strong>{wingText}</strong>.
             {" "}You collect <strong className="text-green-700">${analysis.netCredit.mid.toFixed(2)}</strong> per contract
@@ -101,16 +101,16 @@ export function SpreadAnalysis({
           </p>
           <div className="mt-3 grid grid-cols-3 gap-3 text-center">
             <div>
-              <div className="text-lg font-bold text-green-700">{(analysis.probabilityOfProfit * 100).toFixed(0)}%</div>
-              <div className="text-[10px] text-blue-700">chance of profit</div>
+              <div className="text-xl font-bold text-green-700">{(analysis.probabilityOfProfit * 100).toFixed(0)}%</div>
+              <div className="text-xs text-blue-700">chance of profit</div>
             </div>
             <div>
-              <div className="text-lg font-bold text-green-700">+${analysis.maxProfit.toLocaleString()}</div>
-              <div className="text-[10px] text-blue-700">if {symbol} stays in range</div>
+              <div className="text-xl font-bold text-green-700">+${analysis.maxProfit.toLocaleString()}</div>
+              <div className="text-xs text-blue-700">if {symbol} stays in range</div>
             </div>
             <div>
-              <div className="text-lg font-bold text-red-600">-${maxLoss.toLocaleString()}</div>
-              <div className="text-[10px] text-blue-700">worst case</div>
+              <div className="text-xl font-bold text-red-600">-${maxLoss.toLocaleString()}</div>
+              <div className="text-xs text-blue-700">worst case</div>
             </div>
           </div>
           <p className="text-xs text-blue-700 mt-3">
@@ -133,153 +133,181 @@ export function SpreadAnalysis({
         </div>
       )}
 
-      {/* Selected legs detail */}
-      <div className="border rounded-lg p-3 bg-card">
-        <div className="text-[10px] text-muted-foreground uppercase font-medium mb-2">{legEntries.length} Legs of the {spreadModeLabel(mode)}</div>
-        <div className="space-y-1 text-xs">
-          {legEntries.map(({ strike, type, side, label }) => {
-            const option = strike ? getOptionForStrike(chain, strike, type) : null;
-            const isSell = side === "SELL";
-            return (
-              <div key={`${type}-${side}`} className={`flex items-center justify-between py-1 px-2 rounded ${isSell ? "bg-amber-50 font-semibold" : ""}`}>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                    type === "PUT"
-                      ? (isSell ? "bg-red-100 text-red-700" : "bg-red-50 text-red-500")
-                      : (isSell ? "bg-green-100 text-green-700" : "bg-green-50 text-green-500")
-                  }`}>
-                    {side}
-                  </span>
-                  <span>{type} {strike ?? "\u2014"}</span>
-                  <span className="text-muted-foreground font-normal">{label}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground">{"\u03B4"}{option?.delta ? (option.delta * 100).toFixed(1) : "\u2014"}</span>
-                  <span>${option?.mid?.toFixed(2) ?? "\u2014"}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {analysis && (
-          <div className="border-t mt-2 pt-2 flex justify-between text-xs font-semibold">
-            <span className="text-muted-foreground">Net Credit:</span>
-            <span className="text-green-600">
-              ${analysis.netCredit.mid.toFixed(2)} per contract {quantity > 1 ? `\u00D7 ${quantity} = $${analysis.maxProfit.toLocaleString()}` : ""}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Stats cards */}
+      {/* Legs + Stats side by side */}
       {analysis && (
-        <>
-          <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4">
+          {/* Selected legs detail */}
+          <div className="border rounded-lg p-4 bg-card">
+            <div className="text-xs text-muted-foreground uppercase font-medium tracking-wide mb-3">{legEntries.length} Legs of the {spreadModeLabel(mode)}</div>
+            <div className="space-y-1.5">
+              {legEntries.map(({ strike, type, side, label }) => {
+                const option = strike ? getOptionForStrike(chain, strike, type) : null;
+                const isSell = side === "SELL";
+                return (
+                  <div key={`${type}-${side}`} className={`flex items-center justify-between py-2 px-3 rounded ${isSell ? "bg-amber-50 font-semibold" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                        type === "PUT"
+                          ? (isSell ? "bg-red-100 text-red-700" : "bg-red-50 text-red-500")
+                          : (isSell ? "bg-green-100 text-green-700" : "bg-green-50 text-green-500")
+                      }`}>
+                        {side}
+                      </span>
+                      <span className="text-sm font-medium">{type} {strike ?? "\u2014"}</span>
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm tabular-nums">
+                      <span className="text-muted-foreground">{"\u03B4"}{option?.delta ? (option.delta * 100).toFixed(1) : "\u2014"}</span>
+                      <span className="font-medium">${option?.mid?.toFixed(2) ?? "\u2014"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="border-t mt-3 pt-3 flex justify-between text-sm font-semibold">
+              <span className="text-muted-foreground">Net Credit:</span>
+              <span className="text-green-600">
+                ${analysis.netCredit.mid.toFixed(2)} per contract {quantity > 1 ? `\u00D7 ${quantity} = $${analysis.maxProfit.toLocaleString()}` : ""}
+              </span>
+            </div>
+          </div>
+
+          {/* Stats cards */}
+          <div className="grid grid-cols-2 gap-2 content-start">
             <div className="border rounded-lg p-3 text-center bg-card">
-              <div className="text-[10px] text-muted-foreground uppercase font-medium">Max Profit</div>
-              <div className="text-xl font-semibold text-green-600">${analysis.maxProfit.toLocaleString()}</div>
-              <div className="text-[10px] text-muted-foreground">if {symbol} stays between strikes</div>
+              <div className="text-xs text-muted-foreground uppercase font-medium">Max Profit</div>
+              <div className="text-xl font-semibold text-green-600 tabular-nums">${analysis.maxProfit.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">{symbol} stays in range</div>
             </div>
             <div className="border rounded-lg p-3 text-center bg-card">
-              <div className="text-[10px] text-muted-foreground uppercase font-medium">Max Loss</div>
-              <div className="text-xl font-semibold text-red-600">-${maxLoss.toLocaleString()}</div>
-              <div className="text-[10px] text-muted-foreground">if {symbol} breaches a wing</div>
+              <div className="text-xs text-muted-foreground uppercase font-medium">Max Loss</div>
+              <div className="text-xl font-semibold text-red-600 tabular-nums">-${maxLoss.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">breaches a wing</div>
             </div>
             <div className="border rounded-lg p-3 text-center bg-card">
-              <div className="text-[10px] text-muted-foreground uppercase font-medium">Prob. of Profit</div>
-              <div className="text-xl font-semibold text-blue-600">
+              <div className="text-xs text-muted-foreground uppercase font-medium">Prob. of Profit</div>
+              <div className="text-xl font-semibold text-blue-600 tabular-nums">
                 {(analysis.probabilityOfProfit * 100).toFixed(1)}%
               </div>
-              <div className="text-[10px] text-muted-foreground">based on implied volatility</div>
+              <div className="text-xs text-muted-foreground">implied volatility</div>
             </div>
             <div className="border rounded-lg p-3 text-center bg-card">
-              <div className="text-[10px] text-muted-foreground uppercase font-medium">Risk / Reward</div>
-              <div className="text-xl font-semibold text-foreground">
+              <div className="text-xs text-muted-foreground uppercase font-medium">Risk / Reward</div>
+              <div className="text-xl font-semibold text-foreground tabular-nums">
                 1 : {analysis.riskRewardRatio.toFixed(1)}
               </div>
-              <div className="text-[10px] text-muted-foreground">reward per unit of risk</div>
+              <div className="text-xs text-muted-foreground">per unit of risk</div>
             </div>
           </div>
-
-          {/* Payoff diagram */}
-          <div className="border rounded-lg p-3 bg-card">
-            <div className="text-[10px] text-muted-foreground uppercase font-medium mb-2">P&L at Expiration</div>
-            <PayoffDiagram
-              payoffCurve={analysis.payoffCurve}
-              underlyingPrice={underlyingPrice}
-              breakEvenLow={analysis.breakEvenLow}
-              breakEvenHigh={analysis.breakEvenHigh}
-              breakEvenLowPercent={analysis.breakEvenLowPercent}
-              breakEvenHighPercent={analysis.breakEvenHighPercent}
-              maxProfit={analysis.maxProfit}
-              maxLoss={maxLoss}
-              strikes={diagramStrikes}
-            />
-          </div>
-
-          {/* Scenario breakdown */}
-          <div className="border rounded-lg p-3 bg-card space-y-3">
-            <div className="text-xs text-muted-foreground uppercase font-medium">What happens at expiration</div>
-
-            {/* Profit scenario */}
-            <div className="space-y-1">
-              <div className="text-sm font-semibold text-green-700">
-                {symbol} stays between{" "}
-                {analysis.breakEvenLow != null && <>{analysis.breakEvenLow.toLocaleString()}</>}
-                {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && " and "}
-                {analysis.breakEvenHigh != null && <>{analysis.breakEvenHigh.toLocaleString()}</>}
-                {analysis.breakEvenLow == null && analysis.breakEvenHigh != null && <> below {analysis.breakEvenHigh.toLocaleString()}</>}
-                {analysis.breakEvenHigh == null && analysis.breakEvenLow != null && <> above {analysis.breakEvenLow.toLocaleString()}</>}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                You keep the credit. Max profit <span className="text-green-600 font-semibold">+${analysis.maxProfit.toLocaleString()}</span>.
-                {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && (
-                  <> That's a <span className="font-medium">{(analysis.breakEvenHigh - analysis.breakEvenLow).toFixed(0)}-point</span> profit range.</>
-                )}
-              </div>
-            </div>
-
-            {/* Loss scenarios */}
-            {analysis.breakEvenLow != null && analysis.probabilityOfMaxLossPut != null && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-red-600">
-                  {symbol} drops below {analysis.breakEvenLow.toLocaleString()} ({analysis.breakEvenLowPercent!.toFixed(1)}% down)
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  You start losing money. Full loss at the buy put strike.
-                  {" "}<span className="text-red-600 font-medium">{(analysis.probabilityOfMaxLossPut * 100).toFixed(1)}%</span> chance of max loss on the downside.
-                </div>
-              </div>
-            )}
-
-            {analysis.breakEvenHigh != null && analysis.probabilityOfMaxLossCall != null && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-red-600">
-                  {symbol} rises above {analysis.breakEvenHigh.toLocaleString()} ({analysis.breakEvenHighPercent!.toFixed(1)}% up)
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  You start losing money. Full loss at the buy call strike.
-                  {" "}<span className="text-red-600 font-medium">{(analysis.probabilityOfMaxLossCall * 100).toFixed(1)}%</span> chance of max loss on the upside.
-                </div>
-              </div>
-            )}
-
-          </div>
-        </>
+        </div>
       )}
 
-      {/* Place order button */}
-      <Button
-        className="w-full"
-        size="lg"
-        disabled={!legsReady || !analysis}
-        onClick={onPlaceOrder}
-      >
-        {analysis
-          ? `Place ${spreadModeLabel(mode)} \u2014 Credit $${analysis.maxProfit.toLocaleString()}`
-          : "Loading analysis..."
-        }
-      </Button>
+      {/* Payoff diagram - full width */}
+      {analysis && (
+        <div className="border rounded-lg p-4 bg-card">
+          <div className="text-xs text-muted-foreground uppercase font-medium tracking-wide mb-3">P&L at Expiration</div>
+          <PayoffDiagram
+            payoffCurve={analysis.payoffCurve}
+            underlyingPrice={underlyingPrice}
+            breakEvenLow={analysis.breakEvenLow}
+            breakEvenHigh={analysis.breakEvenHigh}
+            breakEvenLowPercent={analysis.breakEvenLowPercent}
+            breakEvenHighPercent={analysis.breakEvenHighPercent}
+            maxProfit={analysis.maxProfit}
+            maxLoss={maxLoss}
+            strikes={diagramStrikes}
+          />
+        </div>
+      )}
+
+      {/* Scenario breakdown + order button */}
+      {analysis && (
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-end">
+          <div className="border rounded-lg p-4 bg-card">
+            <div className="text-xs text-muted-foreground uppercase font-medium tracking-wide mb-3">What happens at expiration</div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr] gap-3">
+              {/* Profit scenario */}
+              <div className="rounded-lg bg-green-50 border border-green-200 p-3">
+                <div className="text-sm font-semibold text-green-700 mb-1">
+                  Stays in range
+                </div>
+                <div className="text-xs text-green-800">
+                  {symbol} between{" "}
+                  {analysis.breakEvenLow != null && <>{analysis.breakEvenLow.toLocaleString()}</>}
+                  {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && " \u2013 "}
+                  {analysis.breakEvenHigh != null && <>{analysis.breakEvenHigh.toLocaleString()}</>}
+                </div>
+                <div className="text-sm font-semibold text-green-700 mt-2">
+                  +${analysis.maxProfit.toLocaleString()}
+                </div>
+                {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && (
+                  <div className="text-xs text-green-600 mt-0.5">{(analysis.breakEvenHigh - analysis.breakEvenLow).toFixed(0)}-point range</div>
+                )}
+              </div>
+
+              {/* Put loss scenario */}
+              {analysis.breakEvenLow != null && analysis.probabilityOfMaxLossPut != null && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+                  <div className="text-sm font-semibold text-red-700 mb-1">
+                    Drops below {analysis.breakEvenLow.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-red-800">
+                    {analysis.breakEvenLowPercent!.toFixed(1)}% down from current
+                  </div>
+                  <div className="text-sm font-semibold text-red-600 mt-2">
+                    -{maxLoss.toLocaleString()} max
+                  </div>
+                  <div className="text-xs text-red-600 mt-0.5">
+                    {(analysis.probabilityOfMaxLossPut * 100).toFixed(1)}% chance
+                  </div>
+                </div>
+              )}
+
+              {/* Call loss scenario */}
+              {analysis.breakEvenHigh != null && analysis.probabilityOfMaxLossCall != null && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+                  <div className="text-sm font-semibold text-red-700 mb-1">
+                    Rises above {analysis.breakEvenHigh.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-red-800">
+                    {analysis.breakEvenHighPercent!.toFixed(1)}% up from current
+                  </div>
+                  <div className="text-sm font-semibold text-red-600 mt-2">
+                    -{maxLoss.toLocaleString()} max
+                  </div>
+                  <div className="text-xs text-red-600 mt-0.5">
+                    {(analysis.probabilityOfMaxLossCall * 100).toFixed(1)}% chance
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Place order button */}
+          <Button
+            size="lg"
+            disabled={!legsReady || !analysis}
+            onClick={onPlaceOrder}
+            className="h-14 px-8 text-base whitespace-nowrap"
+          >
+            {analysis
+              ? `Place ${spreadModeLabel(mode)} \u2014 $${analysis.maxProfit.toLocaleString()}`
+              : "Loading..."
+            }
+          </Button>
+        </div>
+      )}
+
+      {/* Button fallback when no analysis */}
+      {!analysis && (
+        <Button
+          size="lg"
+          disabled
+          className="h-14 px-8 text-base"
+        >
+          Loading analysis...
+        </Button>
+      )}
     </div>
   );
 }
