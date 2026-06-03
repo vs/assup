@@ -3,7 +3,7 @@ import { useMacro } from "./MacroProvider";
 import { DailyChangeArrow } from "./DailyChangeArrow";
 import { computeFearScore, getLabelColor } from "@/lib/fearGreed";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
-import { ConnectionStatusPopup } from "@/components/ConnectionStatus";
+import { FearGreedPanel } from "@/components/ConnectionStatus";
 
 export function HeaderFearGauge() {
   const { macro } = useMacro();
@@ -27,7 +27,7 @@ export function HeaderFearGauge() {
       onMouseLeave={() => setIsHovering(false)}
     >
       <div
-        className={`flex items-center gap-3 transition-all ${dimmed ? "opacity-30 grayscale cursor-default" : ""}`}
+        className={`flex items-center gap-3 transition-all ${dimmed ? "opacity-30 grayscale cursor-default" : "cursor-default"}`}
       >
         {/* Gauge */}
         <div className="flex items-center gap-2 min-w-[160px]">
@@ -74,9 +74,14 @@ export function HeaderFearGauge() {
         </div>
       </div>
 
-      {/* Connection info popup on hover when disconnected */}
-      {dimmed && isHovering && (
-        <ConnectionStatusPopup status={status} sseError={sseError} />
+      {/* Hover panel */}
+      {isHovering && (
+        <FearGreedPanel
+          status={status}
+          sseError={sseError}
+          result={result}
+          details={macro?.details ?? null}
+        />
       )}
     </div>
   );

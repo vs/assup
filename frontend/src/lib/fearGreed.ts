@@ -1,9 +1,17 @@
 import type { MacroAnalysis } from "@assup/shared";
 
+export interface FearComponent {
+  name: string;
+  display: string;
+  change?: number | null;
+  score: number;
+  weight: number;
+}
+
 export interface FearScoreResult {
   score: number;
   label: string;
-  components: { name: string; display: string; change?: number | null }[];
+  components: FearComponent[];
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -140,7 +148,7 @@ export function computeFearScore(
     label,
     components: signals
       .filter((s) => s.name)
-      .map((s) => ({ name: s.name, display: s.display, change: s.change })),
+      .map((s) => ({ name: s.name, display: s.display, change: s.change, score: Math.round(s.score), weight: s.weight })),
   };
 }
 
