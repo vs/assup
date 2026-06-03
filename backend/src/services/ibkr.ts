@@ -419,7 +419,7 @@ class IBKRService {
 
   subscribe(listener: (status: ConnectionStatus) => void): () => void {
     this.statusListeners.add(listener);
-    listener(this.connectionStatus);
+    listener(this.getStatus());
 
     return () => {
       this.statusListeners.delete(listener);
