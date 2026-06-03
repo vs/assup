@@ -130,21 +130,30 @@ export function IronCondorPage() {
   const hasCallSide = mode === "call-spread" || mode === "iron-condor";
 
   // --- Auto-select legs based on deltas and mode ---
-  // Only re-run when chain structure changes (new strikes), not on every price tick.
-  const prevChainLenRef = useRef(0);
+  // Track whether we've successfully auto-selected legs for the current expiration.
+  // Retry when chain data gets populated (non-zero deltas arrive from stream).
+  const autoSelectDoneRef = useRef(false);
   const prevExpirationRef = useRef<string | undefined>(undefined);
 
+  // Count options with non-zero delta to detect when real data arrives
+  const chainHasDeltas = useMemo(() => {
+    return chain.some(e =>
+      (e.put && e.put.delta > 0) || (e.call && e.call.delta > 0)
+    );
+  }, [chain]);
+
   useEffect(() => {
-    const chainStructureChanged =
-      chain.length !== prevChainLenRef.current ||
-      expiration !== prevExpirationRef.current;
+    // Reset auto-select flag when expiration or mode changes
+    if (expiration !== prevExpirationRef.current) {
+      autoSelectDoneRef.current = false;
+      prevExpirationRef.current = expiration;
+    }
+  }, [expiration, mode]);
 
-    if (!chainStructureChanged) return;
-
-    prevChainLenRef.current = chain.length;
-    prevExpirationRef.current = expiration;
-
-    if (chain.length === 0) return;
+  useEffect(() => {
+    // Skip if already auto-selected for this expiration or no chain data
+    if (autoSelectDoneRef.current) return;
+    if (chain.length === 0 || !chainHasDeltas) return;
 
     const newLegs: SpreadSelectedLegs = { buyPut: null, sellPut: null, sellCall: null, buyCall: null };
 
@@ -174,8 +183,20 @@ export function IronCondorPage() {
       }
     }
 
-    setSelectedLegs(newLegs);
-  }, [chain, expiration, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide, mode]);
+    // Only mark done if we actually found legs
+    const foundLegs = (hasPutSide ? newLegs.sellPut !== null : true)
+      && (hasCallSide ? newLegs.sellCall !== null : true);
+
+    if (foundLegs) {
+      autoSelectDoneRef.current = true;
+      setSelectedLegs(newLegs);
+    }
+  }, [chain, chainHasDeltas, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide]);
+
+  // Re-run auto-select when user changes delta/wingWidth parameters
+  const handleParameterChange = useCallback(() => {
+    autoSelectDoneRef.current = false;
+  }, []);
 
   // --- Client-side analysis (instant, via useMemo) ---
   const analysis = useMemo(() => {
@@ -247,7 +268,7 @@ export function IronCondorPage() {
   // --- Mode change ---
   const handleModeChange = useCallback((newMode: SpreadMode) => {
     setMode(newMode);
-    // Explicitly reset all legs — autoSelectLegs will repopulate the relevant ones
+    autoSelectDoneRef.current = false;
     setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
   }, []);
 
@@ -368,7 +389,7 @@ export function IronCondorPage() {
               type="number"
               step={0.5}
               value={putDelta}
-              onChange={(e) => setPutDelta(parseFloat(e.target.value) || 7)}
+              onChange={(e) => { setPutDelta(parseFloat(e.target.value) || 7); handleParameterChange(); }}
               className="w-16 h-8 text-sm text-center border-red-300 text-red-600"
             />
           )}
@@ -377,7 +398,7 @@ export function IronCondorPage() {
               type="number"
               step={0.5}
               value={callDelta}
-              onChange={(e) => setCallDelta(parseFloat(e.target.value) || 3.5)}
+              onChange={(e) => { setCallDelta(parseFloat(e.target.value) || 3.5); handleParameterChange(); }}
               className="w-16 h-8 text-sm text-center border-green-300 text-green-600"
             />
           )}
@@ -389,7 +410,7 @@ export function IronCondorPage() {
             type="number"
             step={5}
             value={wingWidth}
-            onChange={(e) => setWingWidth(parseInt(e.target.value) || 100)}
+            onChange={(e) => { setWingWidth(parseInt(e.target.value) || 100); handleParameterChange(); }}
             className="w-16 h-8 text-sm text-center"
           />
         </div>

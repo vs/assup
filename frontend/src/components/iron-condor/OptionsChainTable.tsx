@@ -127,7 +127,7 @@ const ChainRow = memo(function ChainRow({
 
   return (
     <div ref={rowRef} className={`my-0.5 ${style}`}>
-      <div className="grid gap-1 py-1 px-1 text-xs" style={{ gridTemplateColumns: "50px 50px 45px 40px 70px 40px 45px 50px 50px" }}>
+      <div className="grid gap-1.5 py-1.5 px-2 text-sm" style={{ gridTemplateColumns: "60px 60px 50px 46px 80px 46px 50px 60px 60px" }}>
         {/* Put side */}
         <div className={`text-right ${putCellClass}`} onClick={handlePutClick}>
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.putBid ? " bg-blue-500/20" : ""}`}>
@@ -179,6 +179,131 @@ const ChainRow = memo(function ChainRow({
   );
 });
 
+// --- Minimap: Sublime-style sliding window showing all legs ---
+function ChainMinimap({
+  chain,
+  selectedLegs,
+  underlyingPrice,
+  scrollRef,
+  mode,
+}: {
+  chain: IronCondorChainStrike[];
+  selectedLegs: SpreadSelectedLegs;
+  underlyingPrice: number;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  mode: SpreadMode;
+}) {
+  const minimapRef = useRef<HTMLDivElement>(null);
+  const [viewportTop, setViewportTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0.2);
+
+  // Track scroll position of the main chain
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight <= 0) return;
+      setViewportTop(scrollTop / scrollHeight);
+      setViewportHeight(clientHeight / scrollHeight);
+    };
+    update();
+    el.addEventListener("scroll", update);
+    return () => el.removeEventListener("scroll", update);
+  }, [scrollRef, chain.length]);
+
+  // Click minimap to scroll
+  const handleMinimapClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const mm = minimapRef.current;
+    if (!el || !mm) return;
+    const rect = mm.getBoundingClientRect();
+    const clickRatio = (e.clientY - rect.top) / rect.height;
+    const targetScroll = clickRatio * el.scrollHeight - el.clientHeight / 2;
+    el.scrollTo({ top: targetScroll, behavior: "smooth" });
+  }, [scrollRef]);
+
+  if (chain.length === 0) return null;
+
+  const minStrike = chain[0].strike;
+  const maxStrike = chain[chain.length - 1].strike;
+  const range = maxStrike - minStrike || 1;
+
+  const strikeToPercent = (s: number) => ((s - minStrike) / range) * 100;
+
+  const legMarkers: Array<{ strike: number; color: string; label: string; side: "left" | "right" }> = [];
+  if (selectedLegs.buyPut) legMarkers.push({ strike: selectedLegs.buyPut, color: "bg-red-400", label: "BP", side: "left" });
+  if (selectedLegs.sellPut) legMarkers.push({ strike: selectedLegs.sellPut, color: "bg-red-600", label: "SP", side: "left" });
+  if (selectedLegs.sellCall) legMarkers.push({ strike: selectedLegs.sellCall, color: "bg-green-600", label: "SC", side: "right" });
+  if (selectedLegs.buyCall) legMarkers.push({ strike: selectedLegs.buyCall, color: "bg-green-400", label: "BC", side: "right" });
+
+  // Shade the zone between sell legs (profit zone for iron condor)
+  const hasProfitZone = selectedLegs.sellPut && selectedLegs.sellCall;
+  const profitZoneTop = selectedLegs.sellPut ? strikeToPercent(selectedLegs.sellPut) : 0;
+  const profitZoneBottom = selectedLegs.sellCall ? strikeToPercent(selectedLegs.sellCall) : 100;
+
+  return (
+    <div
+      ref={minimapRef}
+      className="relative w-10 bg-muted/40 rounded border cursor-pointer flex-shrink-0"
+      onClick={handleMinimapClick}
+      title="Click to navigate"
+    >
+      {/* ATM marker */}
+      <div
+        className="absolute left-0 right-0 border-t border-dashed border-amber-500/60"
+        style={{ top: `${strikeToPercent(underlyingPrice)}%` }}
+      />
+
+      {/* Profit zone */}
+      {hasProfitZone && mode === "iron-condor" && (
+        <div
+          className="absolute left-0 right-0 bg-emerald-500/10"
+          style={{
+            top: `${profitZoneTop}%`,
+            height: `${profitZoneBottom - profitZoneTop}%`,
+          }}
+        />
+      )}
+
+      {/* Leg markers */}
+      {legMarkers.map(m => (
+        <div
+          key={m.label}
+          className="absolute flex items-center gap-0.5"
+          style={{
+            top: `${strikeToPercent(m.strike)}%`,
+            transform: "translateY(-50%)",
+            ...(m.side === "left" ? { left: 0 } : { right: 0 }),
+          }}
+        >
+          {m.side === "left" && (
+            <>
+              <div className={`w-1.5 h-3 ${m.color} rounded-r`} />
+              <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
+            </>
+          )}
+          {m.side === "right" && (
+            <>
+              <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
+              <div className={`w-1.5 h-3 ${m.color} rounded-l`} />
+            </>
+          )}
+        </div>
+      ))}
+
+      {/* Viewport window */}
+      <div
+        className="absolute left-0 right-0 border border-foreground/30 bg-foreground/5 rounded"
+        style={{
+          top: `${viewportTop * 100}%`,
+          height: `${Math.max(viewportHeight * 100, 5)}%`,
+        }}
+      />
+    </div>
+  );
+}
+
 export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSelectLeg, mode }: OptionsChainTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sellRowRef = useRef<HTMLDivElement>(null);
@@ -196,7 +321,7 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
       ? selectedLegs.sellCall
       : selectedLegs.sellPut ?? selectedLegs.sellCall;
 
-  const scrollToSellRow = useCallback(() => {
+  const scrollToLegs = useCallback(() => {
     if (sellRowRef.current) {
       sellRowRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
     }
@@ -207,7 +332,7 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
     if (sellRowRef.current && scrollRef.current) {
       sellRowRef.current.scrollIntoView({ block: "center", behavior: "instant" });
     }
-  }, [scrollTarget, chain]);
+  }, [scrollTarget]);
 
   const putActive = mode === "put-spread" || mode === "iron-condor";
   const callActive = mode === "call-spread" || mode === "iron-condor";
@@ -227,9 +352,9 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
         </button>
         {expanded && scrollTarget && (
           <button
-            onClick={scrollToSellRow}
+            onClick={scrollToLegs}
             className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
-            title="Scroll to recommended strike"
+            title="Scroll to selected legs"
           >
             <Crosshair className="h-3.5 w-3.5" />
             Locate
@@ -239,13 +364,8 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
 
       {expanded && (
         <>
-          <p className="text-xs text-muted-foreground mb-2 ml-6">
-            {putActive && <>Click the <span className="text-red-600 font-medium">put side</span> to move put legs. </>}
-            {callActive && <>Click the <span className="text-green-600 font-medium">call side</span> to move call legs. </>}
-          </p>
-
           {/* Header */}
-          <div className="grid gap-1 px-1 text-[10px] text-muted-foreground uppercase font-medium pb-1 border-b" style={{ gridTemplateColumns: "50px 50px 45px 40px 70px 40px 45px 50px 50px" }}>
+          <div className="grid gap-1.5 px-2 text-[11px] text-muted-foreground uppercase font-medium pb-1.5 border-b" style={{ gridTemplateColumns: "60px 60px 50px 46px 80px 46px 50px 60px 60px" }}>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Bid</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Ask</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Delta</div>
@@ -256,27 +376,32 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
             <div className={!callActive ? "opacity-30" : ""}>Bid</div>
             <div className={!callActive ? "opacity-30" : ""}>Ask</div>
           </div>
-          <div className="flex mb-1">
-            {putActive && <div className="flex-1 text-center text-[10px] font-semibold text-red-600">{"\u2190"} PUTS (click to set put legs)</div>}
-            {!putActive && <div className="flex-1" />}
-            <div className="w-[70px]" />
-            {callActive && <div className="flex-1 text-center text-[10px] font-semibold text-green-600">CALLS (click to set call legs) {"\u2192"}</div>}
-            {!callActive && <div className="flex-1" />}
-          </div>
 
-          {/* Scrollable chain — ~12 rows visible */}
-          <div ref={scrollRef} className="max-h-[360px] overflow-y-auto">
-            {chain.map((entry: IronCondorChainStrike) => (
-              <ChainRow
-                key={entry.strike}
-                entry={entry}
-                selectedLegs={selectedLegs}
-                isAtMoney={entry.strike === atMoneyStrike}
-                onSelectLeg={onSelectLeg}
-                mode={mode}
-                rowRef={entry.strike === scrollTarget ? sellRowRef : undefined}
-              />
-            ))}
+          {/* Chain + Minimap side by side */}
+          <div className="flex gap-1">
+            {/* Scrollable chain */}
+            <div ref={scrollRef} className="flex-1 max-h-[560px] overflow-y-auto">
+              {chain.map((entry: IronCondorChainStrike) => (
+                <ChainRow
+                  key={entry.strike}
+                  entry={entry}
+                  selectedLegs={selectedLegs}
+                  isAtMoney={entry.strike === atMoneyStrike}
+                  onSelectLeg={onSelectLeg}
+                  mode={mode}
+                  rowRef={entry.strike === scrollTarget ? sellRowRef : undefined}
+                />
+              ))}
+            </div>
+
+            {/* Minimap */}
+            <ChainMinimap
+              chain={chain}
+              selectedLegs={selectedLegs}
+              underlyingPrice={underlyingPrice}
+              scrollRef={scrollRef}
+              mode={mode}
+            />
           </div>
         </>
       )}
