@@ -1,10 +1,15 @@
 /**
  * Spread detection service.
  * Reconstructs spread/condor structures from individual IBKR option positions.
+ * Only considers positions on spread-eligible underlyings (SPX, XSP, RUT).
+ * Only returns fully matched spreads (2-leg credit spreads or 4-leg iron condors).
  */
 
 import type { Position } from "@assup/shared";
 import type { ActiveSpread, ActiveSpreadLeg, SpreadMode } from "@assup/shared";
+
+/** Underlyings eligible for spread detection */
+const SPREAD_UNDERLYINGS = new Set(["SPX", "XSP", "RUT"]);
 
 const SYMBOL_CONFIG: Record<string, { multiplier: number }> = {
   SPX: { multiplier: 100 },
@@ -129,12 +134,18 @@ function buildSpread(
 
 /**
  * Group IBKR positions into recognized spread structures.
- * Returns all detected spreads plus orphan legs.
+ * Only considers spread-eligible underlyings (SPX, XSP, RUT).
+ * Only returns fully matched spreads — unmatched legs are silently ignored.
  */
 export function groupIntoSpreads(positions: Position[]): ActiveSpread[] {
-  // 1. Filter to options with required fields
+  // 1. Filter to options on spread-eligible underlyings with required fields
   const optionPositions = positions.filter(
-    p => p.secType === "OPT" && p.underlying && p.expiry && p.strike != null && p.right
+    p => p.secType === "OPT"
+      && p.underlying
+      && SPREAD_UNDERLYINGS.has(p.underlying)
+      && p.expiry
+      && p.strike != null
+      && p.right
   );
 
   // 2. Group by underlying + expiry
@@ -183,30 +194,7 @@ export function groupIntoSpreads(positions: Position[]): ActiveSpread[] {
       callMatch = tryMatchCallSpread(pool);
     }
 
-    // 5. Orphan legs
-    const orphans = [...pool.shortPuts, ...pool.longPuts, ...pool.shortCalls, ...pool.longCalls];
-    if (orphans.length > 0) {
-      // Attach orphans to a synthetic entry (no spread type)
-      // Group them by underlying+expiry and add to last spread or create standalone
-      const lastSpread = results.find(s => s.symbol === symbol && s.expiry === expiry);
-      if (lastSpread) {
-        lastSpread.orphanLegs.push(...orphans);
-      } else {
-        // No matched spread — create a placeholder with orphans only
-        results.push({
-          id: `orphan-${symbol}-${expiry}`,
-          type: "put-spread", // placeholder, not displayed as a real spread
-          symbol,
-          expiry,
-          quantity: 0,
-          legs: [],
-          totalPnl: null,
-          netPremium: 0,
-          closeMidPrice: null,
-          orphanLegs: orphans,
-        });
-      }
-    }
+    // Unmatched legs are silently dropped — they don't form valid spreads
   }
 
   return results;

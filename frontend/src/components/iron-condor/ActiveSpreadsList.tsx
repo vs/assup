@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ActiveSpread, ActiveSpreadLeg } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 
@@ -137,11 +137,7 @@ function SpreadCard({ spread, onClose }: { spread: ActiveSpread; onClose: () => 
 export function ActiveSpreadsList({ spreads, onClose }: ActiveSpreadsListProps) {
   const [collapsed, setCollapsed] = useState(false);
 
-  const matchedSpreads = spreads.filter(s => s.legs.length > 0);
-  const orphanEntries = spreads.filter(s => s.orphanLegs.length > 0);
-  const allOrphans = orphanEntries.flatMap(s => s.orphanLegs);
-
-  const count = matchedSpreads.length;
+  const count = spreads.length;
 
   return (
     <div className="border rounded-lg p-3 bg-muted/20">
@@ -160,27 +156,13 @@ export function ActiveSpreadsList({ spreads, onClose }: ActiveSpreadsListProps) 
 
       {!collapsed && (
         <div className="mt-3 space-y-2">
-          {count === 0 && allOrphans.length === 0 && (
+          {count === 0 && (
             <div className="text-sm text-muted-foreground py-2 px-1">No active spread positions</div>
           )}
 
-          {matchedSpreads.map(spread => (
+          {spreads.map(spread => (
             <SpreadCard key={spread.id} spread={spread} onClose={() => onClose(spread)} />
           ))}
-
-          {allOrphans.length > 0 && (
-            <div className="border rounded-lg p-3 bg-amber-50 border-amber-200">
-              <div className="flex items-center gap-2 text-xs text-amber-700 font-semibold mb-2">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Unmatched Legs
-              </div>
-              <div className="space-y-1">
-                {allOrphans.map(leg => (
-                  <LegRow key={leg.conId} leg={leg} />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
