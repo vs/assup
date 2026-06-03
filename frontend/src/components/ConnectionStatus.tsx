@@ -26,7 +26,7 @@ export function ConnectionStatusPopup({
   const isConnected = status.connected;
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 w-64 rounded-lg border bg-background p-3 shadow-lg">
+    <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border bg-background p-3 shadow-lg">
       {isConnected ? (
         <>
           <h4 className="text-sm font-medium mb-2">Connected to TWS</h4>
