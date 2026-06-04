@@ -35,6 +35,71 @@ function changeColor(value: number, invert = false): string {
   return v > 0 ? "text-green-500" : "text-red-500";
 }
 
+function getMarketStatus(): { open: boolean; label: string; time: string } | null {
+  const now = new Date();
+  // Get current time in US Eastern
+  const etParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric", minute: "numeric", weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+
+  const weekday = etParts.find(p => p.type === "weekday")?.value ?? "";
+  const hour = parseInt(etParts.find(p => p.type === "hour")?.value ?? "0");
+  const minute = parseInt(etParts.find(p => p.type === "minute")?.value ?? "0");
+  const etMinutes = hour * 60 + minute;
+
+  const OPEN = 9 * 60 + 30;  // 9:30 ET
+  const CLOSE = 16 * 60;     // 16:00 ET
+
+  const isWeekday = !["Sat", "Sun"].includes(weekday);
+  const isOpen = isWeekday && etMinutes >= OPEN && etMinutes < CLOSE;
+
+  // Calculate target time in ET, then convert to local
+  let targetEtMinutes: number;
+  let daysUntil = 0;
+
+  if (isOpen) {
+    targetEtMinutes = CLOSE;
+  } else if (isWeekday && etMinutes < OPEN) {
+    targetEtMinutes = OPEN;
+  } else {
+    // After close or weekend — find next weekday open
+    targetEtMinutes = OPEN;
+    const dayOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+    if (dayOfWeek === 5 && etMinutes >= CLOSE) daysUntil = 3;      // Fri after close → Mon
+    else if (dayOfWeek === 6) daysUntil = 2;                        // Sat → Mon
+    else if (dayOfWeek === 0) daysUntil = 1;                        // Sun → Mon
+    else daysUntil = 1;                                              // weekday after close → next day
+  }
+
+  // Compute minutes until target, then derive local clock time
+  const diffMinutes = targetEtMinutes - etMinutes + daysUntil * 1440;
+
+  const targetLocal = new Date(now.getTime() + diffMinutes * 60000);
+  const localTime = targetLocal.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+
+  // Format the countdown
+  const totalMin = diffMinutes;
+  if (totalMin <= 0) return null;
+
+  let countdown: string;
+  if (totalMin < 120) {
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  } else {
+    const h = Math.round(totalMin / 60);
+    countdown = `${h}h`;
+  }
+
+  return {
+    open: isOpen,
+    label: isOpen ? `Closes in ${countdown}` : `Opens in ${countdown}`,
+    time: localTime,
+  };
+}
+
 function componentScoreColor(score: number): string {
   if (score < 20) return "bg-green-600";
   if (score < 40) return "bg-green-500";
@@ -62,7 +127,7 @@ export function FearGreedPanel({
 
   return (
     <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border bg-background p-3 shadow-lg">
-      {/* Connection section */}
+      {/* Connection + uptime */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <div
@@ -76,19 +141,30 @@ export function FearGreedPanel({
             {isConnected ? "Live" : "Disconnected"}
           </span>
         </div>
-        {isConnected && status.account && (
-          <span className="text-xs text-muted-foreground">{status.account}</span>
+        {isConnected && status.serverConnectionTime && (
+          <span className="text-xs text-muted-foreground">
+            Uptime: {formatUptime(status.serverConnectionTime)}
+          </span>
         )}
       </div>
 
       {isConnected ? (
         <>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-            {status.serverVersion && <span>Server v{status.serverVersion}</span>}
-            {status.serverConnectionTime && (
-              <span>Uptime: {formatUptime(status.serverConnectionTime)}</span>
-            )}
-          </div>
+
+          {/* Market hours */}
+          {(() => {
+            const market = getMarketStatus();
+            if (!market) return null;
+            return (
+              <div className="flex items-center gap-2 text-xs mb-3 px-1.5 py-1 rounded bg-muted/50">
+                <div className={`h-1.5 w-1.5 rounded-full ${market.open ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+                <span className="text-muted-foreground">
+                  {market.label}
+                </span>
+                <span className="ml-auto tabular-nums text-muted-foreground/70">{market.time}</span>
+              </div>
+            );
+          })()}
 
           {/* Market data section */}
           {details && (
