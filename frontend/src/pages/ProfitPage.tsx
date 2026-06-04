@@ -9,6 +9,7 @@ import type {
   AllPositionsView,
   OptionTradeGroup,
   StockTradeGroup,
+  SpreadTradeGroup,
 } from "@assup/shared";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,6 +61,26 @@ function formatTradeDisplayName(trade: { underlying: string; strike: number; exp
     right: trade.right,
     lastTradeDateOrContractMonth: expiryYYYYMMDD,
   });
+}
+
+function formatSpreadDisplayName(spread: SpreadTradeGroup): string {
+  const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
+  switch (spread.type) {
+    case "put-spread":
+      return `${spread.underlying} ${strikes[1]}/${strikes[0]} Put Spread`;
+    case "call-spread":
+      return `${spread.underlying} ${strikes[0]}/${strikes[1]} Call Spread`;
+    case "iron-condor":
+      return `${spread.underlying} ${strikes[0]}/${strikes[1]}/${strikes[2]}/${strikes[3]} IC`;
+  }
+}
+
+function spreadTypeBadge(type: SpreadTradeGroup["type"]): { label: string; className: string } {
+  switch (type) {
+    case "put-spread": return { label: "PS", className: "bg-amber-100 text-amber-800" };
+    case "call-spread": return { label: "CS", className: "bg-blue-100 text-blue-700" };
+    case "iron-condor": return { label: "IC", className: "bg-violet-100 text-violet-700" };
+  }
 }
 
 const MONTH_NAMES = [
@@ -347,6 +368,66 @@ function SummaryCard({
   );
 }
 
+function SpreadTradeRow({ spread }: { spread: SpreadTradeGroup }) {
+  const [expanded, setExpanded] = useState(false);
+  const badge = spreadTypeBadge(spread.type);
+  const statusVariant = spread.status === "expired" ? "success" : spread.status === "closed" ? "secondary" : "outline";
+  const statusLabel = spread.status === "expired" ? "Expired" : spread.status === "closed" ? "Closed" : "Partial";
+
+  return (
+    <>
+      <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => setExpanded(!expanded)}>
+        <TableCell className="text-muted-foreground">{spread.closeDate ?? spread.expiry}</TableCell>
+        <TableCell>
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">{expanded ? "\u25BC" : "\u25B6"}</span>
+            <span className="font-medium">{formatSpreadDisplayName(spread)}</span>
+          </div>
+        </TableCell>
+        <TableCell>
+          <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${badge.className}`}>{badge.label}</span>
+        </TableCell>
+        <TableCell>
+          {spread.assetClassName ? (
+            <Link to={`/positions?assetClassId=${spread.assetClassId}`} className="flex items-center gap-2 hover:text-primary" onClick={(e) => e.stopPropagation()}>
+              <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: spread.assetClassColor }} />
+              <span className="truncate text-sm">{spread.assetClassName}</span>
+            </Link>
+          ) : (
+            <span className="text-muted-foreground text-sm">-</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right font-mono text-green-600">{formatCurrency(spread.costBasis)}</TableCell>
+        <TableCell className="text-right font-mono">
+          {spread.sellPrice > 0 ? (
+            <span className="text-red-600">{formatCurrency(spread.sellPrice)}</span>
+          ) : (
+            <span className="text-muted-foreground">$0</span>
+          )}
+        </TableCell>
+        <TableCell className={`text-right font-mono ${spread.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+          {formatCurrency(spread.profit)}
+        </TableCell>
+        <TableCell><Badge variant={statusVariant}>{statusLabel}</Badge></TableCell>
+      </TableRow>
+      {expanded && spread.legs.map((leg, idx) => (
+        <TableRow key={`leg-${idx}`} className="bg-muted/30">
+          <TableCell className="text-muted-foreground pl-8 text-xs">{leg.closeTrade?.tradeDate || leg.expiry}</TableCell>
+          <TableCell className="pl-10 text-sm text-muted-foreground">
+            {leg.openTrade?.buySell === "SELL" ? "Short" : "Long"} {leg.right === "P" ? "Put" : "Call"} {leg.strike}
+          </TableCell>
+          <TableCell><Badge variant={leg.right === "P" ? "danger" : "success"} className="text-[10px]">{leg.right}</Badge></TableCell>
+          <TableCell />
+          <TableCell className="text-right font-mono text-xs">{formatCurrency(leg.costBasis)}</TableCell>
+          <TableCell className="text-right font-mono text-xs">{formatCurrency(leg.sellPrice)}</TableCell>
+          <TableCell className={`text-right font-mono text-xs ${leg.profit >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(leg.profit)}</TableCell>
+          <TableCell className="text-xs text-muted-foreground">{leg.expiredWorthless ? "Expired" : leg.closeTrade ? "Closed" : ""}</TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
 // Month Profit Card (for current/next month)
 function MonthProfitCard({
   data,
@@ -405,7 +486,8 @@ function MonthProfitCard({
   }, []);
   const stkSort = useTableSort(data.realized.stockTrades, getStockTradeValue);
 
-  const hasRealizedTrades = data.realized.closedTrades.length > 0 ||
+  const hasRealizedTrades = (data.realized.closedSpreadTrades?.length ?? 0) > 0 ||
+    data.realized.closedTrades.length > 0 ||
     data.realized.stockTrades.length > 0 ||
     data.realized.cashTransactions.length > 0;
 
@@ -457,8 +539,10 @@ function MonthProfitCard({
                       {formatCurrency(data.realized.total)}
                     </span>
                   </div>
-                  {data.realized.closedTrades.length > 0 && (
-                    <Badge variant="secondary">{data.realized.closedTrades.length} opt trades</Badge>
+                  {((data.realized.closedSpreadTrades?.length ?? 0) + data.realized.closedTrades.length) > 0 && (
+                    <Badge variant="secondary">
+                      {(data.realized.closedSpreadTrades?.length ?? 0) + data.realized.closedTrades.length} opt trades
+                    </Badge>
                   )}
                   {data.realized.stockTrades.length > 0 && (
                     <Badge variant="secondary">{data.realized.stockTrades.length} stk trades</Badge>
@@ -472,7 +556,7 @@ function MonthProfitCard({
               {hasRealizedTrades ? (
                 <div className="space-y-4">
                   {/* Closed Option Trades */}
-                  {data.realized.closedTrades.length > 0 && (
+                  {((data.realized.closedSpreadTrades?.length ?? 0) + data.realized.closedTrades.length) > 0 && (
                     <div>
                       <h4 className="font-medium mb-2">Option Trades</h4>
                       <Table>
@@ -489,6 +573,9 @@ function MonthProfitCard({
                           </TableRow>
                         </TableHeader>
                         <TableBody>
+                          {data.realized.closedSpreadTrades?.map((spread, idx) => (
+                            <SpreadTradeRow key={`spread-${idx}`} spread={spread} />
+                          ))}
                           {optSort.sorted.map((trade, idx) => (
                             <TableRow key={optionTradeKey(trade, idx)}>
                               <TableCell className="text-muted-foreground">
@@ -980,7 +1067,7 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
   return (
     <div className="space-y-4">
       {/* Option Trades */}
-      {detail.realized.optionTrades.length > 0 && (
+      {((detail.realized.spreadTrades?.length ?? 0) + detail.realized.optionTrades.length) > 0 && (
         <div>
           <h4 className="font-medium mb-2">Option Trades</h4>
           <Table>
@@ -997,6 +1084,9 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
               </TableRow>
             </TableHeader>
             <TableBody>
+              {detail.realized.spreadTrades?.map((spread, idx) => (
+                <SpreadTradeRow key={`spread-${idx}`} spread={spread} />
+              ))}
               {optSort.sorted.map((trade, idx) => (
                 <TableRow key={optionTradeKey(trade, idx)}>
                   <TableCell className="text-muted-foreground">
