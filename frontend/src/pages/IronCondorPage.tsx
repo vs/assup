@@ -346,7 +346,7 @@ export function IronCondorPage() {
   return (
     <div className="space-y-4">
       {/* Top bar */}
-      <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-muted/30">
+      <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-background/95 sticky top-[65px] md:top-[113px] z-30 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         {/* Symbol picker */}
         <div className="flex items-center gap-2">
           <Label className="text-[10px] uppercase text-muted-foreground">Symbol</Label>
