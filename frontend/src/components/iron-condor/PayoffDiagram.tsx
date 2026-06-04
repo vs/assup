@@ -29,7 +29,7 @@ export function PayoffDiagram({
   maxLoss,
   strikes,
 }: PayoffDiagramProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const [cursor, setCursor] = useState<{ svgX: number; price: number; pnl: number } | null>(null);
 
   const W = 800;
@@ -74,9 +74,12 @@ export function PayoffDiagram({
   }, [payoffCurve]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || payoffCurve.length === 0) return;
-    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    const svg = svgRef.current;
+    if (!svg || payoffCurve.length === 0) return;
+    // Use SVG coordinate transform for pixel-perfect mapping
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const svgX = (e.clientX - ctm.e) / ctm.a;
     const plotW = W - pad.left - pad.right;
     const price = minPrice + ((svgX - pad.left) / plotW) * (maxPrice - minPrice);
     if (price < minPrice || price > maxPrice) {
@@ -120,13 +123,15 @@ export function PayoffDiagram({
   const cursorY = cursor ? pnlToY(cursor.pnl) : 0;
 
   return (
-    <div
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      className="relative cursor-crosshair"
-    >
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "320px" }}>
+    <div className="relative cursor-crosshair">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        style={{ height: "320px" }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
         {/* Y-axis labels */}
         <text x={pad.left - 8} y={profitY + 4} fontSize="11" textAnchor="end" className="fill-green-600 font-medium">
           +${maxProfit.toLocaleString()}
