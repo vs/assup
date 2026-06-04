@@ -57,6 +57,7 @@ export interface PositionForAllocation {
   notionalValue?: number;
   deltaExposure?: number;
   right?: "P" | "C";
+  underlying?: string;
   assetClassId?: string | null;
   assetClassName?: string | null;
   assetClassColor?: string | null;
@@ -112,10 +113,18 @@ class AllocationService {
     }
 
     // Second pass: options exposure
+    // Exclude spread-eligible underlyings (SPX, XSP, RUT) — those are temporary
+    // income trades (credit spreads, iron condors), not portfolio allocation positions.
+    const spreadSymbolsSetting = await prisma.setting.findUnique({ where: { key: "spreads" } });
+    const spreadSymbols = new Set<string>(
+      (spreadSymbolsSetting?.value as any)?.symbols ?? ["SPX", "XSP", "RUT"]
+    );
+
     const optionsExposure: OptionsExposure[] = [];
 
     for (const pos of positions) {
       if (pos.secType !== "OPT") continue;
+      if (pos.underlying && spreadSymbols.has(pos.underlying)) continue;
 
       const notional = pos.notionalValue || 0;
       const delta = pos.deltaExposure || 0;
