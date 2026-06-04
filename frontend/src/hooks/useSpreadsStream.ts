@@ -22,6 +22,7 @@ interface UseSpreadsStreamResult {
 export function useSpreadsStream(
   symbol: string,
   expiration?: string,
+  selectedStrikes?: number[],
 ): UseSpreadsStreamResult {
   const [chainMap, setChainMap] = useState<Map<number, IronCondorChainStrike>>(new Map());
   const [underlyingPrice, setUnderlyingPrice] = useState(0);
@@ -47,6 +48,9 @@ export function useSpreadsStream(
 
     const params = new URLSearchParams({ symbol });
     if (expiration) params.set("expiration", expiration);
+    if (selectedStrikes && selectedStrikes.length > 0) {
+      params.set("strikes", selectedStrikes.join(","));
+    }
     const url = `${getApiBase()}/api/spreads/stream?${params}`;
 
     setStatus("connecting");
@@ -139,7 +143,7 @@ export function useSpreadsStream(
 
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
-  }, [symbol, expiration]);
+  }, [symbol, expiration, selectedStrikes]);
 
   // Connect on mount and when params change
   useEffect(() => {

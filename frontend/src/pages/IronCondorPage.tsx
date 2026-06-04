@@ -92,10 +92,22 @@ export function IronCondorPage() {
 
   // UI state
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
+  const [chainExpanded, setChainExpanded] = useState(false);
 
   // Active spread close
   const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+
+  // When chain is collapsed, only stream selected strikes
+  const streamStrikes = useMemo(() => {
+    if (chainExpanded) return undefined; // full chain
+    const strikes: number[] = [];
+    if (selectedLegs.buyPut) strikes.push(selectedLegs.buyPut);
+    if (selectedLegs.sellPut) strikes.push(selectedLegs.sellPut);
+    if (selectedLegs.sellCall) strikes.push(selectedLegs.sellCall);
+    if (selectedLegs.buyCall) strikes.push(selectedLegs.buyCall);
+    return strikes.length > 0 ? strikes : undefined;
+  }, [chainExpanded, selectedLegs]);
 
   // Streaming data (chain only, no positions)
   const {
@@ -105,7 +117,7 @@ export function IronCondorPage() {
     selectedExpiration: streamExpiration,
     status,
     error,
-  } = useSpreadsStream(symbol, expiration);
+  } = useSpreadsStream(symbol, expiration, streamStrikes);
 
   // Active spreads via REST endpoint (polled every 10s)
   const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
@@ -475,6 +487,8 @@ export function IronCondorPage() {
               underlyingPrice={underlyingPrice}
               onSelectLeg={handleSelectLeg}
               mode={mode}
+              expanded={chainExpanded}
+              onExpandedChange={setChainExpanded}
             />
           </div>
 

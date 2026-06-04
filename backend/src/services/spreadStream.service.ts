@@ -31,6 +31,7 @@ export class SpreadStreamSession {
   private sessionId: string;
   private symbol: string;
   private expiration: string | undefined;
+  private onlyStrikes: number[] | undefined;
   private unsubscribers: Array<() => void> = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
@@ -38,11 +39,12 @@ export class SpreadStreamSession {
   private underlyingPriceBuffer: number | null = null;
   private destroyed = false;
 
-  constructor(res: Response, symbol: string, expiration?: string) {
+  constructor(res: Response, symbol: string, expiration?: string, onlyStrikes?: number[]) {
     this.res = res;
     this.sessionId = `spread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.symbol = symbol;
     this.expiration = expiration;
+    this.onlyStrikes = onlyStrikes;
   }
 
   async start(): Promise<void> {
@@ -195,7 +197,12 @@ export class SpreadStreamSession {
     } satisfies SpreadStreamInitEvent);
 
     // 8. Reserve market data lines and subscribe
-    const totalContracts = strikes.length * 2 + 1;
+    // When onlyStrikes is set (chain collapsed), only subscribe to those specific strikes
+    const strikesToSubscribe = this.onlyStrikes
+      ? strikes.filter(s => this.onlyStrikes!.includes(s))
+      : strikes;
+
+    const totalContracts = strikesToSubscribe.length * 2 + 1;
     const linesGranted = marketDataLineRegistry.reserve(
       this.sessionId,
       totalContracts,
@@ -215,7 +222,7 @@ export class SpreadStreamSession {
     this.unsubscribers.push(unsubUnderlying);
 
     // Prioritize ATM-nearest strikes for subscription
-    const sortedByDistance = strikes
+    const sortedByDistance = strikesToSubscribe
       .map((s) => ({ strike: s, distance: Math.abs(s - underlyingPrice) }))
       .sort((a, b) => a.distance - b.distance);
 
@@ -224,7 +231,7 @@ export class SpreadStreamSession {
       sortedByDistance.slice(0, maxStrikes).map((s) => s.strike),
     );
 
-    for (const strike of strikes) {
+    for (const strike of strikesToSubscribe) {
       if (!subscribedStrikes.has(strike)) continue;
 
       for (const right of [OptionType.Put, OptionType.Call] as const) {

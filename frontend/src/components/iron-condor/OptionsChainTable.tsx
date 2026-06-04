@@ -16,6 +16,8 @@ interface OptionsChainTableProps {
   underlyingPrice: number;
   onSelectLeg: (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => void;
   mode: SpreadMode;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 function getLegLabel(strike: number, legs: SpreadSelectedLegs): { text: string; color: string } | null {
@@ -365,7 +367,7 @@ function ChainMinimap({
   );
 }
 
-export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSelectLeg, mode }: OptionsChainTableProps) {
+export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSelectLeg, mode, expanded: controlledExpanded, onExpandedChange }: OptionsChainTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sellRowRef = useRef<HTMLDivElement>(null);
 
@@ -398,7 +400,10 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
   const putActive = mode === "put-spread" || mode === "iron-condor";
   const callActive = mode === "call-spread" || mode === "iron-condor";
 
-  const [expanded, setExpanded] = useState(true);
+  // Support both controlled and uncontrolled mode
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = controlledExpanded ?? internalExpanded;
+  const setExpanded = onExpandedChange ?? setInternalExpanded;
 
   return (
     <div>
