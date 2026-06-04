@@ -461,4 +461,51 @@ describe("groupSpreads", () => {
     // -1.3 (short open) + -1.5 (short close) + -1.3 (long open) + -1.5 (long close) = -5.6
     expect(spreads[0].commissions).toBeCloseTo(-5.6, 2);
   });
+
+  it("matches spread when openTrade is missing (infers side from closeTrade)", () => {
+    // FLEX period doesn't include the open trade — only close trades exist
+    // Short put was SELL-to-open → BUY-to-close
+    const shortPut: OptionTradeGroup = {
+      underlying: "SPX",
+      strike: 5200,
+      expiry: "2026-03-21",
+      right: "P",
+      costBasis: 1500,
+      sellPrice: 200,
+      profit: 1300,
+      wasAssigned: false,
+      expiredWorthless: false,
+      openTrade: undefined,
+      closeTrade: {
+        id: "1c", symbol: "SPX", underlying: "SPX", strike: 5200,
+        expiry: "2026-03-21", right: "P", tradeDate: "2026-03-15",
+        quantity: 1, tradePrice: 2, proceeds: -200, commission: -1,
+        buySell: "BUY", wasAssigned: false,
+      },
+    };
+    // Long put was BUY-to-open → SELL-to-close
+    const longPut: OptionTradeGroup = {
+      underlying: "SPX",
+      strike: 5100,
+      expiry: "2026-03-21",
+      right: "P",
+      costBasis: 800,
+      sellPrice: 50,
+      profit: -750,
+      wasAssigned: false,
+      expiredWorthless: false,
+      openTrade: undefined,
+      closeTrade: {
+        id: "2c", symbol: "SPX", underlying: "SPX", strike: 5100,
+        expiry: "2026-03-21", right: "P", tradeDate: "2026-03-15",
+        quantity: 1, tradePrice: 0.5, proceeds: 50, commission: -1,
+        buySell: "SELL", wasAssigned: false,
+      },
+    };
+    const result = groupSpreads([shortPut, longPut], ["SPX"]);
+    expect(result.spreads).toHaveLength(1);
+    expect(result.spreads[0].type).toBe("put-spread");
+    expect(result.spreads[0].profit).toBe(1300 + -750);
+    expect(result.remaining).toHaveLength(0);
+  });
 });

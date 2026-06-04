@@ -16,14 +16,27 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract the open date from a group (ISO string or null). */
+/** Extract the open date from a group (ISO string or null). Falls back to close date. */
 export function getOpenDate(g: OptionTradeGroup): string | null {
-  return g.openTrade?.tradeDate ?? null;
+  return g.openTrade?.tradeDate ?? g.closeTrade?.tradeDate ?? null;
 }
 
 /** Extract effective quantity (prefer open, fall back to close). */
 export function getQuantity(g: OptionTradeGroup): number {
   return g.openTrade?.quantity ?? g.closeTrade?.quantity ?? 0;
+}
+
+/**
+ * Determine the opening side of a trade group.
+ * Uses openTrade.buySell if available; otherwise infers from closeTrade
+ * (a BUY-to-close means it was originally SELL-to-open, and vice versa).
+ */
+function getOpenSide(g: OptionTradeGroup): "SELL" | "BUY" | null {
+  if (g.openTrade?.buySell) return g.openTrade.buySell as "SELL" | "BUY";
+  // Infer from close trade (opposite direction)
+  if (g.closeTrade?.buySell === "BUY") return "SELL";
+  if (g.closeTrade?.buySell === "SELL") return "BUY";
+  return null;
 }
 
 /** Check whether two ISO-date strings are within 1 calendar day (86 400 000 ms). */
@@ -124,13 +137,14 @@ function matchCreditSpreads(
   const spreads: CreditSpread[] = [];
   const used = new Set<number>();
 
-  // Separate into short (SELL to open) and long (BUY to open) by right
+  // Separate into short (SELL to open) and long (BUY to open)
+  // Uses getOpenSide() which infers from closeTrade if openTrade is missing
   const shorts = groups
     .map((g, i) => ({ g, i }))
-    .filter(({ g }) => g.openTrade?.buySell === "SELL");
+    .filter(({ g }) => getOpenSide(g) === "SELL");
   const longs = groups
     .map((g, i) => ({ g, i }))
-    .filter(({ g }) => g.openTrade?.buySell === "BUY");
+    .filter(({ g }) => getOpenSide(g) === "BUY");
 
   for (const s of shorts) {
     if (used.has(s.i)) continue;
