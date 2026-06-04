@@ -215,8 +215,11 @@ class IBKRService {
       this.api.error.subscribe({
         next: (err) => {
           const code = Number(err.code);
-          // Suppress high-volume expected errors during scanning
-          if (code === 200 || code === 321) return;
+          // Suppress high-volume expected errors:
+          // 200: No security definition found (during scanning)
+          // 300: Can't find EId with tickerId (stale cancel after reconnect)
+          // 321: Error validating request (during scanning)
+          if (code === 200 || code === 300 || code === 321) return;
           if (code && err.error?.message) {
             console.error(`TWS Error ${err.code}: ${err.error.message}`);
           }
