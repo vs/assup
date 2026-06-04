@@ -101,7 +101,7 @@ export function SpreadAnalysis({
           </p>
           <div className="mt-3 grid grid-cols-3 gap-3 text-center">
             <div>
-              <div className="text-xl font-bold text-green-700">{(analysis.probabilityOfProfit * 100).toFixed(0)}%</div>
+              <div className="text-xl font-bold text-green-700">{(analysis.probabilityOfProfit * 100).toFixed(2)}%</div>
               <div className="text-xs text-blue-700">chance of profit</div>
             </div>
             <div>
@@ -187,7 +187,7 @@ export function SpreadAnalysis({
             <div className="border rounded-lg p-3 text-center bg-card">
               <div className="text-xs text-muted-foreground uppercase font-medium">Prob. of Profit</div>
               <div className="text-xl font-semibold text-blue-600 tabular-nums">
-                {(analysis.probabilityOfProfit * 100).toFixed(1)}%
+                {(analysis.probabilityOfProfit * 100).toFixed(2)}%
               </div>
               <div className="text-xs text-muted-foreground">implied volatility</div>
             </div>
