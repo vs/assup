@@ -15,11 +15,13 @@ import type {
   MonthProfitView,
   MonthlyProfitResponse,
   OptionTradeGroup,
+  SpreadTradeGroup,
   StockTradeGroup,
   CashTransaction,
   CurrentOptionPosition,
   AllPositionsView,
 } from "@assup/shared";
+import { groupSpreads } from "./spreadGrouping.js";
 
 /**
  * Convert an amount from a foreign currency to USD using CNB rates.
@@ -213,31 +215,44 @@ class ProfitService {
 
     // Calculate options profit by grouping trades
     const optionGroups = this.groupOptionTrades(optionTrades);
+    const spreadSymbolsSetting2 = await prisma.setting.findUnique({ where: { key: "spreads" } });
+    const spreadSymbols2: string[] = (spreadSymbolsSetting2?.value as any)?.symbols ?? ["SPX", "XSP", "RUT"];
+
+    // Attribute option groups to months, then apply spread grouping per month
+    const monthOptionGroups = new Map<string, OptionTradeGroup[]>();
     for (const group of optionGroups) {
-      // Determine which month this trade belongs to (close date or expiry for worthless/assigned)
       let tradeDate: Date | null = null;
       if (group.closeTrade) {
-        // Trade was closed - use close date
         tradeDate = new Date(group.closeTrade.tradeDate);
       } else if (group.expiry) {
-        // No close trade - only count if expiry has passed (actually expired/assigned)
-        // Options expiring today are still open until settlement (next business day)
         const expiryDate = new Date(group.expiry);
         if (hasExpiryPassed(expiryDate)) {
           tradeDate = expiryDate;
         }
       }
-
       if (tradeDate) {
         const key = `${tradeDate.getFullYear()}-${tradeDate.getMonth() + 1}`;
-        const summary = monthMap.get(key);
-        if (summary) {
-          if (!group.wasAssigned) {
-            summary.optionsProfit += group.profit;
-            summary.tradeCount++;
-          } else {
-            summary.assignedCount++;
-          }
+        if (!monthOptionGroups.has(key)) monthOptionGroups.set(key, []);
+        monthOptionGroups.get(key)!.push(group);
+      }
+    }
+
+    for (const [key, groups] of monthOptionGroups) {
+      const summary = monthMap.get(key);
+      if (!summary) continue;
+
+      const { spreads, remaining } = groupSpreads(groups, spreadSymbols2);
+
+      for (const s of spreads) {
+        summary.optionsProfit += s.profit;
+        summary.tradeCount++;
+      }
+      for (const g of remaining) {
+        if (!g.wasAssigned) {
+          summary.optionsProfit += g.profit;
+          summary.tradeCount++;
+        } else {
+          summary.assignedCount++;
         }
       }
     }
@@ -536,6 +551,11 @@ class ProfitService {
       return false;
     });
 
+    // Group eligible option trades into spreads
+    const spreadSymbolsSetting = await prisma.setting.findUnique({ where: { key: "spreads" } });
+    const spreadSymbols: string[] = (spreadSymbolsSetting?.value as any)?.symbols ?? ["SPX", "XSP", "RUT"];
+    const { spreads: spreadTrades, remaining: nonSpreadTrades } = groupSpreads(monthGroups, spreadSymbols);
+
     // Add assignment premium to stock trades (ONLY for real-time trades from TWS API)
     // When a PUT is assigned, we receive shares at the strike price, but we also keep the premium
     // The stock trade's cost basis from IBKR only reflects the strike price, not the premium
@@ -662,9 +682,11 @@ class ProfitService {
     }
 
     // Calculate summary
-    const optionsProfit = monthGroups
+    const individualOptionsProfit = nonSpreadTrades
       .filter((g) => !g.wasAssigned)
       .reduce((sum, g) => sum + g.profit, 0);
+    const spreadOptionsProfit = spreadTrades.reduce((sum, s) => sum + s.profit, 0);
+    const optionsProfit = individualOptionsProfit + spreadOptionsProfit;
     const stocksProfit = monthStockGroups.reduce((sum, g) => sum + g.profit, 0);
     const dividendsTotal = dividends.reduce((sum, d) => sum + d.amount, 0);
     const interestTotal = interest.reduce((sum, i) => sum + i.amount, 0);
@@ -678,7 +700,8 @@ class ProfitService {
       year,
       month,
       realized: {
-        optionTrades: monthGroups,
+        spreadTrades,
+        optionTrades: nonSpreadTrades,
         stockTrades: monthStockGroups,
         dividends,
         interest,
@@ -701,9 +724,9 @@ class ProfitService {
           interestTotal +
           withholdingTaxTotal +
           feesTotal,
-        tradeCount: monthGroups.filter((g) => !g.wasAssigned).length,
+        tradeCount: nonSpreadTrades.filter((g) => !g.wasAssigned).length + spreadTrades.length,
         stockTradeCount: monthStockGroups.length,
-        assignedCount: monthGroups.filter((g) => g.wasAssigned).length,
+        assignedCount: nonSpreadTrades.filter((g) => g.wasAssigned).length,
       },
     };
   }
@@ -1030,6 +1053,7 @@ class ProfitService {
         withholdingTax: detail.summary.withholdingTax,
         fees: detail.summary.fees,
         total: detail.summary.total,
+        closedSpreadTrades: detail.realized.spreadTrades,
         closedTrades: detail.realized.optionTrades,
         stockTrades: detail.realized.stockTrades,
         cashTransactions: [
