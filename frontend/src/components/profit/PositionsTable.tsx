@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { CurrentOptionPosition, Order } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
@@ -17,6 +17,13 @@ import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
 import { useTableSort } from "@/hooks/useTableSort";
+import { ChevronRight, ChevronDown } from "lucide-react";
+import {
+  groupOpenPositionsIntoSpreads,
+  formatLiveSpreadName,
+  spreadTypeBadgeProps,
+  type OpenPositionSpreadGroup,
+} from "@/utils/spreadGrouping";
 
 // Helper to calculate days to expiration using US Eastern timezone
 function calculateDTE(expiry: string): number {
@@ -49,6 +56,12 @@ export function PositionsTable({
     );
   }, [openOrders]);
 
+  // Group positions into spreads
+  const { spreads, ungrouped } = useMemo(
+    () => groupOpenPositionsIntoSpreads(positions),
+    [positions],
+  );
+
   // Get unique underlying symbols for sparklines
   const sparklineSymbols = useMemo(() => {
     const symbols = new Set<string>();
@@ -60,7 +73,7 @@ export function PositionsTable({
 
   const { getSparklineState } = useSparklines(sparklineSymbols);
 
-  // Sort: expiring positions
+  // Sort only ungrouped positions
   const getExpiringValue = useCallback((pos: CurrentOptionPosition, col: string): string | number => {
     switch (col) {
       case "contract": return pos.displayName;
@@ -76,7 +89,7 @@ export function PositionsTable({
       default: return 0;
     }
   }, []);
-  const expSort = useTableSort(positions, getExpiringValue);
+  const expSort = useTableSort(ungrouped, getExpiringValue);
 
   if (positions.length === 0) {
     return (
@@ -105,6 +118,16 @@ export function PositionsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
+        {spreads.map((spread, idx) => (
+          <OpenSpreadRow
+            key={`spread-${idx}`}
+            spread={spread}
+            getSparklineState={getSparklineState}
+            onSymbolClick={onSymbolClick}
+            findMatchingOrder={findMatchingOrder}
+            onClosePosition={onClosePosition}
+          />
+        ))}
         {expSort.sorted.map((pos) => {
           const sparkline = getSparklineState(pos.underlying);
           const dte = calculateDTE(pos.expiry);
@@ -202,5 +225,162 @@ export function PositionsTable({
         })}
       </TableBody>
     </Table>
+  );
+}
+
+function OpenSpreadRow({
+  spread,
+  getSparklineState,
+  onSymbolClick,
+  findMatchingOrder,
+  onClosePosition,
+}: {
+  spread: OpenPositionSpreadGroup;
+  getSparklineState: (symbol: string) => { data: { date: string; close: number }[]; loading: boolean; error: boolean };
+  onSymbolClick: (symbol: string) => void;
+  findMatchingOrder: (pos: CurrentOptionPosition) => Order | undefined;
+  onClosePosition: (pos: CurrentOptionPosition, existingOrder: Order | null) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const badge = spreadTypeBadgeProps(spread.type);
+  const displayName = formatLiveSpreadName(spread.type, spread.underlying, spread.legs);
+  const sparkline = getSparklineState(spread.underlying);
+  const dte = calculateDTE(spread.expiry);
+  const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
+  const fmtStrike = (s: number) => s % 1 === 0 ? s.toString() : s.toFixed(2);
+
+  return (
+    <>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/50"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <TableCell>
+          <div className="flex items-center gap-1.5">
+            {expanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            }
+            <TickerHoverCard symbol={spread.underlying}>
+              <span className="font-medium">{displayName}</span>
+            </TickerHoverCard>
+            <ExternalLinks symbol={spread.underlying} />
+          </div>
+        </TableCell>
+        <TableCell>
+          <Sparkline
+            data={sparkline.data}
+            loading={sparkline.loading}
+            error={sparkline.error}
+            onChartClick={() => onSymbolClick(spread.underlying)}
+          />
+        </TableCell>
+        <TableCell>
+          <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${badge.className}`}>
+            {badge.label}
+          </span>
+        </TableCell>
+        <TableCell>
+          {spread.assetClassName ? (
+            <Link
+              to={`/positions?assetClassId=${spread.assetClassId}`}
+              className="flex items-center gap-2 hover:text-primary"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: spread.assetClassColor }}
+              />
+              <span className="truncate text-sm">{spread.assetClassName}</span>
+            </Link>
+          ) : (
+            <span className="text-muted-foreground text-sm">-</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right font-mono">
+          {spread.underlyingPrice != null
+            ? `$${spread.underlyingPrice.toFixed(2)}`
+            : <span className="text-muted-foreground">-</span>}
+        </TableCell>
+        <TableCell className="text-right font-mono text-muted-foreground">
+          {strikes.map(fmtStrike).join("/")}
+        </TableCell>
+        <TableCell>{spread.expiry}</TableCell>
+        <TableCell className={`text-right font-mono ${dte <= 7 ? "text-red-600" : ""}`}>
+          {dte}
+        </TableCell>
+        <TableCell className="text-right font-mono">{spread.quantity}</TableCell>
+        <TableCell
+          className={`text-right font-mono ${
+            spread.totalUnrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
+          }`}
+        >
+          {formatCurrency(spread.totalUnrealizedPnl)}
+        </TableCell>
+        <TableCell className="text-right font-mono text-blue-600">
+          {formatCurrency(spread.totalProjectedProfit)}
+        </TableCell>
+        <TableCell />
+      </TableRow>
+      {expanded && spread.legs.map((leg) => {
+        const legDte = calculateDTE(leg.expiry);
+        const legOrder = findMatchingOrder(leg);
+        return (
+          <TableRow key={leg.displayName} className="bg-muted/30">
+            <TableCell className="pl-9 text-sm text-muted-foreground">
+              {leg.quantity < 0 ? "Short" : "Long"} {leg.right === "P" ? "Put" : "Call"} {leg.strike}
+            </TableCell>
+            <TableCell />
+            <TableCell>
+              <Badge variant={leg.right === "P" ? "danger" : "success"} className="text-[10px]">
+                {leg.right}
+              </Badge>
+            </TableCell>
+            <TableCell />
+            <TableCell className="text-right font-mono text-xs">
+              {leg.underlyingPrice != null ? `$${leg.underlyingPrice.toFixed(2)}` : "-"}
+            </TableCell>
+            <TableCell className="text-right font-mono text-xs">
+              ${leg.strike.toFixed(leg.strike % 1 === 0 ? 0 : 2)}
+            </TableCell>
+            <TableCell className="text-xs">{leg.expiry}</TableCell>
+            <TableCell className={`text-right font-mono text-xs ${legDte <= 7 ? "text-red-600" : ""}`}>
+              {legDte}
+            </TableCell>
+            <TableCell className="text-right font-mono text-xs">{leg.quantity}</TableCell>
+            <TableCell className={`text-right font-mono text-xs ${
+              leg.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
+            }`}>
+              {formatCurrency(leg.unrealizedPnl)}
+            </TableCell>
+            <TableCell className="text-right font-mono text-xs text-blue-600">
+              {formatCurrency(leg.projectedProfit)}
+            </TableCell>
+            <TableCell className="text-right font-mono">
+              {legOrder ? (
+                <span
+                  className="cursor-pointer group/order relative text-xs"
+                  onClick={(e) => { e.stopPropagation(); onClosePosition(leg, legOrder); }}
+                >
+                  {formatCurrency(legOrder.limitPrice ?? 0)} x {legOrder.quantity}
+                  <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/order:opacity-100 bg-background text-sm font-sans">
+                    Adjust
+                  </span>
+                </span>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={(e) => { e.stopPropagation(); onClosePosition(leg, null); }}
+                >
+                  Close
+                </Button>
+              )}
+            </TableCell>
+          </TableRow>
+        );
+      })}
+    </>
   );
 }

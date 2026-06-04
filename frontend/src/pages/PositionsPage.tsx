@@ -20,6 +20,13 @@ import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { PositionFilters, PositionSummaryCards, PositionTable } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
+import { ChevronRight, ChevronDown } from "lucide-react";
+import {
+  groupPositionsIntoSpreads,
+  formatLiveSpreadName,
+  spreadTypeBadgeProps,
+  type PositionSpreadGroup,
+} from "@/utils/spreadGrouping";
 
 const DEFAULT_SPREAD_SYMBOLS = ["SPX", "XSP", "RUT"];
 
@@ -272,59 +279,69 @@ export function PositionsPage() {
       </Card>
 
       {/* Spread Positions */}
-      {spreadPositions.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <CardTitle>Spread Positions</CardTitle>
-              <Badge variant="secondary">{spreadPositions.length} legs</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Expiry</TableHead>
-                  <TableHead className="text-right">Strike</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Avg Cost</TableHead>
-                  <TableHead className="text-right">Market Value</TableHead>
-                  <TableHead className="text-right">P&L</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {spreadPositions.map((pos) => (
-                  <TableRow key={pos.conId || pos.symbol}>
-                    <TableCell className="font-medium">{pos.underlying}</TableCell>
-                    <TableCell>
-                      <Badge variant={pos.right === "P" ? "danger" : "success"}>
-                        {pos.right === "P" ? "PUT" : "CALL"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {pos.expiry}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{pos.strike}</TableCell>
-                    <TableCell className="text-right tabular-nums">{pos.position}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(pos.avgCost)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {pos.marketValue != null ? formatCurrency(pos.marketValue) : "—"}
-                    </TableCell>
-                    <TableCell className={`text-right tabular-nums font-medium ${
-                      pos.unrealizedPnl == null ? "text-muted-foreground"
-                        : pos.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
-                    }`}>
-                      {pos.unrealizedPnl != null ? formatCurrency(pos.unrealizedPnl) : "—"}
-                    </TableCell>
+      {spreadPositions.length > 0 && (() => {
+        const { spreads, ungrouped } = groupPositionsIntoSpreads(spreadPositions);
+        return (spreads.length > 0 || ungrouped.length > 0) && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <CardTitle>Spread Positions</CardTitle>
+                <Badge variant="secondary">{spreads.length} spreads</Badge>
+                {ungrouped.length > 0 && (
+                  <Badge variant="outline">{ungrouped.length} unmatched</Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Spread</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Expiry</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Net Cost</TableHead>
+                    <TableHead className="text-right">Market Value</TableHead>
+                    <TableHead className="text-right">P&L</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                </TableHeader>
+                <TableBody>
+                  {spreads.map((spread, idx) => (
+                    <SpreadPositionRow key={`spread-${idx}`} spread={spread} />
+                  ))}
+                  {ungrouped.map((pos) => (
+                    <TableRow key={pos.conId || pos.symbol}>
+                      <TableCell>
+                        <span className="font-medium">{pos.underlying}</span>
+                        <span className="text-muted-foreground ml-2 text-sm">
+                          {pos.right === "P" ? "Put" : "Call"} {pos.strike}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={pos.right === "P" ? "danger" : "success"}>
+                          {pos.right === "P" ? "PUT" : "CALL"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{pos.expiry}</TableCell>
+                      <TableCell className="text-right tabular-nums">{pos.position}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(pos.avgCost)}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {pos.marketValue != null ? formatCurrency(pos.marketValue) : "—"}
+                      </TableCell>
+                      <TableCell className={`text-right tabular-nums font-medium ${
+                        pos.unrealizedPnl == null ? "text-muted-foreground"
+                          : pos.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
+                      }`}>
+                        {pos.unrealizedPnl != null ? formatCurrency(pos.unrealizedPnl) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       <ChartModal
         symbol={chartSymbol}
@@ -332,5 +349,71 @@ export function PositionsPage() {
         onClose={() => setChartSymbol(null)}
       />
     </div>
+  );
+}
+
+function SpreadPositionRow({ spread }: { spread: PositionSpreadGroup }) {
+  const [expanded, setExpanded] = useState(false);
+  const badge = spreadTypeBadgeProps(spread.type);
+  const displayName = formatLiveSpreadName(spread.type, spread.underlying, spread.legs);
+
+  return (
+    <>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/50"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <TableCell>
+          <div className="flex items-center gap-1.5">
+            {expanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            }
+            <span className="font-medium">{displayName}</span>
+          </div>
+        </TableCell>
+        <TableCell>
+          <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${badge.className}`}>
+            {badge.label}
+          </span>
+        </TableCell>
+        <TableCell className="text-muted-foreground">{spread.expiry}</TableCell>
+        <TableCell className="text-right tabular-nums">{spread.quantity}</TableCell>
+        <TableCell className="text-right tabular-nums">{formatCurrency(spread.totalAvgCost)}</TableCell>
+        <TableCell className="text-right tabular-nums">
+          {formatCurrency(spread.totalMarketValue)}
+        </TableCell>
+        <TableCell className={`text-right tabular-nums font-medium ${
+          spread.totalPnl == null ? "text-muted-foreground"
+            : spread.totalPnl >= 0 ? "text-green-600" : "text-red-600"
+        }`}>
+          {spread.totalPnl != null ? formatCurrency(spread.totalPnl) : "—"}
+        </TableCell>
+      </TableRow>
+      {expanded && spread.legs.map((leg) => (
+        <TableRow key={leg.conId || leg.symbol} className="bg-muted/30">
+          <TableCell className="pl-9 text-sm text-muted-foreground">
+            {leg.position < 0 ? "Short" : "Long"} {leg.right === "P" ? "Put" : "Call"} {leg.strike}
+          </TableCell>
+          <TableCell>
+            <Badge variant={leg.right === "P" ? "danger" : "success"} className="text-[10px]">
+              {leg.right}
+            </Badge>
+          </TableCell>
+          <TableCell className="text-muted-foreground text-xs">{leg.expiry}</TableCell>
+          <TableCell className="text-right tabular-nums text-xs">{leg.position}</TableCell>
+          <TableCell className="text-right tabular-nums text-xs">{formatCurrency(leg.avgCost)}</TableCell>
+          <TableCell className="text-right tabular-nums text-xs">
+            {leg.marketValue != null ? formatCurrency(leg.marketValue) : "—"}
+          </TableCell>
+          <TableCell className={`text-right tabular-nums text-xs ${
+            leg.unrealizedPnl == null ? "text-muted-foreground"
+              : leg.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
+          }`}>
+            {leg.unrealizedPnl != null ? formatCurrency(leg.unrealizedPnl) : "—"}
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
   );
 }
