@@ -107,6 +107,27 @@ export interface OptionTradeGroup {
   assetClassColor?: string;
 }
 
+// Grouped spread trade (2-leg credit spread or 4-leg iron condor)
+export type SpreadStatus = "expired" | "closed" | "partial";
+
+export interface SpreadTradeGroup {
+  type: "put-spread" | "call-spread" | "iron-condor";
+  underlying: string;
+  expiry: string;
+  quantity: number;
+  legs: OptionTradeGroup[];
+  costBasis: number;       // Sum of leg costBasis (net premium received)
+  sellPrice: number;       // Sum of leg sellPrice (net cost to close)
+  profit: number;          // Sum of all leg profits
+  commissions: number;     // Sum of all leg commissions
+  status: SpreadStatus;
+  openDate: string;        // Earliest open trade date across legs
+  closeDate: string | null; // Latest close/expiry date across legs
+  assetClassId?: string;
+  assetClassName?: string;
+  assetClassColor?: string;
+}
+
 // Stock trade detail
 export interface StockTradeDetail {
   id: string;
@@ -155,6 +176,7 @@ export interface MonthDetail {
   year: number;
   month: number;
   realized: {
+    spreadTrades: SpreadTradeGroup[];
     optionTrades: OptionTradeGroup[];
     stockTrades: StockTradeGroup[];
     dividends: CashTransaction[];
@@ -197,6 +219,7 @@ export interface MonthProfitView {
     withholdingTax: number;
     fees: number;
     total: number;
+    closedSpreadTrades: SpreadTradeGroup[];
     closedTrades: OptionTradeGroup[];
     stockTrades: StockTradeGroup[];
     cashTransactions: CashTransaction[];
