@@ -8,8 +8,6 @@ import { Response } from "express";
 import { Contract, SecType, OptionType } from "@stoqey/ib";
 import { ibkrService, StreamTickData } from "./ibkr.js";
 import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
-import { positionService } from "./position.service.js";
-import { groupIntoSpreads } from "./spreadDetection.service.js";
 import { SYMBOL_CONFIG } from "../utils/options.js";
 import type {
   IronCondorChainStrike,
@@ -36,7 +34,6 @@ export class SpreadStreamSession {
   private unsubscribers: Array<() => void> = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
-  private positionInterval: ReturnType<typeof setInterval> | null = null;
   private tickBuffer: Record<string, TickBufferEntry> = {};
   private underlyingPriceBuffer: number | null = null;
   private destroyed = false;
@@ -290,12 +287,9 @@ export class SpreadStreamSession {
       }
     }, 30000);
 
-    // 12. Subscribe to IBKR connection status and fetch initial positions
-    this.fetchAndSendPositions();
+    // 12. Subscribe to IBKR connection status for error reporting
     const unsubIbkr = ibkrService.subscribe((status) => {
-      if (status.connected) {
-        this.fetchAndSendPositions();
-      } else {
+      if (!status.connected) {
         this.sendEvent("error", {
           message: "IBKR disconnected",
           recoverable: true,
@@ -303,9 +297,6 @@ export class SpreadStreamSession {
       }
     });
     this.unsubscribers.push(unsubIbkr);
-
-    // 13. Refresh positions periodically (every 10s) to catch new fills
-    this.positionInterval = setInterval(() => this.fetchAndSendPositions(), 10000);
   }
 
   private async resolveConIds(
@@ -358,16 +349,6 @@ export class SpreadStreamSession {
     this.tickBuffer = {};
   }
 
-  private async fetchAndSendPositions(): Promise<void> {
-    try {
-      const positions = await positionService.getPositions();
-      const spreads = groupIntoSpreads(positions);
-      this.sendEvent("positions", { spreads });
-    } catch (err) {
-      console.error("Failed to fetch positions for stream:", err);
-    }
-  }
-
   private sendEvent(type: string, data: unknown): void {
     if (this.destroyed) return;
     try {
@@ -397,7 +378,6 @@ export class SpreadStreamSession {
 
     if (this.flushInterval) clearInterval(this.flushInterval);
     if (this.keepaliveInterval) clearInterval(this.keepaliveInterval);
-    if (this.positionInterval) clearInterval(this.positionInterval);
 
     marketDataLineRegistry.release(this.sessionId);
     ibkrService.releaseLiveMarketData();

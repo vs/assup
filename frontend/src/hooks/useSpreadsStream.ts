@@ -3,10 +3,8 @@ import { getApiBase } from "@/lib/apiConfig";
 import type {
   IronCondorChainStrike,
   IronCondorChainOption,
-  ActiveSpread,
   SpreadStreamInitEvent,
   ChainUpdateEvent,
-  PositionsUpdateEvent,
   StreamErrorEvent,
 } from "@assup/shared";
 
@@ -17,7 +15,6 @@ interface UseSpreadsStreamResult {
   underlyingPrice: number;
   expirations: string[];
   selectedExpiration: string | null;
-  spreads: ActiveSpread[];
   status: StreamStatus;
   error: string | null;
 }
@@ -30,7 +27,6 @@ export function useSpreadsStream(
   const [underlyingPrice, setUnderlyingPrice] = useState(0);
   const [expirations, setExpirations] = useState<string[]>([]);
   const [selectedExpiration, setSelectedExpiration] = useState<string | null>(null);
-  const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
 
@@ -116,12 +112,6 @@ export function useSpreadsStream(
             break;
           }
 
-          case "positions": {
-            const pos = data as PositionsUpdateEvent;
-            setSpreads(pos.spreads);
-            break;
-          }
-
           case "error": {
             const err = data as StreamErrorEvent;
             setError(err.message);
@@ -199,7 +189,6 @@ export function useSpreadsStream(
     underlyingPrice,
     expirations,
     selectedExpiration,
-    spreads,
     status,
     error,
   };

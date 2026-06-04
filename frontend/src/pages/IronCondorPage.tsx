@@ -20,6 +20,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { settingsApi } from "@/api/settings";
+import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
 import { analyzeSpread } from "@/utils/spreadAnalysis";
 import { OptionsChainTable } from "@/components/iron-condor/OptionsChainTable";
@@ -96,16 +97,29 @@ export function IronCondorPage() {
   const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
 
-  // Streaming data
+  // Streaming data (chain only, no positions)
   const {
     chain,
     underlyingPrice,
     expirations,
     selectedExpiration: streamExpiration,
-    spreads,
     status,
     error,
   } = useSpreadsStream(symbol, expiration);
+
+  // Active spreads via REST endpoint (polled every 10s)
+  const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
+
+  useEffect(() => {
+    const fetchSpreads = () => {
+      api.ironCondor.getActiveSpreads()
+        .then(r => setSpreads(r.spreads))
+        .catch(() => {});
+    };
+    fetchSpreads();
+    const interval = setInterval(fetchSpreads, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Sync expiration from stream init event (server-selected nearest expiration)
   useEffect(() => {

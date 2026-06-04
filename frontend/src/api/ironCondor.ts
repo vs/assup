@@ -6,6 +6,7 @@ import { request } from "./client";
 import type {
   IronCondorOrderRequest,
   IronCondorOrderResponse,
+  ActiveSpread,
 } from "@assup/shared";
 
 export const ironCondorApi = {
@@ -20,4 +21,7 @@ export const ironCondorApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  getActiveSpreads: () =>
+    request<{ spreads: ActiveSpread[] }>("/api/spreads/positions"),
 };
