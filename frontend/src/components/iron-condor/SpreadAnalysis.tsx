@@ -270,93 +270,18 @@ export function SpreadAnalysis({
         </div>
       )}
 
-      {/* Scenario breakdown + order button */}
+      {/* Place order button */}
       {analysis && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-end">
-          <div className="border rounded-lg p-4 bg-card">
-            <div className="text-xs text-muted-foreground uppercase font-medium tracking-wide mb-3">What happens at expiration</div>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr] gap-3">
-              {/* Profit scenario */}
-              <div className="rounded-lg bg-green-50 border border-green-200 p-3">
-                <div className="text-sm font-semibold text-green-700 mb-1">
-                  Stays in range
-                </div>
-                <div className="text-xs text-green-800">
-                  {symbol} between{" "}
-                  {analysis.breakEvenLow != null && <>{analysis.breakEvenLow.toLocaleString()}</>}
-                  {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && " \u2013 "}
-                  {analysis.breakEvenHigh != null && <>{analysis.breakEvenHigh.toLocaleString()}</>}
-                </div>
-                <div className="text-sm font-semibold text-green-700 mt-2">
-                  +${analysis.maxProfit.toLocaleString()}
-                </div>
-                {analysis.breakEvenLow != null && analysis.breakEvenHigh != null && (
-                  <div className="text-xs text-green-600 mt-0.5">{(analysis.breakEvenHigh - analysis.breakEvenLow).toFixed(0)}-point range</div>
-                )}
-              </div>
-
-              {/* Put loss scenario */}
-              {analysis.breakEvenLow != null && analysis.probabilityOfMaxLossPut != null && (
-                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
-                  <div className="text-sm font-semibold text-red-700 mb-1">
-                    Drops below {analysis.breakEvenLow.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-red-800">
-                    {analysis.breakEvenLowPercent!.toFixed(1)}% down from current
-                  </div>
-                  <div className="text-sm font-semibold text-red-600 mt-2">
-                    -{maxLoss.toLocaleString()} max
-                  </div>
-                  <div className="text-xs text-red-600 mt-0.5">
-                    {(analysis.probabilityOfMaxLossPut * 100).toFixed(1)}% chance
-                  </div>
-                </div>
-              )}
-
-              {/* Call loss scenario */}
-              {analysis.breakEvenHigh != null && analysis.probabilityOfMaxLossCall != null && (
-                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
-                  <div className="text-sm font-semibold text-red-700 mb-1">
-                    Rises above {analysis.breakEvenHigh.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-red-800">
-                    {analysis.breakEvenHighPercent!.toFixed(1)}% up from current
-                  </div>
-                  <div className="text-sm font-semibold text-red-600 mt-2">
-                    -{maxLoss.toLocaleString()} max
-                  </div>
-                  <div className="text-xs text-red-600 mt-0.5">
-                    {(analysis.probabilityOfMaxLossCall * 100).toFixed(1)}% chance
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Place order button */}
+        <div className="flex justify-center pt-2">
           <Button
             size="lg"
             disabled={!legsReady || !analysis}
             onClick={onPlaceOrder}
-            className="h-14 px-8 text-base whitespace-nowrap"
+            className="h-12 px-10 text-base rounded-lg"
           >
-            {analysis
-              ? `Place ${spreadModeLabel(mode)} \u2014 $${analysis.maxProfit.toLocaleString()}`
-              : "Loading..."
-            }
+            Place {spreadModeLabel(mode)} &mdash; Credit ${analysis.maxProfit.toLocaleString()}
           </Button>
         </div>
-      )}
-
-      {/* Button fallback when no analysis */}
-      {!analysis && (
-        <Button
-          size="lg"
-          disabled
-          className="h-14 px-8 text-base"
-        >
-          Loading analysis...
-        </Button>
       )}
     </div>
   );
