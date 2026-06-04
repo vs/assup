@@ -3,6 +3,7 @@
  */
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PayoffDiagram } from "./PayoffDiagram";
 import type { IronCondorAnalyzeResponse, IronCondorChainStrike, SpreadSelectedLegs, SpreadMode } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
@@ -16,6 +17,7 @@ interface SpreadAnalysisProps {
   onPlaceOrder: () => void;
   mode: SpreadMode;
   symbol: string;
+  loading?: boolean;
 }
 
 function getOptionForStrike(chain: IronCondorChainStrike[], strike: number, type: "PUT" | "CALL") {
@@ -32,6 +34,7 @@ export function SpreadAnalysis({
   onPlaceOrder,
   mode,
   symbol,
+  loading,
 }: SpreadAnalysisProps) {
   const hasPutSide = mode === "put-spread" || mode === "iron-condor";
   const hasCallSide = mode === "call-spread" || mode === "iron-condor";
@@ -40,6 +43,53 @@ export function SpreadAnalysis({
     && (hasCallSide ? selectedLegs.sellCall && selectedLegs.buyCall : true);
 
   if (!legsReady) {
+    if (loading) {
+      return (
+        <div className="space-y-4">
+          {/* Recommendation skeleton */}
+          <div className="border rounded-lg p-5 space-y-3">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <div className="grid grid-cols-3 gap-3 mt-3">
+              <div className="text-center space-y-2">
+                <Skeleton className="h-7 w-16 mx-auto" />
+                <Skeleton className="h-3 w-20 mx-auto" />
+              </div>
+              <div className="text-center space-y-2">
+                <Skeleton className="h-7 w-20 mx-auto" />
+                <Skeleton className="h-3 w-24 mx-auto" />
+              </div>
+              <div className="text-center space-y-2">
+                <Skeleton className="h-7 w-20 mx-auto" />
+                <Skeleton className="h-3 w-16 mx-auto" />
+              </div>
+            </div>
+          </div>
+          {/* Legs + stats skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4">
+            <div className="border rounded-lg p-4 space-y-2">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="border rounded-lg p-3 text-center space-y-2">
+                  <Skeleton className="h-3 w-16 mx-auto" />
+                  <Skeleton className="h-6 w-20 mx-auto" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Chart skeleton */}
+          <div className="border rounded-lg p-4">
+            <Skeleton className="h-3 w-28 mb-3" />
+            <Skeleton className="h-[320px] w-full" />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
         Adjust parameters above to generate a recommendation, or click strikes in the chain to build manually.

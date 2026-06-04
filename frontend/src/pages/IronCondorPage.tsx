@@ -503,15 +503,26 @@ export function IronCondorPage() {
               onPlaceOrder={() => setOrderDialogOpen(true)}
               mode={mode}
               symbol={symbol}
+              loading={chain.length > 0 && !chainHasDeltas}
             />
           </div>
         </div>
       )}
 
-      {/* Connecting state */}
+      {/* Connecting state — show analysis skeleton */}
       {status === "connecting" && chain.length === 0 && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          Connecting to {symbol} options stream...
+        <div className="border rounded-lg p-4 bg-muted/20">
+          <SpreadAnalysis
+            analysis={null}
+            selectedLegs={selectedLegs}
+            chain={[]}
+            underlyingPrice={0}
+            quantity={quantity}
+            onPlaceOrder={() => {}}
+            mode={mode}
+            symbol={symbol}
+            loading
+          />
         </div>
       )}
 
