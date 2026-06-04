@@ -23,6 +23,7 @@ export function useSpreadsStream(
   symbol: string,
   expiration?: string,
   selectedStrikes?: number[],
+  focusRange?: { min: number; max: number },
 ): UseSpreadsStreamResult {
   const [chainMap, setChainMap] = useState<Map<number, IronCondorChainStrike>>(new Map());
   const [underlyingPrice, setUnderlyingPrice] = useState(0);
@@ -50,6 +51,10 @@ export function useSpreadsStream(
     if (expiration) params.set("expiration", expiration);
     if (selectedStrikes && selectedStrikes.length > 0) {
       params.set("strikes", selectedStrikes.join(","));
+    }
+    if (focusRange) {
+      params.set("focusMin", String(focusRange.min));
+      params.set("focusMax", String(focusRange.max));
     }
     const url = `${getApiBase()}/api/spreads/stream?${params}`;
 
@@ -143,7 +148,7 @@ export function useSpreadsStream(
 
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
-  }, [symbol, expiration, selectedStrikes]);
+  }, [symbol, expiration, selectedStrikes, focusRange]);
 
   // Connect on mount and when params change
   useEffect(() => {

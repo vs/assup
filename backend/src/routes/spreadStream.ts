@@ -12,6 +12,10 @@ router.get("/stream", (req: Request, res: Response) => {
     ? strikesParam.split(",").map(Number).filter(n => !isNaN(n))
     : undefined;
 
+  // Optional: focus range for dense subscription (phase 2 after auto-select)
+  const focusMin = req.query.focusMin ? Number(req.query.focusMin) : undefined;
+  const focusMax = req.query.focusMax ? Number(req.query.focusMax) : undefined;
+
   // SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -19,7 +23,8 @@ router.get("/stream", (req: Request, res: Response) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const session = new SpreadStreamSession(res, symbol, expiration, onlyStrikes);
+  const session = new SpreadStreamSession(res, symbol, expiration, onlyStrikes,
+    focusMin != null && focusMax != null ? { min: focusMin, max: focusMax } : undefined);
   session.start();
 
   req.on("close", () => {

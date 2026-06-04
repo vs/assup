@@ -32,6 +32,7 @@ export class SpreadStreamSession {
   private symbol: string;
   private expiration: string | undefined;
   private onlyStrikes: number[] | undefined;
+  private focusRange: { min: number; max: number } | undefined;
   private unsubscribers: Array<() => void> = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
@@ -39,12 +40,13 @@ export class SpreadStreamSession {
   private underlyingPriceBuffer: number | null = null;
   private destroyed = false;
 
-  constructor(res: Response, symbol: string, expiration?: string, onlyStrikes?: number[]) {
+  constructor(res: Response, symbol: string, expiration?: string, onlyStrikes?: number[], focusRange?: { min: number; max: number }) {
     this.res = res;
     this.sessionId = `spread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.symbol = symbol;
     this.expiration = expiration;
     this.onlyStrikes = onlyStrikes;
+    this.focusRange = focusRange;
   }
 
   async start(): Promise<void> {
@@ -221,19 +223,39 @@ export class SpreadStreamSession {
     );
     this.unsubscribers.push(unsubUnderlying);
 
-    // Subscribe to strikes uniformly across the full range so delta data is
-    // available for deep OTM strikes (needed for auto-select at delta ~3.5).
-    // When budget is tight, evenly sample the sorted strike list to cover
-    // the entire range rather than clustering around ATM.
+    // Two-phase strike subscription:
+    // Phase 1 (no focusRange): Uniform sparse sampling across full range
+    //   so auto-select can find the approximate delta target.
+    // Phase 2 (with focusRange): Dense subscription within the focus range
+    //   (all strikes around selected legs), sparse for the rest.
     const maxStrikes = Math.floor((linesGranted - 1) / 2);
     const sorted = [...strikesToSubscribe].sort((a, b) => a - b);
     const subscribedStrikes = new Set<number>();
 
     if (sorted.length <= maxStrikes) {
       for (const s of sorted) subscribedStrikes.add(s);
+    } else if (this.focusRange) {
+      // Phase 2: all strikes in focus range, sparse outside
+      const focusStrikes = sorted.filter(
+        (s) => s >= this.focusRange!.min && s <= this.focusRange!.max,
+      );
+      const outsideStrikes = sorted.filter(
+        (s) => s < this.focusRange!.min || s > this.focusRange!.max,
+      );
+
+      // Add all focus strikes first
+      for (const s of focusStrikes) subscribedStrikes.add(s);
+
+      // Fill remaining budget with evenly sampled outside strikes
+      const remaining = maxStrikes - subscribedStrikes.size;
+      if (remaining > 0 && outsideStrikes.length > 0) {
+        const step = Math.max(1, (outsideStrikes.length - 1) / (remaining - 1));
+        for (let i = 0; i < remaining && i * step < outsideStrikes.length; i++) {
+          subscribedStrikes.add(outsideStrikes[Math.round(i * step)]);
+        }
+      }
     } else {
-      // Evenly sample: pick every Nth strike to cover full range
-      // Always include first and last for full coverage
+      // Phase 1: uniform sparse sampling across full range
       const step = (sorted.length - 1) / (maxStrikes - 1);
       for (let i = 0; i < maxStrikes; i++) {
         const idx = Math.round(i * step);

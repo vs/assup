@@ -109,6 +109,22 @@ export function IronCondorPage() {
     return strikes.length > 0 ? strikes : undefined;
   }, [chainExpanded, selectedLegs]);
 
+  // Phase 2: once legs are selected, focus dense subscription around them
+  // Use a margin of wingWidth + 50 points around the outermost legs
+  const focusRange = useMemo(() => {
+    const strikes: number[] = [];
+    if (selectedLegs.buyPut) strikes.push(selectedLegs.buyPut);
+    if (selectedLegs.sellPut) strikes.push(selectedLegs.sellPut);
+    if (selectedLegs.sellCall) strikes.push(selectedLegs.sellCall);
+    if (selectedLegs.buyCall) strikes.push(selectedLegs.buyCall);
+    if (strikes.length === 0) return undefined;
+    const margin = wingWidth + 50;
+    return {
+      min: Math.min(...strikes) - margin,
+      max: Math.max(...strikes) + margin,
+    };
+  }, [selectedLegs, wingWidth]);
+
   // Streaming data (chain only, no positions)
   const {
     chain,
@@ -117,7 +133,7 @@ export function IronCondorPage() {
     selectedExpiration: streamExpiration,
     status,
     error,
-  } = useSpreadsStream(symbol, expiration, streamStrikes);
+  } = useSpreadsStream(symbol, expiration, streamStrikes, focusRange);
 
   // Active spreads via REST endpoint (polled every 10s)
   const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
