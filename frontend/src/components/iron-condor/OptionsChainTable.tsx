@@ -6,8 +6,8 @@
  * Auto-scrolls to the primary sell leg on load.
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Crosshair } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Crosshair, Maximize2, Minimize2 } from "lucide-react";
 import type { IronCondorChainStrike, SpreadSelectedLegs, SpreadMode } from "@assup/shared";
 
 interface OptionsChainTableProps {
@@ -370,6 +370,7 @@ function ChainMinimap({
 export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSelectLeg, mode, expanded: controlledExpanded, onExpandedChange }: OptionsChainTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sellRowRef = useRef<HTMLDivElement>(null);
+  const atmRowRef = useRef<HTMLDivElement>(null);
 
   const atMoneyStrike = chain.reduce((closest: number, entry: IronCondorChainStrike) => {
     return Math.abs(entry.strike - underlyingPrice) < Math.abs(closest - underlyingPrice)
@@ -407,6 +408,60 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
   const expanded = controlledExpanded ?? internalExpanded;
   const setExpanded = onExpandedChange ?? setInternalExpanded;
 
+  // Compact vs full chain view (compact = show only relevant strikes)
+  const [fullView, setFullView] = useState(false);
+
+  // Build compact chain: strikes near ATM (±5) and near each selected leg (±3), with gap markers
+  const CONTEXT_ATM = 5;
+  const CONTEXT_LEG = 3;
+
+  const compactChain = useMemo(() => {
+    if (fullView || chain.length === 0) return null;
+
+    // Collect "important" strike indices
+    const importantIndices = new Set<number>();
+    for (let i = 0; i < chain.length; i++) {
+      const strike = chain[i].strike;
+      if (strike === atMoneyStrike) {
+        for (let j = Math.max(0, i - CONTEXT_ATM); j <= Math.min(chain.length - 1, i + CONTEXT_ATM); j++) {
+          importantIndices.add(j);
+        }
+      }
+      const legStrikes = [selectedLegs.buyPut, selectedLegs.sellPut, selectedLegs.sellCall, selectedLegs.buyCall];
+      for (const ls of legStrikes) {
+        if (ls != null && strike === ls) {
+          for (let j = Math.max(0, i - CONTEXT_LEG); j <= Math.min(chain.length - 1, i + CONTEXT_LEG); j++) {
+            importantIndices.add(j);
+          }
+        }
+      }
+    }
+
+    // Build display list with gap markers
+    const result: Array<{ type: "row"; entry: IronCondorChainStrike } | { type: "gap"; skipped: number }> = [];
+    let lastIdx = -1;
+    const sortedIndices = [...importantIndices].sort((a, b) => a - b);
+    for (const idx of sortedIndices) {
+      if (lastIdx >= 0 && idx > lastIdx + 1) {
+        result.push({ type: "gap", skipped: idx - lastIdx - 1 });
+      }
+      result.push({ type: "row", entry: chain[idx] });
+      lastIdx = idx;
+    }
+    return result;
+  }, [chain, fullView, atMoneyStrike, selectedLegs]);
+
+  // Scroll to ATM when switching to full view
+  const prevFullViewRef = useRef(fullView);
+  useEffect(() => {
+    if (fullView && !prevFullViewRef.current) {
+      requestAnimationFrame(() => {
+        atmRowRef.current?.scrollIntoView({ block: "center", behavior: "instant" });
+      });
+    }
+    prevFullViewRef.current = fullView;
+  }, [fullView]);
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
@@ -418,15 +473,27 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
           <h3 className="text-sm font-semibold">Options Chain</h3>
           <span className="text-xs text-muted-foreground">{chain.length} strikes</span>
         </button>
-        {expanded && scrollTarget && (
-          <button
-            onClick={scrollToLegs}
-            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
-            title="Scroll to selected legs"
-          >
-            <Crosshair className="h-3.5 w-3.5" />
-            Locate
-          </button>
+        {expanded && (
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => setFullView(!fullView)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
+              title={fullView ? "Compact view" : "Full chain"}
+            >
+              {fullView ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              {fullView ? "Compact" : "Full"}
+            </button>
+            {fullView && scrollTarget && (
+              <button
+                onClick={scrollToLegs}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
+                title="Scroll to selected legs"
+              >
+                <Crosshair className="h-3.5 w-3.5" />
+                Locate
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -450,18 +517,40 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
           {/* Chain + Minimap side by side */}
           <div className="flex gap-1">
             {/* Scrollable chain */}
-            <div ref={scrollRef} className="flex-1 max-h-[560px] overflow-y-auto">
-              {chain.map((entry: IronCondorChainStrike) => (
-                <ChainRow
-                  key={entry.strike}
-                  entry={entry}
-                  selectedLegs={selectedLegs}
-                  isAtMoney={entry.strike === atMoneyStrike}
-                  onSelectLeg={onSelectLeg}
-                  mode={mode}
-                  rowRef={entry.strike === scrollTarget ? sellRowRef : undefined}
-                />
-              ))}
+            <div ref={scrollRef} className={`flex-1 overflow-y-auto ${fullView ? "max-h-[560px]" : ""}`}>
+              {fullView ? (
+                // Full view: all strikes, scrollable
+                chain.map((entry: IronCondorChainStrike) => (
+                  <ChainRow
+                    key={entry.strike}
+                    entry={entry}
+                    selectedLegs={selectedLegs}
+                    isAtMoney={entry.strike === atMoneyStrike}
+                    onSelectLeg={onSelectLeg}
+                    mode={mode}
+                    rowRef={entry.strike === scrollTarget ? sellRowRef : entry.strike === atMoneyStrike ? atmRowRef : undefined}
+                  />
+                ))
+              ) : (
+                // Compact view: only relevant strikes with gap markers
+                compactChain?.map((item, i) =>
+                  item.type === "gap" ? (
+                    <div key={`gap-${i}`} className="text-center text-xs text-muted-foreground py-1 border-b border-dashed border-muted">
+                      ··· {item.skipped} strikes ···
+                    </div>
+                  ) : (
+                    <ChainRow
+                      key={item.entry.strike}
+                      entry={item.entry}
+                      selectedLegs={selectedLegs}
+                      isAtMoney={item.entry.strike === atMoneyStrike}
+                      onSelectLeg={onSelectLeg}
+                      mode={mode}
+                      rowRef={item.entry.strike === scrollTarget ? sellRowRef : item.entry.strike === atMoneyStrike ? atmRowRef : undefined}
+                    />
+                  )
+                )
+              )}
             </div>
 
             {/* Minimap */}
