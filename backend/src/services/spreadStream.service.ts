@@ -221,15 +221,25 @@ export class SpreadStreamSession {
     );
     this.unsubscribers.push(unsubUnderlying);
 
-    // Prioritize ATM-nearest strikes for subscription
-    const sortedByDistance = strikesToSubscribe
-      .map((s) => ({ strike: s, distance: Math.abs(s - underlyingPrice) }))
-      .sort((a, b) => a.distance - b.distance);
-
+    // Subscribe to strikes uniformly across the full range so delta data is
+    // available for deep OTM strikes (needed for auto-select at delta ~3.5).
+    // When budget is tight, evenly sample the sorted strike list to cover
+    // the entire range rather than clustering around ATM.
     const maxStrikes = Math.floor((linesGranted - 1) / 2);
-    const subscribedStrikes = new Set(
-      sortedByDistance.slice(0, maxStrikes).map((s) => s.strike),
-    );
+    const sorted = [...strikesToSubscribe].sort((a, b) => a - b);
+    const subscribedStrikes = new Set<number>();
+
+    if (sorted.length <= maxStrikes) {
+      for (const s of sorted) subscribedStrikes.add(s);
+    } else {
+      // Evenly sample: pick every Nth strike to cover full range
+      // Always include first and last for full coverage
+      const step = (sorted.length - 1) / (maxStrikes - 1);
+      for (let i = 0; i < maxStrikes; i++) {
+        const idx = Math.round(i * step);
+        subscribedStrikes.add(sorted[idx]);
+      }
+    }
 
     for (const strike of strikesToSubscribe) {
       if (!subscribedStrikes.has(strike)) continue;
