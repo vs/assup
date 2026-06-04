@@ -390,10 +390,12 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
     }
   }, []);
 
-  // Auto-scroll to the sell leg when chain loads or sell strike changes
+  // Auto-scroll only on first load — don't jump when user changes parameters
+  const initialScrollDone = useRef(false);
   useEffect(() => {
-    if (sellRowRef.current && scrollRef.current) {
+    if (!initialScrollDone.current && sellRowRef.current && scrollRef.current) {
       sellRowRef.current.scrollIntoView({ block: "center", behavior: "instant" });
+      initialScrollDone.current = true;
     }
   }, [scrollTarget]);
 
