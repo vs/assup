@@ -187,6 +187,17 @@ const ChainRow = memo(function ChainRow({
   );
 });
 
+// Pick a "nice" step for round strike markers given the strike range
+function niceStep(range: number): number {
+  const candidates = [1, 2, 5, 10, 25, 50, 100, 200, 500, 1000, 2500, 5000];
+  const ideal = range / 8; // aim for ~8 ticks
+  let best = candidates[0];
+  for (const c of candidates) {
+    if (Math.abs(c - ideal) < Math.abs(best - ideal)) best = c;
+  }
+  return best;
+}
+
 // --- Minimap: Sublime-style sliding window showing all legs ---
 function ChainMinimap({
   chain,
@@ -250,18 +261,58 @@ function ChainMinimap({
   const profitZoneTop = selectedLegs.sellPut ? strikeToPercent(selectedLegs.sellPut) : 0;
   const profitZoneBottom = selectedLegs.sellCall ? strikeToPercent(selectedLegs.sellCall) : 100;
 
+  // Round strike tick marks
+  const step = niceStep(range);
+  const firstTick = Math.ceil(minStrike / step) * step;
+  const roundTicks: number[] = [];
+  for (let s = firstTick; s <= maxStrike; s += step) {
+    roundTicks.push(s);
+  }
+
+  // Collect all labeled positions to detect overlaps (within 3% vertical distance)
+  const labeledPercents: number[] = [];
+  const atmPct = strikeToPercent(underlyingPrice);
+  labeledPercents.push(atmPct);
+  for (const m of legMarkers) {
+    labeledPercents.push(strikeToPercent(m.strike));
+  }
+  const isTickTooClose = (pct: number) => labeledPercents.some(p => Math.abs(p - pct) < 3);
+
   return (
     <div
       ref={minimapRef}
-      className="relative w-10 bg-muted/40 rounded border cursor-pointer flex-shrink-0"
+      className="relative w-24 bg-muted/40 rounded border cursor-pointer flex-shrink-0"
       onClick={handleMinimapClick}
       title="Click to navigate"
     >
-      {/* ATM marker */}
+      {/* Round strike ticks */}
+      {roundTicks.map(s => {
+        const pct = strikeToPercent(s);
+        if (isTickTooClose(pct)) return null;
+        return (
+          <div
+            key={`tick-${s}`}
+            className="absolute right-0 flex items-center"
+            style={{ top: `${pct}%`, transform: "translateY(-50%)" }}
+          >
+            <span className="text-[9px] text-muted-foreground/50 tabular-nums pr-1">{s}</span>
+            <div className="w-1.5 border-t border-muted-foreground/20" />
+          </div>
+        );
+      })}
+
+      {/* ATM marker with price */}
       <div
         className="absolute left-0 right-0 border-t border-dashed border-amber-500/60"
-        style={{ top: `${strikeToPercent(underlyingPrice)}%` }}
-      />
+        style={{ top: `${atmPct}%` }}
+      >
+        <span
+          className="absolute text-[10px] font-semibold text-amber-600 whitespace-nowrap right-0.5 tabular-nums"
+          style={{ top: "-11px" }}
+        >
+          {underlyingPrice.toFixed(0)}
+        </span>
+      </div>
 
       {/* Profit zone */}
       {hasProfitZone && mode === "iron-condor" && (
@@ -274,7 +325,7 @@ function ChainMinimap({
         />
       )}
 
-      {/* Leg markers */}
+      {/* Leg markers with strike values */}
       {legMarkers.map(m => (
         <div
           key={m.label}
@@ -288,12 +339,14 @@ function ChainMinimap({
           {m.side === "left" && (
             <>
               <div className={`w-1.5 h-3 ${m.color} rounded-r`} />
-              <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
+              <span className="text-[9px] font-bold text-muted-foreground">{m.label}</span>
+              <span className="text-[9px] text-muted-foreground/80 tabular-nums ml-0.5">{m.strike}</span>
             </>
           )}
           {m.side === "right" && (
             <>
-              <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
+              <span className="text-[9px] text-muted-foreground/80 tabular-nums mr-0.5">{m.strike}</span>
+              <span className="text-[9px] font-bold text-muted-foreground">{m.label}</span>
               <div className={`w-1.5 h-3 ${m.color} rounded-l`} />
             </>
           )}
