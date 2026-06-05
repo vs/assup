@@ -2,7 +2,6 @@ import { NavLink } from "react-router-dom";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard,
   Briefcase,
   List,
   Search,
@@ -26,6 +25,7 @@ function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
   return (
     <NavLink
       to={to}
+      end={to === "/"}
       onClick={onClick}
       className={({ isActive }) =>
         `relative flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -43,8 +43,7 @@ function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
 }
 
 const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/positions", label: "Positions", icon: Briefcase },
+  { to: "/", label: "Positions", icon: Briefcase },
   { to: "/analysis", label: "Watchlists", icon: List },
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/profit", label: "Profit", icon: TrendingUp },

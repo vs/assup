@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api";
 import { settingsApi } from "@/api/settings";
-import type { Position, AssetClass, AllocationProfile, PositionSummary } from "@assup/shared";
+import type { Position, AssetClass, AllocationProfile, PositionSummary, DashboardSettings } from "@assup/shared";
 import { calculatePositionExposure, formatCurrency } from "@assup/shared";
 import { useAllocationUpdates } from "@/hooks/useSSE";
 import { useSparklines } from "@/hooks/useSparklines";
@@ -18,8 +18,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
-import { PositionFilters, PositionSummaryCards, PositionTable } from "@/components/positions";
+import { PositionFilters, PositionSummaryCards, PositionTable, GroupedPositionsTable } from "@/components/positions";
+import type { AllocationData } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import {
@@ -31,6 +33,12 @@ import {
 
 const DEFAULT_SPREAD_SYMBOLS = ["SPX", "XSP", "RUT"];
 
+const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
+  includeOptions: false,
+  optionsWeightMode: "notional",
+  chartsExpanded: false,
+};
+
 export function PositionsPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
@@ -41,6 +49,8 @@ export function PositionsPage() {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [spreadSymbols, setSpreadSymbols] = useState<Set<string>>(new Set(DEFAULT_SPREAD_SYMBOLS));
+  const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>(DEFAULT_DASHBOARD_SETTINGS);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const { filters, setFilters } = usePositionFilters();
 
@@ -87,6 +97,12 @@ export function PositionsPage() {
         setProfile(null);
       }
 
+      // Load dashboard settings for allocation display
+      try {
+        const savedSettings = await api.settings.getDashboard();
+        setDashboardSettings(savedSettings);
+      } catch { /* use defaults */ }
+
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load positions");
@@ -119,6 +135,15 @@ export function PositionsPage() {
       setAssigning(null);
     }
   }
+
+  const handleToggleGroup = useCallback((groupId: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }, []);
 
   // Separate spread positions from regular positions
   const spreadPositions = useMemo(() => {
@@ -174,6 +199,11 @@ export function PositionsPage() {
     p.secType === "OPT" && !(p.underlying && spreadSymbols.has(p.underlying))
   ).length;
 
+  // Build allocation data for grouped view
+  const allocationData = useMemo(() => {
+    return buildAllocationData(profile, summary, dashboardSettings);
+  }, [profile, summary, dashboardSettings]);
+
   // Sparklines
   const sparklineSymbols = useMemo(() => {
     const uniqueSymbols = new Set<string>();
@@ -210,10 +240,12 @@ export function PositionsPage() {
 
   // Table title
   const tableTitle = useMemo(() => {
-    if (!filters.assetClassId || filters.assetClassId === "all") return "All Positions";
+    if (!filters.assetClassId || filters.assetClassId === "all") return "Positions";
     if (filters.assetClassId === "unassigned") return "Unassigned Positions";
     return `${assetClasses.find((ac) => ac.id === filters.assetClassId)?.name || "Filtered"} Positions`;
   }, [filters.assetClassId, assetClasses]);
+
+  const showGroupedView = isAllClasses && allocationData.length > 0;
 
   if (loading && positions.length === 0) {
     return <PageLoadingSkeleton />;
@@ -225,7 +257,7 @@ export function PositionsPage() {
         <div>
           <h1 className="text-2xl font-bold">Positions</h1>
           <p className="text-muted-foreground">
-            View and assign your positions to asset classes.
+            Portfolio allocation and position details.
           </p>
         </div>
         <PositionFilters
@@ -252,32 +284,6 @@ export function PositionsPage() {
         diffToTarget={diffToTarget}
         assetClassId={filters.assetClassId}
       />
-
-      {/* All Positions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{tableTitle}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {filteredPositions.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              {positions.length === 0
-                ? "No positions found. Make sure TWS is connected."
-                : "No positions match the current filters."}
-            </p>
-          ) : (
-            <PositionTable
-              positions={filteredPositions}
-              assetClasses={assetClasses}
-              netLiquidation={netLiquidation}
-              assigningKey={assigning}
-              onAssign={handleAssign}
-              onSymbolClick={setChartSymbol}
-              getSparkline={getPositionSparkline}
-            />
-          )}
-        </CardContent>
-      </Card>
 
       {/* Spread Positions */}
       {spreadPositions.length > 0 && (() => {
@@ -314,7 +320,14 @@ export function PositionsPage() {
                     <TableRow key={pos.conId || pos.symbol}>
                       <TableCell>
                         <div className="pl-5">
-                          <span className="font-medium">{pos.underlying}</span>
+                          <TickerHoverCard symbol={pos.underlying || pos.symbol}>
+                            <Link
+                              to={`/tickers/${pos.underlying || pos.symbol}`}
+                              className="font-medium hover:text-primary hover:underline"
+                            >
+                              {pos.underlying}
+                            </Link>
+                          </TickerHoverCard>
                           <span className="text-muted-foreground ml-2 text-sm">
                             {pos.right === "P" ? "Put" : "Call"} {pos.strike}
                           </span>
@@ -346,6 +359,43 @@ export function PositionsPage() {
         );
       })()}
 
+      {/* Positions Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{tableTitle}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filteredPositions.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">
+              {positions.length === 0
+                ? "No positions found. Make sure TWS is connected."
+                : "No positions match the current filters."}
+            </p>
+          ) : showGroupedView ? (
+            <GroupedPositionsTable
+              positions={filteredPositions}
+              allocationData={allocationData}
+              netLiquidation={netLiquidation}
+              includeOptions={dashboardSettings.includeOptions}
+              onSymbolClick={setChartSymbol}
+              getSparkline={getPositionSparkline}
+              expandedGroups={expandedGroups}
+              onToggleGroup={handleToggleGroup}
+            />
+          ) : (
+            <PositionTable
+              positions={filteredPositions}
+              assetClasses={assetClasses}
+              netLiquidation={netLiquidation}
+              assigningKey={assigning}
+              onAssign={handleAssign}
+              onSymbolClick={setChartSymbol}
+              getSparkline={getPositionSparkline}
+            />
+          )}
+        </CardContent>
+      </Card>
+
       <ChartModal
         symbol={chartSymbol}
         open={!!chartSymbol}
@@ -353,6 +403,80 @@ export function PositionsPage() {
       />
     </div>
   );
+}
+
+/**
+ * Build allocation data from profile and summary
+ */
+function buildAllocationData(
+  profile: AllocationProfile | null,
+  summary: PositionSummary | null,
+  settings: DashboardSettings
+): AllocationData[] {
+  if (!profile || !summary) return [];
+
+  const allocationData: AllocationData[] = [];
+  const targetMap = new Map(profile.targets.map((t) => [t.assetClassId, t]));
+  const actualMap = new Map(summary.summary.byAssetClass.map((a) => [a.id, a]));
+
+  // Add all targets
+  for (const target of profile.targets) {
+    const actual = actualMap.get(target.assetClassId);
+    allocationData.push({
+      id: target.assetClassId,
+      name: target.assetClass.name,
+      target: target.targetPercentage,
+      current: Math.round(actual?.percentage || 0),
+      diff: (actual?.percentage || 0) - target.targetPercentage,
+      color: target.assetClass.color,
+      value: actual?.value || 0,
+      stockValue: actual?.stockValue || 0,
+      optionsExposure: settings.optionsWeightMode === "delta"
+        ? (actual?.optionsDelta || 0)
+        : (actual?.optionsNotional || 0),
+    });
+  }
+
+  // Add unassigned
+  if (summary.summary.unassignedPercentage > 0) {
+    allocationData.push({
+      id: "unassigned",
+      name: "Unassigned",
+      target: 0,
+      current: Math.round(summary.summary.unassignedPercentage),
+      diff: summary.summary.unassignedPercentage,
+      color: "#9ca3af",
+      value: summary.summary.unassignedValue,
+      stockValue: summary.summary.unassignedValue,
+      optionsExposure: 0,
+    });
+  }
+
+  // Add actuals without targets
+  for (const actual of summary.summary.byAssetClass) {
+    if (!targetMap.has(actual.id)) {
+      allocationData.push({
+        id: actual.id,
+        name: actual.name,
+        target: 0,
+        current: Math.round(actual.percentage),
+        diff: actual.percentage,
+        color: actual.color,
+        value: actual.value,
+        stockValue: actual.stockValue,
+        optionsExposure: settings.optionsWeightMode === "delta"
+          ? actual.optionsDelta
+          : actual.optionsNotional,
+      });
+    }
+  }
+
+  // Sort Cash last
+  return allocationData.sort((a, b) => {
+    if (a.name === "Cash") return 1;
+    if (b.name === "Cash") return -1;
+    return 0;
+  });
 }
 
 function SpreadPositionRow({ spread }: { spread: PositionSpreadGroup }) {
@@ -372,13 +496,15 @@ function SpreadPositionRow({ spread }: { spread: PositionSpreadGroup }) {
               ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             }
-            <Link
-              to={`/tickers/${spread.underlying}`}
-              className="font-medium hover:text-primary hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {displayName}
-            </Link>
+            <TickerHoverCard symbol={spread.underlying}>
+              <Link
+                to={`/tickers/${spread.underlying}`}
+                className="font-medium hover:text-primary hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {displayName}
+              </Link>
+            </TickerHoverCard>
           </div>
         </TableCell>
         <TableCell>

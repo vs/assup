@@ -6,7 +6,6 @@ import { MacroProvider } from "@/components/common/MacroProvider";
 import { TickerProfileProvider } from "@/components/common/TickerProfileProvider";
 import { ResearchJobsProvider } from "@/hooks/useResearchJobs";
 
-const DashboardPage = lazy(() => import("@/pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const PositionsPage = lazy(() => import("@/pages/PositionsPage").then((m) => ({ default: m.PositionsPage })));
 const WatchlistsPage = lazy(() => import("@/pages/WatchlistsPage").then((m) => ({ default: m.WatchlistsPage })));
 const ScannerPage = lazy(() => import("@/pages/ScannerPage").then((m) => ({ default: m.ScannerPage })));
@@ -37,7 +36,7 @@ function App() {
         <Suspense fallback={null}>
         <Routes>
           <Route element={<Layout />}>
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={<PositionsPage />} />
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/analysis" element={<WatchlistsPage />} />
             <Route path="/tickers/:symbol" element={<ResearchReportPage />} />
