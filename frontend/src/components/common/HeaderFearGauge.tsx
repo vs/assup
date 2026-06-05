@@ -1,15 +1,104 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useMacro } from "./MacroProvider";
 import { DailyChangeArrow } from "./DailyChangeArrow";
 import { computeFearScore, getLabelColor } from "@/lib/fearGreed";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import { usePositionUpdates } from "@/hooks/useSSE";
 import { FearGreedPanel } from "@/components/ConnectionStatus";
+import { api } from "@/api";
+import { settingsApi } from "@/api/settings";
+import type { PositionSummary } from "@assup/shared";
+import { groupPositionsIntoSpreads } from "@/utils/spreadGrouping";
+
+const DEFAULT_SPREAD_SYMBOLS = ["SPX", "XSP", "RUT"];
+
+export interface AccountSnapshot {
+  netLiquidation: number;
+  cashValue: number;
+  stocksValue: number;
+  nakedPutsExposure: number;
+  nakedCallsExposure: number;
+  spreadsCount: number;
+  spreadsPnl: number | null;
+  spreadsCostBasis: number;
+}
+
+function computeAccountSnapshot(
+  summary: PositionSummary,
+  spreadSymbols: Set<string>,
+): AccountSnapshot {
+  const positions = summary.positions;
+
+  // Separate spread-eligible options from naked options
+  const spreadEligible = positions.filter(
+    (p) => p.secType === "OPT" && p.underlying && spreadSymbols.has(p.underlying),
+  );
+  const nakedOptions = positions.filter(
+    (p) => p.secType === "OPT" && !(p.underlying && spreadSymbols.has(p.underlying)),
+  );
+
+  // Group spread-eligible positions
+  const { spreads } = groupPositionsIntoSpreads(spreadEligible);
+
+  // Naked options exposure (notional value)
+  const nakedPutsExposure = nakedOptions
+    .filter((p) => p.right === "P")
+    .reduce((s, p) => s + (p.notionalValue ?? 0), 0);
+  const nakedCallsExposure = nakedOptions
+    .filter((p) => p.right === "C")
+    .reduce((s, p) => s + (p.notionalValue ?? 0), 0);
+
+  // Spreads summary
+  const spreadsPnl = spreads.reduce<number | null>((s, sp) => {
+    if (sp.totalPnl == null) return s;
+    return (s ?? 0) + sp.totalPnl;
+  }, null);
+
+  const spreadsCostBasis = spreads.reduce((s, sp) => s + sp.totalCostBasis, 0);
+
+  return {
+    netLiquidation: summary.account.netLiquidation,
+    cashValue: summary.account.cashValue,
+    stocksValue: summary.summary.totalStockValue,
+    nakedPutsExposure,
+    nakedCallsExposure,
+    spreadsCount: spreads.length,
+    spreadsPnl,
+    spreadsCostBasis,
+  };
+}
 
 export function HeaderFearGauge() {
   const { macro } = useMacro();
   const { status, sseError } = useConnectionStatus();
   const isConnected = status.connected;
   const [isHovering, setIsHovering] = useState(false);
+  const [accountSnapshot, setAccountSnapshot] = useState<AccountSnapshot | null>(null);
+
+  const loadAccount = useCallback(async () => {
+    try {
+      const [summaryData, spreadSettings] = await Promise.all([
+        api.positions.summary({ includeOptions: true, optionsWeightMode: "notional" }),
+        settingsApi.get<{ symbols: string[] }>("spreads").catch(() => ({ key: "spreads", value: { symbols: DEFAULT_SPREAD_SYMBOLS } })),
+      ]);
+      const spreadSymbols = new Set(
+        spreadSettings.value?.symbols?.length > 0
+          ? spreadSettings.value.symbols
+          : DEFAULT_SPREAD_SYMBOLS,
+      );
+      setAccountSnapshot(computeAccountSnapshot(summaryData, spreadSymbols));
+    } catch {
+      // silent — panel just won't show account data
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isConnected) loadAccount();
+  }, [isConnected, loadAccount]);
+
+  const loadAccountRef = useRef(loadAccount);
+  useEffect(() => { loadAccountRef.current = loadAccount; });
+  usePositionUpdates(useCallback(() => loadAccountRef.current(), []));
 
   const result = macro ? computeFearScore(macro.details) : null;
 
@@ -81,6 +170,7 @@ export function HeaderFearGauge() {
           sseError={sseError}
           result={result}
           details={macro?.details ?? null}
+          account={accountSnapshot}
         />
       )}
     </div>

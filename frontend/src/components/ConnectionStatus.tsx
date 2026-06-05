@@ -2,6 +2,8 @@ import { useConnectionStatus } from "@/hooks/useConnectionStatus";
 import type { FearScoreResult } from "@/lib/fearGreed";
 import { getLabelColor } from "@/lib/fearGreed";
 import type { MacroAnalysis } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
+import type { AccountSnapshot } from "@/components/common/HeaderFearGauge";
 
 function formatUptime(isoTime: string | null): string {
   if (!isoTime) return "Unknown";
@@ -108,6 +110,13 @@ function componentScoreColor(score: number): string {
   return "bg-red-600";
 }
 
+function formatCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+  return formatCurrency(value);
+}
+
 type ConnectionStatusData = ReturnType<typeof useConnectionStatus>;
 
 interface FearGreedPanelProps {
@@ -115,6 +124,7 @@ interface FearGreedPanelProps {
   sseError: ConnectionStatusData["sseError"];
   result: FearScoreResult | null;
   details: MacroAnalysis["details"] | null;
+  account?: AccountSnapshot | null;
 }
 
 export function FearGreedPanel({
@@ -122,6 +132,7 @@ export function FearGreedPanel({
   sseError,
   result,
   details,
+  account,
 }: FearGreedPanelProps) {
   const isConnected = status.connected;
 
@@ -165,6 +176,56 @@ export function FearGreedPanel({
               </div>
             );
           })()}
+
+          {/* Account summary */}
+          {account && (
+            <div className="border-t pt-2 mb-2">
+              <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-xs">
+                <div>
+                  <div className="text-muted-foreground">Net Liq</div>
+                  <div className="font-semibold tabular-nums">{formatCompact(account.netLiquidation)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Stocks</div>
+                  <div className="font-semibold tabular-nums">{formatCompact(account.stocksValue)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Cash</div>
+                  <div className="font-semibold tabular-nums">{formatCompact(account.cashValue)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Puts</div>
+                  <div className="font-semibold tabular-nums text-red-500">{formatCompact(account.nakedPutsExposure)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Calls</div>
+                  <div className="font-semibold tabular-nums text-green-500">{formatCompact(account.nakedCallsExposure)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Spreads</div>
+                  <div className="font-semibold tabular-nums">{account.spreadsCount}</div>
+                </div>
+              </div>
+              {account.spreadsCount > 0 && (
+                <div className="flex items-center gap-3 mt-1.5 pt-1.5 border-t border-dashed text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Spread P&L: </span>
+                    {account.spreadsPnl != null ? (
+                      <span className={`font-semibold tabular-nums ${account.spreadsPnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                        {formatCurrency(account.spreadsPnl)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Cost: </span>
+                    <span className="font-semibold tabular-nums">{formatCurrency(account.spreadsCostBasis)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Market data section */}
           {details && (
