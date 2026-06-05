@@ -7,6 +7,7 @@ const settingsTabs = [
   { to: "/settings/exchange-rates", label: "Exchange Rates" },
   { to: "/settings/research", label: "Research" },
   { to: "/settings/spreads", label: "Spreads" },
+  { to: "/settings/taxes", label: "Taxes" },
 ];
 
 export function SettingsPage() {

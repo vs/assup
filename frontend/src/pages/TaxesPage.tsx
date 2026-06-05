@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
-import { ExternalLink, Download, AlertTriangle } from "lucide-react";
+import { Download, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { PageHeader, PageLoadingSkeleton, ErrorAlert } from "@/components/common";
+import { PageLoadingSkeleton, ErrorAlert } from "@/components/common";
 import { taxesApi } from "@/api/taxes";
 import { formatCzk } from "@/components/taxes/formatters";
 import { StockTradesTable } from "@/components/taxes/StockTradesTable";
@@ -63,15 +62,7 @@ export function TaxesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Taxes">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/settings/exchange-rates"
-            className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
-          >
-            Exchange Rates
-            <ExternalLink className="h-3 w-3" />
-          </Link>
+      <div className="flex items-center justify-end gap-4">
           <Select
             value={selectedYear.toString()}
             onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
@@ -94,8 +85,7 @@ export function TaxesPage() {
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-        </div>
-      </PageHeader>
+      </div>
 
       {error && <ErrorAlert message={error} />}
 

@@ -46,7 +46,7 @@ function App() {
             <Route path="/profit" element={<ProfitPage />} />
             <Route path="/wheel" element={<WheelPage />} />
             <Route path="/spreads" element={<IronCondorPage />} />
-            <Route path="/taxes" element={<TaxesPage />} />
+            <Route path="/taxes" element={<Navigate to="/settings/taxes" replace />} />
             <Route path="/watchlists" element={<Navigate to="/analysis" replace />} />
             <Route path="/watchlists/:symbol" element={<SymbolRedirect />} />
             <Route path="/research" element={<Navigate to="/analysis" replace />} />
@@ -58,6 +58,7 @@ function App() {
               <Route path="exchange-rates" element={<ExchangeRatesSection />} />
               <Route path="research" element={<ResearchSection />} />
               <Route path="spreads" element={<SpreadsSection />} />
+              <Route path="taxes" element={<TaxesPage />} />
             </Route>
           </Route>
         </Routes>
