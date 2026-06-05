@@ -19,8 +19,6 @@ export interface AccountSnapshot {
   nakedPutsExposure: number;
   nakedCallsExposure: number;
   spreadsCount: number;
-  spreadsPnl: number | null;
-  spreadsCostBasis: number;
 }
 
 function computeAccountSnapshot(
@@ -48,14 +46,6 @@ function computeAccountSnapshot(
     .filter((p) => p.right === "C")
     .reduce((s, p) => s + (p.notionalValue ?? 0), 0);
 
-  // Spreads summary
-  const spreadsPnl = spreads.reduce<number | null>((s, sp) => {
-    if (sp.totalPnl == null) return s;
-    return (s ?? 0) + sp.totalPnl;
-  }, null);
-
-  const spreadsCostBasis = spreads.reduce((s, sp) => s + sp.totalCostBasis, 0);
-
   return {
     netLiquidation: summary.account.netLiquidation,
     cashValue: summary.account.cashValue,
@@ -63,8 +53,6 @@ function computeAccountSnapshot(
     nakedPutsExposure,
     nakedCallsExposure,
     spreadsCount: spreads.length,
-    spreadsPnl,
-    spreadsCostBasis,
   };
 }
 

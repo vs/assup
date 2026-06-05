@@ -167,12 +167,9 @@ export function FearGreedPanel({
             const market = getMarketStatus();
             if (!market) return null;
             return (
-              <div className="flex items-center gap-2 text-xs mb-3 px-1.5 py-1 rounded bg-muted/50">
-                <div className={`h-1.5 w-1.5 rounded-full ${market.open ? "bg-green-500" : "bg-muted-foreground/40"}`} />
-                <span className="text-muted-foreground">
-                  {market.label}
-                </span>
-                <span className="ml-auto tabular-nums text-muted-foreground/70">{market.time}</span>
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                <span>Market {market.open ? "closes" : "opens"} in {market.label.replace(/^(Closes|Opens) in /, "")}</span>
+                <span className="tabular-nums">{market.time}</span>
               </div>
             );
           })()}
@@ -183,47 +180,29 @@ export function FearGreedPanel({
               <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-xs">
                 <div>
                   <div className="text-muted-foreground">Net Liq</div>
-                  <div className="font-semibold tabular-nums">{formatCompact(account.netLiquidation)}</div>
+                  <div className="tabular-nums">{formatCompact(account.netLiquidation)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Stocks</div>
-                  <div className="font-semibold tabular-nums">{formatCompact(account.stocksValue)}</div>
+                  <div className="tabular-nums">{formatCompact(account.stocksValue)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Cash</div>
-                  <div className="font-semibold tabular-nums">{formatCompact(account.cashValue)}</div>
+                  <div className="tabular-nums">{formatCompact(account.cashValue)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Puts</div>
-                  <div className="font-semibold tabular-nums text-red-500">{formatCompact(account.nakedPutsExposure)}</div>
+                  <div className="tabular-nums">{formatCompact(account.nakedPutsExposure)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Calls</div>
-                  <div className="font-semibold tabular-nums text-green-500">{formatCompact(account.nakedCallsExposure)}</div>
+                  <div className="tabular-nums">{formatCompact(account.nakedCallsExposure)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Spreads</div>
-                  <div className="font-semibold tabular-nums">{account.spreadsCount}</div>
+                  <div className="tabular-nums">{account.spreadsCount}</div>
                 </div>
               </div>
-              {account.spreadsCount > 0 && (
-                <div className="flex items-center gap-3 mt-1.5 pt-1.5 border-t border-dashed text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Spread P&L: </span>
-                    {account.spreadsPnl != null ? (
-                      <span className={`font-semibold tabular-nums ${account.spreadsPnl >= 0 ? "text-green-500" : "text-red-500"}`}>
-                        {formatCurrency(account.spreadsPnl)}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Cost: </span>
-                    <span className="font-semibold tabular-nums">{formatCurrency(account.spreadsCostBasis)}</span>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
