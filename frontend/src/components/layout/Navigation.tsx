@@ -1,6 +1,12 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard,
   Briefcase,
@@ -13,6 +19,7 @@ import {
   Settings,
   Menu,
   X,
+  MoreHorizontal,
 } from "lucide-react";
 
 interface NavItemProps {
@@ -51,8 +58,43 @@ const navItems = [
   { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
   { to: "/spreads", label: "Spreads", icon: ArrowUpDown },
+];
+
+const moreItems = [
   { to: "/taxes", label: "Taxes", icon: Landmark },
 ];
+
+function MoreDropdown() {
+  const location = useLocation();
+  const isMoreActive = moreItems.some((item) => location.pathname.startsWith(item.to));
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+            isMoreActive
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+          More
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {moreItems.map((item) => (
+          <DropdownMenuItem key={item.to} asChild>
+            <NavLink to={item.to} className="flex items-center gap-2 cursor-pointer">
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </NavLink>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -68,6 +110,7 @@ export function Navigation() {
             {item.label}
           </NavItem>
         ))}
+        <MoreDropdown />
         <NavItem to="/settings" icon={Settings}>
           Settings
         </NavItem>
@@ -106,7 +149,7 @@ export function Navigation() {
               </Button>
             </div>
             <div className="flex flex-col gap-1">
-              {navItems.map((item) => (
+              {[...navItems, ...moreItems].map((item) => (
                 <NavItem
                   key={item.to}
                   to={item.to}
