@@ -135,7 +135,7 @@ export function PositionsTable({
           return (
             <TableRow key={pos.displayName}>
               <TableCell>
-                <div className="flex items-center">
+                <div className={`flex items-center${spreads.length > 0 ? " pl-5" : ""}`}>
                   <TickerHoverCard symbol={pos.underlying}>
                     <Link
                       to={`/tickers/${pos.underlying}`}

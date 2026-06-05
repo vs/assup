@@ -312,10 +312,12 @@ export function PositionsPage() {
                   {ungrouped.map((pos) => (
                     <TableRow key={pos.conId || pos.symbol}>
                       <TableCell>
-                        <span className="font-medium">{pos.underlying}</span>
-                        <span className="text-muted-foreground ml-2 text-sm">
-                          {pos.right === "P" ? "Put" : "Call"} {pos.strike}
-                        </span>
+                        <div className="pl-5">
+                          <span className="font-medium">{pos.underlying}</span>
+                          <span className="text-muted-foreground ml-2 text-sm">
+                            {pos.right === "P" ? "Put" : "Call"} {pos.strike}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={pos.right === "P" ? "danger" : "success"}>
