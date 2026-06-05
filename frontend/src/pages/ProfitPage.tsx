@@ -416,7 +416,7 @@ function SpreadTradeRow({ spread }: { spread: SpreadTradeGroup }) {
           <TableCell className="pl-10 text-sm text-muted-foreground">
             {leg.openTrade?.buySell === "SELL" ? "Short" : "Long"} {leg.right === "P" ? "Put" : "Call"} {leg.strike}
           </TableCell>
-          <TableCell><Badge variant={leg.right === "P" ? "danger" : "success"} className="text-[10px]">{leg.right}</Badge></TableCell>
+          <TableCell><Badge variant={leg.right === "P" ? "danger" : "success"} className="text-[10px]">{leg.right === "P" ? "PUT" : "CALL"}</Badge></TableCell>
           <TableCell />
           <TableCell className="text-right font-mono text-xs">{formatCurrency(leg.costBasis)}</TableCell>
           <TableCell className="text-right font-mono text-xs">{formatCurrency(leg.sellPrice)}</TableCell>

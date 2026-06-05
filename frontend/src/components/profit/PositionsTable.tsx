@@ -262,7 +262,13 @@ function OpenSpreadRow({
               : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             }
             <TickerHoverCard symbol={spread.underlying}>
-              <span className="font-medium">{displayName}</span>
+              <Link
+                to={`/tickers/${spread.underlying}`}
+                className="font-medium hover:text-primary hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {displayName}
+              </Link>
             </TickerHoverCard>
             <ExternalLinks symbol={spread.underlying} />
           </div>
@@ -333,7 +339,7 @@ function OpenSpreadRow({
             <TableCell />
             <TableCell>
               <Badge variant={leg.right === "P" ? "danger" : "success"} className="text-[10px]">
-                {leg.right}
+                {leg.right === "P" ? "PUT" : "CALL"}
               </Badge>
             </TableCell>
             <TableCell />
