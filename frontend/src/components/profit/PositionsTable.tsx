@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
-import type { CurrentOptionPosition, Order } from "@assup/shared";
+import type { CurrentOptionPosition, Order, ActiveSpread } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
   spreadTypeBadgeProps,
   type OpenPositionSpreadGroup,
 } from "@/utils/spreadGrouping";
+import { api } from "@/api";
+import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
 
 // Helper to calculate days to expiration using US Eastern timezone
 function calculateDTE(expiry: string): number {
@@ -41,6 +43,7 @@ interface PositionsTableProps {
   openOrders: Order[];
   onSymbolClick: (symbol: string) => void;
   onClosePosition: (pos: CurrentOptionPosition, existingOrder: Order | null) => void;
+  onSpreadClosed?: () => void;
 }
 
 export function PositionsTable({
@@ -48,6 +51,7 @@ export function PositionsTable({
   openOrders,
   onSymbolClick,
   onClosePosition,
+  onSpreadClosed,
 }: PositionsTableProps) {
   // Match a position to its existing BUY order
   const findMatchingOrder = useCallback((pos: CurrentOptionPosition): Order | undefined => {
@@ -126,6 +130,7 @@ export function PositionsTable({
             onSymbolClick={onSymbolClick}
             findMatchingOrder={findMatchingOrder}
             onClosePosition={onClosePosition}
+            onSpreadClosed={onSpreadClosed}
           />
         ))}
         {expSort.sorted.map((pos) => {
@@ -234,20 +239,47 @@ function OpenSpreadRow({
   onSymbolClick,
   findMatchingOrder,
   onClosePosition,
+  onSpreadClosed,
 }: {
   spread: OpenPositionSpreadGroup;
   getSparklineState: (symbol: string) => { data: { date: string; close: number }[]; loading: boolean; error: boolean };
   onSymbolClick: (symbol: string) => void;
   findMatchingOrder: (pos: CurrentOptionPosition) => Order | undefined;
   onClosePosition: (pos: CurrentOptionPosition, existingOrder: Order | null) => void;
+  onSpreadClosed?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
+  const [closeLoading, setCloseLoading] = useState(false);
   const badge = spreadTypeBadgeProps(spread.type);
   const displayName = formatLiveSpreadName(spread.type, spread.underlying, spread.legs);
   const sparkline = getSparklineState(spread.underlying);
   const dte = calculateDTE(spread.expiry);
   const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
   const fmtStrike = (s: number) => s % 1 === 0 ? s.toString() : s.toFixed(2);
+
+  const handleCloseSpread = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCloseLoading(true);
+    try {
+      const { spreads: activeSpreads } = await api.ironCondor.getActiveSpreads();
+      const spreadStrikes = strikes.map(fmtStrike).join("/");
+      const match = activeSpreads.find((as) => {
+        const asStrikes = as.legs.map(l => l.strike).sort((a, b) => a - b);
+        const asFmt = asStrikes.map(s => s % 1 === 0 ? s.toString() : s.toFixed(2)).join("/");
+        return as.symbol === spread.underlying
+          && as.expiry === spread.expiry.replace(/-/g, "")
+          && asFmt === spreadStrikes;
+      });
+      if (match) {
+        setClosingSpread(match);
+      }
+    } catch {
+      // silent
+    } finally {
+      setCloseLoading(false);
+    }
+  };
 
   return (
     <>
@@ -326,8 +358,23 @@ function OpenSpreadRow({
         <TableCell className="text-right font-mono text-blue-600">
           {formatCurrency(spread.totalProjectedProfit)}
         </TableCell>
-        <TableCell />
+        <TableCell className="text-right">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={closeLoading}
+            onClick={handleCloseSpread}
+          >
+            {closeLoading ? "..." : "Close"}
+          </Button>
+        </TableCell>
       </TableRow>
+      <CloseSpreadDialog
+        open={!!closingSpread}
+        onOpenChange={(open) => { if (!open) setClosingSpread(null); }}
+        spread={closingSpread}
+        onSuccess={() => { setClosingSpread(null); onSpreadClosed?.(); }}
+      />
       {expanded && spread.legs.map((leg) => {
         const legDte = calculateDTE(leg.expiry);
         const legOrder = findMatchingOrder(leg);

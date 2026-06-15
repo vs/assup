@@ -286,6 +286,7 @@ export function ProfitPage() {
                       setExistingOrderForDialog(order);
                       setClosePosition(pos);
                     }}
+                    onSpreadClosed={() => { loadOrders(); loadData(selectedYear); }}
                   />
                 </CardContent>
               </Card>
@@ -903,6 +904,7 @@ function MonthProfitCard({
                 setExistingOrderForDialog(order);
                 setClosePosition(pos);
               }}
+              onSpreadClosed={() => { loadOrders(); onDataRefresh?.(); }}
             />
           </CardContent>
         </Card>
