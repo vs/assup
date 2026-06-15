@@ -3,12 +3,15 @@ import { Link } from "react-router-dom";
 import { api } from "@/api";
 import { settingsApi } from "@/api/settings";
 import type { Position, AssetClass, AllocationProfile, PositionSummary, DashboardSettings } from "@assup/shared";
-import { calculatePositionExposure, formatCurrency } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
 import { useAllocationUpdates } from "@/hooks/useSSE";
 import { useSparklines } from "@/hooks/useSparklines";
 import { usePositionFilters } from "@/hooks/usePositionFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -20,10 +23,10 @@ import {
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
-import { PositionFilters, PositionSummaryCards, PositionTable, GroupedPositionsTable } from "@/components/positions";
+import { PositionTable, GroupedPositionsTable } from "@/components/positions";
 import type { AllocationData } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, RefreshCw } from "lucide-react";
 import {
   groupPositionsIntoSpreads,
   formatLiveSpreadName,
@@ -158,43 +161,11 @@ export function PositionsPage() {
       // Exclude spread-eligible options from main table
       if (p.secType === "OPT" && p.underlying && spreadSymbols.has(p.underlying)) return false;
       if (!filters.includeOptions && p.secType === "OPT") return false;
-      if (filters.assetClassId && filters.assetClassId !== "all") {
-        if (filters.assetClassId === "unassigned") return !p.assetClassId;
-        return p.assetClassId === filters.assetClassId;
-      }
       return true;
     });
   }, [positions, filters, spreadSymbols]);
 
-  // Calculate summary values
   const netLiquidation = summary?.account.netLiquidation ?? 0;
-  const hasAnyMarketValue = filteredPositions.some((p) => p.marketValue !== null);
-  const isAllClasses = !filters.assetClassId || filters.assetClassId === "all";
-
-  const stocksMarketValue = useMemo(() => {
-    return filteredPositions
-      .filter((p) => p.secType !== "CASH" && p.secType !== "OPT")
-      .reduce((sum, p) => sum + (p.marketValue ?? 0), 0);
-  }, [filteredPositions]);
-
-  const totalExposure = useMemo(() => {
-    return filteredPositions.reduce((sum, p) => sum + calculatePositionExposure(p), 0);
-  }, [filteredPositions]);
-
-  const totalPnl = useMemo(() => {
-    return filteredPositions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
-  }, [filteredPositions]);
-
-  const targetPercentage = useMemo(() => {
-    if (!profile || !filters.assetClassId || filters.assetClassId === "all" || filters.assetClassId === "unassigned") {
-      return null;
-    }
-    const target = profile.targets.find((t) => t.assetClassId === filters.assetClassId);
-    return target?.targetPercentage ?? null;
-  }, [profile, filters.assetClassId]);
-
-  const targetValue = targetPercentage !== null ? (targetPercentage / 100) * netLiquidation : null;
-  const diffToTarget = targetValue !== null ? totalExposure - targetValue : null;
   const optionsCount = positions.filter((p) =>
     p.secType === "OPT" && !(p.underlying && spreadSymbols.has(p.underlying))
   ).length;
@@ -238,14 +209,7 @@ export function PositionsPage() {
     return getSparklineState(symbol);
   }, [getSparklineState]);
 
-  // Table title
-  const tableTitle = useMemo(() => {
-    if (!filters.assetClassId || filters.assetClassId === "all") return "Positions";
-    if (filters.assetClassId === "unassigned") return "Unassigned Positions";
-    return `${assetClasses.find((ac) => ac.id === filters.assetClassId)?.name || "Filtered"} Positions`;
-  }, [filters.assetClassId, assetClasses]);
-
-  const showGroupedView = isAllClasses && allocationData.length > 0;
+  const showGroupedView = allocationData.length > 0;
 
   if (loading && positions.length === 0) {
     return <PageLoadingSkeleton />;
@@ -260,30 +224,13 @@ export function PositionsPage() {
             Portfolio allocation and position details.
           </p>
         </div>
-        <PositionFilters
-          filters={filters}
-          onFiltersChange={setFilters}
-          assetClasses={assetClasses}
-          optionsCount={optionsCount}
-          loading={loading}
-          onRefresh={loadData}
-        />
+        <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
-
-      <PositionSummaryCards
-        hasAnyMarketValue={hasAnyMarketValue}
-        isAllClasses={isAllClasses}
-        netLiquidation={netLiquidation}
-        totalExposure={totalExposure}
-        stocksMarketValue={stocksMarketValue}
-        totalPnl={totalPnl}
-        targetValue={targetValue}
-        targetPercentage={targetPercentage}
-        diffToTarget={diffToTarget}
-        assetClassId={filters.assetClassId}
-      />
 
       {/* Spread Positions */}
       {spreadPositions.length > 0 && (() => {
@@ -361,8 +308,18 @@ export function PositionsPage() {
 
       {/* Positions Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>{tableTitle}</CardTitle>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle>Positions</CardTitle>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="include-options"
+              checked={filters.includeOptions}
+              onCheckedChange={(checked) => setFilters({ ...filters, includeOptions: checked })}
+            />
+            <Label htmlFor="include-options" className="text-sm cursor-pointer">
+              Options {optionsCount > 0 && `(${optionsCount})`}
+            </Label>
+          </div>
         </CardHeader>
         <CardContent>
           {filteredPositions.length === 0 ? (

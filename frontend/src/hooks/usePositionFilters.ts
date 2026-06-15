@@ -1,16 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useCallback } from "react";
 
 const STORAGE_KEY = "assup-positions-filters";
 
 export interface FilterState {
-  assetClassId: string | null;
   includeOptions: boolean;
   optionsWeightMode: "notional" | "delta";
 }
 
 export const DEFAULT_FILTERS: FilterState = {
-  assetClassId: null,
   includeOptions: true,
   optionsWeightMode: "notional",
 };
@@ -38,48 +35,30 @@ function saveFiltersToStorage(filters: FilterState) {
 }
 
 /**
- * Hook for managing position filters with URL params and localStorage sync
+ * Hook for managing position filters with localStorage sync
  */
 export function usePositionFilters() {
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  // Initialize filters from URL params, falling back to localStorage
-  const [filters, setFiltersState] = useState<FilterState>(() => {
-    const urlAssetClassId = searchParams.get("assetClassId");
-    if (urlAssetClassId) {
-      return { ...DEFAULT_FILTERS, assetClassId: urlAssetClassId };
-    }
-    return loadFiltersFromStorage();
-  });
-
-  // Sync filters with localStorage and URL
-  useEffect(() => {
-    saveFiltersToStorage(filters);
-
-    // Update URL params when filter changes
-    if (filters.assetClassId && filters.assetClassId !== "all") {
-      setSearchParams({ assetClassId: filters.assetClassId }, { replace: true });
-    } else {
-      // Remove the param when cleared
-      if (searchParams.has("assetClassId")) {
-        setSearchParams({}, { replace: true });
-      }
-    }
-  }, [filters, setSearchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [filters, setFiltersState] = useState<FilterState>(loadFiltersFromStorage);
 
   const setFilters = useCallback((newFilters: FilterState) => {
     setFiltersState(newFilters);
+    saveFiltersToStorage(newFilters);
   }, []);
 
   const resetFilters = useCallback(() => {
     setFiltersState(DEFAULT_FILTERS);
+    saveFiltersToStorage(DEFAULT_FILTERS);
   }, []);
 
   const updateFilter = useCallback(<K extends keyof FilterState>(
     key: K,
     value: FilterState[K]
   ) => {
-    setFiltersState((prev) => ({ ...prev, [key]: value }));
+    setFiltersState((prev) => {
+      const next = { ...prev, [key]: value };
+      saveFiltersToStorage(next);
+      return next;
+    });
   }, []);
 
   return {
