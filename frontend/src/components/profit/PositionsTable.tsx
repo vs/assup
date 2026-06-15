@@ -377,7 +377,6 @@ function OpenSpreadRow({
       />
       {expanded && spread.legs.map((leg) => {
         const legDte = calculateDTE(leg.expiry);
-        const legOrder = findMatchingOrder(leg);
         return (
           <TableRow key={leg.displayName} className="bg-muted/30">
             <TableCell className="pl-9 text-sm text-muted-foreground">
@@ -409,28 +408,7 @@ function OpenSpreadRow({
             <TableCell className="text-right font-mono text-xs text-blue-600">
               {formatCurrency(leg.projectedProfit)}
             </TableCell>
-            <TableCell className="text-right font-mono">
-              {legOrder ? (
-                <span
-                  className="cursor-pointer group/order relative text-xs"
-                  onClick={(e) => { e.stopPropagation(); onClosePosition(leg, legOrder); }}
-                >
-                  {formatCurrency(legOrder.limitPrice ?? 0)} x {legOrder.quantity}
-                  <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/order:opacity-100 bg-background text-sm font-sans">
-                    Adjust
-                  </span>
-                </span>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={(e) => { e.stopPropagation(); onClosePosition(leg, null); }}
-                >
-                  Close
-                </Button>
-              )}
-            </TableCell>
+            <TableCell />
           </TableRow>
         );
       })}
