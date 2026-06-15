@@ -128,8 +128,6 @@ export function PositionsTable({
             spread={spread}
             getSparklineState={getSparklineState}
             onSymbolClick={onSymbolClick}
-            findMatchingOrder={findMatchingOrder}
-            onClosePosition={onClosePosition}
             onSpreadClosed={onSpreadClosed}
           />
         ))}
@@ -237,15 +235,11 @@ function OpenSpreadRow({
   spread,
   getSparklineState,
   onSymbolClick,
-  findMatchingOrder,
-  onClosePosition,
   onSpreadClosed,
 }: {
   spread: OpenPositionSpreadGroup;
   getSparklineState: (symbol: string) => { data: { date: string; close: number }[]; loading: boolean; error: boolean };
   onSymbolClick: (symbol: string) => void;
-  findMatchingOrder: (pos: CurrentOptionPosition) => Order | undefined;
-  onClosePosition: (pos: CurrentOptionPosition, existingOrder: Order | null) => void;
   onSpreadClosed?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
