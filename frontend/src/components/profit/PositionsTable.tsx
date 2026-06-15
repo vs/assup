@@ -356,7 +356,7 @@ function OpenSpreadRow({
           {formatCurrency(spread.totalUnrealizedPnl)}
         </TableCell>
         <TableCell className="text-right font-mono text-blue-600">
-          {formatCurrency(spread.totalProjectedProfit)}
+          {formatCurrency(spread.maxProfit)}
         </TableCell>
         <TableCell className="text-right font-mono">
           <Button

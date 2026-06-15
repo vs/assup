@@ -26,7 +26,7 @@ export interface OpenPositionSpreadGroup {
   legs: CurrentOptionPosition[];
   quantity: number;
   totalUnrealizedPnl: number;
-  totalProjectedProfit: number;
+  maxProfit: number;
   totalMarketValue: number;
   underlyingPrice?: number;
   assetClassId?: string;
@@ -217,7 +217,8 @@ function makeOpenSpreadGroup(type: SpreadType, legs: CurrentOptionPosition[]): O
     legs,
     quantity: Math.abs(first.quantity),
     totalUnrealizedPnl: legs.reduce((s, l) => s + l.unrealizedPnl, 0),
-    totalProjectedProfit: legs.reduce((s, l) => s + l.projectedProfit, 0),
+    // Max profit = net credit received: short legs (qty<0) add, long legs (qty>0) subtract
+    maxProfit: legs.reduce((s, l) => s + l.avgCost * -l.quantity * 100, 0),
     totalMarketValue: legs.reduce((s, l) => s + l.marketValue, 0),
     underlyingPrice: first.underlyingPrice,
     assetClassId: first.assetClassId,
