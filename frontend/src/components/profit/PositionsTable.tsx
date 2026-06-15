@@ -358,14 +358,14 @@ function OpenSpreadRow({
         <TableCell className="text-right font-mono text-blue-600">
           {formatCurrency(spread.totalProjectedProfit)}
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell className="text-right font-mono">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             disabled={closeLoading}
             onClick={handleCloseSpread}
           >
-            {closeLoading ? "..." : "Close"}
+            Close
           </Button>
         </TableCell>
       </TableRow>
