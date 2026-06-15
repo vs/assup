@@ -137,7 +137,7 @@ export function FearGreedPanel({
   const isConnected = status.connected;
 
   return (
-    <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border bg-background p-3 shadow-lg">
+    <div className="p-3">
       {/* Connection + uptime */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
