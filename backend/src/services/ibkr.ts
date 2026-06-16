@@ -747,7 +747,7 @@ class IBKRService {
       // Extract delta and IV for options (IBApiNext tick types)
       // MODEL_OPTION_DELTA=10041, DELAYED_MODEL_OPTION_DELTA=10047
       // BID_OPTION_DELTA=10005, DELAYED_BID_OPTION_DELTA=10011
-      // MODEL_OPTION_IV=10044, DELAYED_MODEL_OPTION_IV=10050
+      // MODEL_OPTION_IV=10039, DELAYED_MODEL_OPTION_IV=10045
       // OPTION_IMPLIED_VOL=24
       let delta: number | undefined;
       let impliedVolatility: number | undefined;
@@ -758,8 +758,8 @@ class IBKRService {
         const delayedBidDelta = marketData.get(10011); // DELAYED_BID_OPTION_DELTA
         delta = modelDelta?.value ?? delayedModelDelta?.value ?? bidDelta?.value ?? delayedBidDelta?.value;
 
-        const modelIV = marketData.get(10044); // MODEL_OPTION_IV
-        const delayedModelIV = marketData.get(10050); // DELAYED_MODEL_OPTION_IV
+        const modelIV = marketData.get(10039); // MODEL_OPTION_IV
+        const delayedModelIV = marketData.get(10045); // DELAYED_MODEL_OPTION_IV
         const optionIV = marketData.get(24); // OPTION_IMPLIED_VOL
         impliedVolatility = modelIV?.value ?? delayedModelIV?.value ?? optionIV?.value;
       }
@@ -1549,9 +1549,9 @@ class IBKRService {
             if (deltaVal !== undefined) data.delta = deltaVal;
 
             const ivVal =
-              all.get(10044)?.value ??
-              all.get(10050)?.value ??
-              all.get(24)?.value;
+              all.get(10039)?.value ?? // MODEL_OPTION_IV
+              all.get(10045)?.value ?? // DELAYED_MODEL_OPTION_IV
+              all.get(24)?.value;      // OPTION_IMPLIED_VOL
             if (ivVal !== undefined) data.impliedVolatility = ivVal;
           }
 
