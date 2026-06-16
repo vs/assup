@@ -308,20 +308,7 @@ export function PositionsPage() {
 
       {/* Positions Table */}
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Positions</CardTitle>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="include-options"
-              checked={filters.includeOptions}
-              onCheckedChange={(checked) => setFilters({ ...filters, includeOptions: checked })}
-            />
-            <Label htmlFor="include-options" className="text-sm cursor-pointer">
-              Options {optionsCount > 0 && `(${optionsCount})`}
-            </Label>
-          </div>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           {filteredPositions.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
               {positions.length === 0
@@ -338,6 +325,18 @@ export function PositionsPage() {
               getSparkline={getPositionSparkline}
               expandedGroups={expandedGroups}
               onToggleGroup={handleToggleGroup}
+              optionsToggle={
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="include-options"
+                    checked={filters.includeOptions}
+                    onCheckedChange={(checked) => setFilters({ ...filters, includeOptions: checked })}
+                  />
+                  <Label htmlFor="include-options" className="text-sm cursor-pointer">
+                    Options {optionsCount > 0 && `(${optionsCount})`}
+                  </Label>
+                </div>
+              }
             />
           ) : (
             <PositionTable

@@ -38,6 +38,7 @@ interface GroupedPositionsTableProps {
   getSparkline: (position: Position) => SparklineState;
   expandedGroups: Set<string>;
   onToggleGroup: (groupId: string) => void;
+  optionsToggle?: React.ReactNode;
 }
 
 const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
@@ -54,6 +55,7 @@ export function GroupedPositionsTable({
   getSparkline,
   expandedGroups,
   onToggleGroup,
+  optionsToggle,
 }: GroupedPositionsTableProps) {
   // Group positions by asset class ID
   const positionsByClass = new Map<string, Position[]>();
@@ -89,7 +91,8 @@ export function GroupedPositionsTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center justify-end gap-3">
+        {optionsToggle}
         <Button
           variant="outline"
           size="sm"
