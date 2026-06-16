@@ -23,17 +23,25 @@ export const SYMBOL_CONFIG: Record<
     optionSymbol?: string;
     /** Divisor to derive this symbol's price from the optionSymbol's price (e.g. XSP = SPX / 10) */
     priceDivisor?: number;
+    /** Minimum price increment for combo/spread orders (default 0.01) */
+    comboTickSize?: number;
   }
 > = {
-  SPX: { tradingClass: "SPXW", multiplier: 100 },
+  SPX: { tradingClass: "SPXW", multiplier: 100, comboTickSize: 0.05 },
   XSP: {
     tradingClass: "XSPW",
     multiplier: 100,
     optionSymbol: "SPX",
     priceDivisor: 10,
+    comboTickSize: 0.05,
   },
-  RUT: { tradingClass: "RUTW", multiplier: 100 },
+  RUT: { tradingClass: "RUTW", multiplier: 100, comboTickSize: 0.05 },
 };
+
+/** Round a price to the nearest tick size increment. */
+export function roundToTickSize(price: number, tickSize: number): number {
+  return Math.round(price / tickSize) * tickSize;
+}
 
 // --- Market Data Type Switching ---
 

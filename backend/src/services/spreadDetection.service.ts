@@ -7,6 +7,7 @@
 
 import type { Position } from "@assup/shared";
 import type { ActiveSpread, ActiveSpreadLeg, SpreadMode } from "@assup/shared";
+import { SYMBOL_CONFIG as SHARED_SYMBOL_CONFIG, roundToTickSize } from "../utils/options.js";
 
 /** Underlyings eligible for spread detection */
 const SPREAD_UNDERLYINGS = new Set(["SPX", "XSP", "RUT"]);
@@ -117,7 +118,8 @@ function buildSpread(
   const closeMidPriceRaw = legs.every(l => l.midPrice != null)
     ? legs.reduce((sum, l) => sum + (l.midPrice ?? 0), 0)
     : null;
-  const closeMidPrice = closeMidPriceRaw != null ? Math.round(closeMidPriceRaw * 100) / 100 : null;
+  const tickSize = SHARED_SYMBOL_CONFIG[symbol]?.comboTickSize ?? 0.01;
+  const closeMidPrice = closeMidPriceRaw != null ? roundToTickSize(closeMidPriceRaw, tickSize) : null;
 
   return {
     id: makeSpreadId(legs),
@@ -128,7 +130,7 @@ function buildSpread(
     legs,
     totalPnl: totalPnl != null ? Math.round(totalPnl * 100) / 100 : null,
     netPremium: Math.round(netPremium * 100) / 100,
-    closeMidPrice: closeMidPrice != null ? Math.round(closeMidPrice * 100) / 100 : null,
+    closeMidPrice,
     orphanLegs: [],
   };
 }

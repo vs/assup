@@ -12,7 +12,7 @@ import {
 } from "@stoqey/ib";
 import type { Order } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
-import { SYMBOL_CONFIG } from "../utils/options.js";
+import { SYMBOL_CONFIG, roundToTickSize } from "../utils/options.js";
 import type {
   IronCondorOrderRequest,
   IronCondorOrderResponse,
@@ -49,8 +49,9 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
   // IBKR BAG convention: order-level action = BUY, each ComboLeg specifies its own action.
   // The net credit is received because the sold legs generate more premium than the bought legs cost.
   // Limit price is the net credit we want to receive (positive = credit for the combo).
-  // Round to nearest cent — IBKR rejects prices that don't conform to minimum tick size.
-  const lmtPrice = Math.round(req.limitPrice * 100) / 100;
+  // Round to minimum tick size — IBKR rejects prices that don't conform (Error 110).
+  const tickSize = config?.comboTickSize ?? 0.01;
+  const lmtPrice = roundToTickSize(req.limitPrice, tickSize);
   const order: Order = {
     action: OrderAction.BUY,
     totalQuantity: req.quantity,
