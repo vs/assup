@@ -145,6 +145,7 @@ export function IronCondorPage() {
     hasPutSide ? putDelta : undefined,
     hasCallSide ? callDelta : undefined,
     wingWidth,
+    mode,
   );
 
   // Active spreads via REST endpoint (polled every 10s)

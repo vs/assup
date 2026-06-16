@@ -46,6 +46,7 @@ export class SpreadStreamSession {
   private targetPutDelta: number | undefined;
   private targetCallDelta: number | undefined;
   private targetWingWidth: number;
+  private mode: string | undefined;
   private unsubscribers: Array<() => void> = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
@@ -66,6 +67,7 @@ export class SpreadStreamSession {
   private storedSelectedExpiration = "";
   private storedTradingClass = "";
   private storedMultiplier = 100;
+  private storedSides: Array<typeof OptionType.Put | typeof OptionType.Call> = [OptionType.Put, OptionType.Call];
 
   constructor(
     res: Response,
@@ -76,6 +78,7 @@ export class SpreadStreamSession {
     targetPutDelta?: number,
     targetCallDelta?: number,
     targetWingWidth?: number,
+    mode?: string,
   ) {
     this.res = res;
     this.sessionId = `spread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -86,6 +89,7 @@ export class SpreadStreamSession {
     this.targetPutDelta = targetPutDelta;
     this.targetCallDelta = targetCallDelta;
     this.targetWingWidth = targetWingWidth ?? 100;
+    this.mode = mode;
   }
 
   async start(): Promise<void> {
@@ -237,12 +241,21 @@ export class SpreadStreamSession {
       chain,
     } satisfies SpreadStreamInitEvent);
 
+    // Only subscribe to the side(s) needed for the spread mode.
+    // put-spread → puts only, call-spread → calls only, iron-condor → both.
+    // This doubles strike coverage for single-side spreads.
+    const subscribeSides: Array<typeof OptionType.Put | typeof OptionType.Call> =
+      this.mode === "put-spread" ? [OptionType.Put]
+        : this.mode === "call-spread" ? [OptionType.Call]
+        : [OptionType.Put, OptionType.Call];
+
     // Store params for potential focus transition
     this.allFilteredStrikes = strikes;
     this.storedOptionSymbol = optionSymbol;
     this.storedSelectedExpiration = selectedExpiration;
     this.storedTradingClass = tradingClass;
     this.storedMultiplier = multiplier;
+    this.storedSides = subscribeSides;
 
     // 8. Reserve market data lines and subscribe
     // When onlyStrikes is set (chain collapsed), only subscribe to those specific strikes
@@ -250,7 +263,7 @@ export class SpreadStreamSession {
       ? strikes.filter(s => this.onlyStrikes!.includes(s))
       : strikes;
 
-    const totalContracts = strikesToSubscribe.length * 2 + 1;
+    const totalContracts = strikesToSubscribe.length * subscribeSides.length + 1;
     const linesGranted = marketDataLineRegistry.reserve(
       this.sessionId,
       totalContracts,
@@ -270,7 +283,7 @@ export class SpreadStreamSession {
     this.unsubscribers.push(unsubUnderlying);
 
     // Determine which strikes to subscribe
-    const maxStrikes = Math.floor((linesGranted - 1) / 2);
+    const maxStrikes = Math.floor((linesGranted - 1) / subscribeSides.length);
     const sorted = [...strikesToSubscribe].sort((a, b) => a - b);
     const subscribedStrikes = new Set<number>();
 
@@ -321,6 +334,7 @@ export class SpreadStreamSession {
       selectedExpiration,
       tradingClass,
       multiplier,
+      subscribeSides,
     );
 
     if (shouldScout) {
@@ -355,7 +369,8 @@ export class SpreadStreamSession {
   }
 
   /**
-   * Subscribe to market data for a set of option strikes (both put and call).
+   * Subscribe to market data for a set of option strikes.
+   * Only subscribes to the sides specified (puts, calls, or both).
    * Returns an array of unsubscribe functions.
    * Delta values are always tracked in scoutDeltas for the focus monitor.
    */
@@ -365,11 +380,12 @@ export class SpreadStreamSession {
     selectedExpiration: string,
     tradingClass: string,
     multiplier: number,
+    sides: Array<typeof OptionType.Put | typeof OptionType.Call> = [OptionType.Put, OptionType.Call],
   ): Array<() => void> {
     const unsubs: Array<() => void> = [];
 
     for (const strike of strikes) {
-      for (const right of [OptionType.Put, OptionType.Call] as const) {
+      for (const right of sides) {
         const optContract: Contract = {
           symbol: optionSymbol,
           secType: SecType.OPT,
@@ -445,7 +461,7 @@ export class SpreadStreamSession {
       }
 
       // Require at least 30% of subscribed strikes (min 3) to have deltas
-      const totalSubscribed = this.scoutUnsubs.length / 2; // put+call per strike
+      const totalSubscribed = this.scoutUnsubs.length / this.storedSides.length;
       const minRequired = Math.max(3, Math.floor(totalSubscribed * 0.3));
 
       let putReady = this.targetPutDelta == null;
@@ -550,7 +566,8 @@ export class SpreadStreamSession {
       merged.some(r => s >= r.min && s <= r.max),
     );
 
-    const needed = focusStrikes.length * 2 + 1; // +1 for underlying
+    const sidesCount = this.storedSides.length;
+    const needed = focusStrikes.length * sidesCount + 1; // +1 for underlying
     const granted = marketDataLineRegistry.reserve(this.sessionId, needed);
 
     if (granted <= 1) {
@@ -561,7 +578,7 @@ export class SpreadStreamSession {
       return;
     }
 
-    const maxFocusStrikes = Math.floor((granted - 1) / 2);
+    const maxFocusStrikes = Math.floor((granted - 1) / sidesCount);
 
     let strikesToSub: number[];
     if (focusStrikes.length <= maxFocusStrikes) {
@@ -583,6 +600,7 @@ export class SpreadStreamSession {
       this.storedSelectedExpiration,
       this.storedTradingClass,
       this.storedMultiplier,
+      this.storedSides,
     );
     this.unsubscribers.push(...unsubs);
 

@@ -20,6 +20,7 @@ router.get("/stream", (req: Request, res: Response) => {
   const targetPutDelta = req.query.targetPutDelta ? Number(req.query.targetPutDelta) : undefined;
   const targetCallDelta = req.query.targetCallDelta ? Number(req.query.targetCallDelta) : undefined;
   const wingWidth = req.query.wingWidth ? Number(req.query.wingWidth) : undefined;
+  const mode = req.query.mode as string | undefined;
 
   // SSE headers
   res.setHeader("Content-Type", "text/event-stream");
@@ -30,7 +31,7 @@ router.get("/stream", (req: Request, res: Response) => {
 
   const session = new SpreadStreamSession(res, symbol, expiration, onlyStrikes,
     focusMin != null && focusMax != null ? { min: focusMin, max: focusMax } : undefined,
-    targetPutDelta, targetCallDelta, wingWidth);
+    targetPutDelta, targetCallDelta, wingWidth, mode);
   session.start();
 
   req.on("close", () => {

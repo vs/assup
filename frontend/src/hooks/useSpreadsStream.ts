@@ -28,6 +28,7 @@ export function useSpreadsStream(
   targetPutDelta?: number,
   targetCallDelta?: number,
   wingWidth?: number,
+  mode?: string,
 ): UseSpreadsStreamResult {
   const [chainMap, setChainMap] = useState<Map<number, IronCondorChainStrike>>(new Map());
   const [underlyingPrice, setUnderlyingPrice] = useState(0);
@@ -64,6 +65,7 @@ export function useSpreadsStream(
     if (targetPutDelta != null) params.set("targetPutDelta", String(targetPutDelta));
     if (targetCallDelta != null) params.set("targetCallDelta", String(targetCallDelta));
     if (wingWidth != null) params.set("wingWidth", String(wingWidth));
+    if (mode) params.set("mode", mode);
     const url = `${getApiBase()}/api/spreads/stream?${params}`;
 
     setStatus("connecting");
@@ -163,7 +165,7 @@ export function useSpreadsStream(
 
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
-  }, [symbol, expiration, selectedStrikes, focusRange, targetPutDelta, targetCallDelta, wingWidth]);
+  }, [symbol, expiration, selectedStrikes, focusRange, targetPutDelta, targetCallDelta, wingWidth, mode]);
 
   // Connect on mount and when params change
   useEffect(() => {
