@@ -136,6 +136,7 @@ export function IronCondorPage() {
     selectedExpiration: streamExpiration,
     status,
     error,
+    refocusedCount,
   } = useSpreadsStream(
     symbol,
     expiration,
@@ -199,6 +200,14 @@ export function IronCondorPage() {
       prevExpirationRef.current = expiration;
     }
   }, [expiration, mode]);
+
+  // Re-run auto-select when backend transitions to focused subscription
+  // (more accurate delta data is now available)
+  useEffect(() => {
+    if (refocusedCount > 0) {
+      autoSelectDoneRef.current = false;
+    }
+  }, [refocusedCount]);
 
   useEffect(() => {
     // Skip if already auto-selected for this expiration or no chain data

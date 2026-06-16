@@ -17,6 +17,7 @@ interface UseSpreadsStreamResult {
   selectedExpiration: string | null;
   status: StreamStatus;
   error: string | null;
+  refocusedCount: number;
 }
 
 export function useSpreadsStream(
@@ -34,6 +35,7 @@ export function useSpreadsStream(
   const [selectedExpiration, setSelectedExpiration] = useState<string | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [refocusedCount, setRefocusedCount] = useState(0);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -127,6 +129,13 @@ export function useSpreadsStream(
             break;
           }
 
+          case "refocused": {
+            // Backend transitioned to dense focused subscription —
+            // signal parent to re-run auto-select with more accurate delta data
+            setRefocusedCount((c) => c + 1);
+            break;
+          }
+
           case "error": {
             const err = data as StreamErrorEvent;
             setError(err.message);
@@ -206,5 +215,6 @@ export function useSpreadsStream(
     selectedExpiration,
     status,
     error,
+    refocusedCount,
   };
 }

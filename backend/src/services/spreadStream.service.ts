@@ -5,11 +5,12 @@
  *
  * When target deltas are provided, uses a two-phase subscription strategy:
  * 1. Scout phase: sparse uniform sampling to discover where target deltas are.
- *    Delta values are tracked internally but NOT sent to the frontend
- *    (suppressed to prevent premature auto-select on inaccurate sparse data).
- * 2. Focus phase: dense subscription around the identified target delta regions
- *    (including wing offsets). Deltas now flow to the frontend for accurate
- *    auto-selection.
+ *    All data (including deltas) flows to the frontend so the UI is responsive
+ *    immediately. The backend monitors arriving deltas internally.
+ * 2. Focus phase: once enough delta data arrives, the backend identifies the
+ *    strike regions matching the target deltas, unsubscribes scouts, and
+ *    subscribes densely around those regions (+ wing offsets). A "refocused"
+ *    event is sent so the frontend can re-run auto-select with accurate data.
  */
 
 import { Response } from "express";
@@ -356,10 +357,7 @@ export class SpreadStreamSession {
   /**
    * Subscribe to market data for a set of option strikes (both put and call).
    * Returns an array of unsubscribe functions.
-   *
-   * During scout phase (this.phase === 'scout'), delta values are tracked
-   * internally in scoutDeltas but NOT written to the tick buffer — this
-   * prevents the frontend from auto-selecting on sparse/inaccurate data.
+   * Delta values are always tracked in scoutDeltas for the focus monitor.
    */
   private subscribeOptionStrikes(
     strikes: number[],
@@ -402,12 +400,11 @@ export class SpreadStreamSession {
 
             if (data.delta !== undefined) {
               const absDelta = Math.abs(data.delta);
-              // Always track for scout decision-making
+              // Track for scout decision-making
               this.scoutDeltas.set(bufferKey, absDelta);
-              // Only send to frontend when NOT in scout phase
-              if (this.phase !== "scout") {
-                entry.delta = absDelta;
-              }
+              // Always send to frontend (no suppression — auto-select fires
+              // on sparse data immediately, then refines after focus transition)
+              entry.delta = absDelta;
             }
 
             if (
