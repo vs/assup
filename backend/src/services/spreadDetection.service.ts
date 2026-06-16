@@ -114,9 +114,10 @@ function buildSpread(
     ? legs.reduce((sum, l) => sum + (l.unrealizedPnl ?? 0), 0)
     : null;
   const netPremium = legs.reduce((sum, l) => sum + l.avgCost * l.position, 0);
-  const closeMidPrice = legs.every(l => l.midPrice != null)
+  const closeMidPriceRaw = legs.every(l => l.midPrice != null)
     ? legs.reduce((sum, l) => sum + (l.midPrice ?? 0), 0)
     : null;
+  const closeMidPrice = closeMidPriceRaw != null ? Math.round(closeMidPriceRaw * 100) / 100 : null;
 
   return {
     id: makeSpreadId(legs),

@@ -49,11 +49,13 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
   // IBKR BAG convention: order-level action = BUY, each ComboLeg specifies its own action.
   // The net credit is received because the sold legs generate more premium than the bought legs cost.
   // Limit price is the net credit we want to receive (positive = credit for the combo).
+  // Round to nearest cent — IBKR rejects prices that don't conform to minimum tick size.
+  const lmtPrice = Math.round(req.limitPrice * 100) / 100;
   const order: Order = {
     action: OrderAction.BUY,
     totalQuantity: req.quantity,
     orderType: OrderType.LMT,
-    lmtPrice: req.limitPrice,
+    lmtPrice,
     tif: TimeInForce.DAY,
     transmit: true,
     smartComboRoutingParams: [
