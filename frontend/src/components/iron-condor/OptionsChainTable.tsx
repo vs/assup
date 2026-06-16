@@ -517,7 +517,7 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
           {/* Chain + Minimap side by side */}
           <div className="flex gap-1">
             {/* Scrollable chain */}
-            <div ref={scrollRef} className={`flex-1 overflow-y-auto ${fullView ? "max-h-[560px]" : ""}`}>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto max-h-[560px]">
               {fullView ? (
                 // Full view: all strikes, scrollable
                 chain.map((entry: IronCondorChainStrike) => (
