@@ -2,6 +2,14 @@
  * SpreadStreamSession manages the lifecycle of a streaming SSE session
  * for real-time options chain data. It handles IBKR subscriptions,
  * tick buffering, and SSE event emission.
+ *
+ * When target deltas are provided, uses a two-phase subscription strategy:
+ * 1. Scout phase: sparse uniform sampling to discover where target deltas are.
+ *    Delta values are tracked internally but NOT sent to the frontend
+ *    (suppressed to prevent premature auto-select on inaccurate sparse data).
+ * 2. Focus phase: dense subscription around the identified target delta regions
+ *    (including wing offsets). Deltas now flow to the frontend for accurate
+ *    auto-selection.
  */
 
 import { Response } from "express";
@@ -13,6 +21,7 @@ import type {
   IronCondorChainStrike,
   SpreadStreamInitEvent,
   ChainUpdateEvent,
+  RefocusedEvent,
 } from "@assup/shared";
 
 interface TickBufferEntry {
@@ -33,6 +42,9 @@ export class SpreadStreamSession {
   private expiration: string | undefined;
   private onlyStrikes: number[] | undefined;
   private focusRange: { min: number; max: number } | undefined;
+  private targetPutDelta: number | undefined;
+  private targetCallDelta: number | undefined;
+  private targetWingWidth: number;
   private unsubscribers: Array<() => void> = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
@@ -40,13 +52,39 @@ export class SpreadStreamSession {
   private underlyingPriceBuffer: number | null = null;
   private destroyed = false;
 
-  constructor(res: Response, symbol: string, expiration?: string, onlyStrikes?: number[], focusRange?: { min: number; max: number }) {
+  // Scout → focus fields
+  private phase: "scout" | "focused" = "focused";
+  private scoutUnsubs: Array<() => void> = [];
+  private scoutDeltas = new Map<string, number>(); // "strike:P" -> absolute delta
+  private focusCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private scoutTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Stored from initialize() for use in transitionToFocus()
+  private allFilteredStrikes: number[] = [];
+  private storedOptionSymbol = "";
+  private storedSelectedExpiration = "";
+  private storedTradingClass = "";
+  private storedMultiplier = 100;
+
+  constructor(
+    res: Response,
+    symbol: string,
+    expiration?: string,
+    onlyStrikes?: number[],
+    focusRange?: { min: number; max: number },
+    targetPutDelta?: number,
+    targetCallDelta?: number,
+    targetWingWidth?: number,
+  ) {
     this.res = res;
     this.sessionId = `spread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.symbol = symbol;
     this.expiration = expiration;
     this.onlyStrikes = onlyStrikes;
     this.focusRange = focusRange;
+    this.targetPutDelta = targetPutDelta;
+    this.targetCallDelta = targetCallDelta;
+    this.targetWingWidth = targetWingWidth ?? 100;
   }
 
   async start(): Promise<void> {
@@ -198,6 +236,13 @@ export class SpreadStreamSession {
       chain,
     } satisfies SpreadStreamInitEvent);
 
+    // Store params for potential focus transition
+    this.allFilteredStrikes = strikes;
+    this.storedOptionSymbol = optionSymbol;
+    this.storedSelectedExpiration = selectedExpiration;
+    this.storedTradingClass = tradingClass;
+    this.storedMultiplier = multiplier;
+
     // 8. Reserve market data lines and subscribe
     // When onlyStrikes is set (chain collapsed), only subscribe to those specific strikes
     const strikesToSubscribe = this.onlyStrikes
@@ -223,19 +268,24 @@ export class SpreadStreamSession {
     );
     this.unsubscribers.push(unsubUnderlying);
 
-    // Two-phase strike subscription:
-    // Phase 1 (no focusRange): Uniform sparse sampling across full range
-    //   so auto-select can find the approximate delta target.
-    // Phase 2 (with focusRange): Dense subscription within the focus range
-    //   (all strikes around selected legs), sparse for the rest.
+    // Determine which strikes to subscribe
     const maxStrikes = Math.floor((linesGranted - 1) / 2);
     const sorted = [...strikesToSubscribe].sort((a, b) => a - b);
     const subscribedStrikes = new Set<number>();
 
+    // Should we use smart scout → focus?
+    // Only when: target deltas provided, no explicit strike list or focus range,
+    // and there are more strikes than we can subscribe to
+    const shouldScout =
+      !this.onlyStrikes &&
+      !this.focusRange &&
+      (this.targetPutDelta != null || this.targetCallDelta != null) &&
+      sorted.length > maxStrikes;
+
     if (sorted.length <= maxStrikes) {
       for (const s of sorted) subscribedStrikes.add(s);
     } else if (this.focusRange) {
-      // Phase 2: all strikes in focus range, sparse outside
+      // Dense subscription within focus range, sparse outside
       const focusStrikes = sorted.filter(
         (s) => s >= this.focusRange!.min && s <= this.focusRange!.max,
       );
@@ -255,7 +305,7 @@ export class SpreadStreamSession {
         }
       }
     } else {
-      // Phase 1: uniform sparse sampling across full range
+      // Uniform sparse sampling across full range
       const step = (sorted.length - 1) / (maxStrikes - 1);
       for (let i = 0; i < maxStrikes; i++) {
         const idx = Math.round(i * step);
@@ -263,9 +313,64 @@ export class SpreadStreamSession {
       }
     }
 
-    for (const strike of strikesToSubscribe) {
-      if (!subscribedStrikes.has(strike)) continue;
+    // Subscribe to option strikes
+    const optionUnsubs = this.subscribeOptionStrikes(
+      strikesToSubscribe.filter(s => subscribedStrikes.has(s)),
+      optionSymbol,
+      selectedExpiration,
+      tradingClass,
+      multiplier,
+    );
 
+    if (shouldScout) {
+      // Scout phase: store unsubs separately, start focus monitor
+      this.phase = "scout";
+      this.scoutUnsubs = optionUnsubs;
+      this.startFocusMonitor();
+    } else {
+      this.unsubscribers.push(...optionUnsubs);
+    }
+
+    // 10. Start flush interval (150ms)
+    this.flushInterval = setInterval(() => this.flushTickBuffer(), 150);
+
+    // 11. Start keepalive (30s)
+    this.keepaliveInterval = setInterval(() => {
+      if (!this.destroyed) {
+        this.res.write(": keepalive\n\n");
+      }
+    }, 30000);
+
+    // 12. Subscribe to IBKR connection status for error reporting
+    const unsubIbkr = ibkrService.subscribe((status) => {
+      if (!status.connected) {
+        this.sendEvent("error", {
+          message: "IBKR disconnected",
+          recoverable: true,
+        });
+      }
+    });
+    this.unsubscribers.push(unsubIbkr);
+  }
+
+  /**
+   * Subscribe to market data for a set of option strikes (both put and call).
+   * Returns an array of unsubscribe functions.
+   *
+   * During scout phase (this.phase === 'scout'), delta values are tracked
+   * internally in scoutDeltas but NOT written to the tick buffer — this
+   * prevents the frontend from auto-selecting on sparse/inaccurate data.
+   */
+  private subscribeOptionStrikes(
+    strikes: number[],
+    optionSymbol: string,
+    selectedExpiration: string,
+    tradingClass: string,
+    multiplier: number,
+  ): Array<() => void> {
+    const unsubs: Array<() => void> = [];
+
+    for (const strike of strikes) {
       for (const right of [OptionType.Put, OptionType.Call] as const) {
         const optContract: Contract = {
           symbol: optionSymbol,
@@ -294,8 +399,17 @@ export class SpreadStreamSession {
             if (data.ask !== undefined && data.ask >= 0) entry.ask = data.ask;
             if (data.last !== undefined && data.last >= 0)
               entry.last = data.last;
-            if (data.delta !== undefined)
-              entry.delta = Math.abs(data.delta);
+
+            if (data.delta !== undefined) {
+              const absDelta = Math.abs(data.delta);
+              // Always track for scout decision-making
+              this.scoutDeltas.set(bufferKey, absDelta);
+              // Only send to frontend when NOT in scout phase
+              if (this.phase !== "scout") {
+                entry.delta = absDelta;
+              }
+            }
+
             if (
               data.impliedVolatility !== undefined &&
               data.impliedVolatility > 0
@@ -312,30 +426,241 @@ export class SpreadStreamSession {
             this.tickBuffer[bufferKey] = entry;
           },
         );
-        this.unsubscribers.push(unsub);
+        unsubs.push(unsub);
       }
     }
 
-    // 10. Start flush interval (150ms)
-    this.flushInterval = setInterval(() => this.flushTickBuffer(), 150);
+    return unsubs;
+  }
 
-    // 11. Start keepalive (30s)
-    this.keepaliveInterval = setInterval(() => {
-      if (!this.destroyed) {
-        this.res.write(": keepalive\n\n");
+  /**
+   * Start monitoring scout delta data. Once enough deltas arrive to
+   * identify the target regions, transition to focused subscription.
+   */
+  private startFocusMonitor(): void {
+    this.focusCheckTimer = setInterval(() => {
+      if (this.phase !== "scout" || this.destroyed) {
+        if (this.focusCheckTimer) {
+          clearInterval(this.focusCheckTimer);
+          this.focusCheckTimer = null;
+        }
+        return;
       }
-    }, 30000);
 
-    // 12. Subscribe to IBKR connection status for error reporting
-    const unsubIbkr = ibkrService.subscribe((status) => {
-      if (!status.connected) {
-        this.sendEvent("error", {
-          message: "IBKR disconnected",
-          recoverable: true,
+      // Require at least 30% of subscribed strikes (min 3) to have deltas
+      const totalSubscribed = this.scoutUnsubs.length / 2; // put+call per strike
+      const minRequired = Math.max(3, Math.floor(totalSubscribed * 0.3));
+
+      let putReady = this.targetPutDelta == null;
+      let callReady = this.targetCallDelta == null;
+
+      if (!putReady) {
+        let count = 0;
+        for (const [key, delta] of this.scoutDeltas) {
+          if (key.endsWith(":P") && delta > 0) count++;
+        }
+        putReady = count >= minRequired;
+      }
+
+      if (!callReady) {
+        let count = 0;
+        for (const [key, delta] of this.scoutDeltas) {
+          if (key.endsWith(":C") && delta > 0) count++;
+        }
+        callReady = count >= minRequired;
+      }
+
+      if (putReady && callReady) {
+        this.transitionToFocus();
+      }
+    }, 300);
+
+    // Fallback: if deltas don't arrive in 10s, transition with whatever we have
+    this.scoutTimeout = setTimeout(() => {
+      if (this.phase === "scout" && !this.destroyed) {
+        this.transitionToFocus();
+      }
+    }, 10000);
+  }
+
+  /**
+   * Transition from scout to focused subscription.
+   * Identifies delta regions, unsubscribes scouts, subscribes densely
+   * around target areas + wing offsets.
+   */
+  private transitionToFocus(): void {
+    if (this.phase !== "scout") return;
+    this.phase = "focused";
+
+    if (this.focusCheckTimer) {
+      clearInterval(this.focusCheckTimer);
+      this.focusCheckTimer = null;
+    }
+    if (this.scoutTimeout) {
+      clearTimeout(this.scoutTimeout);
+      this.scoutTimeout = null;
+    }
+
+    // Compute focus regions from scout delta data
+    const focusRanges: Array<{ min: number; max: number }> = [];
+
+    if (this.targetPutDelta != null) {
+      const region = this.findDeltaRegion("P", this.targetPutDelta);
+      if (region) {
+        // Put spread: sell leg near target delta, buy leg = sell - wingWidth
+        focusRanges.push({
+          min: region.low - this.targetWingWidth - 25,
+          max: region.high + 25,
         });
       }
-    });
-    this.unsubscribers.push(unsubIbkr);
+    }
+
+    if (this.targetCallDelta != null) {
+      const region = this.findDeltaRegion("C", this.targetCallDelta);
+      if (region) {
+        // Call spread: sell leg near target delta, buy leg = sell + wingWidth
+        focusRanges.push({
+          min: region.low - 25,
+          max: region.high + this.targetWingWidth + 25,
+        });
+      }
+    }
+
+    // If no regions found, just start sending deltas from current subscriptions
+    if (focusRanges.length === 0) {
+      // Move scout unsubs to permanent unsubs
+      this.unsubscribers.push(...this.scoutUnsubs);
+      this.scoutUnsubs = [];
+      return;
+    }
+
+    const merged = this.mergeRanges(focusRanges);
+
+    // Unsubscribe scout option strikes
+    for (const unsub of this.scoutUnsubs) {
+      try { unsub(); } catch { /* ignore */ }
+    }
+    this.scoutUnsubs = [];
+
+    // Clear stale scout data from the tick buffer
+    this.tickBuffer = {};
+    this.scoutDeltas.clear();
+
+    // Release and re-reserve market data lines
+    marketDataLineRegistry.release(this.sessionId);
+
+    const focusStrikes = this.allFilteredStrikes.filter(s =>
+      merged.some(r => s >= r.min && s <= r.max),
+    );
+
+    const needed = focusStrikes.length * 2 + 1; // +1 for underlying
+    const granted = marketDataLineRegistry.reserve(this.sessionId, needed);
+
+    if (granted <= 1) {
+      // No budget for option strikes — just send the refocused event
+      this.sendEvent("refocused", {
+        focusRanges: merged,
+      } satisfies RefocusedEvent);
+      return;
+    }
+
+    const maxFocusStrikes = Math.floor((granted - 1) / 2);
+
+    let strikesToSub: number[];
+    if (focusStrikes.length <= maxFocusStrikes) {
+      strikesToSub = focusStrikes;
+    } else {
+      // Budget exceeded — distribute proportionally across merged ranges
+      // by sampling evenly within the combined focus set
+      const step = (focusStrikes.length - 1) / (maxFocusStrikes - 1);
+      strikesToSub = [];
+      for (let i = 0; i < maxFocusStrikes; i++) {
+        strikesToSub.push(focusStrikes[Math.round(i * step)]);
+      }
+    }
+
+    // Subscribe to focus strikes
+    const unsubs = this.subscribeOptionStrikes(
+      strikesToSub,
+      this.storedOptionSymbol,
+      this.storedSelectedExpiration,
+      this.storedTradingClass,
+      this.storedMultiplier,
+    );
+    this.unsubscribers.push(...unsubs);
+
+    // Notify frontend
+    this.sendEvent("refocused", {
+      focusRanges: merged,
+    } satisfies RefocusedEvent);
+  }
+
+  /**
+   * Find the strike range where the target delta (in percentage, e.g. 3.5)
+   * is located, using scout delta data.
+   *
+   * Returns the two adjacent scout strikes that bracket the target, or
+   * a margin around the closest strike if not bracketed.
+   */
+  private findDeltaRegion(
+    right: "P" | "C",
+    targetDelta: number,
+  ): { low: number; high: number } | null {
+    const entries: Array<{ strike: number; delta: number }> = [];
+    for (const [key, delta] of this.scoutDeltas) {
+      if (key.endsWith(`:${right}`) && delta > 0) {
+        const strike = parseFloat(key.split(":")[0]);
+        entries.push({ strike, delta: delta * 100 }); // convert to percentage
+      }
+    }
+
+    if (entries.length < 2) return null;
+    entries.sort((a, b) => a.strike - b.strike);
+
+    // Find adjacent pair that brackets the target delta.
+    // For puts: |delta| increases with strike (OTM→ITM as strike rises toward spot).
+    // For calls: delta decreases with strike (ITM→OTM as strike rises past spot).
+    // We check both orderings since either side can bracket.
+    for (let i = 0; i < entries.length - 1; i++) {
+      const a = entries[i];
+      const b = entries[i + 1];
+
+      const lo = Math.min(a.delta, b.delta);
+      const hi = Math.max(a.delta, b.delta);
+
+      if (targetDelta >= lo && targetDelta <= hi) {
+        return { low: a.strike, high: b.strike };
+      }
+    }
+
+    // Target not bracketed — find closest and use generous margin
+    const closest = entries.reduce((best, e) =>
+      Math.abs(e.delta - targetDelta) < Math.abs(best.delta - targetDelta)
+        ? e
+        : best,
+    );
+    const margin = 75;
+    return { low: closest.strike - margin, high: closest.strike + margin };
+  }
+
+  /**
+   * Merge overlapping or adjacent ranges into non-overlapping ranges.
+   */
+  private mergeRanges(
+    ranges: Array<{ min: number; max: number }>,
+  ): Array<{ min: number; max: number }> {
+    if (ranges.length <= 1) return [...ranges];
+    const sorted = [...ranges].sort((a, b) => a.min - b.min);
+    const merged: Array<{ min: number; max: number }> = [{ ...sorted[0] }];
+    for (let i = 1; i < sorted.length; i++) {
+      const last = merged[merged.length - 1];
+      if (sorted[i].min <= last.max) {
+        last.max = Math.max(last.max, sorted[i].max);
+      } else {
+        merged.push({ ...sorted[i] });
+      }
+    }
+    return merged;
   }
 
   private async resolveConIds(
@@ -407,16 +732,18 @@ export class SpreadStreamSession {
     this.destroyed = true;
 
     for (const unsub of this.unsubscribers) {
-      try {
-        unsub();
-      } catch {
-        /* ignore */
-      }
+      try { unsub(); } catch { /* ignore */ }
+    }
+    for (const unsub of this.scoutUnsubs) {
+      try { unsub(); } catch { /* ignore */ }
     }
     this.unsubscribers = [];
+    this.scoutUnsubs = [];
 
     if (this.flushInterval) clearInterval(this.flushInterval);
     if (this.keepaliveInterval) clearInterval(this.keepaliveInterval);
+    if (this.focusCheckTimer) clearInterval(this.focusCheckTimer);
+    if (this.scoutTimeout) clearTimeout(this.scoutTimeout);
 
     marketDataLineRegistry.release(this.sessionId);
     ibkrService.releaseLiveMarketData();

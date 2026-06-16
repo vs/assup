@@ -109,6 +109,9 @@ export function IronCondorPage() {
     return strikes.length > 0 ? strikes : undefined;
   }, [chainExpanded, selectedLegs]);
 
+  const hasPutSide = mode === "put-spread" || mode === "iron-condor";
+  const hasCallSide = mode === "call-spread" || mode === "iron-condor";
+
   // Phase 2: once legs are selected, focus dense subscription around them
   // Use a margin of wingWidth + 50 points around the outermost legs
   const focusRange = useMemo(() => {
@@ -133,7 +136,15 @@ export function IronCondorPage() {
     selectedExpiration: streamExpiration,
     status,
     error,
-  } = useSpreadsStream(symbol, expiration, streamStrikes, focusRange);
+  } = useSpreadsStream(
+    symbol,
+    expiration,
+    streamStrikes,
+    focusRange,
+    hasPutSide ? putDelta : undefined,
+    hasCallSide ? callDelta : undefined,
+    wingWidth,
+  );
 
   // Active spreads via REST endpoint (polled every 10s)
   const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
@@ -167,9 +178,6 @@ export function IronCondorPage() {
       })
       .catch(() => {}); // Use defaults
   }, []);
-
-  const hasPutSide = mode === "put-spread" || mode === "iron-condor";
-  const hasCallSide = mode === "call-spread" || mode === "iron-condor";
 
   // --- Auto-select legs based on deltas and mode ---
   // Track whether we've successfully auto-selected legs for the current expiration.
@@ -235,9 +243,12 @@ export function IronCondorPage() {
     }
   }, [chain, chainHasDeltas, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide]);
 
-  // Re-run auto-select when user changes delta/wingWidth parameters
+  // Re-run auto-select when user changes delta/wingWidth parameters.
+  // Also clear legs so the stream reconnects without focusRange/onlyStrikes,
+  // triggering a fresh scout → focus cycle with the new target deltas.
   const handleParameterChange = useCallback(() => {
     autoSelectDoneRef.current = false;
+    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
   }, []);
 
   // --- Client-side analysis (instant, via useMemo) ---

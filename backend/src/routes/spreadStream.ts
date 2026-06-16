@@ -16,6 +16,11 @@ router.get("/stream", (req: Request, res: Response) => {
   const focusMin = req.query.focusMin ? Number(req.query.focusMin) : undefined;
   const focusMax = req.query.focusMax ? Number(req.query.focusMax) : undefined;
 
+  // Optional: target deltas for smart scout → focus subscription
+  const targetPutDelta = req.query.targetPutDelta ? Number(req.query.targetPutDelta) : undefined;
+  const targetCallDelta = req.query.targetCallDelta ? Number(req.query.targetCallDelta) : undefined;
+  const wingWidth = req.query.wingWidth ? Number(req.query.wingWidth) : undefined;
+
   // SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -24,7 +29,8 @@ router.get("/stream", (req: Request, res: Response) => {
   res.flushHeaders();
 
   const session = new SpreadStreamSession(res, symbol, expiration, onlyStrikes,
-    focusMin != null && focusMax != null ? { min: focusMin, max: focusMax } : undefined);
+    focusMin != null && focusMax != null ? { min: focusMin, max: focusMax } : undefined,
+    targetPutDelta, targetCallDelta, wingWidth);
   session.start();
 
   req.on("close", () => {

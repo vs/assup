@@ -30,8 +30,13 @@ export interface StreamErrorEvent {
   recoverable: boolean;
 }
 
+export interface RefocusedEvent {
+  focusRanges: Array<{ min: number; max: number }>;
+}
+
 export type SpreadStreamEvent =
   | { type: "init"; data: SpreadStreamInitEvent }
   | { type: "chain-update"; data: ChainUpdateEvent }
   | { type: "positions"; data: PositionsUpdateEvent }
+  | { type: "refocused"; data: RefocusedEvent }
   | { type: "error"; data: StreamErrorEvent };

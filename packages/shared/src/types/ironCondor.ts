@@ -129,5 +129,6 @@ export type {
   ChainUpdateEvent,
   PositionsUpdateEvent,
   StreamErrorEvent,
+  RefocusedEvent,
   SpreadStreamEvent,
 } from "./spreadStream.js";
