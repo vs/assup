@@ -253,11 +253,10 @@ export function IronCondorPage() {
   }, [chain, chainHasDeltas, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide]);
 
   // Re-run auto-select when user changes delta/wingWidth parameters.
-  // Also clear legs so the stream reconnects without focusRange/onlyStrikes,
-  // triggering a fresh scout → focus cycle with the new target deltas.
+  // Just reset the flag — the auto-select effect will re-run immediately
+  // on the existing chain data with the new parameter values.
   const handleParameterChange = useCallback(() => {
     autoSelectDoneRef.current = false;
-    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
   }, []);
 
   // --- Client-side analysis (instant, via useMemo) ---
