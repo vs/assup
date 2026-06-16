@@ -475,6 +475,15 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
         </button>
         {expanded && (
           <div className="ml-auto flex items-center gap-1">
+            {fullView && scrollTarget && (
+              <button
+                onClick={scrollToLegs}
+                className="text-muted-foreground/60 hover:text-foreground transition-colors p-1 rounded hover:bg-muted"
+                title="Scroll to selected legs"
+              >
+                <Crosshair className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
               onClick={() => setFullView(!fullView)}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
@@ -483,16 +492,6 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
               {fullView ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               {fullView ? "Compact" : "Full"}
             </button>
-            {fullView && scrollTarget && (
-              <button
-                onClick={scrollToLegs}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
-                title="Scroll to selected legs"
-              >
-                <Crosshair className="h-3.5 w-3.5" />
-                Locate
-              </button>
-            )}
           </div>
         )}
       </div>
