@@ -17,8 +17,8 @@ export interface AccountSnapshot {
   netLiquidation: number;
   cashValue: number;
   stocksValue: number;
-  nakedPutsExposure: number;
-  nakedCallsExposure: number;
+  putsExposure: number;
+  callsExposure: number;
   spreadsCount: number;
 }
 
@@ -26,33 +26,18 @@ function computeAccountSnapshot(
   summary: PositionSummary,
   spreadSymbols: Set<string>,
 ): AccountSnapshot {
-  const positions = summary.positions;
-
-  // Separate spread-eligible options from naked options
-  const spreadEligible = positions.filter(
+  // Use pre-computed summary totals for exposure (includes ALL options)
+  const spreadEligible = summary.positions.filter(
     (p) => p.secType === "OPT" && p.underlying && spreadSymbols.has(p.underlying),
   );
-  const nakedOptions = positions.filter(
-    (p) => p.secType === "OPT" && !(p.underlying && spreadSymbols.has(p.underlying)),
-  );
-
-  // Group spread-eligible positions
   const { spreads } = groupPositionsIntoSpreads(spreadEligible);
-
-  // Naked options exposure (notional value)
-  const nakedPutsExposure = nakedOptions
-    .filter((p) => p.right === "P")
-    .reduce((s, p) => s + (p.notionalValue ?? 0), 0);
-  const nakedCallsExposure = nakedOptions
-    .filter((p) => p.right === "C")
-    .reduce((s, p) => s + (p.notionalValue ?? 0), 0);
 
   return {
     netLiquidation: summary.account.netLiquidation,
     cashValue: summary.account.cashValue,
     stocksValue: summary.summary.totalStockValue,
-    nakedPutsExposure,
-    nakedCallsExposure,
+    putsExposure: summary.summary.totalPutNotional,
+    callsExposure: summary.summary.totalCallNotional,
     spreadsCount: spreads.length,
   };
 }

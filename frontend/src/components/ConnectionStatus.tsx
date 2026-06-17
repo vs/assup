@@ -192,11 +192,11 @@ export function FearGreedPanel({
                 </div>
                 <div>
                   <div className="text-muted-foreground">Puts</div>
-                  <div className="tabular-nums">{formatCompact(account.nakedPutsExposure)}</div>
+                  <div className="tabular-nums">{formatCompact(account.putsExposure)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Calls</div>
-                  <div className="tabular-nums">{formatCompact(account.nakedCallsExposure)}</div>
+                  <div className="tabular-nums">{formatCompact(account.callsExposure)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Spreads</div>
