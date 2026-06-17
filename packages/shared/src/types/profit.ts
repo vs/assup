@@ -169,6 +169,9 @@ export interface MonthSummary {
   tradeCount: number;
   stockTradeCount: number;
   assignedCount: number;
+  spreadsProfit: number;
+  spreadTradeCount: number;
+  cashTransactionCount: number;
 }
 
 // Monthly detail response
@@ -239,6 +242,7 @@ export interface MonthlyProfitResponse {
   months: MonthSummary[];
   totals: {
     optionsProfit: number;
+    spreadsProfit: number;
     stocksProfit: number;
     dividends: number;
     interest: number;
