@@ -200,6 +200,8 @@ class ProfitService {
         year: current.getFullYear(),
         month: current.getMonth() + 1,
         optionsProfit: 0,
+        spreadsProfit: 0,
+        spreadTradeCount: 0,
         stocksProfit: 0,
         dividends: 0,
         interest: 0,
@@ -209,6 +211,7 @@ class ProfitService {
         tradeCount: 0,
         stockTradeCount: 0,
         assignedCount: 0,
+        cashTransactionCount: 0,
       });
       current.setMonth(current.getMonth() + 1);
     }
@@ -244,8 +247,8 @@ class ProfitService {
       const { spreads, remaining } = groupSpreads(groups, spreadSymbols2);
 
       for (const s of spreads) {
-        summary.optionsProfit += s.profit;
-        summary.tradeCount++;
+        summary.spreadsProfit += s.profit;
+        summary.spreadTradeCount++;
       }
       for (const g of remaining) {
         if (!g.wasAssigned) {
@@ -283,12 +286,15 @@ class ProfitService {
         switch (tx.type) {
           case "DIVIDEND":
             summary.dividends += amountUsd;
+            summary.cashTransactionCount++;
             break;
           case "INTEREST":
             summary.interest += amountUsd;
+            summary.cashTransactionCount++;
             break;
           case "WITHHOLDING_TAX":
             summary.withholdingTax += amountUsd;
+            summary.cashTransactionCount++;
             break;
           case "FEE":
             summary.fees += amountUsd;
@@ -302,6 +308,7 @@ class ProfitService {
       ...m,
       total:
         m.optionsProfit +
+        m.spreadsProfit +
         m.stocksProfit +
         m.dividends +
         m.interest +
@@ -312,6 +319,7 @@ class ProfitService {
     const totals = months.reduce(
       (acc, m) => ({
         optionsProfit: acc.optionsProfit + m.optionsProfit,
+        spreadsProfit: acc.spreadsProfit + m.spreadsProfit,
         stocksProfit: acc.stocksProfit + m.stocksProfit,
         dividends: acc.dividends + m.dividends,
         interest: acc.interest + m.interest,
@@ -321,6 +329,7 @@ class ProfitService {
       }),
       {
         optionsProfit: 0,
+        spreadsProfit: 0,
         stocksProfit: 0,
         dividends: 0,
         interest: 0,
@@ -682,11 +691,10 @@ class ProfitService {
     }
 
     // Calculate summary
-    const individualOptionsProfit = nonSpreadTrades
+    const optionsProfit = nonSpreadTrades
       .filter((g) => !g.wasAssigned)
       .reduce((sum, g) => sum + g.profit, 0);
-    const spreadOptionsProfit = spreadTrades.reduce((sum, s) => sum + s.profit, 0);
-    const optionsProfit = individualOptionsProfit + spreadOptionsProfit;
+    const spreadsProfit = spreadTrades.reduce((sum, s) => sum + s.profit, 0);
     const stocksProfit = monthStockGroups.reduce((sum, g) => sum + g.profit, 0);
     const dividendsTotal = dividends.reduce((sum, d) => sum + d.amount, 0);
     const interestTotal = interest.reduce((sum, i) => sum + i.amount, 0);
@@ -712,6 +720,8 @@ class ProfitService {
         year,
         month,
         optionsProfit,
+        spreadsProfit,
+        spreadTradeCount: spreadTrades.length,
         stocksProfit,
         dividends: dividendsTotal,
         interest: interestTotal,
@@ -719,14 +729,16 @@ class ProfitService {
         fees: feesTotal,
         total:
           optionsProfit +
+          spreadsProfit +
           stocksProfit +
           dividendsTotal +
           interestTotal +
           withholdingTaxTotal +
           feesTotal,
-        tradeCount: nonSpreadTrades.filter((g) => !g.wasAssigned).length + spreadTrades.length,
+        tradeCount: nonSpreadTrades.filter((g) => !g.wasAssigned).length,
         stockTradeCount: monthStockGroups.length,
         assignedCount: nonSpreadTrades.filter((g) => g.wasAssigned).length,
+        cashTransactionCount: dividends.length + interest.length + withholdingTax.length,
       },
     };
   }
@@ -1046,7 +1058,7 @@ class ProfitService {
       year,
       month,
       realized: {
-        optionsProfit: detail.summary.optionsProfit,
+        optionsProfit: detail.summary.optionsProfit + detail.summary.spreadsProfit,
         stocksProfit: detail.summary.stocksProfit,
         dividends: detail.summary.dividends,
         interest: detail.summary.interest,

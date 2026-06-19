@@ -212,7 +212,7 @@ export function ProfitPage() {
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <SummaryCard
             label="Options"
-            value={monthlyData.totals.optionsProfit}
+            value={monthlyData.totals.optionsProfit + monthlyData.totals.spreadsProfit}
             className="text-blue-600"
           />
           <SummaryCard
@@ -944,7 +944,7 @@ function MonthHistoryCard({
                 <div className="text-sm">
                   <span className="text-muted-foreground">Options:</span>{" "}
                   <span className="text-blue-600">
-                    {formatCurrency(month.optionsProfit)}
+                    {formatCurrency(month.optionsProfit + month.spreadsProfit)}
                   </span>
                 </div>
                 <div className="text-sm">
@@ -989,7 +989,7 @@ function MonthHistoryCard({
                     {formatCurrency(month.total)}
                   </span>
                 </div>
-                <Badge variant="secondary">{month.tradeCount} opt</Badge>
+                <Badge variant="secondary">{month.tradeCount + month.spreadTradeCount} opt</Badge>
                 {month.stockTradeCount > 0 && (
                   <Badge variant="secondary">{month.stockTradeCount} stk</Badge>
                 )}
