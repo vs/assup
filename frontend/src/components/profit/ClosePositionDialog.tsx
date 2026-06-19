@@ -171,9 +171,31 @@ export function ClosePositionDialog({
   });
 
   const totalCost = quantity * limitPrice * 100;
-  const premiumPct = position.strike > 0 ? (limitPrice / position.strike) * 100 : 0;
   const daysToExpiry = Math.max(0, Math.ceil((new Date(position.expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-  const annualYield = daysToExpiry > 0 ? (premiumPct * 365) / daysToExpiry : 0;
+
+  // For buy-to-close (closing a short): compute profit from the trade
+  // avgCost from IBKR is per-contract (includes 100x multiplier)
+  const isBuyToClose = action === "BUY";
+  const closeCostPerContract = limitPrice * 100;
+  const profitPerContract = isBuyToClose ? position.avgCost - closeCostPerContract : 0;
+  const totalProfit = isBuyToClose ? profitPerContract * quantity : 0;
+  const profitPct = isBuyToClose && position.strike > 0
+    ? (profitPerContract / (position.strike * 100)) * 100
+    : 0;
+  // Days spent in trade: approximate as total DTE minus remaining DTE
+  // Total DTE isn't available, so use DTE consumed = max(1, totalDTE - remaining)
+  // As a fallback, annualize over the remaining DTE (conservative)
+  const annualYieldClose = isBuyToClose && daysToExpiry > 0
+    ? (profitPct * 365) / Math.max(1, daysToExpiry)
+    : 0;
+
+  // For sell-to-close (closing a long): use standard premium metrics
+  const premiumPct = !isBuyToClose && position.strike > 0
+    ? (limitPrice / position.strike) * 100
+    : 0;
+  const annualYieldOpen = !isBuyToClose && daysToExpiry > 0
+    ? (premiumPct * 365) / daysToExpiry
+    : 0;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -283,24 +305,53 @@ export function ClosePositionDialog({
 
           {/* Total cost + metrics */}
           <div className="p-3 rounded-md bg-primary/10">
-            <div className="text-center">
-              <div className="text-sm text-muted-foreground">
-                Total {action === "BUY" ? "Cost (Debit)" : "Premium (Credit)"}
-              </div>
-              <div className="text-xl font-bold">
-                {formatCurrency(totalCost, { maximumFractionDigits: 2 })}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-primary/20 text-center">
-              <div>
-                <div className="text-xs text-muted-foreground">Premium %</div>
-                <div className="font-mono font-medium">{premiumPct.toFixed(2)}%</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Annual Yield</div>
-                <div className="font-mono font-bold">{annualYield.toFixed(1)}%</div>
-              </div>
-            </div>
+            {isBuyToClose ? (
+              <>
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Cost to Close</div>
+                    <div className="text-lg font-bold">
+                      {formatCurrency(totalCost, { maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Profit</div>
+                    <div className={`text-lg font-bold ${totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {formatCurrency(totalProfit, { maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-primary/20 text-center">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Profit %</div>
+                    <div className="font-mono font-medium">{profitPct.toFixed(2)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Annual Yield</div>
+                    <div className="font-mono font-bold">{annualYieldClose.toFixed(1)}%</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-center">
+                  <div className="text-sm text-muted-foreground">Total Premium (Credit)</div>
+                  <div className="text-xl font-bold">
+                    {formatCurrency(totalCost, { maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-primary/20 text-center">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Premium %</div>
+                    <div className="font-mono font-medium">{premiumPct.toFixed(2)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Annual Yield</div>
+                    <div className="font-mono font-bold">{annualYieldOpen.toFixed(1)}%</div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Error message */}
