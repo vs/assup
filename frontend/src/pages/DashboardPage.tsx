@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { DashboardPeriod } from "@assup/shared";
 import { dashboardApi } from "@/api/dashboard";
 import { profitApi } from "@/api/profit";
-import { PageHeader } from "@/components/common/PageHeader";
+import { PageHeader } from "@/components/common";
 import { CurrentMonthPace } from "@/components/dashboard/CurrentMonthPace";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { PnlHero } from "@/components/dashboard/PnlHero";
