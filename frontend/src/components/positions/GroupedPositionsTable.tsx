@@ -276,7 +276,7 @@ const PositionGridRow = memo(function PositionGridRow({
       </div>
 
       {/* Sparkline */}
-      <div>
+      <div className="pr-3">
         <Sparkline
           data={sparklineData}
           loading={sparklineLoading}

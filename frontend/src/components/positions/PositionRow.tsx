@@ -63,7 +63,7 @@ export function PositionRow({
       </TableCell>
 
       {/* Sparkline */}
-      <TableCell className="w-24">
+      <TableCell className="w-24 pr-4">
         <Sparkline
           data={sparklineData}
           loading={sparklineLoading}
