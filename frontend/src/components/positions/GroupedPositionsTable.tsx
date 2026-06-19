@@ -1,14 +1,13 @@
-import { useCallback, memo } from "react";
+import { memo } from "react";
 import { Link } from "react-router-dom";
 import type { Position, SparklinePoint } from "@assup/shared";
 import { formatCurrency, formatNumber, calculatePositionExposure } from "@assup/shared";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ExposureTooltip, ExternalLinks } from "@/components/common";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { Sparkline } from "@/components/Sparkline";
-import { ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
+import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface AllocationData {
@@ -38,7 +37,6 @@ interface GroupedPositionsTableProps {
   getSparkline: (position: Position) => SparklineState;
   expandedGroups: Set<string>;
   onToggleGroup: (groupId: string) => void;
-  optionsToggle?: React.ReactNode;
 }
 
 const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
@@ -55,7 +53,6 @@ export function GroupedPositionsTable({
   getSparkline,
   expandedGroups,
   onToggleGroup,
-  optionsToggle,
 }: GroupedPositionsTableProps) {
   // Group positions by asset class ID
   const positionsByClass = new Map<string, Position[]>();
@@ -74,43 +71,8 @@ export function GroupedPositionsTable({
     });
   }
 
-  const allExpanded = expandedGroups.size === allocationData.length;
-
-  const handleExpandAll = useCallback(() => {
-    const allIds = new Set(allocationData.map((r) => r.id ?? "unassigned"));
-    for (const id of allIds) {
-      if (!expandedGroups.has(id)) onToggleGroup(id);
-    }
-  }, [allocationData, expandedGroups, onToggleGroup]);
-
-  const handleCollapseAll = useCallback(() => {
-    for (const id of expandedGroups) {
-      onToggleGroup(id);
-    }
-  }, [expandedGroups, onToggleGroup]);
-
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-end gap-3">
-        {optionsToggle}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={allExpanded ? handleCollapseAll : handleExpandAll}
-        >
-          {allExpanded ? (
-            <>
-              <ChevronsDownUp className="h-4 w-4 mr-1" />
-              Collapse All
-            </>
-          ) : (
-            <>
-              <ChevronsUpDown className="h-4 w-4 mr-1" />
-              Expand All
-            </>
-          )}
-        </Button>
-      </div>
+    <div>
       <div className="w-full">
         {allocationData.map((row) => {
           const groupId = row.id ?? "unassigned";

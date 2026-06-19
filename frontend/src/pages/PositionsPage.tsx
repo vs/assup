@@ -26,7 +26,7 @@ import { useTickerProfileContext } from "@/components/common/TickerProfileProvid
 import { PositionTable, GroupedPositionsTable } from "@/components/positions";
 import type { AllocationData } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
-import { ChevronRight, ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronRight, ChevronDown, RefreshCw, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import {
   groupPositionsIntoSpreads,
   formatLiveSpreadName,
@@ -224,10 +224,45 @@ export function PositionsPage() {
             Portfolio allocation and position details.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="include-options"
+              checked={filters.includeOptions}
+              onCheckedChange={(checked) => setFilters({ ...filters, includeOptions: checked })}
+            />
+            <Label htmlFor="include-options" className="text-sm cursor-pointer">
+              Options {optionsCount > 0 && `(${optionsCount})`}
+            </Label>
+          </div>
+          {showGroupedView && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const allIds = allocationData.map((r) => r.id ?? "unassigned");
+                const allExpanded = expandedGroups.size === allocationData.length;
+                if (allExpanded) {
+                  for (const id of expandedGroups) handleToggleGroup(id);
+                } else {
+                  for (const id of allIds) {
+                    if (!expandedGroups.has(id)) handleToggleGroup(id);
+                  }
+                }
+              }}
+            >
+              {expandedGroups.size === allocationData.length ? (
+                <><ChevronsDownUp className="h-4 w-4 mr-1" /> Collapse</>
+              ) : (
+                <><ChevronsUpDown className="h-4 w-4 mr-1" /> Expand</>
+              )}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
@@ -325,18 +360,6 @@ export function PositionsPage() {
               getSparkline={getPositionSparkline}
               expandedGroups={expandedGroups}
               onToggleGroup={handleToggleGroup}
-              optionsToggle={
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="include-options"
-                    checked={filters.includeOptions}
-                    onCheckedChange={(checked) => setFilters({ ...filters, includeOptions: checked })}
-                  />
-                  <Label htmlFor="include-options" className="text-sm cursor-pointer">
-                    Options {optionsCount > 0 && `(${optionsCount})`}
-                  </Label>
-                </div>
-              }
             />
           ) : (
             <PositionTable
