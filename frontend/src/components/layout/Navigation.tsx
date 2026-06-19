@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Briefcase,
+  LayoutDashboard,
   List,
   Search,
   TrendingUp,
@@ -43,6 +44,7 @@ function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
 }
 
 const navItems = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/", label: "Positions", icon: Briefcase },
   { to: "/analysis", label: "Watchlists", icon: List },
   { to: "/scanner", label: "Scanner", icon: Search },
