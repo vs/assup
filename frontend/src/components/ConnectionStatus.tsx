@@ -86,19 +86,31 @@ function getMarketStatus(): { open: boolean; label: string; time: string } | nul
   if (totalMin <= 0) return null;
 
   let countdown: string;
-  if (totalMin < 120) {
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  const totalHours = Math.floor(totalMin / 60);
+  const remainMin = totalMin % 60;
+  if (totalHours >= 24) {
+    const d = Math.floor(totalHours / 24);
+    const h = totalHours % 24;
+    countdown = h > 0 ? `${d}d ${h}h` : `${d}d`;
+  } else if (totalHours >= 2) {
+    countdown = remainMin > 0 ? `${totalHours}h ${remainMin}m` : `${totalHours}h`;
   } else {
-    const h = Math.round(totalMin / 60);
-    countdown = `${h}h`;
+    countdown = totalHours > 0 ? `${totalHours}h ${remainMin}m` : `${remainMin}m`;
   }
+
+  // For closed market: show day + local time (e.g. "Tomorrow 14:30", "Monday 14:30")
+  let dayLabel = "";
+  if (!isOpen && daysUntil > 0) {
+    const targetDayName = targetLocal.toLocaleDateString([], { weekday: "long" });
+    dayLabel = daysUntil === 1 ? "Tomorrow" : targetDayName;
+  }
+
+  const timeLabel = dayLabel ? `${dayLabel} ${localTime}` : localTime;
 
   return {
     open: isOpen,
     label: isOpen ? `Closes in ${countdown}` : `Opens in ${countdown}`,
-    time: localTime,
+    time: timeLabel,
   };
 }
 
