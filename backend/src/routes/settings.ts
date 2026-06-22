@@ -60,6 +60,7 @@ router.get(
       }
       // Return empty value for unknown keys instead of 404
       res.json({ key, value: null });
+      return;
     }
 
     res.json(setting);
