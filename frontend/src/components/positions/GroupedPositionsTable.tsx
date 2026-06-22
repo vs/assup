@@ -80,12 +80,14 @@ export function GroupedPositionsTable({
           const groupPositions = positionsByClass.get(groupId) ?? [];
           const targetValue = (row.target / 100) * netLiquidation;
           const currentValue = includeOptions ? row.value : row.stockValue;
+          const currentPct = netLiquidation > 0 ? (currentValue / netLiquidation) * 100 : 0;
+          const diffPct = currentPct - row.target;
           const diffValue = currentValue - targetValue;
 
           return (
             <AssetClassGroup
               key={groupId}
-              row={row}
+              row={{ ...row, current: currentPct, diff: diffPct }}
               groupId={groupId}
               isExpanded={isExpanded}
               onToggle={() => onToggleGroup(groupId)}
