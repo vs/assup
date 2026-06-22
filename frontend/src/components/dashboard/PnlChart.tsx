@@ -1,5 +1,6 @@
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ChartDataPoint, formatCurrency } from "@assup/shared";
+import type { ChartDataPoint } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface PnlChartProps {

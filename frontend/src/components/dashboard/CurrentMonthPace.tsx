@@ -1,4 +1,5 @@
-import { DashboardSummary, formatCurrency } from "@assup/shared";
+import type { DashboardSummary } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface CurrentMonthPaceProps {

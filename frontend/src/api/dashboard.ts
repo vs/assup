@@ -1,4 +1,4 @@
-import { DashboardPeriod, DashboardSummary } from "@assup/shared";
+import type { DashboardPeriod, DashboardSummary } from "@assup/shared";
 import { request, buildQuery } from "./client";
 
 interface DashboardQueryParams {

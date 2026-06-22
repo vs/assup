@@ -1,4 +1,5 @@
-import { StrategyMetrics, formatCurrency } from "@assup/shared";
+import type { StrategyMetrics } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
 import { PnlSparkline } from "./PnlSparkline";
 
 interface StrategyRowProps {

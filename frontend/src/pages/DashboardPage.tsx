@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { DashboardPeriod } from "@assup/shared";
+import type { DashboardPeriod } from "@assup/shared";
 import { dashboardApi } from "@/api/dashboard";
 import { profitApi } from "@/api/profit";
 import { PageHeader } from "@/components/common";
@@ -28,7 +28,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Dashboard" description="Portfolio performance overview" />
+      <PageHeader title="Dashboard" subtitle="Portfolio performance overview" />
 
       {data && <CurrentMonthPace data={data.currentMonthPace} />}
 

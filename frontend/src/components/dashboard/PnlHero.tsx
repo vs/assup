@@ -1,4 +1,5 @@
-import { DashboardSummary, formatCurrency } from "@assup/shared";
+import type { DashboardSummary } from "@assup/shared";
+import { formatCurrency } from "@assup/shared";
 
 interface PnlHeroProps {
   periodTotal: DashboardSummary["periodTotal"];

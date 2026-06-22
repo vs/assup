@@ -1,4 +1,4 @@
-import { DashboardSummary } from "@assup/shared";
+import type { DashboardSummary } from "@assup/shared";
 import { StrategyRow } from "./StrategyRow";
 
 interface StrategyBreakdownProps {

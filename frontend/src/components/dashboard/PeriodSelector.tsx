@@ -1,4 +1,4 @@
-import { DashboardPeriod } from "@assup/shared";
+import type { DashboardPeriod } from "@assup/shared";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
