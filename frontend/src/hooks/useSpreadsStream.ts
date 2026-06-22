@@ -165,7 +165,10 @@ export function useSpreadsStream(
 
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
-  }, [symbol, expiration, selectedStrikes, focusRange, targetPutDelta, targetCallDelta, wingWidth, mode]);
+  // Note: wingWidth intentionally excluded — it's a hint for the backend's focus
+  // range but changing it should NOT trigger a reconnection. The frontend handles
+  // wing width changes by re-running auto-select on the existing chain data.
+  }, [symbol, expiration, selectedStrikes, focusRange, targetPutDelta, targetCallDelta, mode]);
 
   // Connect on mount and when params change
   useEffect(() => {
