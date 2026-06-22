@@ -35,8 +35,12 @@ export function useConnectionStatus() {
     };
   }, []);
 
+  // If SSE is disconnected, override status to show disconnected
+  // (the last SSE event may have reported "connected" before the backend went down)
+  const effectiveStatus = sseConnected ? status : { ...status, connected: false };
+
   return {
-    status,
+    status: effectiveStatus,
     sseError: sseConnected ? null : "Lost connection to server. Reconnecting...",
   };
 }
