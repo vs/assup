@@ -58,7 +58,8 @@ router.get(
         res.json({ key, value: DEFAULT_RESEARCH_SETTINGS });
         return;
       }
-      throw new NotFoundError("Setting not found");
+      // Return empty value for unknown keys instead of 404
+      res.json({ key, value: null });
     }
 
     res.json(setting);
