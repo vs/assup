@@ -70,7 +70,7 @@ export function PositionsPage() {
 
   useEffect(() => {
     loadDataRef.current();
-  }, []);
+  }, [filters.includeOptions]);
 
   async function loadData() {
     try {
