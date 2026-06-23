@@ -70,7 +70,7 @@ export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlC
   const fillColor = isPositive ? "#22c55e" : "#ef4444";
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader className="pb-0 pt-4 px-4">
         <div className="flex items-center justify-between">
           <div>
@@ -105,9 +105,9 @@ export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlC
           </ToggleGroup>
         </div>
       </CardHeader>
-      <CardContent className="px-4 pb-4 pt-2">
+      <CardContent className="px-4 pb-4 pt-2 flex-1 min-h-0">
         {mode === "cumulative" ? (
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data}>
               <defs>
                 <linearGradient id="pnlGradient" x1="0" y1="0" x2="0" y2="1">
@@ -139,7 +139,7 @@ export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlC
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data}>
               <XAxis
                 dataKey="period"

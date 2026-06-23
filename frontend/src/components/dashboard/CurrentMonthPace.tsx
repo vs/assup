@@ -1,7 +1,6 @@
 import type { DashboardSummary } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface CurrentMonthPaceProps {
   data: DashboardSummary["currentMonthPace"];
@@ -10,33 +9,29 @@ interface CurrentMonthPaceProps {
 export function CurrentMonthPace({ data }: CurrentMonthPaceProps) {
   return (
     <Card>
-      <CardHeader className="pb-2 pt-4 px-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Current Month</CardTitle>
-          <Badge variant="outline" className="text-xs font-normal">
-            {data.daysRemaining}d left
-          </Badge>
+      <CardContent className="px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold">Current Month</span>
+          <span className="text-xs text-muted-foreground">{data.daysRemaining}d left</span>
         </div>
-      </CardHeader>
-      <CardContent className="px-4 pb-4">
-        <div className="space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Realized</span>
-            <span className={`tabular-nums font-semibold ${data.realized >= 0 ? "text-green-600" : "text-red-600"}`}>
+        <div className="flex items-center justify-between gap-4 text-sm">
+          <div>
+            <span className="text-muted-foreground text-xs">Realized</span>
+            <div className={`tabular-nums font-semibold ${data.realized >= 0 ? "text-green-600" : "text-red-600"}`}>
               {formatCurrency(data.realized)}
-            </span>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Projected</span>
-            <span className="tabular-nums font-semibold text-blue-600">
+          <div>
+            <span className="text-muted-foreground text-xs">Projected</span>
+            <div className="tabular-nums font-semibold text-blue-600">
               {formatCurrency(data.projected)}
-            </span>
+            </div>
           </div>
-          <div className="flex justify-between border-t pt-1.5 mt-1.5">
-            <span className="font-semibold">Est. Total</span>
-            <span className={`tabular-nums font-semibold ${data.estimatedTotal >= 0 ? "text-green-600" : "text-red-600"}`}>
+          <div>
+            <span className="text-muted-foreground text-xs">Est. Total</span>
+            <div className={`tabular-nums font-semibold ${data.estimatedTotal >= 0 ? "text-green-600" : "text-red-600"}`}>
               {formatCurrency(data.estimatedTotal)}
-            </span>
+            </div>
           </div>
         </div>
       </CardContent>

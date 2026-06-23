@@ -73,8 +73,8 @@ export function DashboardPage() {
         profitPositions={profitPositions.data}
       />
 
-      {/* Chart (4/6) + Right sidebar (2/6) */}
-      <div className="grid grid-cols-6 gap-3">
+      {/* Chart (4/6) + Right sidebar (2/6) — chart stretches to match right column height */}
+      <div className="grid grid-cols-6 gap-3 items-stretch">
         <div className="col-span-4">
           {dashboardData.isLoading && (
             <div className="text-muted-foreground text-sm p-4">Loading...</div>
