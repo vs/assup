@@ -10,15 +10,17 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import type { ChartDataPoint } from "@assup/shared";
+import type { ChartDataPoint, DashboardSummary } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type ChartMode = "cumulative" | "monthly";
 
 interface PnlChartProps {
   data: ChartDataPoint[];
+  periodTotal?: DashboardSummary["periodTotal"];
+  periodIncludesCurrentMonth?: boolean;
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -30,34 +32,34 @@ function CustomTooltip({ active, payload, label }: any) {
       <div className="space-y-0.5 text-xs">
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Options</span>
-          <span className={d.options >= 0 ? "text-green-500" : "text-red-500"}>{formatCurrency(d.options)}</span>
+          <span className={d.options >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(d.options)}</span>
         </div>
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Spreads</span>
-          <span className={d.spreads >= 0 ? "text-green-500" : "text-red-500"}>{formatCurrency(d.spreads)}</span>
+          <span className={d.spreads >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(d.spreads)}</span>
         </div>
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Stocks</span>
-          <span className={d.stocks >= 0 ? "text-green-500" : "text-red-500"}>{formatCurrency(d.stocks)}</span>
+          <span className={d.stocks >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(d.stocks)}</span>
         </div>
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Div &amp; Interest</span>
-          <span className={d.dividendsInterest >= 0 ? "text-green-500" : "text-red-500"}>{formatCurrency(d.dividendsInterest)}</span>
+          <span className={d.dividendsInterest >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(d.dividendsInterest)}</span>
         </div>
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Fees</span>
-          <span className="text-red-500">{formatCurrency(d.fees)}</span>
+          <span className="text-red-600">{formatCurrency(d.fees)}</span>
         </div>
         <div className="flex justify-between gap-4 border-t pt-1 mt-1 font-medium">
           <span>Total</span>
-          <span className={d.total >= 0 ? "text-green-500" : "text-red-500"}>{formatCurrency(d.total)}</span>
+          <span className={d.total >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(d.total)}</span>
         </div>
       </div>
     </div>
   );
 }
 
-export function PnlChart({ data }: PnlChartProps) {
+export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlChartProps) {
   const [mode, setMode] = useState<ChartMode>("cumulative");
 
   if (data.length === 0) return null;
@@ -69,8 +71,26 @@ export function PnlChart({ data }: PnlChartProps) {
 
   return (
     <Card>
-      <CardContent className="pt-3 pb-4">
-        <div className="flex items-center justify-end mb-2">
+      <CardHeader className="pb-0 pt-4 px-4">
+        <div className="flex items-center justify-between">
+          <div>
+            {periodTotal && (
+              <>
+                <CardTitle className={`text-2xl font-bold tabular-nums ${periodTotal.total >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {formatCurrency(periodTotal.total)}
+                </CardTitle>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Realized {formatCurrency(periodTotal.realized)}
+                  {periodIncludesCurrentMonth && periodTotal.unrealized !== null && (
+                    <> · Unrealized {formatCurrency(periodTotal.unrealized)}</>
+                  )}
+                  {periodIncludesCurrentMonth && periodTotal.projected !== null && (
+                    <> · Projected {formatCurrency(periodTotal.projected)}</>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <ToggleGroup
             type="single"
             value={mode}
@@ -84,9 +104,10 @@ export function PnlChart({ data }: PnlChartProps) {
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
-
+      </CardHeader>
+      <CardContent className="px-4 pb-4 pt-2">
         {mode === "cumulative" ? (
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={data}>
               <defs>
                 <linearGradient id="pnlGradient" x1="0" y1="0" x2="0" y2="1">
@@ -118,7 +139,7 @@ export function PnlChart({ data }: PnlChartProps) {
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={260}>
             <BarChart data={data}>
               <XAxis
                 dataKey="period"

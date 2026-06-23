@@ -120,7 +120,7 @@ export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
         {!spreads || spreads.length === 0 ? (
           <div className="text-xs text-muted-foreground py-4 text-center">No active spreads</div>
         ) : (
-          spreads.map((spread) => {
+          spreads.slice(0, 5).map((spread) => {
             const pnlColor = (spread.totalPnl ?? 0) >= 0 ? "text-green-600" : "text-red-600";
             const dte = calcDte(spread.expiry);
             const legsDesc = buildLegsDescription(spread.legs, spread.type, spread.quantity);

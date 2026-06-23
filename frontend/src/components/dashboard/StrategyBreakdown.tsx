@@ -1,4 +1,5 @@
 import type { DashboardSummary } from "@assup/shared";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StrategyRow } from "./StrategyRow";
 
 interface StrategyBreakdownProps {
@@ -15,10 +16,15 @@ const STRATEGY_CONFIG = [
 
 export function StrategyBreakdown({ strategies }: StrategyBreakdownProps) {
   return (
-    <div className="space-y-2">
-      {STRATEGY_CONFIG.map(({ key, name, color }) => (
-        <StrategyRow key={key} name={name} color={color} metrics={strategies[key]} />
-      ))}
-    </div>
+    <Card className="flex-1">
+      <CardHeader className="pb-2 pt-4 px-4">
+        <CardTitle className="text-sm font-semibold">Strategy Breakdown</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-1">
+        {STRATEGY_CONFIG.map(({ key, name, color }) => (
+          <StrategyRow key={key} name={name} color={color} metrics={strategies[key]} />
+        ))}
+      </CardContent>
+    </Card>
   );
 }

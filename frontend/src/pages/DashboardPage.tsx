@@ -9,7 +9,6 @@ import { wheelApi } from "@/api/wheel";
 import { PageHeader } from "@/components/common";
 import { CurrentMonthPace } from "@/components/dashboard/CurrentMonthPace";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { PnlHero } from "@/components/dashboard/PnlHero";
 import { PnlChart } from "@/components/dashboard/PnlChart";
 import { StrategyBreakdown } from "@/components/dashboard/StrategyBreakdown";
 import { MetricsRow } from "@/components/dashboard/MetricsRow";
@@ -74,24 +73,21 @@ export function DashboardPage() {
         profitPositions={profitPositions.data}
       />
 
-      {/* Chart (4/6 = col-span-4) + Right sidebar (2/6 = col-span-2) */}
+      {/* Chart (4/6) + Right sidebar (2/6) */}
       <div className="grid grid-cols-6 gap-3">
-        <div className="col-span-4 space-y-3">
+        <div className="col-span-4">
+          {dashboardData.isLoading && (
+            <div className="text-muted-foreground text-sm p-4">Loading...</div>
+          )}
           {data && (
-            <PnlHero
+            <PnlChart
+              data={data.chart}
               periodTotal={data.periodTotal}
               periodIncludesCurrentMonth={data.periodIncludesCurrentMonth}
             />
           )}
-          {dashboardData.isLoading && (
-            <div className="text-muted-foreground text-sm">Loading dashboard...</div>
-          )}
-          {dashboardData.error && (
-            <div className="text-red-500 text-sm">Failed to load dashboard data</div>
-          )}
-          {data && <PnlChart data={data.chart} />}
         </div>
-        <div className="col-span-2 space-y-3">
+        <div className="col-span-2 flex flex-col gap-3">
           {data && <CurrentMonthPace data={data.currentMonthPace} />}
           {data && <StrategyBreakdown strategies={data.strategies} />}
         </div>
