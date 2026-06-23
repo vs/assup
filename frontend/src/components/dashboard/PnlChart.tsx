@@ -1,7 +1,21 @@
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { useState } from "react";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import type { ChartDataPoint } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
 import { Card, CardContent } from "@/components/ui/card";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+
+type ChartMode = "cumulative" | "monthly";
 
 interface PnlChartProps {
   data: ChartDataPoint[];
@@ -27,7 +41,7 @@ function CustomTooltip({ active, payload, label }: any) {
           <span className={d.stocks >= 0 ? "text-green-500" : "text-red-500"}>{formatCurrency(d.stocks)}</span>
         </div>
         <div className="flex justify-between gap-4">
-          <span className="text-muted-foreground">Div & Interest</span>
+          <span className="text-muted-foreground">Div &amp; Interest</span>
           <span className={d.dividendsInterest >= 0 ? "text-green-500" : "text-red-500"}>{formatCurrency(d.dividendsInterest)}</span>
         </div>
         <div className="flex justify-between gap-4">
@@ -44,6 +58,8 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export function PnlChart({ data }: PnlChartProps) {
+  const [mode, setMode] = useState<ChartMode>("cumulative");
+
   if (data.length === 0) return null;
 
   const lastPoint = data[data.length - 1];
@@ -53,38 +69,81 @@ export function PnlChart({ data }: PnlChartProps) {
 
   return (
     <Card>
-      <CardContent className="pt-4">
-        <ResponsiveContainer width="100%" height={250}>
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="pnlGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={fillColor} stopOpacity={0.2} />
-                <stop offset="95%" stopColor={fillColor} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="period"
-              tick={{ fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Area
-              type="monotone"
-              dataKey="cumulative"
-              stroke={strokeColor}
-              strokeWidth={2}
-              fill="url(#pnlGradient)"
-              isAnimationActive={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+      <CardContent className="pt-3 pb-4">
+        <div className="flex items-center justify-end mb-2">
+          <ToggleGroup
+            type="single"
+            value={mode}
+            onValueChange={(v) => v && setMode(v as ChartMode)}
+          >
+            <ToggleGroupItem value="cumulative" className="text-xs px-3 h-7">
+              Cumulative
+            </ToggleGroupItem>
+            <ToggleGroupItem value="monthly" className="text-xs px-3 h-7">
+              Monthly
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+
+        {mode === "cumulative" ? (
+          <ResponsiveContainer width="100%" height={250}>
+            <AreaChart data={data}>
+              <defs>
+                <linearGradient id="pnlGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={fillColor} stopOpacity={0.2} />
+                  <stop offset="95%" stopColor={fillColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="period"
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="cumulative"
+                stroke={strokeColor}
+                strokeWidth={2}
+                fill="url(#pnlGradient)"
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={data}>
+              <XAxis
+                dataKey="period"
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="total" isAnimationActive={false} radius={[2, 2, 0, 0]}>
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.total >= 0 ? "#22c55e" : "#ef4444"}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </CardContent>
     </Card>
   );

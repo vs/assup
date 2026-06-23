@@ -3,44 +3,61 @@ import { useQuery } from "@tanstack/react-query";
 import type { DashboardPeriod } from "@assup/shared";
 import { dashboardApi } from "@/api/dashboard";
 import { profitApi } from "@/api/profit";
+import { positionsApi } from "@/api/positions";
+import { ironCondorApi } from "@/api/ironCondor";
+import { wheelApi } from "@/api/wheel";
 import { PageHeader } from "@/components/common";
 import { CurrentMonthPace } from "@/components/dashboard/CurrentMonthPace";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { PnlHero } from "@/components/dashboard/PnlHero";
 import { PnlChart } from "@/components/dashboard/PnlChart";
 import { StrategyBreakdown } from "@/components/dashboard/StrategyBreakdown";
+import { MetricsRow } from "@/components/dashboard/MetricsRow";
+import { GainersLosers } from "@/components/dashboard/GainersLosers";
+import { ActiveWheelsList } from "@/components/dashboard/ActiveWheelsList";
+import { ActiveSpreadsList } from "@/components/dashboard/ActiveSpreadsList";
 
 export function DashboardPage() {
   const [period, setPeriod] = useState<DashboardPeriod>("ytd");
   const [year, setYear] = useState(new Date().getFullYear());
 
-  const { data: yearsData } = useQuery({
+  const yearsData = useQuery({
     queryKey: ["profit", "years"],
     queryFn: () => profitApi.years(),
   });
 
-  const { data, isLoading, error } = useQuery({
+  const dashboardData = useQuery({
     queryKey: ["dashboard", "summary", period, year],
     queryFn: () => dashboardApi.summary({ period, year: period === "year" ? year : undefined }),
   });
 
-  const availableYears = yearsData?.years ?? [new Date().getFullYear()];
+  const positionSummary = useQuery({
+    queryKey: ["positions", "summary"],
+    queryFn: () => positionsApi.summary({ includeOptions: true, optionsWeightMode: "notional" }),
+  });
+
+  const spreadsData = useQuery({
+    queryKey: ["spreads", "positions"],
+    queryFn: () => ironCondorApi.getActiveSpreads(),
+  });
+
+  const wheelData = useQuery({
+    queryKey: ["wheel", "list"],
+    queryFn: () => wheelApi.list({ includeSuggestions: false }),
+  });
+
+  const profitPositions = useQuery({
+    queryKey: ["profit", "positions"],
+    queryFn: () => profitApi.positions(),
+  });
+
+  const availableYears = yearsData.data?.years ?? [new Date().getFullYear()];
+  const data = dashboardData.data;
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Dashboard" subtitle="Portfolio performance overview" />
-
-      {data && <CurrentMonthPace data={data.currentMonthPace} />}
-
       <div className="flex items-center justify-between">
-        {data ? (
-          <PnlHero
-            periodTotal={data.periodTotal}
-            periodIncludesCurrentMonth={data.periodIncludesCurrentMonth}
-          />
-        ) : (
-          <div />
-        )}
+        <PageHeader title="Dashboard" subtitle="Portfolio performance overview" />
         <PeriodSelector
           period={period}
           year={year}
@@ -50,15 +67,42 @@ export function DashboardPage() {
         />
       </div>
 
-      {isLoading && <div className="text-muted-foreground text-sm">Loading dashboard...</div>}
-      {error && <div className="text-red-500 text-sm">Failed to load dashboard data</div>}
+      <MetricsRow
+        positionSummary={positionSummary.data}
+        spreads={spreadsData.data?.spreads}
+        wheelData={wheelData.data}
+        profitPositions={profitPositions.data}
+      />
 
-      {data && (
-        <>
-          <PnlChart data={data.chart} />
-          <StrategyBreakdown strategies={data.strategies} />
-        </>
-      )}
+      {/* Chart (4/6 = col-span-4) + Right sidebar (2/6 = col-span-2) */}
+      <div className="grid grid-cols-6 gap-3">
+        <div className="col-span-4 space-y-3">
+          {data && (
+            <PnlHero
+              periodTotal={data.periodTotal}
+              periodIncludesCurrentMonth={data.periodIncludesCurrentMonth}
+            />
+          )}
+          {dashboardData.isLoading && (
+            <div className="text-muted-foreground text-sm">Loading dashboard...</div>
+          )}
+          {dashboardData.error && (
+            <div className="text-red-500 text-sm">Failed to load dashboard data</div>
+          )}
+          {data && <PnlChart data={data.chart} />}
+        </div>
+        <div className="col-span-2 space-y-3">
+          {data && <CurrentMonthPace data={data.currentMonthPace} />}
+          {data && <StrategyBreakdown strategies={data.strategies} />}
+        </div>
+      </div>
+
+      {/* Bottom 3-column grid */}
+      <div className="grid grid-cols-3 gap-3">
+        <GainersLosers positions={positionSummary.data?.positions} />
+        <ActiveWheelsList tickers={wheelData.data?.tickers} />
+        <ActiveSpreadsList spreads={spreadsData.data?.spreads} />
+      </div>
     </div>
   );
 }
