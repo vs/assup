@@ -41,7 +41,7 @@ interface GroupedPositionsTableProps {
 
 const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
-// Grid columns: Symbol | 1Y | Type | Qty | Cost Basis | Mkt Value | P&L | Exposure | % of Total
+// Grid columns: Symbol | 1Y | Type | Qty | Target | Current | P&L | Exposure | % of Total
 const GRID_COLS = "minmax(160px,2fr) 80px 60px minmax(70px,1fr) minmax(80px,1fr) minmax(80px,1fr) minmax(80px,1fr) minmax(80px,1fr) minmax(70px,1fr)";
 
 export function GroupedPositionsTable({
@@ -148,7 +148,7 @@ const AssetClassGroup = memo(function AssetClassGroup({
           )}
           style={{ gridTemplateColumns: gridCols }}
         >
-          <div className="flex items-center gap-2 pl-2 col-span-4">
+          <div className="flex items-center gap-2 pl-2 col-span-3">
             {isExpanded ? (
               <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
             ) : (
@@ -161,24 +161,26 @@ const AssetClassGroup = memo(function AssetClassGroup({
             <span className="font-semibold">{row.name}</span>
             {positions.length > 0 && (
               <span className="text-xs text-muted-foreground">
-                {positions.length} position{positions.length !== 1 ? "s" : ""}
+                {positions.length}
               </span>
             )}
-            {!isUnassigned && (
-              <span className="text-sm text-muted-foreground ml-auto mr-4">
-                Target <span className="font-medium text-foreground">{row.target.toFixed(1)}%</span>
-                <span className="mx-2">·</span>
-                Current <span className="font-medium text-foreground">{row.current.toFixed(1)}%</span>
-                <span className="mx-2">·</span>
-                <DiffIndicator diff={row.diff} />
-              </span>
-            )}
+          </div>
+          <div className="text-right pr-2">
+            {!isUnassigned && <DiffIndicator diff={row.diff} />}
           </div>
           <div className="text-right font-mono pr-2 text-sm">
-            {!isUnassigned ? fmtCurrency(targetValue) : ""}
+            {!isUnassigned && (
+              <div>
+                <span className="font-medium">{fmtCurrency(targetValue)}</span>
+                <span className="text-xs text-muted-foreground ml-1">{row.target.toFixed(0)}%</span>
+              </div>
+            )}
           </div>
           <div className="text-right font-mono pr-2 text-sm font-medium">
-            {fmtCurrency(currentValue)}
+            <div>
+              <span>{fmtCurrency(currentValue)}</span>
+              <span className="text-xs text-muted-foreground ml-1">{row.current.toFixed(0)}%</span>
+            </div>
           </div>
           <div />
           <div />
@@ -197,8 +199,8 @@ const AssetClassGroup = memo(function AssetClassGroup({
           <div className="py-1 font-medium">1Y</div>
           <div className="py-1 font-medium">Type</div>
           <div className="text-right py-1 pr-2 font-medium">Qty</div>
-          <div className="text-right py-1 pr-2 font-medium">Cost Basis</div>
-          <div className="text-right py-1 pr-2 font-medium">Mkt Value</div>
+          <div className="text-right py-1 pr-2 font-medium">Cost</div>
+          <div className="text-right py-1 pr-2 font-medium">Value</div>
           <div className="text-right py-1 pr-2 font-medium">P&L</div>
           <div className="text-right py-1 pr-2 font-medium">
             <span className="inline-flex items-center gap-1">
