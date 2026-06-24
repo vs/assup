@@ -28,7 +28,7 @@ interface ActiveWheelsListProps {
 export function ActiveWheelsList({ tickers }: ActiveWheelsListProps) {
   const navigate = useNavigate();
 
-  const sorted = [...(tickers ?? [])].sort((a, b) => b.totalPnL - a.totalPnL).slice(0, 5);
+  const sorted = [...(tickers ?? [])].sort((a, b) => b.realizedPnL - a.realizedPnL).slice(0, 5);
 
   return (
     <Card>
