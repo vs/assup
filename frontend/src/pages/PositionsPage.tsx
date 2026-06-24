@@ -54,6 +54,7 @@ export function PositionsPage() {
   const [spreadSymbols, setSpreadSymbols] = useState<Set<string>>(new Set(DEFAULT_SPREAD_SYMBOLS));
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>(DEFAULT_DASHBOARD_SETTINGS);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"all" | "asset-class" | "type">("all");
 
   const { filters, setFilters } = usePositionFilters();
 
@@ -209,7 +210,7 @@ export function PositionsPage() {
     return getSparklineState(symbol);
   }, [getSparklineState]);
 
-  const showGroupedView = allocationData.length > 0;
+  const hasAllocationProfile = allocationData.length > 0;
 
   if (loading && positions.length === 0) {
     return <PageLoadingSkeleton />;
@@ -235,7 +236,24 @@ export function PositionsPage() {
               Options {optionsCount > 0 && `(${optionsCount})`}
             </Label>
           </div>
-          {showGroupedView && (
+          <div className="flex rounded-md border overflow-hidden">
+            {([
+              { value: "all", label: "All" },
+              ...(hasAllocationProfile ? [{ value: "asset-class", label: "By Class" }] : []),
+              { value: "type", label: "By Type" },
+            ] as const).map(v => (
+              <button
+                key={v.value}
+                onClick={() => setViewMode(v.value as typeof viewMode)}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  viewMode === v.value ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          {viewMode === "asset-class" && (
             <Button
               variant="outline"
               size="sm"
@@ -267,8 +285,61 @@ export function PositionsPage() {
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Spread Positions */}
-      {spreadPositions.length > 0 && (() => {
+      {/* Positions content based on view mode */}
+      {viewMode === "asset-class" && hasAllocationProfile ? (
+        <Card>
+          <CardContent className="pt-4">
+            <GroupedPositionsTable
+              positions={filteredPositions}
+              allocationData={allocationData}
+              netLiquidation={netLiquidation}
+              includeOptions={dashboardSettings.includeOptions}
+              onSymbolClick={setChartSymbol}
+              getSparkline={getPositionSparkline}
+              expandedGroups={expandedGroups}
+              onToggleGroup={handleToggleGroup}
+            />
+          </CardContent>
+        </Card>
+      ) : viewMode === "type" ? (
+        <ByTypeView
+          positions={positions}
+          filteredPositions={filteredPositions}
+          spreadPositions={spreadPositions}
+          spreadSymbols={spreadSymbols}
+          assetClasses={assetClasses}
+          netLiquidation={netLiquidation}
+          assigning={assigning}
+          onAssign={handleAssign}
+          onSymbolClick={setChartSymbol}
+          getSparkline={getPositionSparkline}
+        />
+      ) : (
+        <Card>
+          <CardContent className="pt-4">
+            {filteredPositions.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                {positions.length === 0
+                  ? "No positions found. Make sure TWS is connected."
+                  : "No positions match the current filters."}
+              </p>
+            ) : (
+              <PositionTable
+                positions={filteredPositions}
+                assetClasses={assetClasses}
+                netLiquidation={netLiquidation}
+                assigningKey={assigning}
+                onAssign={handleAssign}
+                onSymbolClick={setChartSymbol}
+                getSparkline={getPositionSparkline}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Spread Positions (shown below in "all" view only) */}
+      {viewMode === "all" && spreadPositions.length > 0 && (() => {
         const { spreads, ungrouped } = groupPositionsIntoSpreads(spreadPositions);
         return (spreads.length > 0 || ungrouped.length > 0) && (
           <Card>
@@ -341,45 +412,106 @@ export function PositionsPage() {
         );
       })()}
 
-      {/* Positions Table */}
-      <Card>
-        <CardContent className="pt-4">
-          {filteredPositions.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              {positions.length === 0
-                ? "No positions found. Make sure TWS is connected."
-                : "No positions match the current filters."}
-            </p>
-          ) : showGroupedView ? (
-            <GroupedPositionsTable
-              positions={filteredPositions}
-              allocationData={allocationData}
-              netLiquidation={netLiquidation}
-              includeOptions={dashboardSettings.includeOptions}
-              onSymbolClick={setChartSymbol}
-              getSparkline={getPositionSparkline}
-              expandedGroups={expandedGroups}
-              onToggleGroup={handleToggleGroup}
-            />
-          ) : (
-            <PositionTable
-              positions={filteredPositions}
-              assetClasses={assetClasses}
-              netLiquidation={netLiquidation}
-              assigningKey={assigning}
-              onAssign={handleAssign}
-              onSymbolClick={setChartSymbol}
-              getSparkline={getPositionSparkline}
-            />
-          )}
-        </CardContent>
-      </Card>
-
       <ChartModal
         symbol={chartSymbol}
         open={!!chartSymbol}
         onClose={() => setChartSymbol(null)}
       />
+    </div>
+  );
+}
+
+/**
+ * "By Type" view: groups positions into Stocks, Options, and Spreads sections
+ */
+function ByTypeView({
+  positions,
+  filteredPositions,
+  spreadPositions,
+  spreadSymbols,
+  assetClasses,
+  netLiquidation,
+  assigning,
+  onAssign,
+  onSymbolClick,
+  getSparkline,
+}: {
+  positions: Position[];
+  filteredPositions: Position[];
+  spreadPositions: Position[];
+  spreadSymbols: Set<string>;
+  assetClasses: AssetClass[];
+  netLiquidation: number;
+  assigning: string | null;
+  onAssign: (symbol: string, secType: string, assetClassId: string) => void;
+  onSymbolClick: (symbol: string) => void;
+  getSparkline: (position: Position) => { data: import("@assup/shared").SparklinePoint[]; loading: boolean; error: boolean };
+}) {
+  const stockPositions = filteredPositions.filter(p => p.secType === "STK" || p.secType === "CASH");
+  const optionPositions = filteredPositions.filter(p => p.secType === "OPT");
+  const { spreads, ungrouped } = groupPositionsIntoSpreads(spreadPositions);
+
+  const sections = [
+    { label: "Stocks", count: stockPositions.length, positions: stockPositions },
+    { label: "Options", count: optionPositions.length, positions: optionPositions },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {sections.map(section => section.positions.length > 0 && (
+        <Card key={section.label}>
+          <CardHeader className="py-3">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">{section.label}</CardTitle>
+              <Badge variant="secondary">{section.count}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <PositionTable
+              positions={section.positions}
+              assetClasses={assetClasses}
+              netLiquidation={netLiquidation}
+              assigningKey={assigning}
+              onAssign={onAssign}
+              onSymbolClick={onSymbolClick}
+              getSparkline={getSparkline}
+            />
+          </CardContent>
+        </Card>
+      ))}
+      {(spreads.length > 0 || ungrouped.length > 0) && (
+        <Card>
+          <CardHeader className="py-3">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">Spreads</CardTitle>
+              <Badge variant="secondary">{spreads.length}</Badge>
+              {ungrouped.length > 0 && (
+                <Badge variant="outline">{ungrouped.length} unmatched</Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Spread</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Expiry</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Net Cost</TableHead>
+                  <TableHead className="text-right">Market Value</TableHead>
+                  <TableHead className="text-right">P&L</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {spreads.map((spread, idx) => (
+                  <SpreadPositionRow key={`spread-${idx}`} spread={spread} />
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
