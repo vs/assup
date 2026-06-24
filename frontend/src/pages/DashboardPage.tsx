@@ -17,7 +17,7 @@ import { ActiveWheelsList } from "@/components/dashboard/ActiveWheelsList";
 import { ActiveSpreadsList } from "@/components/dashboard/ActiveSpreadsList";
 
 export function DashboardPage() {
-  const [period, setPeriod] = useState<DashboardPeriod>("ytd");
+  const [period, setPeriod] = useState<DashboardPeriod>("year");
   const [year, setYear] = useState(new Date().getFullYear());
 
   const yearsData = useQuery({

@@ -60,7 +60,7 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlChartProps) {
-  const [mode, setMode] = useState<ChartMode>("cumulative");
+  const [mode, setMode] = useState<ChartMode>("monthly");
 
   if (data.length === 0) return null;
 
