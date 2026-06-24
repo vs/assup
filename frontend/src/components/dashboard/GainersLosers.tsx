@@ -52,14 +52,14 @@ export function GainersLosers({ positions }: GainersLosersProps) {
         {sorted.length === 0 ? (
           <div className="text-xs text-muted-foreground py-4 text-center">No positions</div>
         ) : (
-          <table className="w-full text-xs">
+          <table className="w-full text-sm">
             <thead>
               <tr className="text-muted-foreground border-b">
-                <th className="text-left font-medium pb-1">Symbol</th>
-                <th className="text-right font-medium pb-1">Qty</th>
-                <th className="text-right font-medium pb-1">Price</th>
-                <th className="text-right font-medium pb-1">P&amp;L</th>
-                <th className="text-right font-medium pb-1">Return</th>
+                <th className="text-left font-medium pb-2">Symbol</th>
+                <th className="text-right font-medium pb-2">Qty</th>
+                <th className="text-right font-medium pb-2">Price</th>
+                <th className="text-right font-medium pb-2">P&amp;L</th>
+                <th className="text-right font-medium pb-2">Return</th>
               </tr>
             </thead>
             <tbody>
@@ -77,7 +77,7 @@ export function GainersLosers({ positions }: GainersLosersProps) {
 
                 return (
                   <tr key={p.symbol + p.conId} className="border-b last:border-0">
-                    <td className="py-1.5">
+                    <td className="py-3">
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold">{p.symbol}</span>
                         <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
@@ -85,14 +85,14 @@ export function GainersLosers({ positions }: GainersLosersProps) {
                         </Badge>
                       </div>
                     </td>
-                    <td className="text-right tabular-nums py-1.5">{p.position}</td>
-                    <td className="text-right tabular-nums py-1.5">
+                    <td className="text-right tabular-nums py-3">{p.position}</td>
+                    <td className="text-right tabular-nums py-3">
                       {price !== null ? formatCurrency(price) : "—"}
                     </td>
-                    <td className={`text-right tabular-nums font-semibold py-1.5 ${pnlColor}`}>
+                    <td className={`text-right tabular-nums font-semibold py-3 ${pnlColor}`}>
                       {p.unrealizedPnl !== null ? formatCurrency(p.unrealizedPnl) : "—"}
                     </td>
-                    <td className={`text-right tabular-nums py-1.5 ${pnlColor}`}>
+                    <td className={`text-right tabular-nums py-3 ${pnlColor}`}>
                       {returnPct !== null ? `${returnPct.toFixed(1)}%` : "—"}
                     </td>
                   </tr>
