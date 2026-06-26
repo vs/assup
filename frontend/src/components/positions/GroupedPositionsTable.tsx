@@ -41,8 +41,8 @@ interface GroupedPositionsTableProps {
 
 const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
-// Grid columns: Symbol | 1Y | Type | Qty | Target | Current | P&L | Exposure | % of Total
-const GRID_COLS = "minmax(160px,2fr) 80px 60px minmax(70px,1fr) minmax(80px,1fr) minmax(80px,1fr) minmax(80px,1fr) minmax(80px,1fr) minmax(70px,1fr)";
+// Grid columns: Symbol | 1M | Type | Qty | Cost/u | Price/u | Change | Cost | Value | P&L | Exposure | % NLV
+const GRID_COLS = "minmax(140px,2fr) 70px 55px minmax(55px,0.8fr) minmax(65px,1fr) minmax(65px,1fr) minmax(75px,1fr) minmax(65px,1fr) minmax(65px,1fr) minmax(65px,1fr) minmax(70px,1fr) minmax(55px,0.8fr)";
 
 export function GroupedPositionsTable({
   positions,
@@ -148,7 +148,7 @@ const AssetClassGroup = memo(function AssetClassGroup({
           )}
           style={{ gridTemplateColumns: gridCols }}
         >
-          <div className="flex items-center gap-2 pl-2 col-span-3">
+          <div className="flex items-center gap-2 pl-2 col-span-4">
             {isExpanded ? (
               <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
             ) : (
@@ -165,6 +165,7 @@ const AssetClassGroup = memo(function AssetClassGroup({
               </span>
             )}
           </div>
+          <div className="col-span-2" />
           <div className="text-right pr-2">
             {!isUnassigned && <DiffIndicator diff={row.diff} />}
           </div>
@@ -196,9 +197,12 @@ const AssetClassGroup = memo(function AssetClassGroup({
           style={{ gridTemplateColumns: gridCols }}
         >
           <div className="pl-8 py-1 font-medium">Symbol</div>
-          <div className="py-1 font-medium">1Y</div>
+          <div className="py-1 font-medium">1M</div>
           <div className="py-1 font-medium">Type</div>
           <div className="text-right py-1 pr-2 font-medium">Qty</div>
+          <div className="text-right py-1 pr-2 font-medium">Cost/u</div>
+          <div className="text-right py-1 pr-2 font-medium">Price/u</div>
+          <div className="text-right py-1 pr-2 font-medium">Change</div>
           <div className="text-right py-1 pr-2 font-medium">Cost</div>
           <div className="text-right py-1 pr-2 font-medium">Value</div>
           <div className="text-right py-1 pr-2 font-medium">P&L</div>
@@ -208,7 +212,7 @@ const AssetClassGroup = memo(function AssetClassGroup({
               <ExposureTooltip />
             </span>
           </div>
-          <div className="text-right py-1 pr-2 font-medium">% of Total</div>
+          <div className="text-right py-1 pr-2 font-medium">% NLV</div>
         </div>
         {positions.map((pos) => {
           const key = `${pos.symbol}:${pos.secType}`;
@@ -241,6 +245,13 @@ interface PositionGridRowProps {
   gridCols: string;
 }
 
+function fmtCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 10_000) return `${(value / 1_000).toFixed(0)}K`;
+  return formatCurrency(value);
+}
+
 const PositionGridRow = memo(function PositionGridRow({
   position,
   sparklineData,
@@ -254,6 +265,12 @@ const PositionGridRow = memo(function PositionGridRow({
   const pct = netLiquidation > 0 ? (exposure / netLiquidation) * 100 : null;
   const isCash = position.secType === "CASH";
   const isOption = position.secType === "OPT";
+
+  const qty = Math.abs(position.position);
+  const costPerUnit = qty > 0 ? position.costBasis / qty : 0;
+  const pricePerUnit = qty > 0 && position.marketValue != null ? Math.abs(position.marketValue) / qty : null;
+  const priceChange = pricePerUnit != null ? pricePerUnit - costPerUnit : null;
+  const priceChangePct = costPerUnit > 0 && priceChange != null ? (priceChange / costPerUnit) * 100 : null;
 
   return (
     <div
@@ -279,7 +296,7 @@ const PositionGridRow = memo(function PositionGridRow({
         )}
       </div>
 
-      {/* Sparkline */}
+      {/* Sparkline (1M) */}
       <div className="pr-3">
         <Sparkline
           data={sparklineData}
@@ -302,56 +319,70 @@ const PositionGridRow = memo(function PositionGridRow({
         )}
       </div>
 
-      {/* Quantity */}
+      {/* Qty */}
       <div className="text-right font-mono pr-2">
         {formatNumber(position.position)}
       </div>
 
-      {/* Cost Basis */}
-      <div className="text-right font-mono pr-2">
-        {formatCurrency(position.costBasis)}
+      {/* Cost/unit */}
+      <div className="text-right font-mono pr-2 text-muted-foreground">
+        {isCash ? "—" : formatCurrency(costPerUnit)}
       </div>
 
-      {/* Market Value */}
+      {/* Price/unit */}
       <div className="text-right font-mono pr-2">
-        {position.marketValue !== null ? (
-          formatCurrency(position.marketValue)
-        ) : (
-          <span className="text-muted-foreground">N/A</span>
+        {isCash || pricePerUnit == null ? "—" : formatCurrency(pricePerUnit)}
+      </div>
+
+      {/* Change */}
+      <div className={`text-right font-mono pr-2 text-xs ${
+        priceChange == null ? "" : priceChange >= 0 ? "text-green-600" : "text-red-600"
+      }`}>
+        {isCash || priceChange == null ? "—" : (
+          <span>
+            {priceChange >= 0 ? "+" : ""}{formatCurrency(priceChange)}
+            {priceChangePct != null && (
+              <span className="text-muted-foreground ml-0.5">
+                ({priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(1)}%)
+              </span>
+            )}
+          </span>
         )}
+      </div>
+
+      {/* Cost (total) */}
+      <div className="text-right font-mono pr-2">
+        {fmtCompact(position.costBasis)}
+      </div>
+
+      {/* Value (total) */}
+      <div className="text-right font-mono pr-2">
+        {position.marketValue != null ? fmtCompact(position.marketValue) : "—"}
       </div>
 
       {/* P&L */}
       <div className={`text-right font-mono pr-2 ${
-        position.unrealizedPnl !== null && position.unrealizedPnl >= 0
+        position.unrealizedPnl != null && position.unrealizedPnl >= 0
           ? "text-green-600"
-          : position.unrealizedPnl !== null
-            ? "text-red-600"
-            : ""
+          : position.unrealizedPnl != null ? "text-red-600" : ""
       }`}>
-        {position.unrealizedPnl !== null ? (
+        {position.unrealizedPnl != null ? (
           <>{position.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(position.unrealizedPnl)}</>
-        ) : (
-          <span className="text-muted-foreground">N/A</span>
-        )}
+        ) : "—"}
       </div>
 
       {/* Exposure */}
       <div className={`text-right font-mono pr-2 ${
         isOption ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""
       }`}>
-        {isOption && exposure >= 0 ? "+" : ""}{formatCurrency(exposure)}
+        {isOption && exposure >= 0 ? "+" : ""}{fmtCompact(exposure)}
       </div>
 
-      {/* % of Total */}
+      {/* % NLV */}
       <div className={`text-right font-mono pr-2 ${
-        isOption ? (pct !== null && pct >= 0 ? "text-green-600" : pct !== null ? "text-red-600" : "") : ""
+        isOption ? (pct != null && pct >= 0 ? "text-green-600" : pct != null ? "text-red-600" : "") : ""
       }`}>
-        {pct !== null ? (
-          `${isOption && pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`
-        ) : (
-          <span className="text-muted-foreground">N/A</span>
-        )}
+        {pct != null ? `${isOption && pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` : "—"}
       </div>
     </div>
   );

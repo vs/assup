@@ -27,8 +27,6 @@ interface PositionTableProps {
   onSymbolClick: (symbol: string) => void;
   getSparkline: (position: Position) => SparklineState;
   showAssetClassColumn?: boolean;
-  showPercentColumn?: boolean;
-  showAssignColumn?: boolean;
 }
 
 export function PositionTable({
@@ -40,10 +38,9 @@ export function PositionTable({
   onSymbolClick,
   getSparkline,
   showAssetClassColumn = true,
-  showPercentColumn = true,
-  showAssignColumn = false,
 }: PositionTableProps) {
   const getColumnValue = useCallback((pos: Position, col: string): string | number => {
+    const qty = Math.abs(pos.position);
     switch (col) {
       case "symbol": return pos.symbol;
       case "type": {
@@ -52,12 +49,18 @@ export function PositionTable({
         return "Stock";
       }
       case "assetClass": return pos.assetClassName ?? "";
-      case "quantity": return pos.position;
-      case "costBasis": return pos.costBasis ?? 0;
-      case "mktValue": return pos.marketValue ?? 0;
+      case "qty": return pos.position;
+      case "costUnit": return qty > 0 ? pos.costBasis / qty : 0;
+      case "priceUnit": return qty > 0 && pos.marketValue != null ? Math.abs(pos.marketValue) / qty : 0;
+      case "change": {
+        if (qty <= 0 || pos.marketValue == null) return 0;
+        return Math.abs(pos.marketValue) / qty - pos.costBasis / qty;
+      }
+      case "cost": return pos.costBasis;
+      case "value": return pos.marketValue ?? 0;
       case "pnl": return pos.unrealizedPnl ?? 0;
       case "exposure": return calculatePositionExposure(pos);
-      case "pctOfTotal": return netLiquidation > 0 ? calculatePositionExposure(pos) / netLiquidation : 0;
+      case "pctNlv": return netLiquidation > 0 ? calculatePositionExposure(pos) / netLiquidation : 0;
       default: return 0;
     }
   }, [netLiquidation]);
@@ -76,14 +79,17 @@ export function PositionTable({
       <TableHeader>
         <TableRow>
           <SortableHead column="symbol" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Symbol</SortableHead>
-          <TableHead className="w-24">1Y</TableHead>
+          <TableHead className="w-20">1M</TableHead>
           <SortableHead column="type" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Type</SortableHead>
           {showAssetClassColumn && (
             <SortableHead column="assetClass" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Asset Class</SortableHead>
           )}
-          <SortableHead column="quantity" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Quantity</SortableHead>
-          <SortableHead column="costBasis" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Cost Basis</SortableHead>
-          <SortableHead column="mktValue" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Mkt Value</SortableHead>
+          <SortableHead column="qty" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Qty</SortableHead>
+          <SortableHead column="costUnit" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Cost/u</SortableHead>
+          <SortableHead column="priceUnit" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Price/u</SortableHead>
+          <SortableHead column="change" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Change</SortableHead>
+          <SortableHead column="cost" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Cost</SortableHead>
+          <SortableHead column="value" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Value</SortableHead>
           <SortableHead column="pnl" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>P&L</SortableHead>
           <SortableHead column="exposure" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>
             <span className="inline-flex items-center gap-1">
@@ -91,10 +97,7 @@ export function PositionTable({
               <ExposureTooltip />
             </span>
           </SortableHead>
-          {showPercentColumn && (
-            <SortableHead column="pctOfTotal" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>% of Total</SortableHead>
-          )}
-          {showAssignColumn && <TableHead>Assign To</TableHead>}
+          <SortableHead column="pctNlv" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>% NLV</SortableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -114,7 +117,6 @@ export function PositionTable({
               onSymbolClick={onSymbolClick}
               assetClasses={assetClasses}
               showAssetClassColumn={showAssetClassColumn}
-              showPercentColumn={showPercentColumn}
             />
           );
         })}
