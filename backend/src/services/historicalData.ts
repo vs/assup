@@ -148,7 +148,7 @@ class HistoricalDataService {
     this.isProcessing = false;
   }
 
-  private async fetchFromTWS(symbol: string, duration = "1 Y"): Promise<PricePoint[]> {
+  private async fetchFromTWS(symbol: string, duration = "1 M"): Promise<PricePoint[]> {
     if (!ibkrService.isConnected()) {
       throw new Error("Not connected to TWS");
     }
