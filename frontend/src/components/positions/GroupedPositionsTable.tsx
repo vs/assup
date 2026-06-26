@@ -197,7 +197,7 @@ const AssetClassGroup = memo(function AssetClassGroup({
           style={{ gridTemplateColumns: gridCols }}
         >
           <div className="pl-8 py-1 font-medium">Symbol</div>
-          <div className="py-1 font-medium"></div>
+          <div className="py-1 font-medium">1M</div>
           <div className="text-right py-1 pr-2 font-medium">Qty</div>
           <div className="text-right py-1 pr-2 font-medium">Cost/u</div>
           <div className="text-right py-1 pr-2 font-medium">Price</div>
