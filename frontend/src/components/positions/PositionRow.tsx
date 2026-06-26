@@ -98,7 +98,7 @@ export function PositionRow({
             onValueChange={onAssign}
             assetClasses={assetClasses}
             placeholder="—"
-            className="w-36"
+            className="w-28"
           />
         </TableCell>
       )}
