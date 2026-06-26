@@ -91,14 +91,14 @@ export function PositionRow({
 
       {/* Asset Class (optional) */}
       {showAssetClassColumn && (
-        <TableCell className="py-2">
+        <TableCell className="py-2 max-w-[120px]">
           <AssetClassSelect
             value={position.assetClassId}
             disabled={isCash || assigning}
             onValueChange={onAssign}
             assetClasses={assetClasses}
             placeholder="—"
-            className="w-28"
+            className="w-full"
           />
         </TableCell>
       )}
