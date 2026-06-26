@@ -41,8 +41,8 @@ interface GroupedPositionsTableProps {
 
 const fmtCurrency = (value: number) => formatCurrency(value, { maximumFractionDigits: 0 });
 
-// Grid columns: Symbol | 1M | Type | Qty | Cost/u | Price/u | Change | Cost | Value | P&L | Exposure | % NLV
-const GRID_COLS = "minmax(140px,2fr) 70px 55px minmax(55px,0.8fr) minmax(65px,1fr) minmax(65px,1fr) minmax(75px,1fr) minmax(65px,1fr) minmax(65px,1fr) minmax(65px,1fr) minmax(70px,1fr) minmax(55px,0.8fr)";
+// Grid columns: Symbol | 1M | Qty | Cost/u | Price | Chg% | Cost | Value | P&L | Exp | %
+const GRID_COLS = "minmax(140px,2.5fr) 60px minmax(50px,0.7fr) minmax(60px,1fr) minmax(60px,1fr) minmax(50px,0.8fr) minmax(55px,1fr) minmax(55px,1fr) minmax(60px,1fr) minmax(55px,1fr) minmax(35px,0.5fr)";
 
 export function GroupedPositionsTable({
   positions,
@@ -148,7 +148,7 @@ const AssetClassGroup = memo(function AssetClassGroup({
           )}
           style={{ gridTemplateColumns: gridCols }}
         >
-          <div className="flex items-center gap-2 pl-2 col-span-4">
+          <div className="flex items-center gap-2 pl-2 col-span-3">
             {isExpanded ? (
               <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
             ) : (
@@ -158,17 +158,17 @@ const AssetClassGroup = memo(function AssetClassGroup({
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: row.color }}
             />
-            <span className="font-semibold">{row.name}</span>
+            <span className="font-semibold text-sm">{row.name}</span>
             {positions.length > 0 && (
               <span className="text-xs text-muted-foreground">
                 {positions.length}
               </span>
             )}
           </div>
-          <div className="col-span-2" />
           <div className="text-right pr-2">
             {!isUnassigned && <DiffIndicator diff={row.diff} />}
           </div>
+          <div className="col-span-2" />
           <div className="text-right font-mono pr-2 text-sm">
             {!isUnassigned && (
               <div>
@@ -197,22 +197,21 @@ const AssetClassGroup = memo(function AssetClassGroup({
           style={{ gridTemplateColumns: gridCols }}
         >
           <div className="pl-8 py-1 font-medium">Symbol</div>
-          <div className="py-1 font-medium">1M</div>
-          <div className="py-1 font-medium">Type</div>
+          <div className="py-1 font-medium"></div>
           <div className="text-right py-1 pr-2 font-medium">Qty</div>
           <div className="text-right py-1 pr-2 font-medium">Cost/u</div>
-          <div className="text-right py-1 pr-2 font-medium">Price/u</div>
-          <div className="text-right py-1 pr-2 font-medium">Change</div>
+          <div className="text-right py-1 pr-2 font-medium">Price</div>
+          <div className="text-right py-1 pr-2 font-medium">Chg%</div>
           <div className="text-right py-1 pr-2 font-medium">Cost</div>
           <div className="text-right py-1 pr-2 font-medium">Value</div>
           <div className="text-right py-1 pr-2 font-medium">P&L</div>
           <div className="text-right py-1 pr-2 font-medium">
             <span className="inline-flex items-center gap-1">
-              Exposure
+              Exp
               <ExposureTooltip />
             </span>
           </div>
-          <div className="text-right py-1 pr-2 font-medium">% NLV</div>
+          <div className="text-right py-1 pr-2 font-medium">%</div>
         </div>
         {positions.map((pos) => {
           const key = `${pos.symbol}:${pos.secType}`;
@@ -245,11 +244,17 @@ interface PositionGridRowProps {
   gridCols: string;
 }
 
+function fmtPrice(value: number): string {
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  return formatCurrency(value, { maximumFractionDigits: 2 });
+}
+
 function fmtCompact(value: number): string {
   const abs = Math.abs(value);
   if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (abs >= 10_000) return `${(value / 1_000).toFixed(0)}K`;
-  return formatCurrency(value);
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toFixed(0);
 }
 
 const PositionGridRow = memo(function PositionGridRow({
@@ -269,12 +274,13 @@ const PositionGridRow = memo(function PositionGridRow({
   const qty = Math.abs(position.position);
   const costPerUnit = qty > 0 ? position.costBasis / qty : 0;
   const pricePerUnit = qty > 0 && position.marketValue != null ? Math.abs(position.marketValue) / qty : null;
-  const priceChange = pricePerUnit != null ? pricePerUnit - costPerUnit : null;
-  const priceChangePct = costPerUnit > 0 && priceChange != null ? (priceChange / costPerUnit) * 100 : null;
+  const priceChangePct = costPerUnit > 0 && pricePerUnit != null
+    ? ((pricePerUnit - costPerUnit) / costPerUnit) * 100
+    : null;
 
   return (
     <div
-      className="grid w-full items-center hover:bg-muted/30 border-b py-2"
+      className="grid w-full items-center hover:bg-muted/30 border-b py-1.5 text-sm"
       style={{ gridTemplateColumns: gridCols }}
     >
       {/* Symbol */}
@@ -296,8 +302,8 @@ const PositionGridRow = memo(function PositionGridRow({
         )}
       </div>
 
-      {/* Sparkline (1M) */}
-      <div className="pr-3">
+      {/* Sparkline */}
+      <div className="pr-2">
         <Sparkline
           data={sparklineData}
           loading={sparklineLoading}
@@ -306,56 +312,35 @@ const PositionGridRow = memo(function PositionGridRow({
         />
       </div>
 
-      {/* Type */}
-      <div>
-        {isOption && position.right ? (
-          <Badge variant={position.right === "P" ? "danger" : "success"}>
-            {position.right === "P" ? "PUT" : "CALL"}
-          </Badge>
-        ) : isCash ? (
-          <Badge variant="outline">Cash</Badge>
-        ) : (
-          <Badge variant="outline">Stock</Badge>
-        )}
-      </div>
-
       {/* Qty */}
       <div className="text-right font-mono pr-2">
         {formatNumber(position.position)}
       </div>
 
-      {/* Cost/unit */}
+      {/* Cost/u */}
       <div className="text-right font-mono pr-2 text-muted-foreground">
-        {isCash ? "—" : formatCurrency(costPerUnit)}
+        {isCash ? "—" : fmtPrice(costPerUnit)}
       </div>
 
-      {/* Price/unit */}
+      {/* Price */}
       <div className="text-right font-mono pr-2">
-        {isCash || pricePerUnit == null ? "—" : formatCurrency(pricePerUnit)}
+        {isCash || pricePerUnit == null ? "—" : fmtPrice(pricePerUnit)}
       </div>
 
-      {/* Change */}
-      <div className={`text-right font-mono pr-2 text-xs ${
-        priceChange == null ? "" : priceChange >= 0 ? "text-green-600" : "text-red-600"
+      {/* Chg% */}
+      <div className={`text-right font-mono pr-2 ${
+        priceChangePct == null ? "" : priceChangePct >= 0 ? "text-green-600" : "text-red-600"
       }`}>
-        {isCash || priceChange == null ? "—" : (
-          <span>
-            {priceChange >= 0 ? "+" : ""}{formatCurrency(priceChange)}
-            {priceChangePct != null && (
-              <span className="text-muted-foreground ml-0.5">
-                ({priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(1)}%)
-              </span>
-            )}
-          </span>
-        )}
+        {isCash || priceChangePct == null ? "—"
+          : `${priceChangePct >= 0 ? "+" : ""}${priceChangePct.toFixed(1)}%`}
       </div>
 
-      {/* Cost (total) */}
+      {/* Cost */}
       <div className="text-right font-mono pr-2">
         {fmtCompact(position.costBasis)}
       </div>
 
-      {/* Value (total) */}
+      {/* Value */}
       <div className="text-right font-mono pr-2">
         {position.marketValue != null ? fmtCompact(position.marketValue) : "—"}
       </div>
@@ -366,19 +351,19 @@ const PositionGridRow = memo(function PositionGridRow({
           ? "text-green-600"
           : position.unrealizedPnl != null ? "text-red-600" : ""
       }`}>
-        {position.unrealizedPnl != null ? (
-          <>{position.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(position.unrealizedPnl)}</>
-        ) : "—"}
+        {position.unrealizedPnl != null
+          ? `${position.unrealizedPnl >= 0 ? "+" : ""}${fmtCompact(position.unrealizedPnl)}`
+          : "—"}
       </div>
 
-      {/* Exposure */}
+      {/* Exp */}
       <div className={`text-right font-mono pr-2 ${
         isOption ? (exposure >= 0 ? "text-green-600" : "text-red-600") : ""
       }`}>
         {isOption && exposure >= 0 ? "+" : ""}{fmtCompact(exposure)}
       </div>
 
-      {/* % NLV */}
+      {/* % */}
       <div className={`text-right font-mono pr-2 ${
         isOption ? (pct != null && pct >= 0 ? "text-green-600" : pct != null ? "text-red-600" : "") : ""
       }`}>

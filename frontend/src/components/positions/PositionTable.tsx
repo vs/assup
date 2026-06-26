@@ -43,18 +43,14 @@ export function PositionTable({
     const qty = Math.abs(pos.position);
     switch (col) {
       case "symbol": return pos.symbol;
-      case "type": {
-        if (pos.secType === "OPT") return pos.right === "P" ? "PUT" : "CALL";
-        if (pos.secType === "CASH") return "Cash";
-        return "Stock";
-      }
       case "assetClass": return pos.assetClassName ?? "";
       case "qty": return pos.position;
       case "costUnit": return qty > 0 ? pos.costBasis / qty : 0;
       case "priceUnit": return qty > 0 && pos.marketValue != null ? Math.abs(pos.marketValue) / qty : 0;
       case "change": {
         if (qty <= 0 || pos.marketValue == null) return 0;
-        return Math.abs(pos.marketValue) / qty - pos.costBasis / qty;
+        const cost = pos.costBasis / qty;
+        return cost > 0 ? ((Math.abs(pos.marketValue) / qty - cost) / cost) * 100 : 0;
       }
       case "cost": return pos.costBasis;
       case "value": return pos.marketValue ?? 0;
@@ -67,7 +63,6 @@ export function PositionTable({
 
   const { sorted, sortColumn, sortDir, toggleSort } = useTableSort(positions, getColumnValue);
 
-  // When no explicit sort, keep cash at bottom
   const displayPositions = sortColumn ? sorted : [...positions].sort((a, b) => {
     if (a.secType === "CASH") return 1;
     if (b.secType === "CASH") return -1;
@@ -79,25 +74,24 @@ export function PositionTable({
       <TableHeader>
         <TableRow>
           <SortableHead column="symbol" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Symbol</SortableHead>
-          <TableHead className="w-20">1M</TableHead>
-          <SortableHead column="type" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Type</SortableHead>
+          <TableHead className="w-16"></TableHead>
           {showAssetClassColumn && (
-            <SortableHead column="assetClass" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Asset Class</SortableHead>
+            <SortableHead column="assetClass" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Class</SortableHead>
           )}
           <SortableHead column="qty" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Qty</SortableHead>
           <SortableHead column="costUnit" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Cost/u</SortableHead>
-          <SortableHead column="priceUnit" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Price/u</SortableHead>
-          <SortableHead column="change" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Change</SortableHead>
+          <SortableHead column="priceUnit" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Price</SortableHead>
+          <SortableHead column="change" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Chg%</SortableHead>
           <SortableHead column="cost" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Cost</SortableHead>
           <SortableHead column="value" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>Value</SortableHead>
           <SortableHead column="pnl" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>P&L</SortableHead>
           <SortableHead column="exposure" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>
             <span className="inline-flex items-center gap-1">
-              Exposure
+              Exp
               <ExposureTooltip />
             </span>
           </SortableHead>
-          <SortableHead column="pctNlv" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>% NLV</SortableHead>
+          <SortableHead column="pctNlv" className="text-right" sortColumn={sortColumn} sortDir={sortDir} toggleSort={toggleSort}>%</SortableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
