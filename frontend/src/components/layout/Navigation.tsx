@@ -61,7 +61,7 @@ export function Navigation() {
   return (
     <>
       {/* Desktop Navigation */}
-      <nav className="hidden md:flex items-center gap-1">
+      <nav className="hidden lg:flex items-center gap-1">
         {navItems.map((item) => (
           <NavItem key={item.to} to={item.to} icon={item.icon}>
             {item.label}
@@ -76,7 +76,7 @@ export function Navigation() {
       <Button
         variant="ghost"
         size="icon"
-        className="md:hidden"
+        className="lg:hidden"
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
       >
@@ -85,7 +85,7 @@ export function Navigation() {
 
       {/* Mobile Navigation Overlay */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-background/80 backdrop-blur-sm"
