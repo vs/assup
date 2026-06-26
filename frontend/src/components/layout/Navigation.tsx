@@ -46,9 +46,9 @@ function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/positions", label: "Positions", icon: Briefcase },
+  { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/analysis", label: "Watchlists", icon: List },
   { to: "/scanner", label: "Scanner", icon: Search },
-  { to: "/profit", label: "Profit", icon: TrendingUp },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
   { to: "/spreads", label: "Spreads", icon: ArrowUpDown },
 ];
