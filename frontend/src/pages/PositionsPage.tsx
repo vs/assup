@@ -303,10 +303,8 @@ export function PositionsPage() {
         </Card>
       ) : viewMode === "type" ? (
         <ByTypeView
-          positions={positions}
           filteredPositions={filteredPositions}
           spreadPositions={spreadPositions}
-          spreadSymbols={spreadSymbols}
           assetClasses={assetClasses}
           netLiquidation={netLiquidation}
           assigning={assigning}
@@ -425,10 +423,8 @@ export function PositionsPage() {
  * "By Type" view: groups positions into Stocks, Options, and Spreads sections
  */
 function ByTypeView({
-  positions,
   filteredPositions,
   spreadPositions,
-  spreadSymbols,
   assetClasses,
   netLiquidation,
   assigning,
@@ -436,14 +432,12 @@ function ByTypeView({
   onSymbolClick,
   getSparkline,
 }: {
-  positions: Position[];
   filteredPositions: Position[];
   spreadPositions: Position[];
-  spreadSymbols: Set<string>;
   assetClasses: AssetClass[];
   netLiquidation: number;
   assigning: string | null;
-  onAssign: (symbol: string, secType: string, assetClassId: string) => void;
+  onAssign: (position: Position, assetClassId: string) => void;
   onSymbolClick: (symbol: string) => void;
   getSparkline: (position: Position) => { data: import("@assup/shared").SparklinePoint[]; loading: boolean; error: boolean };
 }) {
