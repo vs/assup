@@ -4,7 +4,9 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { useTickerProfile, useTickerQuote } from "../../hooks/useTickerProfile";
+import { usePositionLookup } from "../../hooks/usePositionLookup";
 import { AreaChart, Area, YAxis, ResponsiveContainer } from "recharts";
+import { formatCurrency } from "@assup/shared";
 import type { Recommendation } from "@assup/shared";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -91,6 +93,7 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
   const { data: profile, isLoading, isError } = useTickerProfile(symbol);
   const [isOpen, setIsOpen] = useState(false);
   const { data: quote } = useTickerQuote(symbol, isOpen);
+  const { position, wheel } = usePositionLookup(symbol);
 
   const chartColor =
     profile?.chart && profile.chart.length >= 2
@@ -218,6 +221,48 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
             ) : (
               <div className="h-[80px] w-full flex items-center justify-center text-xs text-muted-foreground bg-muted/30 rounded">
                 Chart unavailable
+              </div>
+            )}
+
+            {/* Position info */}
+            {(position || wheel) && (
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] border-t pt-2">
+                {position && position.position !== 0 && (
+                  <>
+                    <div>
+                      <span className="text-muted-foreground">Shares </span>
+                      <span className="font-medium">{position.position}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Avg </span>
+                      <span className="font-medium">{formatCurrency(position.avgCost, { maximumFractionDigits: 2 })}</span>
+                    </div>
+                    {position.unrealizedPnl != null && (
+                      <div>
+                        <span className="text-muted-foreground">P&L </span>
+                        <span className={`font-medium ${position.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {formatCurrency(position.unrealizedPnl, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {wheel && (
+                  <>
+                    <div>
+                      <span className="text-muted-foreground">Basis </span>
+                      <span className="font-medium text-blue-500" title="Wheel-adjusted cost basis">
+                        {formatCurrency(wheel.adjustedCostBasis, { maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Premiums </span>
+                      <span className="font-medium text-green-600">
+                        {formatCurrency(wheel.totalPremiums, { maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

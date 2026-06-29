@@ -1,12 +1,10 @@
 /**
  * Shows the user's position and wheel strategy info for a ticker.
- * Fetches data independently — renders nothing if no position exists.
+ * Uses shared cached lookup — renders nothing if no position exists.
  */
 
-import { useState, useEffect } from "react";
-import { api } from "@/api";
 import { formatCurrency } from "@assup/shared";
-import type { Position, WheelTickerSummary } from "@assup/shared";
+import { usePositionLookup } from "@/hooks/usePositionLookup";
 import { Badge } from "@/components/ui/badge";
 
 interface TickerPositionInfoProps {
@@ -21,39 +19,8 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 export function TickerPositionInfo({ symbol }: TickerPositionInfoProps) {
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [wheel, setWheel] = useState<WheelTickerSummary | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const { position: pos, wheel } = usePositionLookup(symbol);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetch() {
-      const [posResult, wheelResult] = await Promise.allSettled([
-        api.positions.list(),
-        api.wheel.detail(symbol),
-      ]);
-
-      if (cancelled) return;
-
-      if (posResult.status === "fulfilled") {
-        setPositions(posResult.value.filter(
-          (p) => p.symbol === symbol && p.secType === "STK",
-        ));
-      }
-      if (wheelResult.status === "fulfilled") {
-        setWheel(wheelResult.value);
-      }
-      setLoaded(true);
-    }
-
-    fetch();
-    return () => { cancelled = true; };
-  }, [symbol]);
-
-  if (!loaded) return null;
-
-  const pos = positions[0];
   const hasPosition = pos && pos.position !== 0;
   const hasWheel = wheel != null;
 
@@ -64,7 +31,7 @@ export function TickerPositionInfo({ symbol }: TickerPositionInfoProps) {
       {/* Stock position info */}
       {hasPosition && (
         <>
-          <Stat label="Shares" value={`${pos.position > 0 ? "" : ""}${pos.position}`} />
+          <Stat label="Shares" value={`${pos.position}`} />
           <Stat label="Avg Cost" value={formatCurrency(pos.avgCost, { maximumFractionDigits: 2 })} />
           <Stat label="Cost Basis" value={formatCurrency(pos.costBasis, { maximumFractionDigits: 0 })} />
           {pos.marketValue != null && (
