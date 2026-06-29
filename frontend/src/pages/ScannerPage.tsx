@@ -250,6 +250,15 @@ export function ScannerPage() {
     }
   }
 
+  async function handleRescan(rescanCriteria: ScannerCriteria) {
+    try {
+      setError(null);
+      await createJob({ criteria: rescanCriteria });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start rescan");
+    }
+  }
+
   async function handleClearCompleted() {
     const completedJobs = jobs.filter(
       (j) => j.status !== "running"
@@ -610,6 +619,7 @@ export function ScannerPage() {
         jobs={jobs}
         onCancel={cancelJob}
         onDelete={deleteJob}
+        onRescan={handleRescan}
         onClearAll={handleClearCompleted}
         onSellClick={handleSellClick}
         costBasisMap={costBasisMap}

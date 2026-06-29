@@ -2,7 +2,7 @@
  * ScanJobList - displays list of scan jobs with real-time updates
  */
 
-import type { ScanJob } from "@assup/shared";
+import type { ScanJob, ScannerCriteria } from "@assup/shared";
 import { ScanJobRow } from "./ScanJobRow";
 import type { ExtendedOptionOpportunity } from "./types";
 import type { TickerCostBasis } from "./GroupedResultsTable";
@@ -13,6 +13,7 @@ interface ScanJobListProps {
   jobs: ScanJob[];
   onCancel: (jobId: string) => void;
   onDelete: (jobId: string) => void;
+  onRescan: (criteria: ScannerCriteria) => void;
   onClearAll: () => void;
   onSellClick: (opportunity: ExtendedOptionOpportunity) => void;
   costBasisMap?: Map<string, TickerCostBasis>;
@@ -22,6 +23,7 @@ export function ScanJobList({
   jobs,
   onCancel,
   onDelete,
+  onRescan,
   onClearAll,
   onSellClick,
   costBasisMap,
@@ -53,6 +55,7 @@ export function ScanJobList({
             job={job}
             onCancel={onCancel}
             onDelete={onDelete}
+            onRescan={onRescan}
             onSellClick={onSellClick}
             costBasisMap={costBasisMap}
           />

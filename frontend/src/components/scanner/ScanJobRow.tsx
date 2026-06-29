@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from "react";
-import type { ScanJob } from "@assup/shared";
+import type { ScanJob, ScannerCriteria } from "@assup/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -19,17 +19,19 @@ import {
   AlertCircle,
   X,
   Square,
+  RefreshCw,
 } from "lucide-react";
 
 interface ScanJobRowProps {
   job: ScanJob;
   onCancel: (jobId: string) => void;
   onDelete: (jobId: string) => void;
+  onRescan: (criteria: ScannerCriteria) => void;
   onSellClick: (opportunity: ExtendedOptionOpportunity) => void;
   costBasisMap?: Map<string, TickerCostBasis>;
 }
 
-export function ScanJobRow({ job, onCancel, onDelete, onSellClick, costBasisMap }: ScanJobRowProps) {
+export function ScanJobRow({ job, onCancel, onDelete, onRescan, onSellClick, costBasisMap }: ScanJobRowProps) {
   const [expanded, setExpanded] = useState(
     job.status === "running" || job.opportunities.length > 0
   );
@@ -148,6 +150,16 @@ export function ScanJobRow({ job, onCancel, onDelete, onSellClick, costBasisMap 
 
         {/* Actions */}
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {!isRunning && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onRescan(job.criteria)}
+              title="Rescan with same parameters"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
           {isRunning ? (
             <Button
               variant="ghost"
