@@ -21,7 +21,7 @@ import { useTickerProfileContext } from "@/components/common/TickerProfileProvid
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks";
-import { Plus, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronUp, Loader2, Check } from "lucide-react";
 import { scannerApi } from "@/api/scanner";
 import type { ScannerCriteria } from "@assup/shared";
 import {
@@ -393,7 +393,12 @@ function WheelTickerCard({
   sparklineError: boolean;
   onChartClick: () => void;
 }) {
+  const [scanState, setScanState] = useState<Record<string, "loading" | "done">>({});
+
   const startScanJob = async (symbol: string, optionType: "PUT" | "CALL") => {
+    const key = `${symbol}:${optionType}`;
+    if (scanState[key] === "loading") return;
+
     const baseCriteria: ScannerCriteria = optionType === "PUT"
       ? {
           optionTypes: "PUT",
@@ -421,12 +426,24 @@ function WheelTickerCard({
           callMinStrikePercent: 100,
           callMaxStrikePercent: 130,
         };
+    setScanState(prev => ({ ...prev, [key]: "loading" }));
     try {
       await scannerApi.jobs.create({
         criteria: { ...baseCriteria, specificSymbol: symbol },
       });
+      setScanState(prev => ({ ...prev, [key]: "done" }));
+      setTimeout(() => setScanState(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }), 1500);
     } catch (err) {
       console.error("Failed to start scan job:", err);
+      setScanState(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
     }
   };
 
@@ -548,24 +565,30 @@ function WheelTickerCard({
               size="sm"
               title="Scan puts"
               className="text-xs px-2"
+              disabled={scanState[`${ticker.symbol}:PUT`] === "loading"}
               onClick={(e) => {
                 e.stopPropagation();
                 startScanJob(ticker.symbol, "PUT");
               }}
             >
-              P
+              {scanState[`${ticker.symbol}:PUT`] === "loading" ? <Loader2 className="h-3 w-3 animate-spin" />
+                : scanState[`${ticker.symbol}:PUT`] === "done" ? <Check className="h-3 w-3 text-green-500" />
+                : "P"}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               title="Scan calls"
               className="text-xs px-2"
+              disabled={scanState[`${ticker.symbol}:CALL`] === "loading"}
               onClick={(e) => {
                 e.stopPropagation();
                 startScanJob(ticker.symbol, "CALL");
               }}
             >
-              C
+              {scanState[`${ticker.symbol}:CALL`] === "loading" ? <Loader2 className="h-3 w-3 animate-spin" />
+                : scanState[`${ticker.symbol}:CALL`] === "done" ? <Check className="h-3 w-3 text-green-500" />
+                : "C"}
             </Button>
             <Button
               variant="ghost"
