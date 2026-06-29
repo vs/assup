@@ -72,8 +72,16 @@ export function buildSpread(
   type: SpreadTradeGroup["type"],
   legs: OptionTradeGroup[],
 ): SpreadTradeGroup {
-  const costBasis = legs.reduce((s, l) => s + l.costBasis, 0);
-  const sellPrice = legs.reduce((s, l) => s + l.sellPrice, 0);
+  // Net premium received (max profit): short legs add credit, long legs subtract debit
+  const costBasis = legs.reduce((s, l) => {
+    const side = getOpenSide(l);
+    return side === "SELL" ? s + l.costBasis : s - l.costBasis;
+  }, 0);
+  // Net cost to close: short legs add cost, long legs subtract proceeds
+  const sellPrice = legs.reduce((s, l) => {
+    const side = getOpenSide(l);
+    return side === "SELL" ? s + l.sellPrice : s - l.sellPrice;
+  }, 0);
   const profit = legs.reduce((s, l) => s + l.profit, 0);
   const commissions = sumCommissions(legs);
 

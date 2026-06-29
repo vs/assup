@@ -116,8 +116,8 @@ export interface SpreadTradeGroup {
   expiry: string;
   quantity: number;
   legs: OptionTradeGroup[];
-  costBasis: number;       // Sum of leg costBasis (net premium received)
-  sellPrice: number;       // Sum of leg sellPrice (net cost to close)
+  costBasis: number;       // Net premium received = max profit (short legs - long legs)
+  sellPrice: number;       // Net cost to close (short legs - long legs)
   profit: number;          // Sum of all leg profits
   commissions: number;     // Sum of all leg commissions
   status: SpreadStatus;

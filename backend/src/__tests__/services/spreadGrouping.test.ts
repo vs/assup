@@ -126,7 +126,7 @@ describe("groupSpreads", () => {
     expect(sp.underlying).toBe("AAPL");
     expect(sp.expiry).toBe("2025-03-21");
     expect(sp.legs).toHaveLength(2);
-    expect(sp.costBasis).toBe(400); // 300 + 100
+    expect(sp.costBasis).toBe(200); // 300 - 100 (net credit = max profit)
     expect(sp.profit).toBe(200);    // 300 + (-100)
   });
 
@@ -163,7 +163,7 @@ describe("groupSpreads", () => {
     expect(sp.underlying).toBe("AAPL");
     expect(sp.expiry).toBe("2025-04-18");
     expect(sp.legs).toHaveLength(2);
-    expect(sp.costBasis).toBe(330);
+    expect(sp.costBasis).toBe(170); // 250 - 80 (net credit = max profit)
     expect(sp.profit).toBe(170);
   });
 
@@ -222,7 +222,7 @@ describe("groupSpreads", () => {
     expect(ic.type).toBe("iron-condor");
     expect(ic.underlying).toBe("SPY");
     expect(ic.legs).toHaveLength(4);
-    expect(ic.costBasis).toBe(520);  // 200 + 80 + 180 + 60
+    expect(ic.costBasis).toBe(240);  // (200 - 80) + (180 - 60) (net credit = max profit)
     expect(ic.profit).toBe(240);     // 200 + (-80) + 180 + (-60)
   });
 
