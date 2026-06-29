@@ -42,6 +42,8 @@ export function useSpreadsStream(
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
+  // Stable client ID so the backend can destroy the previous session on reconnect
+  const clientIdRef = useRef(`c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 
   const connect = useCallback(() => {
     // Clean up existing connection
@@ -54,7 +56,7 @@ export function useSpreadsStream(
       reconnectTimeoutRef.current = null;
     }
 
-    const params = new URLSearchParams({ symbol });
+    const params = new URLSearchParams({ symbol, clientId: clientIdRef.current });
     if (expiration) params.set("expiration", expiration);
     if (selectedStrikes && selectedStrikes.length > 0) {
       params.set("strikes", selectedStrikes.join(","));
