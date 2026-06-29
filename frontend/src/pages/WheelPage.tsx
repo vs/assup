@@ -26,8 +26,9 @@ import { useTickerProfileContext } from "@/components/common/TickerProfileProvid
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks";
-import { useNavigate } from "react-router-dom";
-import { Plus, X, ChevronDown, ChevronUp, Search } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronUp } from "lucide-react";
+import { scannerApi } from "@/api/scanner";
+import type { ScannerCriteria } from "@assup/shared";
 import {
   Dialog,
   DialogContent,
@@ -530,7 +531,42 @@ function WheelTickerCard({
   sparklineError: boolean;
   onChartClick: () => void;
 }) {
-  const navigate = useNavigate();
+  const startScanJob = async (symbol: string, optionType: "PUT" | "CALL") => {
+    const baseCriteria: ScannerCriteria = optionType === "PUT"
+      ? {
+          optionTypes: "PUT",
+          minDaysToExpiry: 3,
+          maxDaysToExpiry: 45,
+          minDelta: 0,
+          maxDelta: 0.35,
+          minAnnualizedReturn: 5,
+          minPremiumPercent: 0.2,
+          putMinStrikePercent: 70,
+          putMaxStrikePercent: 100,
+          callMinStrikePercent: 100,
+          callMaxStrikePercent: 125,
+        }
+      : {
+          optionTypes: "CALL",
+          minDaysToExpiry: 3,
+          maxDaysToExpiry: 45,
+          minDelta: 0,
+          maxDelta: 0.35,
+          minAnnualizedReturn: 5,
+          minPremiumPercent: 0.2,
+          putMinStrikePercent: 100,
+          putMaxStrikePercent: 70,
+          callMinStrikePercent: 100,
+          callMaxStrikePercent: 130,
+        };
+    try {
+      await scannerApi.jobs.create({
+        criteria: { ...baseCriteria, specificSymbol: symbol },
+      });
+    } catch (err) {
+      console.error("Failed to start scan job:", err);
+    }
+  };
 
   const phaseLabels: Record<string, string> = {
     csp_open: "CSP",
@@ -647,15 +683,27 @@ function WheelTickerCard({
           <div className="flex items-center gap-2 ml-6">
             <Button
               variant="ghost"
-              size="icon"
-              title="Scan options"
+              size="sm"
+              title="Scan puts"
+              className="text-xs px-2"
               onClick={(e) => {
                 e.stopPropagation();
-                const optionType = ticker.currentPhase === "holding_shares" || ticker.currentPhase === "cc_open" ? "CALL" : "PUT";
-                navigate(`/scanner?symbol=${ticker.symbol}&optionType=${optionType}`);
+                startScanJob(ticker.symbol, "PUT");
               }}
             >
-              <Search className="h-4 w-4" />
+              P
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Scan calls"
+              className="text-xs px-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                startScanJob(ticker.symbol, "CALL");
+              }}
+            >
+              C
             </Button>
             <Button
               variant="ghost"
