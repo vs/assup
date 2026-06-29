@@ -473,12 +473,23 @@ function WheelTickerCard({
         onClick={onToggle}
       >
         <div className="flex items-center">
-          <div className="flex items-center gap-2 min-w-[200px] shrink-0">
+          <div className="w-[70px] shrink-0">
             <CardTitle className="text-lg">
               <TickerHoverCard symbol={ticker.symbol}>
                 <span className="cursor-default">{ticker.symbol}</span>
               </TickerHoverCard>
             </CardTitle>
+          </div>
+          <div className="w-[68px] shrink-0" onClick={(e) => e.stopPropagation()}>
+            <Sparkline
+              data={sparklineData}
+              loading={sparklineLoading}
+              error={sparklineError}
+              onChartClick={onChartClick}
+              width={60}
+            />
+          </div>
+          <div className="flex items-center gap-1.5 min-w-[120px] shrink-0 ml-2">
             {ticker.activePhases && ticker.activePhases.length > 0 ? (
               <>
                 {ticker.activePhases.includes("holding_shares") && ticker.shareQuantity > 0 && (
@@ -514,14 +525,6 @@ function WheelTickerCard({
                 {phaseLabels[ticker.currentPhase]}
               </Badge>
             )}
-          </div>
-          <div className="mx-4" onClick={(e) => e.stopPropagation()}>
-            <Sparkline
-              data={sparklineData}
-              loading={sparklineLoading}
-              error={sparklineError}
-              onChartClick={onChartClick}
-            />
           </div>
           <div className="flex items-center justify-end gap-8 flex-1">
             {ticker.currentPrice && (
