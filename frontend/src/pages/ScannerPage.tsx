@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { SellOptionDialog, ScanJobList } from "@/components/scanner";
+import type { TickerCostBasis } from "@/components/scanner/GroupedResultsTable";
 import { useScanJobs } from "@/hooks";
 import type { ExtendedOptionOpportunity } from "@/components/scanner/types";
 import { Button } from "@/components/ui/button";
@@ -109,6 +110,7 @@ export function ScannerPage() {
   const [symbolComboboxOpen, setSymbolComboboxOpen] = useState(false);
   const [sellDialogOpen, setSellDialogOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<ExtendedOptionOpportunity | null>(null);
+  const [costBasisMap, setCostBasisMap] = useState<Map<string, TickerCostBasis>>(new Map());
 
   const {
     jobs,
@@ -150,14 +152,31 @@ export function ScannerPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const [presetsData, acData, positionsData, watchlistsData] = await Promise.all([
+      const [presetsData, acData, positionsData, watchlistsData, wheelData] = await Promise.all([
         api.scanner.presets.list(),
         api.assetClasses.list(),
         api.positions.list(),
         api.watchlists.list(),
+        api.wheel.list().catch(() => ({ tickers: [] })),
       ]);
       setPresets(presetsData);
       setAssetClasses(acData);
+
+      // Build cost basis map from positions + wheel tracker
+      const cbMap = new Map<string, TickerCostBasis>();
+      for (const pos of positionsData) {
+        if (pos.secType === "STK" && pos.avgCost > 0) {
+          cbMap.set(pos.symbol, { avgCost: pos.avgCost, wheelCostBasis: null });
+        }
+      }
+      for (const wt of wheelData.tickers) {
+        const existing = cbMap.get(wt.symbol);
+        cbMap.set(wt.symbol, {
+          avgCost: existing?.avgCost ?? wt.positionAvgCost,
+          wheelCostBasis: wt.adjustedCostBasis > 0 ? wt.adjustedCostBasis : null,
+        });
+      }
+      setCostBasisMap(cbMap);
 
       // Collect unique stock symbols from positions
       const symbolsSet = new Set<string>();
@@ -593,6 +612,7 @@ export function ScannerPage() {
         onDelete={deleteJob}
         onClearAll={handleClearCompleted}
         onSellClick={handleSellClick}
+        costBasisMap={costBasisMap}
       />
 
       {/* Sell Option Dialog */}

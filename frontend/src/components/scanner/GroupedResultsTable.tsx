@@ -5,12 +5,19 @@ import { TickerGroup } from "./TickerGroup";
 import type { OptionOpportunity } from "@assup/shared";
 import type { ExtendedOptionOpportunity, TickerGroup as TickerGroupType, DTEGroup } from "./types";
 
+export interface TickerCostBasis {
+  avgCost: number | null;
+  wheelCostBasis: number | null;
+}
+
 interface GroupedResultsTableProps {
   opportunities: (OptionOpportunity & { underlyingPrice?: number })[];
   onSellClick?: (opportunity: ExtendedOptionOpportunity) => void;
+  /** Per-symbol cost basis data from positions and wheel tracker */
+  costBasisMap?: Map<string, TickerCostBasis>;
 }
 
-function groupOpportunities(opportunities: ExtendedOptionOpportunity[]): TickerGroupType[] {
+function groupOpportunities(opportunities: ExtendedOptionOpportunity[], costBasisMap?: Map<string, TickerCostBasis>): TickerGroupType[] {
   // Group by symbol
   const bySymbol = new Map<string, ExtendedOptionOpportunity[]>();
   for (const opp of opportunities) {
@@ -51,6 +58,7 @@ function groupOpportunities(opportunities: ExtendedOptionOpportunity[]): TickerG
 
     // Get first opportunity for metadata
     const firstOpp = opps[0];
+    const cb = costBasisMap?.get(symbol);
 
     tickerGroups.push({
       symbol,
@@ -64,6 +72,8 @@ function groupOpportunities(opportunities: ExtendedOptionOpportunity[]): TickerG
         bestPremiumPercent: Math.max(...opps.map((o) => o.premiumPercent)),
         uniqueExpirations: dteGroups.length,
       },
+      avgCost: cb?.avgCost ?? null,
+      wheelCostBasis: cb?.wheelCostBasis ?? null,
     });
   }
 
@@ -75,10 +85,10 @@ function groupOpportunities(opportunities: ExtendedOptionOpportunity[]): TickerG
 // Columns: Contract, Strike, Price, Bid, Ask, Premium, Delta, Premium%, Annual, Action
 const GRID_COLS = "minmax(180px,2fr) minmax(70px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(60px,1fr) minmax(70px,1fr) minmax(60px,1fr) minmax(80px,1fr) minmax(70px,1fr) minmax(60px,1fr)";
 
-export function GroupedResultsTable({ opportunities, onSellClick }: GroupedResultsTableProps) {
+export function GroupedResultsTable({ opportunities, onSellClick, costBasisMap }: GroupedResultsTableProps) {
   const tickerGroups = useMemo(
-    () => groupOpportunities(opportunities as ExtendedOptionOpportunity[]),
-    [opportunities]
+    () => groupOpportunities(opportunities as ExtendedOptionOpportunity[], costBasisMap),
+    [opportunities, costBasisMap]
   );
 
   // Initialize with first ticker and its DTEs expanded

@@ -51,6 +51,16 @@ export const TickerGroup = memo(function TickerGroup({
                 {formatCurrency(tickerGroup.underlyingPrice, { maximumFractionDigits: 2 })}
               </span>
             )}
+            {tickerGroup.avgCost != null && (
+              <span className="font-mono text-sm text-muted-foreground" title="IBKR average cost">
+                avg {formatCurrency(tickerGroup.avgCost, { maximumFractionDigits: 2 })}
+              </span>
+            )}
+            {tickerGroup.wheelCostBasis != null && tickerGroup.wheelCostBasis > 0 && (
+              <span className="font-mono text-sm text-blue-500" title="Wheel-adjusted cost basis (premiums deducted)">
+                basis {formatCurrency(tickerGroup.wheelCostBasis, { maximumFractionDigits: 2 })}
+              </span>
+            )}
             <span className="text-sm text-muted-foreground">
               ({tickerGroup.assetClassName})
             </span>

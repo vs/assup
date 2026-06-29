@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { GroupedResultsTable } from "./GroupedResultsTable";
+import { GroupedResultsTable, type TickerCostBasis } from "./GroupedResultsTable";
 import type { ExtendedOptionOpportunity } from "./types";
 import {
   ChevronRight,
@@ -26,9 +26,10 @@ interface ScanJobRowProps {
   onCancel: (jobId: string) => void;
   onDelete: (jobId: string) => void;
   onSellClick: (opportunity: ExtendedOptionOpportunity) => void;
+  costBasisMap?: Map<string, TickerCostBasis>;
 }
 
-export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowProps) {
+export function ScanJobRow({ job, onCancel, onDelete, onSellClick, costBasisMap }: ScanJobRowProps) {
   const [expanded, setExpanded] = useState(
     job.status === "running" || job.opportunities.length > 0
   );
@@ -182,6 +183,7 @@ export function ScanJobRow({ job, onCancel, onDelete, onSellClick }: ScanJobRowP
           <GroupedResultsTable
             opportunities={extendedOpportunities}
             onSellClick={onSellClick}
+            costBasisMap={costBasisMap}
           />
         </div>
       )}

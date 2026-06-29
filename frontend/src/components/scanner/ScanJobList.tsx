@@ -5,6 +5,7 @@
 import type { ScanJob } from "@assup/shared";
 import { ScanJobRow } from "./ScanJobRow";
 import type { ExtendedOptionOpportunity } from "./types";
+import type { TickerCostBasis } from "./GroupedResultsTable";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 
@@ -14,6 +15,7 @@ interface ScanJobListProps {
   onDelete: (jobId: string) => void;
   onClearAll: () => void;
   onSellClick: (opportunity: ExtendedOptionOpportunity) => void;
+  costBasisMap?: Map<string, TickerCostBasis>;
 }
 
 export function ScanJobList({
@@ -22,6 +24,7 @@ export function ScanJobList({
   onDelete,
   onClearAll,
   onSellClick,
+  costBasisMap,
 }: ScanJobListProps) {
   if (jobs.length === 0) {
     return null;
@@ -51,6 +54,7 @@ export function ScanJobList({
             onCancel={onCancel}
             onDelete={onDelete}
             onSellClick={onSellClick}
+            costBasisMap={costBasisMap}
           />
         ))}
       </div>
