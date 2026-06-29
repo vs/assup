@@ -50,6 +50,12 @@ function CustomTooltip({ active, payload, label }: any) {
           <span className="text-muted-foreground">Fees</span>
           <span className="text-red-600">{formatCurrency(d.fees)}</span>
         </div>
+        {d.projected ? (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Projected</span>
+            <span className="text-blue-600">{formatCurrency(d.projected)}</span>
+          </div>
+        ) : null}
         <div className="flex justify-between gap-4 border-t pt-1 mt-1 font-medium">
           <span>Total</span>
           <span className={d.total >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(d.total)}</span>
@@ -140,7 +146,7 @@ export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlC
           </ResponsiveContainer>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
+            <BarChart data={data} stackOffset="sign">
               <XAxis
                 dataKey="period"
                 tick={{ fontSize: 11 }}
@@ -154,11 +160,20 @@ export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlC
                 tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
               />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="total" isAnimationActive={false} radius={[2, 2, 0, 0]}>
+              <Bar dataKey="total" stackId="pnl" isAnimationActive={false} radius={[2, 2, 0, 0]}>
                 {data.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
                     fill={entry.total >= 0 ? "#22c55e" : "#ef4444"}
+                  />
+                ))}
+              </Bar>
+              <Bar dataKey="projected" stackId="pnl" isAnimationActive={false} radius={[2, 2, 0, 0]}>
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`cell-proj-${index}`}
+                    fill="#2563eb"
+                    fillOpacity={entry.projected ? 0.5 : 0}
                   />
                 ))}
               </Bar>

@@ -9,6 +9,7 @@ export interface ChartDataPoint {
   fees: number;
   total: number;
   cumulative: number;
+  projected?: number; // projected profit for current month (options expiring worthless)
 }
 
 export interface StrategyMetrics {

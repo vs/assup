@@ -39,6 +39,15 @@ export class DashboardService {
 
     const total = realized + (unrealized ?? 0) + (projected ?? 0);
 
+    // Attach projected value to the current month's chart data point
+    if (includesCurrentMonth && projected && period !== "mtd") {
+      const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const currentPoint = chart.find((p) => p.period === currentPeriod);
+      if (currentPoint) {
+        currentPoint.projected = projected;
+      }
+    }
+
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const daysRemaining = daysInMonth - now.getDate();
 
