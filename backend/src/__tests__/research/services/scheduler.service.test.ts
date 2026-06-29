@@ -43,12 +43,6 @@ vi.mock("../../../services/research/market-scanner.service.js", () => ({
   },
 }));
 
-vi.mock("../../../services/wheelScanner.service.js", () => ({
-  wheelScannerService: {
-    startScan: vi.fn(),
-  },
-}));
-
 import { prisma } from "../../../services/research/db.js";
 import { schedulerService } from "../../../services/research/scheduler.service.js";
 

@@ -16,8 +16,6 @@ export * from "./profit.js";
 export * from "./taxes.js";
 export * from "./wheel.js";
 export * from "./research.js";
-export * from "./wheelScanner.js";
 export * from "./tickerProfile.js";
-export * from "./wheelStrategy.js";
 export * from "./ironCondor.js";
 export * from "./dashboard.js";

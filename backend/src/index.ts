@@ -22,7 +22,7 @@ import profitRouter from "./routes/profit.js";
 import exchangeRatesRouter from "./routes/exchangeRates.js";
 import taxesRouter from "./routes/taxes.js";
 import wheelRouter from "./routes/wheel.js";
-import wheelStrategyRouter from "./routes/wheelStrategy.js";
+
 import researchRouter from "./routes/research.js";
 import tickerProfileRouter from "./routes/tickerProfile.js";
 import ironCondorRouter from "./routes/ironCondor.js";
@@ -33,7 +33,7 @@ import { scanJobService } from "./services/scanJob.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
 import { initAnalyzers } from "./services/research/analyzers/index.js";
 import { schedulerService } from "./services/research/scheduler.service.js";
-import { wheelStrategyScheduler } from "./services/wheelStrategy.scheduler.js";
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -99,7 +99,7 @@ app.use("/api/profit", profitRouter);
 app.use("/api/exchange-rates", exchangeRatesRouter);
 app.use("/api/taxes", taxesRouter);
 app.use("/api/wheel", wheelRouter);
-app.use("/api/wheel-strategy", wheelStrategyRouter);
+
 app.use("/api/research", researchRouter);
 app.use("/api/ticker-profile", tickerProfileRouter);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -222,17 +222,12 @@ const server = app.listen(PORT, () => {
     console.log("Research scheduler started");
   }
 
-  wheelStrategyScheduler.start().catch((err) => {
-    console.error("Failed to start wheel strategy scheduler:", err);
-  });
 });
 
 // Graceful shutdown
 async function shutdown(signal: string) {
   console.log(`${signal} received, shutting down gracefully...`);
   schedulerService.stop();
-  wheelStrategyScheduler.stop();
-
   // Stop accepting new connections and drain existing ones
   server.close(async () => {
     try {
