@@ -6,7 +6,6 @@ import { prisma } from "../db/index.js";
 import { sseService } from "./sse.js";
 import { ibkrService } from "./ibkr.js";
 import type { ScannerCriteria, OptionOpportunity, ScanJob } from "@assup/shared";
-import { isMarketOpen } from "../utils/index.js";
 
 // Track running jobs with their abort controllers
 const runningJobs = new Map<string, AbortController>();
@@ -70,26 +69,18 @@ async function createJob(
 
 /**
  * Manage market data type based on running job count.
- * Switch to live/frozen when first job starts, back to delayed when last job ends.
+ * Uses the shared refcount in ibkrService so that scan jobs don't
+ * stomp on other consumers (e.g. spread stream) that also need live data.
  */
 function acquireMarketDataType(): void {
   if (runningJobs.size === 1) {
-    try {
-      const marketDataType = isMarketOpen() ? 1 : 2;
-      ibkrService.setMarketDataType(marketDataType as 1 | 2);
-    } catch (err) {
-      console.warn("Could not switch market data type:", err);
-    }
+    ibkrService.acquireLiveMarketData();
   }
 }
 
 function releaseMarketDataType(): void {
   if (runningJobs.size === 0) {
-    try {
-      ibkrService.setMarketDataType(3);
-    } catch (err) {
-      console.warn("Could not switch back to delayed market data:", err);
-    }
+    ibkrService.releaseLiveMarketData();
   }
 }
 

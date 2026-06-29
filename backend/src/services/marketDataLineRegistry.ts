@@ -8,12 +8,16 @@ export class MarketDataLineRegistry {
     this.maxLines = maxLines;
   }
 
-  available(): number {
-    let used = 0;
+  used(): number {
+    let total = 0;
     for (const count of this.reservations.values()) {
-      used += count;
+      total += count;
     }
-    return Math.max(0, this.maxLines - used);
+    return total;
+  }
+
+  available(): number {
+    return Math.max(0, this.maxLines - this.used());
   }
 
   reserve(sessionId: string, requested: number): number {
@@ -22,11 +26,25 @@ export class MarketDataLineRegistry {
       const existing = this.reservations.get(sessionId) ?? 0;
       this.reservations.set(sessionId, existing + granted);
     }
+    if (granted < requested) {
+      console.warn(
+        `[MarketDataLines] ${sessionId}: requested ${requested}, granted ${granted} (${this.used()}/${this.maxLines} used)`,
+      );
+    }
     return granted;
   }
 
   release(sessionId: string): void {
     this.reservations.delete(sessionId);
+  }
+
+  /** Dump current reservations for debugging. */
+  dump(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [id, count] of this.reservations) {
+      out[id] = count;
+    }
+    return out;
   }
 }
 
