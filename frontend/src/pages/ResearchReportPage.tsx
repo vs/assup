@@ -15,6 +15,7 @@ import type {
 } from "@assup/shared";
 import { DEFAULT_SCANNER_CRITERIA } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
+import { TickerPositionInfo } from "@/components/ticker/TickerPositionInfo";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1471,6 +1472,9 @@ export function ResearchReportPage() {
           {generateError}
         </div>
       )}
+
+      {/* Position & Wheel info */}
+      <TickerPositionInfo symbol={symbol} />
 
       {/* Chart + Company Info Panel (two columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
