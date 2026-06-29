@@ -26,7 +26,6 @@ import type { ImportedTrade } from "@prisma/client";
 import { Subscription, lastValueFrom } from "rxjs";
 import { BadRequestError } from "../errors/index.js";
 import { isMarketOpen } from "../utils/market.js";
-import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -799,9 +798,9 @@ class IBKRService {
   }
 
   // Get market data for multiple contracts in parallel.
-  // Each snapshot temporarily occupies a TWS market data line, so we cap
-  // concurrency and reserve lines from the shared registry to avoid starving
-  // streaming consumers (e.g. spread stream).
+  // Snapshots are short-lived (TWS auto-cancels after responding) so they
+  // don't need to be tracked in the line registry. We just cap concurrency
+  // to avoid flooding TWS with too many simultaneous requests.
   async getMarketDataBatch(contracts: Contract[]): Promise<Map<string, TickerData>> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
@@ -812,29 +811,12 @@ class IBKRService {
     let failCount = 0;
     let firstFailure: { contract: Contract; reason: string } | undefined;
 
-    const SESSION_ID = `batch-${Date.now()}`;
     const batchSize = 10;
 
     for (let i = 0; i < contracts.length; i += batchSize) {
       const batch = contracts.slice(i, i + batchSize);
 
-      // Reserve lines so streaming sessions see the pressure
-      const granted = marketDataLineRegistry.reserve(SESSION_ID, batch.length);
-      if (granted === 0) {
-        // No lines available — skip this batch rather than clogging TWS
-        failCount += batch.length;
-        if (!firstFailure) {
-          firstFailure = {
-            contract: batch[0],
-            reason: "no market data lines available (other sessions active)",
-          };
-        }
-        continue;
-      }
-      // Only process as many as we got lines for
-      const effective = batch.slice(0, granted);
-
-      const promises = effective.map(async (contract) => {
+      const promises = batch.map(async (contract) => {
         try {
           const data = await this.getMarketData(contract);
           if (data && data.bid !== undefined && data.ask !== undefined) {
@@ -863,15 +845,7 @@ class IBKRService {
 
       await Promise.allSettled(promises);
 
-      // Release lines back immediately — snapshots are done
-      marketDataLineRegistry.release(SESSION_ID);
-
-      // Count any contracts we couldn't process due to line limits
-      if (granted < batch.length) {
-        failCount += batch.length - granted;
-      }
-
-      // Delay between batches to let TWS breathe
+      // Delay between batches to avoid overwhelming TWS
       if (i + batchSize < contracts.length) {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
