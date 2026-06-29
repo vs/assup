@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { RefreshCw } from "lucide-react";
 import { settingsApi } from "@/api/settings";
 import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
@@ -137,6 +138,7 @@ export function IronCondorPage() {
     status,
     error,
     refocusedCount,
+    reconnect,
   } = useSpreadsStream(
     symbol,
     expiration,
@@ -334,6 +336,12 @@ export function IronCondorPage() {
     setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
   }, []);
 
+  const handleReload = useCallback(() => {
+    autoSelectDoneRef.current = false;
+    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
+    reconnect();
+  }, [reconnect]);
+
   const handleCloseSpread = useCallback((spread: ActiveSpread) => {
     setClosingSpread(spread);
     setCloseDialogOpen(true);
@@ -478,6 +486,15 @@ export function IronCondorPage() {
         </div>
 
         <div className="flex-1" />
+
+        <button
+          onClick={handleReload}
+          disabled={status === "connecting"}
+          className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+          title="Reload chain & re-select legs"
+        >
+          <RefreshCw className={cn("h-4 w-4", status === "connecting" && "animate-spin")} />
+        </button>
 
         {underlyingPrice > 0 && (
           <div className="flex items-center gap-1.5">

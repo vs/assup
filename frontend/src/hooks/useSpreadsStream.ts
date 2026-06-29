@@ -18,6 +18,7 @@ interface UseSpreadsStreamResult {
   status: StreamStatus;
   error: string | null;
   refocusedCount: number;
+  reconnect: () => void;
 }
 
 export function useSpreadsStream(
@@ -213,6 +214,11 @@ export function useSpreadsStream(
     return Array.from(chainMap.values()).sort((a, b) => a.strike - b.strike);
   }, [chainMap]);
 
+  const reconnect = useCallback(() => {
+    reconnectAttemptRef.current = 0;
+    connect();
+  }, [connect]);
+
   return {
     chain,
     underlyingPrice,
@@ -221,5 +227,6 @@ export function useSpreadsStream(
     status,
     error,
     refocusedCount,
+    reconnect,
   };
 }
