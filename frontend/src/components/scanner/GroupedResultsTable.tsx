@@ -6,6 +6,7 @@ import type { OptionOpportunity } from "@assup/shared";
 import type { ExtendedOptionOpportunity, TickerGroup as TickerGroupType, DTEGroup } from "./types";
 
 export interface TickerCostBasis {
+  shares: number | null;
   avgCost: number | null;
   wheelCostBasis: number | null;
 }
@@ -72,6 +73,7 @@ function groupOpportunities(opportunities: ExtendedOptionOpportunity[], costBasi
         bestPremiumPercent: Math.max(...opps.map((o) => o.premiumPercent)),
         uniqueExpirations: dteGroups.length,
       },
+      shares: cb?.shares ?? null,
       avgCost: cb?.avgCost ?? null,
       wheelCostBasis: cb?.wheelCostBasis ?? null,
     });

@@ -32,6 +32,8 @@ export interface TickerGroup {
   assetClassColor: string;
   dteGroups: DTEGroup[];
   summary: TickerGroupSummary;
+  /** Number of shares held */
+  shares: number | null;
   /** IBKR position average cost per share */
   avgCost: number | null;
   /** Wheel-adjusted cost basis (reduced by cycle premiums) */

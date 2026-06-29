@@ -165,13 +165,18 @@ export function ScannerPage() {
       // Build cost basis map from positions + wheel tracker
       const cbMap = new Map<string, TickerCostBasis>();
       for (const pos of positionsData) {
-        if (pos.secType === "STK" && pos.avgCost > 0) {
-          cbMap.set(pos.symbol, { avgCost: pos.avgCost, wheelCostBasis: null });
+        if (pos.secType === "STK") {
+          cbMap.set(pos.symbol, {
+            shares: pos.position,
+            avgCost: pos.avgCost > 0 ? pos.avgCost : null,
+            wheelCostBasis: null,
+          });
         }
       }
       for (const wt of wheelData.tickers) {
         const existing = cbMap.get(wt.symbol);
         cbMap.set(wt.symbol, {
+          shares: existing?.shares ?? (wt.shareQuantity || null),
           avgCost: existing?.avgCost ?? wt.positionAvgCost,
           wheelCostBasis: wt.adjustedCostBasis > 0 ? wt.adjustedCostBasis : null,
         });

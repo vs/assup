@@ -51,6 +51,11 @@ export const TickerGroup = memo(function TickerGroup({
                 {formatCurrency(tickerGroup.underlyingPrice, { maximumFractionDigits: 2 })}
               </span>
             )}
+            {tickerGroup.shares != null && tickerGroup.shares !== 0 && (
+              <span className="font-mono text-sm text-muted-foreground" title="Shares held">
+                {tickerGroup.shares} shares
+              </span>
+            )}
             {tickerGroup.avgCost != null && (
               <span className="font-mono text-sm text-muted-foreground" title="IBKR average cost">
                 avg {formatCurrency(tickerGroup.avgCost, { maximumFractionDigits: 2 })}
