@@ -35,7 +35,7 @@ export const TickerGroup = memo(function TickerGroup({
           )}
           style={{ gridTemplateColumns: gridCols }}
         >
-          <div className="flex items-center gap-2 pl-2 col-span-3">
+          <div className="flex items-center gap-3 pl-2 col-span-3">
             {isExpanded ? (
               <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />
             ) : (
@@ -51,24 +51,29 @@ export const TickerGroup = memo(function TickerGroup({
                 {formatCurrency(tickerGroup.underlyingPrice, { maximumFractionDigits: 2 })}
               </span>
             )}
-            {tickerGroup.shares != null && tickerGroup.shares !== 0 && (
-              <span className="font-mono text-sm text-muted-foreground" title="Shares held">
-                {tickerGroup.shares} shares
-              </span>
-            )}
-            {tickerGroup.avgCost != null && (
-              <span className="font-mono text-sm text-muted-foreground" title="IBKR average cost">
-                avg {formatCurrency(tickerGroup.avgCost, { maximumFractionDigits: 2 })}
-              </span>
-            )}
-            {tickerGroup.wheelCostBasis != null && tickerGroup.wheelCostBasis > 0 && (
-              <span className="font-mono text-sm text-blue-500" title="Wheel-adjusted cost basis (premiums deducted)">
-                basis {formatCurrency(tickerGroup.wheelCostBasis, { maximumFractionDigits: 2 })}
-              </span>
-            )}
             <span className="text-sm text-muted-foreground">
               ({tickerGroup.assetClassName})
             </span>
+            {(tickerGroup.shares != null || tickerGroup.avgCost != null || tickerGroup.wheelCostBasis != null) && (
+              <>
+                <span className="border-l h-4 mx-1" />
+                {tickerGroup.shares != null && tickerGroup.shares !== 0 && (
+                  <span className="font-mono text-sm text-muted-foreground" title="Shares held">
+                    {tickerGroup.shares} shares
+                  </span>
+                )}
+                {tickerGroup.avgCost != null && (
+                  <span className="font-mono text-sm text-muted-foreground" title="IBKR average cost">
+                    avg {formatCurrency(tickerGroup.avgCost, { maximumFractionDigits: 2 })}
+                  </span>
+                )}
+                {tickerGroup.wheelCostBasis != null && tickerGroup.wheelCostBasis > 0 && (
+                  <span className="font-mono text-sm text-blue-500" title="Wheel-adjusted cost basis (premiums deducted)">
+                    basis {formatCurrency(tickerGroup.wheelCostBasis, { maximumFractionDigits: 2 })}
+                  </span>
+                )}
+              </>
+            )}
             <span className="text-sm text-muted-foreground ml-auto mr-4">
               {tickerGroup.summary.totalCount} contract{tickerGroup.summary.totalCount !== 1 ? "s" : ""}, {tickerGroup.summary.uniqueExpirations} expiration{tickerGroup.summary.uniqueExpirations !== 1 ? "s" : ""}
             </span>
