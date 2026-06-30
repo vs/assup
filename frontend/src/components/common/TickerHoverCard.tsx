@@ -224,96 +224,65 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
               </div>
             )}
 
-            {/* Position info — 3×2 grid matching metrics row style */}
-            {position && position.position !== 0 && (
+            {/* Position info — 3×2 grid */}
+            {(position?.position !== 0 || wheel) && (
               <div className="grid grid-cols-3 gap-y-1.5 text-[11px] border-t pt-2">
                 <div>
                   <div className="text-muted-foreground">Shares</div>
-                  <div className="font-medium">{position.position}</div>
+                  <div className="font-medium">{position && position.position !== 0 ? position.position : "\u2014"}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Avg Cost</div>
-                  <div className="font-medium">{formatCurrency(position.avgCost, { maximumFractionDigits: 2 })}</div>
+                  <div className="font-medium">
+                    {position && position.avgCost > 0
+                      ? formatCurrency(position.avgCost, { maximumFractionDigits: 2 })
+                      : "\u2014"}
+                  </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Mkt Value</div>
                   <div className="font-medium">
-                    {position.marketValue != null
+                    {position?.marketValue != null
                       ? formatCurrency(position.marketValue, { maximumFractionDigits: 0 })
                       : "\u2014"}
                   </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">P&L</div>
-                  <div className={`font-medium ${(position.unrealizedPnl ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {position.unrealizedPnl != null
+                  <div className={`font-medium ${(position?.unrealizedPnl ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {position?.unrealizedPnl != null
                       ? formatCurrency(position.unrealizedPnl, { maximumFractionDigits: 0 })
                       : "\u2014"}
                   </div>
                 </div>
-                {wheel ? (
-                  <>
-                    <div>
-                      <div className="text-muted-foreground">Basis</div>
-                      <div className="font-medium text-blue-500" title="Wheel-adjusted cost basis">
-                        {formatCurrency(wheel.adjustedCostBasis, { maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Premiums</div>
-                      <div className="font-medium text-green-600">
-                        {formatCurrency(wheel.totalPremiums, { maximumFractionDigits: 0 })}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div />
-                    <div />
-                  </>
-                )}
-              </div>
-            )}
-            {/* Wheel-only (no stock position) */}
-            {(!position || position.position === 0) && wheel && (
-              <div className="grid grid-cols-3 gap-y-1.5 text-[11px] border-t pt-2">
                 <div>
                   <div className="text-muted-foreground">Basis</div>
                   <div className="font-medium text-blue-500" title="Wheel-adjusted cost basis">
-                    {formatCurrency(wheel.adjustedCostBasis, { maximumFractionDigits: 2 })}
+                    {wheel ? formatCurrency(wheel.adjustedCostBasis, { maximumFractionDigits: 2 }) : "\u2014"}
                   </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Premiums</div>
                   <div className="font-medium text-green-600">
-                    {formatCurrency(wheel.totalPremiums, { maximumFractionDigits: 0 })}
+                    {wheel ? formatCurrency(wheel.totalPremiums, { maximumFractionDigits: 0 }) : "\u2014"}
                   </div>
                 </div>
-                <div />
               </div>
             )}
 
-            {/* Metrics row */}
-            <div className="flex justify-between text-[11px]">
+            {/* Fundamentals — 3×1 grid, same style */}
+            <div className="grid grid-cols-3 gap-y-1.5 text-[11px] border-t pt-2">
               <div>
-                <span className="text-muted-foreground">MCap </span>
-                <span>{formatMarketCap(profile.marketCap)}</span>
+                <div className="text-muted-foreground">MCap</div>
+                <div className="font-medium">{formatMarketCap(profile.marketCap)}</div>
               </div>
               <div>
-                <span className="text-muted-foreground">P/E </span>
-                <span>
-                  {profile.peRatio !== null
-                    ? profile.peRatio.toFixed(1)
-                    : "\u2014"}
-                </span>
+                <div className="text-muted-foreground">P/E</div>
+                <div className="font-medium">{profile.peRatio !== null ? profile.peRatio.toFixed(1) : "\u2014"}</div>
               </div>
               <div>
-                <span className="text-muted-foreground">Div </span>
-                <span>
-                  {profile.dividendYield !== null
-                    ? `${profile.dividendYield.toFixed(2)}%`
-                    : "\u2014"}
-                </span>
+                <div className="text-muted-foreground">Div</div>
+                <div className="font-medium">{profile.dividendYield !== null ? `${profile.dividendYield.toFixed(2)}%` : "\u2014"}</div>
               </div>
             </div>
           </div>
