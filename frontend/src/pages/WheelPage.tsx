@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { api } from "@/api";
 import type {
   WheelListResponse,
@@ -84,6 +84,37 @@ export function WheelPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newSymbol, setNewSymbol] = useState("");
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement>(null);
+
+  // Global keyboard capture: typing letters focuses the filter input automatically
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is already in an input/textarea/dialog
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // Single letter/digit → focus filter and let the keystroke through
+      if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+        filterRef.current?.focus();
+      }
+      // Escape → clear filter
+      if (e.key === "Escape" && filter) {
+        setFilter("");
+        filterRef.current?.blur();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [filter]);
+
+  const filteredTickers = useMemo(() => {
+    if (!data?.tickers) return [];
+    if (!filter) return data.tickers;
+    const q = filter.toUpperCase();
+    return data.tickers.filter((t) => t.symbol.includes(q));
+  }, [data?.tickers, filter]);
 
   const sparklineSymbols = useMemo(
     () => data?.tickers.map((t) => t.symbol) ?? [],
@@ -315,9 +346,29 @@ export function WheelPage() {
         </div>
       )}
 
-      {/* Ticker Cards */}
+      {/* Filter + Ticker Cards */}
       <div className="space-y-4 mt-4">
-        {data?.tickers.map((ticker) => {
+        <div className="flex items-center gap-2">
+          <input
+            ref={filterRef}
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter tickers..."
+            className="h-8 w-48 rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+          />
+          {filter && (
+            <Button variant="ghost" size="sm" onClick={() => setFilter("")} className="h-8 px-2">
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {filter && (
+            <span className="text-xs text-muted-foreground">
+              {filteredTickers.length}/{data?.tickers.length ?? 0}
+            </span>
+          )}
+        </div>
+        {filteredTickers.map((ticker) => {
           const sparkline = getSparklineState(ticker.symbol);
           return (
             <WheelTickerCard
