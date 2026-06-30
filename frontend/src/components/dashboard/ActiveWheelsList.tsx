@@ -9,10 +9,10 @@ type WheelPhase = WheelTickerSummary["currentPhase"];
 
 function PhaseBadge({ phase }: { phase: WheelPhase }) {
   const config: Record<WheelPhase, { label: string; className: string }> = {
-    csp_open: { label: "CSP", className: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
-    cc_open: { label: "CC", className: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
-    holding_shares: { label: "Shares", className: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" },
-    idle: { label: "Idle", className: "bg-secondary text-muted-foreground" },
+    csp_open: { label: "CSP", className: "bg-yellow-100 text-yellow-800" },
+    holding_shares: { label: "Shares", className: "bg-blue-100 text-blue-800" },
+    cc_open: { label: "CC", className: "bg-purple-100 text-purple-800" },
+    idle: { label: "Idle", className: "bg-gray-100 text-gray-800" },
   };
   const { label, className } = config[phase] ?? config.idle;
   return (
