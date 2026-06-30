@@ -8,9 +8,10 @@ export class DashboardService {
     const now = new Date();
     const { startDate, endDate, includesCurrentMonth } = this.getDateRange(period, year);
 
-    const [monthlyData, currentMonth, projectedByMonth] = await Promise.all([
+    const [monthlyData, currentMonth, currentMonthDetail, projectedByMonth] = await Promise.all([
       this.profitService.getMonthlyProfits(startDate, endDate),
       this.profitService.getCurrentMonthProfit(),
+      this.profitService.getMonthDetail(now.getFullYear(), now.getMonth() + 1),
       this.profitService.getProjectedByMonth(),
     ]);
 
@@ -27,7 +28,9 @@ export class DashboardService {
       strategies = this.buildStrategies(monthlyData.months);
     }
 
-    const realized = monthlyData.totals.optionsProfit
+    // Use monthlyData totals as base, then replace current month with
+    // the detail data that includes today's TWS trades.
+    let realized = monthlyData.totals.optionsProfit
       + monthlyData.totals.spreadsProfit
       + monthlyData.totals.stocksProfit
       + monthlyData.totals.dividends
@@ -35,10 +38,45 @@ export class DashboardService {
       + monthlyData.totals.withholdingTax
       + monthlyData.totals.fees;
 
+    if (includesCurrentMonth) {
+      // Subtract the FLEX-only current month from totals and add the
+      // detail-based total (which includes today's TWS executions).
+      const currentKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+      const flexMonth = monthlyData.months.find(
+        (m) => `${m.year}-${m.month}` === currentKey,
+      );
+      if (flexMonth) {
+        realized = realized - flexMonth.total + currentMonthDetail.summary.total;
+      }
+    }
+
     const unrealized = includesCurrentMonth ? currentMonth.unrealized.value : null;
     const projected = includesCurrentMonth ? currentMonth.projected.value : null;
 
     const total = realized + (unrealized ?? 0) + (projected ?? 0);
+
+    // Replace current month's chart point with data from getMonthDetail,
+    // which includes today's TWS executions (getMonthlyProfits only has FLEX imports).
+    if (includesCurrentMonth && period !== "mtd") {
+      const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const currentPoint = chart.find((p) => p.period === currentPeriod);
+      if (currentPoint) {
+        const s = currentMonthDetail.summary;
+        const divInt = s.dividends + s.interest + s.withholdingTax;
+        currentPoint.options = s.optionsProfit;
+        currentPoint.spreads = s.spreadsProfit;
+        currentPoint.stocks = s.stocksProfit;
+        currentPoint.dividendsInterest = divInt;
+        currentPoint.fees = s.fees;
+        currentPoint.total = s.total;
+        // Recompute cumulative for this and all subsequent points
+        const idx = chart.indexOf(currentPoint);
+        const prevCum = idx > 0 ? chart[idx - 1].cumulative : 0;
+        for (let i = idx; i < chart.length; i++) {
+          chart[i].cumulative = (i > 0 ? chart[i - 1].cumulative : 0) + chart[i].total;
+        }
+      }
+    }
 
     // Attach projected values to chart data points for all months with
     // open short options (current month + future months).

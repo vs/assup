@@ -50,16 +50,24 @@ function CustomTooltip({ active, payload, label }: any) {
           <span className="text-muted-foreground">Fees</span>
           <span className="text-red-600">{formatCurrency(d.fees)}</span>
         </div>
-        {d.projected ? (
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Projected</span>
-            <span className="text-blue-600">{formatCurrency(d.projected)}</span>
-          </div>
-        ) : null}
         <div className="flex justify-between gap-4 border-t pt-1 mt-1 font-medium">
-          <span>Total</span>
+          <span>Realized</span>
           <span className={d.total >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(d.total)}</span>
         </div>
+        {d.projected ? (
+          <>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Projected</span>
+              <span className="text-blue-600">{formatCurrency(d.projected)}</span>
+            </div>
+            <div className="flex justify-between gap-4 font-medium">
+              <span>Est. Total</span>
+              <span className={(d.total + d.projected) >= 0 ? "text-green-600" : "text-red-600"}>
+                {formatCurrency(d.total + d.projected)}
+              </span>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );
