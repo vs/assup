@@ -763,6 +763,38 @@ class ProfitService {
   }
 
   /**
+   * Get projected profit for every month that has open short option positions.
+   * Returns a map of "YYYY-MM" → projected profit value.
+   */
+  async getProjectedByMonth(): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (!ibkrService.isConnected()) return result;
+
+    try {
+      const positions = await ibkrService.getPositions();
+
+      for (const pos of positions) {
+        if (pos.contract.secType !== "OPT") continue;
+        if (pos.pos >= 0) continue; // Only short positions have projected profit
+
+        const expiryStr = pos.contract.lastTradeDateOrContractMonth;
+        if (!expiryStr) continue;
+
+        const expiry = this.parseContractExpiry(expiryStr);
+        if (!expiry) continue;
+
+        const costBasis = pos.avgCost * Math.abs(pos.pos);
+        const period = `${expiry.getFullYear()}-${String(expiry.getMonth() + 1).padStart(2, "0")}`;
+        result.set(period, (result.get(period) ?? 0) + costBasis);
+      }
+    } catch {
+      // IBKR not connected
+    }
+
+    return result;
+  }
+
+  /**
    * Get all open option positions regardless of expiry month
    */
   async getAllPositions(): Promise<AllPositionsView> {

@@ -8,9 +8,10 @@ export class DashboardService {
     const now = new Date();
     const { startDate, endDate, includesCurrentMonth } = this.getDateRange(period, year);
 
-    const [monthlyData, currentMonth] = await Promise.all([
+    const [monthlyData, currentMonth, projectedByMonth] = await Promise.all([
       this.profitService.getMonthlyProfits(startDate, endDate),
       this.profitService.getCurrentMonthProfit(),
+      this.profitService.getProjectedByMonth(),
     ]);
 
     // For MTD, build daily chart data from month detail instead of monthly aggregates
@@ -39,13 +40,33 @@ export class DashboardService {
 
     const total = realized + (unrealized ?? 0) + (projected ?? 0);
 
-    // Attach projected value to the current month's chart data point
-    if (includesCurrentMonth && projected && period !== "mtd") {
-      const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const currentPoint = chart.find((p) => p.period === currentPeriod);
-      if (currentPoint) {
-        currentPoint.projected = projected;
+    // Attach projected values to chart data points for all months with
+    // open short options (current month + future months).
+    if (period !== "mtd" && projectedByMonth.size > 0) {
+      const existingPeriods = new Set(chart.map((p) => p.period));
+      for (const [monthPeriod, projValue] of projectedByMonth) {
+        if (projValue <= 0) continue;
+        const existing = chart.find((p) => p.period === monthPeriod);
+        if (existing) {
+          existing.projected = projValue;
+        } else {
+          // Future month not yet in chart — add a placeholder point
+          const prev = chart[chart.length - 1];
+          chart.push({
+            period: monthPeriod,
+            options: 0,
+            spreads: 0,
+            stocks: 0,
+            dividendsInterest: 0,
+            fees: 0,
+            total: 0,
+            cumulative: prev?.cumulative ?? 0,
+            projected: projValue,
+          });
+        }
       }
+      // Re-sort if we added future months
+      chart.sort((a, b) => a.period.localeCompare(b.period));
     }
 
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
