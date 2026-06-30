@@ -183,9 +183,7 @@ const AssetClassGroup = memo(function AssetClassGroup({
               <span className="text-xs text-muted-foreground ml-1">{row.current.toFixed(0)}%</span>
             </div>
           </div>
-          <div />
-          <div />
-          <div className="text-right pr-2">
+          <div className="text-right pr-2 col-span-3">
             <ActionBadge id={row.id} diffValue={diffValue} />
           </div>
         </div>
