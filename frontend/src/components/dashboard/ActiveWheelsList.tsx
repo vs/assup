@@ -1,8 +1,9 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { formatCurrency } from "@assup/shared";
 import type { WheelTickerSummary } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 
 type WheelPhase = WheelTickerSummary["currentPhase"];
 
@@ -55,7 +56,11 @@ export function ActiveWheelsList({ tickers }: ActiveWheelsListProps) {
               <div key={ticker.symbol} className="rounded-md border px-3 py-2 space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">{ticker.symbol}</span>
+                    <TickerHoverCard symbol={ticker.symbol}>
+                      <Link to={`/tickers/${ticker.symbol}`} className="font-semibold text-sm hover:underline">
+                        {ticker.symbol}
+                      </Link>
+                    </TickerHoverCard>
                     <PhaseBadge phase={ticker.currentPhase} />
                   </div>
                   <span className={`font-semibold tabular-nums text-sm ${pnlColor}`}>

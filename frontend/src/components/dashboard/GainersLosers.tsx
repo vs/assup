@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { formatCurrency } from "@assup/shared";
 import type { Position } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 
 type Mode = "gainers" | "losers";
 
@@ -79,7 +81,11 @@ export function GainersLosers({ positions }: GainersLosersProps) {
                   <tr key={p.symbol + p.conId} className="border-b last:border-0">
                     <td className="py-3">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold">{p.symbol}</span>
+                        <TickerHoverCard symbol={p.symbol}>
+                          <Link to={`/tickers/${p.symbol}`} className="font-semibold hover:underline">
+                            {p.symbol}
+                          </Link>
+                        </TickerHoverCard>
                         <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
                           STK
                         </Badge>

@@ -1,8 +1,9 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { formatCurrency } from "@assup/shared";
 import type { ActiveSpread, SpreadMode, ActiveSpreadLeg } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 
 function SpreadTypeBadge({ type }: { type: SpreadMode }) {
   const config: Record<SpreadMode, { label: string; className: string }> = {
@@ -128,7 +129,11 @@ export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
             return (
               <div key={spread.id} className="rounded-md border px-3 py-2 space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm">{spread.symbol}</span>
+                  <TickerHoverCard symbol={spread.symbol}>
+                    <Link to={`/tickers/${spread.symbol}`} className="font-semibold text-sm hover:underline">
+                      {spread.symbol}
+                    </Link>
+                  </TickerHoverCard>
                   <SpreadTypeBadge type={spread.type} />
                 </div>
                 <div className="text-xs text-muted-foreground">
