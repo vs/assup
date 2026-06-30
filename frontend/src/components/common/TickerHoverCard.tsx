@@ -224,45 +224,72 @@ export function TickerHoverCard({ symbol, children }: TickerHoverCardProps) {
               </div>
             )}
 
-            {/* Position info */}
-            {(position || wheel) && (
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] border-t pt-2">
-                {position && position.position !== 0 && (
+            {/* Position info — 3×2 grid matching metrics row style */}
+            {position && position.position !== 0 && (
+              <div className="grid grid-cols-3 gap-y-1.5 text-[11px] border-t pt-2">
+                <div>
+                  <div className="text-muted-foreground">Shares</div>
+                  <div className="font-medium">{position.position}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Avg Cost</div>
+                  <div className="font-medium">{formatCurrency(position.avgCost, { maximumFractionDigits: 2 })}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Mkt Value</div>
+                  <div className="font-medium">
+                    {position.marketValue != null
+                      ? formatCurrency(position.marketValue, { maximumFractionDigits: 0 })
+                      : "\u2014"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">P&L</div>
+                  <div className={`font-medium ${(position.unrealizedPnl ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {position.unrealizedPnl != null
+                      ? formatCurrency(position.unrealizedPnl, { maximumFractionDigits: 0 })
+                      : "\u2014"}
+                  </div>
+                </div>
+                {wheel ? (
                   <>
                     <div>
-                      <span className="text-muted-foreground">Shares </span>
-                      <span className="font-medium">{position.position}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Avg </span>
-                      <span className="font-medium">{formatCurrency(position.avgCost, { maximumFractionDigits: 2 })}</span>
-                    </div>
-                    {position.unrealizedPnl != null && (
-                      <div>
-                        <span className="text-muted-foreground">P&L </span>
-                        <span className={`font-medium ${position.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"}`}>
-                          {formatCurrency(position.unrealizedPnl, { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {wheel && (
-                  <>
-                    <div>
-                      <span className="text-muted-foreground">Basis </span>
-                      <span className="font-medium text-blue-500" title="Wheel-adjusted cost basis">
+                      <div className="text-muted-foreground">Basis</div>
+                      <div className="font-medium text-blue-500" title="Wheel-adjusted cost basis">
                         {formatCurrency(wheel.adjustedCostBasis, { maximumFractionDigits: 2 })}
-                      </span>
+                      </div>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Premiums </span>
-                      <span className="font-medium text-green-600">
+                      <div className="text-muted-foreground">Premiums</div>
+                      <div className="font-medium text-green-600">
                         {formatCurrency(wheel.totalPremiums, { maximumFractionDigits: 0 })}
-                      </span>
+                      </div>
                     </div>
                   </>
+                ) : (
+                  <>
+                    <div />
+                    <div />
+                  </>
                 )}
+              </div>
+            )}
+            {/* Wheel-only (no stock position) */}
+            {(!position || position.position === 0) && wheel && (
+              <div className="grid grid-cols-3 gap-y-1.5 text-[11px] border-t pt-2">
+                <div>
+                  <div className="text-muted-foreground">Basis</div>
+                  <div className="font-medium text-blue-500" title="Wheel-adjusted cost basis">
+                    {formatCurrency(wheel.adjustedCostBasis, { maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Premiums</div>
+                  <div className="font-medium text-green-600">
+                    {formatCurrency(wheel.totalPremiums, { maximumFractionDigits: 0 })}
+                  </div>
+                </div>
+                <div />
               </div>
             )}
 
