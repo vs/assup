@@ -218,6 +218,26 @@ export function WheelPage() {
         onRefresh={loadData}
         actions={
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <input
+                ref={filterRef}
+                type="text"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter..."
+                className="h-8 w-32 rounded-md border bg-background px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+              />
+              {filter && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => setFilter("")} className="h-8 px-1.5">
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {filteredTickers.length}/{data?.tickers.length ?? 0}
+                  </span>
+                </>
+              )}
+            </div>
             {suggestions.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -346,28 +366,8 @@ export function WheelPage() {
         </div>
       )}
 
-      {/* Filter + Ticker Cards */}
+      {/* Ticker Cards */}
       <div className="space-y-4 mt-4">
-        <div className="flex items-center gap-2">
-          <input
-            ref={filterRef}
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter tickers..."
-            className="h-8 w-48 rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
-          />
-          {filter && (
-            <Button variant="ghost" size="sm" onClick={() => setFilter("")} className="h-8 px-2">
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {filter && (
-            <span className="text-xs text-muted-foreground">
-              {filteredTickers.length}/{data?.tickers.length ?? 0}
-            </span>
-          )}
-        </div>
         {filteredTickers.map((ticker) => {
           const sparkline = getSparklineState(ticker.symbol);
           return (
