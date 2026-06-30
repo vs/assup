@@ -82,9 +82,9 @@ export function IronCondorPage() {
   const [mode, setMode] = useState<SpreadMode>("put-spread");
   const [expiration, setExpiration] = useState<string | undefined>(undefined);
   const [quantity, setQuantity] = useState(1);
-  const [putDelta, setPutDelta] = useState(3.5);
-  const [callDelta, setCallDelta] = useState(3.5);
-  const [wingWidth, setWingWidth] = useState(100);
+  const [putDelta, setPutDelta] = useState(4.5);
+  const [callDelta, setCallDelta] = useState(4.5);
+  const [wingWidth, setWingWidth] = useState(30);
 
   // Selected legs
   const [selectedLegs, setSelectedLegs] = useState<SpreadSelectedLegs>({
