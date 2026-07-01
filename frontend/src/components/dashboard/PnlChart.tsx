@@ -139,7 +139,10 @@ export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlC
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                tickFormatter={(v) => {
+                  const k = v / 1000;
+                  return `$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                }}
               />
               <Tooltip content={<CustomTooltip />} />
               <Area
@@ -165,7 +168,10 @@ export function PnlChart({ data, periodTotal, periodIncludesCurrentMonth }: PnlC
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                tickFormatter={(v) => {
+                  const k = v / 1000;
+                  return `$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                }}
               />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="total" stackId="pnl" isAnimationActive={false} radius={[2, 2, 0, 0]}>
