@@ -149,6 +149,10 @@ class IBKRService {
   private accountSubscription: Subscription | null = null;
   private connectionSubscription: Subscription | null = null;
 
+  // Deduplication cache for getExecutions() — concurrent callers share one TWS request
+  private _executionsInflight: Promise<{ executions: ExecutionDetail[]; commissions: Map<string, CommissionReport> }> | null = null;
+  private _executionsCacheTs = 0;
+
   constructor() {
     this.connect();
     this.startStatusWatchdog();
@@ -868,29 +872,48 @@ class IBKRService {
       throw new Error("Not connected to TWS");
     }
 
+    // Deduplicate concurrent calls — reuse in-flight or recently cached result
+    // so parallel API endpoints don't race on the TWS socket.
+    const now = Date.now();
+    const hasFilter = filter && Object.keys(filter).length > 0;
+    if (!hasFilter && this._executionsInflight && now - this._executionsCacheTs < 3000) {
+      return this._executionsInflight;
+    }
+
     const execFilter: ExecutionFilter = {
       ...filter,
     };
 
-    try {
-      const [executions, commissionReports] = await Promise.all([
-        this.api.getExecutionDetails(execFilter),
-        this.api.getCommissionReport(execFilter),
-      ]);
+    const promise = (async () => {
+      try {
+        const [executions, commissionReports] = await Promise.all([
+          this.api!.getExecutionDetails(execFilter),
+          this.api!.getCommissionReport(execFilter),
+        ]);
 
-      // Map commission reports by execId for easy lookup
-      const commissions = new Map<string, CommissionReport>();
-      for (const report of commissionReports) {
-        if (report.execId) {
-          commissions.set(report.execId, report);
+        // Map commission reports by execId for easy lookup
+        const commissions = new Map<string, CommissionReport>();
+        for (const report of commissionReports) {
+          if (report.execId) {
+            commissions.set(report.execId, report);
+          }
         }
-      }
 
-      return { executions, commissions };
-    } catch (err) {
-      console.error("Failed to get executions:", err);
-      return { executions: [], commissions: new Map() };
+        return { executions, commissions };
+      } catch (err) {
+        console.error("Failed to get executions:", err);
+        // Clear cache on error so next call retries
+        this._executionsInflight = null;
+        return { executions: [] as ExecutionDetail[], commissions: new Map<string, CommissionReport>() };
+      }
+    })();
+
+    if (!hasFilter) {
+      this._executionsInflight = promise;
+      this._executionsCacheTs = now;
     }
+
+    return promise;
   }
 
   /**
