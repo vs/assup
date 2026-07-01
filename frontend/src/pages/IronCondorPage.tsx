@@ -73,9 +73,12 @@ function parseDte(expiration: string): number {
   return Math.max(0, Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
+const DEFAULT_UPDATE_INTERVAL_MS = 2000;
+
 export function IronCondorPage() {
   // Configurable symbols from settings
   const [symbols, setSymbols] = useState<string[]>(DEFAULT_SYMBOLS);
+  const [updateIntervalMs, setUpdateIntervalMs] = useState(DEFAULT_UPDATE_INTERVAL_MS);
 
   // Parameters
   const [symbol, setSymbol] = useState<string>("SPX");
@@ -149,6 +152,7 @@ export function IronCondorPage() {
     hasCallSide ? callDelta : undefined,
     wingWidth,
     mode,
+    updateIntervalMs,
   );
 
   // Active spreads via REST endpoint (polled every 10s)
@@ -172,13 +176,16 @@ export function IronCondorPage() {
     }
   }, [streamExpiration, expiration]);
 
-  // Load symbols from settings
+  // Load symbols and update interval from settings
   useEffect(() => {
-    settingsApi.get<{ symbols: string[] }>("spreads")
+    settingsApi.get<{ symbols: string[]; updateIntervalMs?: number }>("spreads")
       .then(r => {
         if (r.value?.symbols?.length > 0) {
           setSymbols(r.value.symbols);
           setSymbol(r.value.symbols[0]);
+        }
+        if (r.value?.updateIntervalMs != null) {
+          setUpdateIntervalMs(r.value.updateIntervalMs);
         }
       })
       .catch(() => {}); // Use defaults

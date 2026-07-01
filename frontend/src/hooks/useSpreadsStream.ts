@@ -32,6 +32,7 @@ export function useSpreadsStream(
   targetCallDelta?: number,
   wingWidth?: number,
   mode?: string,
+  updateIntervalMs = 2000,
 ): UseSpreadsStreamResult {
   const [chainMap, setChainMap] = useState<Map<number, IronCondorChainStrike>>(new Map());
   const [underlyingPrice, setUnderlyingPrice] = useState(0);
@@ -52,6 +53,12 @@ export function useSpreadsStream(
   // and drift monitoring. focusRange is only read on explicit reconnects.
   const focusRangeRef = useRef(focusRange);
   focusRangeRef.current = focusRange;
+
+  // Throttle: accumulate chain-update events and flush at updateIntervalMs
+  const pendingUpdatesRef = useRef<
+    Map<string, ChainUpdateEvent["updates"][number]>
+  >(new Map());
+  const pendingUnderlyingRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
     // Clean up existing connection
@@ -104,6 +111,9 @@ export function useSpreadsStream(
             for (const entry of init.chain) {
               newMap.set(entry.strike, entry);
             }
+            // Clear any stale pending updates from previous session
+            pendingUpdatesRef.current.clear();
+            pendingUnderlyingRef.current = null;
             setChainMap(newMap);
             setUnderlyingPrice(init.underlyingPrice);
             setExpirations(init.expirations);
@@ -115,32 +125,23 @@ export function useSpreadsStream(
           case "chain-update": {
             const update = data as ChainUpdateEvent;
             if (update.underlyingPrice !== undefined) {
-              setUnderlyingPrice(update.underlyingPrice);
+              pendingUnderlyingRef.current = update.underlyingPrice;
             }
-            if (update.updates.length > 0) {
-              setChainMap((prev) => {
-                const next = new Map(prev);
-                let changed = false;
-                for (const u of update.updates) {
-                  const existing = next.get(u.strike);
-                  if (!existing) continue;
-                  const side = u.right === "P" ? "put" : "call";
-                  const opt = existing[side];
-                  if (!opt) continue;
-                  const updated: IronCondorChainOption = {
-                    ...opt,
-                    ...(u.bid !== undefined && { bid: u.bid }),
-                    ...(u.ask !== undefined && { ask: u.ask }),
-                    ...(u.mid !== undefined && { mid: u.mid }),
-                    ...(u.delta !== undefined && { delta: u.delta }),
-                    ...(u.iv !== undefined && { iv: u.iv }),
-                    ...(u.last !== undefined && { last: u.last }),
-                  };
-                  next.set(u.strike, { ...existing, [side]: updated });
-                  changed = true;
-                }
-                return changed ? next : prev;
-              });
+            // Accumulate updates — latest value per strike:right wins
+            for (const u of update.updates) {
+              const key = `${u.strike}:${u.right}`;
+              const existing = pendingUpdatesRef.current.get(key);
+              pendingUpdatesRef.current.set(key, existing ? {
+                ...existing,
+                ...u,
+                // Only overwrite fields that are present in this tick
+                ...(u.bid !== undefined && { bid: u.bid }),
+                ...(u.ask !== undefined && { ask: u.ask }),
+                ...(u.mid !== undefined && { mid: u.mid }),
+                ...(u.delta !== undefined && { delta: u.delta }),
+                ...(u.iv !== undefined && { iv: u.iv }),
+                ...(u.last !== undefined && { last: u.last }),
+              } : u);
             }
             break;
           }
@@ -223,6 +224,51 @@ export function useSpreadsStream(
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [connect]);
+
+  // Periodic flush: apply accumulated chain updates to React state
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const hasPending = pendingUpdatesRef.current.size > 0;
+      const hasUnderlying = pendingUnderlyingRef.current !== null;
+      if (!hasPending && !hasUnderlying) return;
+
+      if (hasUnderlying) {
+        setUnderlyingPrice(pendingUnderlyingRef.current!);
+        pendingUnderlyingRef.current = null;
+      }
+
+      if (hasPending) {
+        const batch = pendingUpdatesRef.current;
+        pendingUpdatesRef.current = new Map();
+
+        setChainMap((prev) => {
+          const next = new Map(prev);
+          let changed = false;
+          for (const [, u] of batch) {
+            const existing = next.get(u.strike);
+            if (!existing) continue;
+            const side = u.right === "P" ? "put" : "call";
+            const opt = existing[side];
+            if (!opt) continue;
+            const updated: IronCondorChainOption = {
+              ...opt,
+              ...(u.bid !== undefined && { bid: u.bid }),
+              ...(u.ask !== undefined && { ask: u.ask }),
+              ...(u.mid !== undefined && { mid: u.mid }),
+              ...(u.delta !== undefined && { delta: u.delta }),
+              ...(u.iv !== undefined && { iv: u.iv }),
+              ...(u.last !== undefined && { last: u.last }),
+            };
+            next.set(u.strike, { ...existing, [side]: updated });
+            changed = true;
+          }
+          return changed ? next : prev;
+        });
+      }
+    }, Math.max(100, updateIntervalMs));
+
+    return () => clearInterval(interval);
+  }, [updateIntervalMs]);
 
   // Derive sorted chain array from Map
   const chain = useMemo(() => {
