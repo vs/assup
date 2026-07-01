@@ -41,13 +41,19 @@ export class DashboardService {
 
     // Get unrealized/projected from IBKR positions
     let unrealized: number | null = null;
+    // Sum projected across ALL months (current + future), not just current month
     let projected: number | null = null;
 
     if (includesCurrentMonth) {
       const currentMonth = await this.profitService.getCurrentMonthProfit();
       unrealized = currentMonth.unrealized.value;
-      projected = currentMonth.projected.value;
       currentMonthProjected = currentMonth.projected.value;
+
+      let totalProjected = 0;
+      for (const [, value] of projectedByMonth) {
+        totalProjected += value;
+      }
+      projected = totalProjected > 0 ? totalProjected : null;
     }
 
     const total = realized + (unrealized ?? 0) + (projected ?? 0);
