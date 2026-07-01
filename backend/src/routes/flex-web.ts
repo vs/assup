@@ -4,6 +4,7 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { flexWebConfigSchema, flexFetchLogQuerySchema } from "@assup/shared";
 import { flexWebService } from "../services/flex-web.service.js";
+import { schedulerService } from "../services/research/scheduler.service.js";
 
 const router = Router();
 
@@ -31,6 +32,10 @@ router.put(
       return;
     }
     await flexWebService.updateConfig(req.body);
+    // Refresh the cron job if scheduler is enabled
+    if (process.env.SCHEDULER_ENABLED === "true") {
+      await schedulerService.refreshFlexSchedule();
+    }
     res.json({ success: true });
   })
 );
