@@ -5,6 +5,8 @@ export interface SpreadStreamInitEvent {
   expirations: string[];
   selectedExpiration: string;
   chain: IronCondorChainStrike[];
+  /** true when backend is in scout phase — frontend should not auto-select yet */
+  scouting: boolean;
 }
 
 export interface ChainUpdateEvent {

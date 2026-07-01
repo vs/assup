@@ -138,6 +138,7 @@ export function IronCondorPage() {
     status,
     error,
     refocusedCount,
+    scouting,
     reconnect,
   } = useSpreadsStream(
     symbol,
@@ -216,6 +217,9 @@ export function IronCondorPage() {
     // Skip if already auto-selected for this expiration or no chain data
     if (autoSelectDoneRef.current) return;
     if (chain.length === 0 || !chainHasDeltas) return;
+    // Don't auto-select during scout phase — sparse data leads to wrong picks.
+    // Wait for the backend to transition to focused mode (refocused event).
+    if (scouting) return;
 
     const newLegs: SpreadSelectedLegs = { buyPut: null, sellPut: null, sellCall: null, buyCall: null };
 
@@ -253,7 +257,7 @@ export function IronCondorPage() {
       autoSelectDoneRef.current = true;
       setSelectedLegs(newLegs);
     }
-  }, [chain, chainHasDeltas, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide]);
+  }, [chain, chainHasDeltas, scouting, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide]);
 
   // Re-run auto-select when user changes delta/wingWidth parameters.
   // Just reset the flag — the auto-select effect will re-run immediately

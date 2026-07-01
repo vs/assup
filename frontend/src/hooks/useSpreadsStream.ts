@@ -18,6 +18,8 @@ interface UseSpreadsStreamResult {
   status: StreamStatus;
   error: string | null;
   refocusedCount: number;
+  /** true while backend is in scout phase — auto-select should wait */
+  scouting: boolean;
   reconnect: () => void;
 }
 
@@ -38,12 +40,18 @@ export function useSpreadsStream(
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [refocusedCount, setRefocusedCount] = useState(0);
+  const [scouting, setScouting] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
   // Stable client ID so the backend can destroy the previous session on reconnect
   const clientIdRef = useRef(`c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  // Use ref for focusRange to avoid triggering reconnects when auto-select
+  // updates selectedLegs → focusRange. The backend handles focus via target deltas
+  // and drift monitoring. focusRange is only read on explicit reconnects.
+  const focusRangeRef = useRef(focusRange);
+  focusRangeRef.current = focusRange;
 
   const connect = useCallback(() => {
     // Clean up existing connection
@@ -61,9 +69,11 @@ export function useSpreadsStream(
     if (selectedStrikes && selectedStrikes.length > 0) {
       params.set("strikes", selectedStrikes.join(","));
     }
-    if (focusRange) {
-      params.set("focusMin", String(focusRange.min));
-      params.set("focusMax", String(focusRange.max));
+    // Read focusRange from ref (not closure) — avoids reconnect on auto-select changes
+    const currentFocusRange = focusRangeRef.current;
+    if (currentFocusRange) {
+      params.set("focusMin", String(currentFocusRange.min));
+      params.set("focusMax", String(currentFocusRange.max));
     }
     if (targetPutDelta != null) params.set("targetPutDelta", String(targetPutDelta));
     if (targetCallDelta != null) params.set("targetCallDelta", String(targetCallDelta));
@@ -98,6 +108,7 @@ export function useSpreadsStream(
             setUnderlyingPrice(init.underlyingPrice);
             setExpirations(init.expirations);
             setSelectedExpiration(init.selectedExpiration);
+            setScouting(init.scouting ?? false);
             break;
           }
 
@@ -137,6 +148,7 @@ export function useSpreadsStream(
           case "refocused": {
             // Backend transitioned to dense focused subscription —
             // signal parent to re-run auto-select with more accurate delta data
+            setScouting(false);
             setRefocusedCount((c) => c + 1);
             break;
           }
@@ -168,10 +180,11 @@ export function useSpreadsStream(
 
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
-  // Note: wingWidth intentionally excluded — it's a hint for the backend's focus
-  // range but changing it should NOT trigger a reconnection. The frontend handles
-  // wing width changes by re-running auto-select on the existing chain data.
-  }, [symbol, expiration, selectedStrikes, focusRange, targetPutDelta, targetCallDelta, mode]);
+  // Note: wingWidth and focusRange intentionally excluded — wingWidth is a hint
+  // for the backend's focus, focusRange is read from a ref to avoid reconnection
+  // when auto-select updates selectedLegs. The backend handles focus via target
+  // deltas and drift monitoring; focusRange is only sent on explicit reconnects.
+  }, [symbol, expiration, selectedStrikes, targetPutDelta, targetCallDelta, mode]);
 
   // Connect on mount and when params change
   useEffect(() => {
@@ -229,6 +242,7 @@ export function useSpreadsStream(
     status,
     error,
     refocusedCount,
+    scouting,
     reconnect,
   };
 }
