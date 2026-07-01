@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Plus, X, Save } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,10 +28,25 @@ export function SpreadsSection() {
   const [symbols, setSymbols] = useState<string[]>(DEFAULT_SYMBOLS);
   const [updateIntervalMs, setUpdateIntervalMs] = useState(DEFAULT_UPDATE_INTERVAL_MS);
   const [newSymbol, setNewSymbol] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  // Refs to always have current values for the save function
+  const symbolsRef = useRef(symbols);
+  symbolsRef.current = symbols;
+  const intervalRef = useRef(updateIntervalMs);
+  intervalRef.current = updateIntervalMs;
+
+  const save = useCallback(async (syms: string[], interval: number) => {
+    try {
+      await settingsApi.set<SpreadsSettings>("spreads", {
+        symbols: syms,
+        updateIntervalMs: interval,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    }
+  }, []);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -64,32 +79,26 @@ export function SpreadsSection() {
       setError(`Maximum ${MAX_SYMBOLS} symbols allowed`);
       return;
     }
-    setSymbols([...symbols, sym]);
+    const next = [...symbols, sym];
+    setSymbols(next);
     setNewSymbol("");
     setError(null);
+    save(next, intervalRef.current);
   };
 
   const handleRemove = (sym: string) => {
-    setSymbols(symbols.filter(s => s !== sym));
-  };
-
-  const handleSave = async () => {
-    if (symbols.length === 0) {
+    const next = symbols.filter(s => s !== sym);
+    if (next.length === 0) {
       setError("At least one symbol is required");
       return;
     }
-    setSaving(true);
-    setError(null);
-    setSaveSuccess(false);
-    try {
-      await settingsApi.set<SpreadsSettings>("spreads", { symbols, updateIntervalMs });
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
+    setSymbols(next);
+    save(next, intervalRef.current);
+  };
+
+  const handleIntervalChange = (value: number) => {
+    setUpdateIntervalMs(value);
+    save(symbolsRef.current, value);
   };
 
   if (!loaded) return null;
@@ -148,17 +157,6 @@ export function SpreadsSection() {
               </Button>
             </div>
           )}
-
-          {/* Save button */}
-          <div className="flex items-center gap-3">
-            <Button onClick={handleSave} disabled={saving}>
-              <Save className="h-4 w-4 mr-1" />
-              {saving ? "Saving..." : "Save"}
-            </Button>
-            {saveSuccess && (
-              <span className="text-sm text-green-600">Saved</span>
-            )}
-          </div>
         </CardContent>
       </Card>
 
@@ -178,7 +176,7 @@ export function SpreadsSection() {
               {UPDATE_INTERVAL_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
-                  onClick={() => setUpdateIntervalMs(opt.value)}
+                  onClick={() => handleIntervalChange(opt.value)}
                   className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                     updateIntervalMs === opt.value
                       ? "bg-primary text-primary-foreground"
@@ -189,16 +187,6 @@ export function SpreadsSection() {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button onClick={handleSave} disabled={saving}>
-              <Save className="h-4 w-4 mr-1" />
-              {saving ? "Saving..." : "Save"}
-            </Button>
-            {saveSuccess && (
-              <span className="text-sm text-green-600">Saved</span>
-            )}
           </div>
         </CardContent>
       </Card>
