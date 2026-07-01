@@ -19,3 +19,4 @@ export * from "./research.js";
 export * from "./tickerProfile.js";
 export * from "./ironCondor.js";
 export * from "./dashboard.js";
+export * from "./flex-web.js";
