@@ -141,16 +141,30 @@ class ProfitService {
       },
     });
 
+    // Merge today's TWS executions so current-month data includes live trades
+    const now = new Date();
+    const rangeIncludesCurrentMonth =
+      start <= today && end >= new Date(now.getFullYear(), now.getMonth(), 1);
+    const todayOptExecutions = rangeIncludesCurrentMonth
+      ? await this.getTodayExecutions()
+      : [];
+    const todayStockExecutions = rangeIncludesCurrentMonth
+      ? await this.getTodayStockExecutions()
+      : [];
+
+    // Add today's OPT executions to closing trades for contract key matching
+    const allClosing = [...closingTrades, ...todayOptExecutions];
+
     // Get unique contract keys for trades that closed in this period
     const contractKeys = new Set(
-      closingTrades.map(
+      allClosing.map(
         (t) => `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
       )
     );
 
     // Fetch option trades scoped to contracts that closed in this period
     const closingConIds = [...new Set(
-      closingTrades.map(t => t.conId).filter((id): id is number => id !== null && id !== 0)
+      allClosing.map(t => t.conId).filter((id): id is number => id !== null && id !== 0)
     )];
 
     let optionTrades: typeof closingTrades;
@@ -172,14 +186,36 @@ class ProfitService {
       });
     }
 
+    // Merge today's OPT executions into the trade list (deduplicate by tradeId)
+    if (todayOptExecutions.length > 0) {
+      const existingTradeIds = new Set(optionTrades.map((t) => t.tradeId).filter(Boolean));
+      const newTrades = todayOptExecutions.filter(
+        (t) => !t.tradeId || !existingTradeIds.has(t.tradeId)
+      );
+      optionTrades = [...optionTrades, ...newTrades].sort(
+        (a, b) => a.tradeDate.getTime() - b.tradeDate.getTime()
+      );
+    }
+
     // Get all stock trades in range
-    const stockTrades = await prisma.importedTrade.findMany({
+    let stockTrades = await prisma.importedTrade.findMany({
       where: {
         tradeDate: { gte: start, lte: end },
         secType: "STK",
       },
       orderBy: { tradeDate: "asc" },
     });
+
+    // Merge today's STK executions (deduplicate by tradeId)
+    if (todayStockExecutions.length > 0) {
+      const existingTradeIds = new Set(stockTrades.map((t) => t.tradeId).filter(Boolean));
+      const newTrades = todayStockExecutions.filter(
+        (t) => !t.tradeId || !existingTradeIds.has(t.tradeId)
+      );
+      stockTrades = [...stockTrades, ...newTrades].sort(
+        (a, b) => a.tradeDate.getTime() - b.tradeDate.getTime()
+      );
+    }
 
     // Get all cash transactions in range
     const cashTransactions = await prisma.cashTransaction.findMany({
@@ -304,7 +340,7 @@ class ProfitService {
     }
 
     // Calculate totals
-    let months: MonthSummary[] = Array.from(monthMap.values()).map((m) => ({
+    const months: MonthSummary[] = Array.from(monthMap.values()).map((m) => ({
       ...m,
       total:
         m.optionsProfit +
@@ -315,22 +351,6 @@ class ProfitService {
         m.withholdingTax +
         m.fees,
     }));
-
-    // Replace the current month with TWS-inclusive data from getMonthDetail()
-    // so that today's trades (fetched from TWS) are reflected in the totals.
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
-    const hasCurrentMonth = months.some(
-      (m) => `${m.year}-${m.month}` === currentMonthKey,
-    );
-    if (hasCurrentMonth) {
-      const detail = await this.getMonthDetail(now.getFullYear(), now.getMonth() + 1);
-      months = months.map((m) =>
-        m.year === now.getFullYear() && m.month === now.getMonth() + 1
-          ? detail.summary
-          : m,
-      );
-    }
 
     const totals = months.reduce(
       (acc, m) => ({
