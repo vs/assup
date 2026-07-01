@@ -8,75 +8,49 @@ export class DashboardService {
     const now = new Date();
     const { startDate, endDate, includesCurrentMonth } = this.getDateRange(period, year);
 
-    const [monthlyData, currentMonth, currentMonthDetail, projectedByMonth] = await Promise.all([
+    // getMonthlyProfits() already includes TWS data for the current month,
+    // so monthlyData.months and monthlyData.totals are TWS-inclusive.
+    const [monthlyData, projectedByMonth] = await Promise.all([
       this.profitService.getMonthlyProfits(startDate, endDate),
-      this.profitService.getCurrentMonthProfit(),
-      this.profitService.getMonthDetail(now.getFullYear(), now.getMonth() + 1),
       this.profitService.getProjectedByMonth(),
     ]);
 
-    // For MTD, build daily chart data from month detail instead of monthly aggregates
+    // For MTD, we need full trade-level detail for the daily chart.
+    // For unrealized/projected we need current positions from IBKR.
     let chart: ChartDataPoint[];
     let strategies: DashboardSummary["strategies"];
 
     if (period === "mtd") {
-      const monthDetail = await this.profitService.getMonthDetail(now.getFullYear(), now.getMonth() + 1);
-      chart = this.buildDailyChartData(monthDetail);
-      strategies = this.buildStrategiesFromDetail(monthDetail);
+      const currentMonthDetail = await this.profitService.getMonthDetail(now.getFullYear(), now.getMonth() + 1);
+      chart = this.buildDailyChartData(currentMonthDetail);
+      strategies = this.buildStrategiesFromDetail(currentMonthDetail);
     } else {
       chart = this.buildChartData(monthlyData.months);
       strategies = this.buildStrategies(monthlyData.months);
     }
 
-    // Use monthlyData totals as base, then replace current month with
-    // the detail data that includes today's TWS trades.
-    let realized = monthlyData.totals.optionsProfit
-      + monthlyData.totals.spreadsProfit
-      + monthlyData.totals.stocksProfit
-      + monthlyData.totals.dividends
-      + monthlyData.totals.interest
-      + monthlyData.totals.withholdingTax
-      + monthlyData.totals.fees;
+    // Totals already include TWS data for the current month
+    const realized = monthlyData.totals.total;
+
+    // Current month realized from the already TWS-inclusive monthly data
+    const currentMonthEntry = monthlyData.months.find(
+      (m) => m.year === now.getFullYear() && m.month === now.getMonth() + 1,
+    );
+    let currentMonthRealized = currentMonthEntry?.total ?? 0;
+    let currentMonthProjected = 0;
+
+    // Get unrealized/projected from IBKR positions
+    let unrealized: number | null = null;
+    let projected: number | null = null;
 
     if (includesCurrentMonth) {
-      // Subtract the FLEX-only current month from totals and add the
-      // detail-based total (which includes today's TWS executions).
-      const currentKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
-      const flexMonth = monthlyData.months.find(
-        (m) => `${m.year}-${m.month}` === currentKey,
-      );
-      if (flexMonth) {
-        realized = realized - flexMonth.total + currentMonthDetail.summary.total;
-      }
+      const currentMonth = await this.profitService.getCurrentMonthProfit();
+      unrealized = currentMonth.unrealized.value;
+      projected = currentMonth.projected.value;
+      currentMonthProjected = currentMonth.projected.value;
     }
-
-    const unrealized = includesCurrentMonth ? currentMonth.unrealized.value : null;
-    const projected = includesCurrentMonth ? currentMonth.projected.value : null;
 
     const total = realized + (unrealized ?? 0) + (projected ?? 0);
-
-    // Replace current month's chart point with data from getMonthDetail,
-    // which includes today's TWS executions (getMonthlyProfits only has FLEX imports).
-    if (includesCurrentMonth && period !== "mtd") {
-      const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const currentPoint = chart.find((p) => p.period === currentPeriod);
-      if (currentPoint) {
-        const s = currentMonthDetail.summary;
-        const divInt = s.dividends + s.interest + s.withholdingTax;
-        currentPoint.options = s.optionsProfit;
-        currentPoint.spreads = s.spreadsProfit;
-        currentPoint.stocks = s.stocksProfit;
-        currentPoint.dividendsInterest = divInt;
-        currentPoint.fees = s.fees;
-        currentPoint.total = s.total;
-        // Recompute cumulative for this and all subsequent points
-        const idx = chart.indexOf(currentPoint);
-        const prevCum = idx > 0 ? chart[idx - 1].cumulative : 0;
-        for (let i = idx; i < chart.length; i++) {
-          chart[i].cumulative = (i > 0 ? chart[i - 1].cumulative : 0) + chart[i].total;
-        }
-      }
-    }
 
     // Attach projected values to chart data points for all months with
     // open short options (current month + future months).
@@ -112,9 +86,9 @@ export class DashboardService {
 
     return {
       currentMonthPace: {
-        realized: currentMonth.realized.total,
-        projected: currentMonth.projected.value,
-        estimatedTotal: currentMonth.realized.total + currentMonth.projected.value,
+        realized: currentMonthRealized,
+        projected: currentMonthProjected,
+        estimatedTotal: currentMonthRealized + currentMonthProjected,
         daysRemaining,
       },
       periodTotal: {

@@ -304,7 +304,7 @@ class ProfitService {
     }
 
     // Calculate totals
-    const months = Array.from(monthMap.values()).map((m) => ({
+    let months: MonthSummary[] = Array.from(monthMap.values()).map((m) => ({
       ...m,
       total:
         m.optionsProfit +
@@ -315,6 +315,22 @@ class ProfitService {
         m.withholdingTax +
         m.fees,
     }));
+
+    // Replace the current month with TWS-inclusive data from getMonthDetail()
+    // so that today's trades (fetched from TWS) are reflected in the totals.
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+    const hasCurrentMonth = months.some(
+      (m) => `${m.year}-${m.month}` === currentMonthKey,
+    );
+    if (hasCurrentMonth) {
+      const detail = await this.getMonthDetail(now.getFullYear(), now.getMonth() + 1);
+      months = months.map((m) =>
+        m.year === now.getFullYear() && m.month === now.getMonth() + 1
+          ? detail.summary
+          : m,
+      );
+    }
 
     const totals = months.reduce(
       (acc, m) => ({
@@ -929,7 +945,7 @@ class ProfitService {
    */
   private async getMonthProfitView(
     year: number,
-    month: number
+    month: number,
   ): Promise<MonthProfitView> {
     // Get realized data
     const detail = await this.getMonthDetail(year, month);
