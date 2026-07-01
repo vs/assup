@@ -29,6 +29,7 @@ import ironCondorRouter from "./routes/ironCondor.js";
 import spreadsRouter from "./routes/spreads.js";
 import spreadStreamRouter from "./routes/spreadStream.js";
 import dashboardRouter from "./routes/dashboard.js";
+import flexWebRouter from "./routes/flex-web.js";
 import { scanJobService } from "./services/scanJob.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
 import { initAnalyzers } from "./services/research/analyzers/index.js";
@@ -110,6 +111,7 @@ app.use("/api/spreads/close", orderLimiter as any);
 app.use("/api/spreads", spreadStreamRouter);
 app.use("/api/spreads", spreadsRouter);
 app.use("/api/dashboard", dashboardRouter);
+app.use("/api/flex-web", flexWebRouter);
 
 app.get("/api/health", asyncHandler(async (req, res) => {
   const assetClassCount = await prisma.assetClass.count();
