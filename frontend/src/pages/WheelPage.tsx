@@ -90,6 +90,13 @@ export function WheelPage() {
   // Global keyboard capture: typing letters focuses the filter input automatically
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape → clear filter (works even when focused in the filter input)
+      if (e.key === "Escape" && filter) {
+        setFilter("");
+        filterRef.current?.blur();
+        return;
+      }
+
       // Skip if user is already in an input/textarea/dialog
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -98,11 +105,6 @@ export function WheelPage() {
       // Single letter/digit → focus filter and let the keystroke through
       if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
         filterRef.current?.focus();
-      }
-      // Escape → clear filter
-      if (e.key === "Escape" && filter) {
-        setFilter("");
-        filterRef.current?.blur();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
