@@ -4,14 +4,18 @@ Asset allocation manager for personal investment portfolios with Interactive Bro
 
 ## Features
 
-- **Dashboard** — Current vs. target allocation with options exposure (notional/delta-weighted)
-- **Positions** — IBKR positions with asset class assignments and filtering
+- **Dashboard** — Profit analytics with MTD/YTD/Annual/All-time periods, strategy-based P&L breakdown, projected P&L from short options, pace metrics, and cumulative charts
+- **Positions** — IBKR positions with asset class grouping, options exposure (notional/delta-weighted), unrealized P&L, and allocation tracking
 - **Watchlists** — Track securities with TradingView chart integration and scanner shortcuts
-- **Options Scanner** — Find options opportunities, place orders directly, external research links
-- **Profit Tracker** — Import IBKR FLEX reports to track realized P&L, dividends, interest, and withholding tax
-- **Taxes** — Czech tax compliance with FIFO lot matching, CZK conversion via CNB rates, 3-year and 100k CZK exemption tracking
-- **Wheel Strategy** — Track and manage wheel strategy positions across symbols
-- **Research** — AI-powered stock research with multi-source data collection, analysis, and report synthesis
+- **Options Scanner** — Find PUT/CALL opportunities for underinvested asset classes, background scanning with progress tracking, direct order placement
+- **Spreads / Iron Condors** — Build and manage options spreads on SPX/XSP/RUT with real-time chain streaming, smart delta-based strike selection, active spread detection, and combo order placement
+- **Ticker Profiles** — Company intelligence from Polygon.io (sector, market cap, P/E, dividends), real-time IBKR quotes, price charts, and latest research report
+- **Profit Tracker** — Import IBKR FLEX reports (XML/CSV) to track realized P&L, dividends, interest, withholding tax, with multi-currency support and deduplication
+- **Taxes** — Czech tax compliance with FIFO lot matching, CZK conversion via CNB rates, 3-year and 100k CZK exemption tracking, income basket separation, CSV export
+- **Wheel Strategy** — Track wheel positions with trade history, P&L summaries, auto-suggestions, and precomputed caching
+- **Research** — AI-powered stock research with 12+ data collectors, 9+ analyzers, and Claude-synthesized reports with BUY/HOLD/SELL recommendations
+- **Market Scanner** — TWS stock scanner integration with technical filters (SMA, RSI), preset scheduling, and auto-ticker discovery
+- **Live Macro** — Real-time VIX/SPX streaming with fear/greed regime classification via SSE
 - **Asset Classes** — Define custom categories and allocation targets with multiple profiles
 - **Desktop App** — Native desktop wrapper via Tauri
 
