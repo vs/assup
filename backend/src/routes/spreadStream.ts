@@ -28,13 +28,14 @@ router.get("/stream", (req: Request, res: Response) => {
   const wingWidth = req.query.wingWidth ? Number(req.query.wingWidth) : undefined;
   const mode = req.query.mode as string | undefined;
 
-  // Destroy previous session for this client before starting a new one.
-  // This ensures market data lines are freed even if req.on("close") from
-  // the old connection hasn't fired yet (common with rapid reconnects).
-  const prev = activeSessions.get(clientId);
-  if (prev) {
+  // Destroy ALL previous sessions before starting a new one.
+  // Market data lines are a shared limited resource (100 total) — only one
+  // spread stream session is supported at a time. This also handles stale
+  // sessions from closed tabs where req.on("close") hasn't fired yet
+  // (common in Docker due to TCP keepalive delays).
+  for (const [id, prev] of activeSessions) {
     prev.destroy();
-    activeSessions.delete(clientId);
+    activeSessions.delete(id);
   }
 
   // SSE headers
