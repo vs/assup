@@ -17,6 +17,7 @@ export interface ImportResult {
   filename: string;
   periodStart: string;
   periodEnd: string;
+  duplicate?: boolean;
   stats: {
     tradesImported: number;
     tradesSkipped: number;

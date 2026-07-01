@@ -95,6 +95,7 @@ class ImportService {
         filename: existingBatch.filename,
         periodStart: existingBatch.periodStart.toISOString().split("T")[0],
         periodEnd: existingBatch.periodEnd.toISOString().split("T")[0],
+        duplicate: true,
         stats: {
           tradesImported: 0,
           tradesSkipped: existingBatch.recordCount,
