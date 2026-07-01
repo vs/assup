@@ -4,6 +4,7 @@ import { collectionService } from "./collection.service.js";
 import { macroService } from "./macro.service.js";
 import { pipelineService } from "./pipeline.service.js";
 import { marketScannerService } from "./market-scanner.service.js";
+import { flexWebService } from "../flex-web.service.js";
 
 
 const DAILY_SOURCES = [
@@ -28,6 +29,7 @@ async function processBatched<T>(
 class SchedulerService {
   private jobs: cron.ScheduledTask[] = [];
   private scannerJobs: cron.ScheduledTask[] = [];
+  private flexJob: cron.ScheduledTask | null = null;
 
   /**
    * Start all scheduled cron jobs.
@@ -68,6 +70,11 @@ class SchedulerService {
       console.error("[Scheduler] Failed to load scanner schedules:", (err as Error).message);
     });
 
+    // FLEX Web Service auto-import
+    this.startFlexFetchJob().catch((err) =>
+      console.error("Failed to start FLEX fetch job:", err)
+    );
+
     console.log("[Scheduler] All jobs scheduled.");
   }
 
@@ -85,6 +92,11 @@ class SchedulerService {
       job.stop();
     }
     this.scannerJobs = [];
+
+    if (this.flexJob) {
+      this.flexJob.stop();
+      this.flexJob = null;
+    }
 
     console.log("[Scheduler] All jobs stopped.");
   }
@@ -130,6 +142,30 @@ class SchedulerService {
     }
 
     console.log(`[Scheduler] Loaded ${this.scannerJobs.length} scanner schedules`);
+  }
+
+  private async startFlexFetchJob(): Promise<void> {
+    const config = await flexWebService.getConfig();
+    if (!config.enabled) return;
+
+    this.flexJob = cron.schedule(
+      config.schedule,
+      () => {
+        flexWebService.fetchAndImport("schedule").catch((err) =>
+          console.error("Scheduled FLEX fetch failed:", err)
+        );
+      },
+      { timezone: "America/New_York" }
+    );
+    console.log(`FLEX auto-import scheduled: ${config.schedule} ET`);
+  }
+
+  async refreshFlexSchedule(): Promise<void> {
+    if (this.flexJob) {
+      this.flexJob.stop();
+      this.flexJob = null;
+    }
+    await this.startFlexFetchJob();
   }
 
   /**
