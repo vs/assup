@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Eye, EyeOff, RefreshCw, Save } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { Link } from "react-router-dom";
 import { flexWebApi } from "@/api/flex-web";
 import type { FlexWebConfig } from "@assup/shared";
 
@@ -86,8 +87,8 @@ function describeCronSchedule(cron: string): string {
   }
 
   return dayStr === "daily"
-    ? `At ${timeStr}, daily`
-    : `At ${timeStr}, ${dayStr}`;
+    ? `At ${timeStr} ET, daily`
+    : `At ${timeStr} ET, ${dayStr}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +249,7 @@ export function FlexAutoImportSection() {
               ? configQuery.error.message
               : "Failed to load config"
           }
-          onDismiss={() => {}}
+          onDismiss={() => configQuery.refetch()}
         />
       )}
 
@@ -399,8 +400,8 @@ export function FlexAutoImportSection() {
                 </TableHeader>
                 <TableBody>
                   {logs.map((entry) => (
-                    <>
-                      <TableRow key={entry.id}>
+                    <Fragment key={entry.id}>
+                      <TableRow>
                         <TableCell className="font-mono text-sm">
                           {new Date(entry.startedAt).toLocaleString()}
                         </TableCell>
@@ -418,17 +419,17 @@ export function FlexAutoImportSection() {
                         </TableCell>
                         <TableCell>
                           {entry.importBatchId && (
-                            <a
-                              href="/settings/imports"
+                            <Link
+                              to="/settings/imports"
                               className="text-xs text-primary underline-offset-4 hover:underline"
                             >
                               View import
-                            </a>
+                            </Link>
                           )}
                         </TableCell>
                       </TableRow>
                       {entry.error && (
-                        <TableRow key={`${entry.id}-error`} className="bg-muted/50">
+                        <TableRow className="bg-muted/50">
                           <TableCell
                             colSpan={6}
                             className="text-xs text-muted-foreground font-mono py-1 pl-4"
@@ -437,7 +438,7 @@ export function FlexAutoImportSection() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>

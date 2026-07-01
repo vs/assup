@@ -29,10 +29,13 @@ export class FlexWebService {
     schedule?: string;
     enabled?: boolean;
   }) {
-    const entries = Object.entries(config).map(([k, v]) => ({
-      key: `flex.${k}`,
-      value: v,
-    }));
+    const entries = Object.entries(config)
+      // Skip masked token — don't overwrite the real value
+      .filter(([k, v]) => !(k === "token" && typeof v === "string" && v.startsWith("••••")))
+      .map(([k, v]) => ({
+        key: `flex.${k}`,
+        value: v,
+      }));
     for (const { key, value } of entries) {
       await prisma.setting.upsert({
         where: { key },

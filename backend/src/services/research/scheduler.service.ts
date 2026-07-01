@@ -148,6 +148,11 @@ class SchedulerService {
     const config = await flexWebService.getConfig();
     if (!config.enabled) return;
 
+    if (!cron.validate(config.schedule)) {
+      console.warn(`[Scheduler] Invalid FLEX cron expression: ${config.schedule}`);
+      return;
+    }
+
     this.flexJob = cron.schedule(
       config.schedule,
       () => {
