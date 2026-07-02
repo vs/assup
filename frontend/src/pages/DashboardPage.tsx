@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/common";
 import { CurrentMonthPace } from "@/components/dashboard/CurrentMonthPace";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { PnlChart } from "@/components/dashboard/PnlChart";
-import { StrategyBreakdown } from "@/components/dashboard/StrategyBreakdown";
+import { UpcomingEvents } from "@/components/dashboard/UpcomingEvents";
 import { MetricsRow } from "@/components/dashboard/MetricsRow";
 import { GainersLosers } from "@/components/dashboard/GainersLosers";
 import { ActiveWheelsList } from "@/components/dashboard/ActiveWheelsList";
@@ -89,7 +89,7 @@ export function DashboardPage() {
         </div>
         <div className="col-span-2 flex flex-col gap-3">
           {data && <CurrentMonthPace data={data.currentMonthPace} />}
-          {data && <StrategyBreakdown strategies={data.strategies} />}
+          <UpcomingEvents />
         </div>
       </div>
 
