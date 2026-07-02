@@ -16,6 +16,7 @@ import type {
 import { DEFAULT_SCANNER_CRITERIA } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
 import { TickerPositionInfo } from "@/components/ticker/TickerPositionInfo";
+import { TickerEventsCard } from "@/components/calendar/TickerEventsCard";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -241,7 +242,7 @@ function CompanyInfoPanel({
   } | null;
 
   return (
-    <Card className="lg:col-span-2">
+    <Card>
       <CardContent className="py-3 px-4">
         {/* Company Overview */}
         {report?.companyOverview ? (
@@ -1481,16 +1482,19 @@ export function ResearchReportPage() {
         {/* Chart — 3 of 5 columns (memoized to prevent re-mount on parent re-renders) */}
         {chartElement}
 
-        {/* Company Info Panel — 2 of 5 columns */}
-        <CompanyInfoPanel
-          report={report}
-          analyses={analyses}
-          techD={techD}
-          socialD={socialD}
-          fundD={fundD}
-          optD={optD}
-          profile={tickerProfile}
-        />
+        {/* Right sidebar — 2 of 5 columns */}
+        <div className="lg:col-span-2 flex flex-col gap-4">
+          <CompanyInfoPanel
+            report={report}
+            analyses={analyses}
+            techD={techD}
+            socialD={socialD}
+            fundD={fundD}
+            optD={optD}
+            profile={tickerProfile}
+          />
+          <TickerEventsCard symbol={symbol} />
+        </div>
       </div>
 
       {/* Summary */}
