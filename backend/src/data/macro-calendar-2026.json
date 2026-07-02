@@ -1,0 +1,52 @@
+{
+  "2026": {
+    "FOMC": [
+      { "date": "2026-01-28", "title": "FOMC Meeting Decision" },
+      { "date": "2026-03-18", "title": "FOMC Meeting Decision" },
+      { "date": "2026-05-06", "title": "FOMC Meeting Decision" },
+      { "date": "2026-06-17", "title": "FOMC Meeting Decision" },
+      { "date": "2026-07-29", "title": "FOMC Meeting Decision" },
+      { "date": "2026-09-16", "title": "FOMC Meeting Decision" },
+      { "date": "2026-11-04", "title": "FOMC Meeting Decision" },
+      { "date": "2026-12-16", "title": "FOMC Meeting Decision" }
+    ],
+    "CPI": [
+      { "date": "2026-01-14", "title": "CPI Release (Dec)" },
+      { "date": "2026-02-11", "title": "CPI Release (Jan)" },
+      { "date": "2026-03-11", "title": "CPI Release (Feb)" },
+      { "date": "2026-04-14", "title": "CPI Release (Mar)" },
+      { "date": "2026-05-12", "title": "CPI Release (Apr)" },
+      { "date": "2026-06-10", "title": "CPI Release (May)" },
+      { "date": "2026-07-14", "title": "CPI Release (Jun)" },
+      { "date": "2026-08-12", "title": "CPI Release (Jul)" },
+      { "date": "2026-09-11", "title": "CPI Release (Aug)" },
+      { "date": "2026-10-13", "title": "CPI Release (Sep)" },
+      { "date": "2026-11-10", "title": "CPI Release (Oct)" },
+      { "date": "2026-12-10", "title": "CPI Release (Nov)" }
+    ],
+    "JOBS_REPORT": [
+      { "date": "2026-01-09", "title": "Jobs Report (Dec)" },
+      { "date": "2026-02-06", "title": "Jobs Report (Jan)" },
+      { "date": "2026-03-06", "title": "Jobs Report (Feb)" },
+      { "date": "2026-04-03", "title": "Jobs Report (Mar)" },
+      { "date": "2026-05-08", "title": "Jobs Report (Apr)" },
+      { "date": "2026-06-05", "title": "Jobs Report (May)" },
+      { "date": "2026-07-02", "title": "Jobs Report (Jun)" },
+      { "date": "2026-08-07", "title": "Jobs Report (Jul)" },
+      { "date": "2026-09-04", "title": "Jobs Report (Aug)" },
+      { "date": "2026-10-02", "title": "Jobs Report (Sep)" },
+      { "date": "2026-11-06", "title": "Jobs Report (Oct)" },
+      { "date": "2026-12-04", "title": "Jobs Report (Nov)" }
+    ],
+    "GDP": [
+      { "date": "2026-01-29", "title": "GDP Q4 Advance Estimate" },
+      { "date": "2026-03-26", "title": "GDP Q4 Second Estimate" },
+      { "date": "2026-04-29", "title": "GDP Q1 Advance Estimate" },
+      { "date": "2026-06-25", "title": "GDP Q1 Second Estimate" },
+      { "date": "2026-07-29", "title": "GDP Q2 Advance Estimate" },
+      { "date": "2026-09-24", "title": "GDP Q2 Second Estimate" },
+      { "date": "2026-10-29", "title": "GDP Q3 Advance Estimate" },
+      { "date": "2026-12-23", "title": "GDP Q3 Second Estimate" }
+    ]
+  }
+}
