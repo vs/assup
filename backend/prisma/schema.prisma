@@ -498,3 +498,33 @@ model PriceHistoryCache {
 
   @@map("price_history_cache")
 }
+
+model CalendarEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventType String   @map("event_type") @db.VarChar(30)
+  symbol    String?  @db.VarChar(20)
+  date      DateTime @db.Date
+  title     String   @db.Text
+  details   Json?    @db.JsonB
+  source    String   @db.VarChar(20)
+  sourceId  String?  @map("source_id") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([source, sourceId])
+  @@index([date])
+  @@index([symbol, date])
+  @@index([eventType, date])
+  @@map("calendar_event")
+}
+
+model CalendarSyncStatus {
+  id         String   @id @default(uuid()) @db.Uuid
+  source     String   @db.VarChar(20)
+  symbol     String?  @db.VarChar(20)
+  lastSyncAt DateTime @map("last_sync_at") @db.Timestamptz
+  nextSyncAt DateTime @map("next_sync_at") @db.Timestamptz
+
+  @@unique([source, symbol])
+  @@map("calendar_sync_status")
+}

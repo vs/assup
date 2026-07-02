@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Briefcase,
+  Calendar,
   LayoutDashboard,
   List,
   Search,
@@ -51,6 +52,7 @@ const navItems = [
   { to: "/scanner", label: "Scanner", icon: Search },
   { to: "/wheel", label: "Wheel", icon: RefreshCw },
   { to: "/spreads", label: "Spreads", icon: ArrowUpDown },
+  { to: "/calendar", label: "Calendar", icon: Calendar },
 ];
 
 export function Navigation() {

@@ -49,6 +49,13 @@ export interface DividendEvent {
   frequency: string | null;
 }
 
+export interface StockSplitEvent {
+  symbol: string;
+  executionDate: string;
+  splitFrom: number;
+  splitTo: number;
+}
+
 export interface TickerSearchResult {
   symbol: string;
   name: string;
