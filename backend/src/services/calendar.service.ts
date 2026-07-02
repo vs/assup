@@ -72,10 +72,10 @@ export class CalendarService {
     const endDate = new Date(today);
     endDate.setDate(endDate.getDate() + days);
 
-    return this.getEvents(
-      today.toISOString().split("T")[0],
-      endDate.toISOString().split("T")[0]
-    );
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    return this.getEvents(fmt(today), fmt(endDate));
   }
 
   async syncAll(): Promise<void> {
@@ -312,9 +312,9 @@ export class CalendarService {
       where: { key: "calendar.excludedEventTypes" },
       create: {
         key: "calendar.excludedEventTypes",
-        value: JSON.stringify(settings.excludedEventTypes),
+        value: settings.excludedEventTypes as unknown as Prisma.InputJsonValue,
       },
-      update: { value: JSON.stringify(settings.excludedEventTypes) },
+      update: { value: settings.excludedEventTypes as unknown as Prisma.InputJsonValue },
     });
   }
 
