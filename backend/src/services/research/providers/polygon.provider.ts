@@ -5,6 +5,7 @@ import type {
   OptionsChainEntry,
   EarningsEvent,
   DividendEvent,
+  StockSplitEvent,
   TickerSearchResult,
 } from "./types.js";
 
@@ -223,6 +224,29 @@ export class PolygonProvider implements MarketDataProvider {
       payDate: r.pay_date,
       amount: r.cash_amount,
       frequency: freqMap[r.frequency] || null,
+    }));
+  }
+
+  async getStockSplits(symbol: string): Promise<StockSplitEvent[]> {
+    const data = await this.fetch<{
+      results: Array<{
+        ticker: string;
+        execution_date: string;
+        split_from: number;
+        split_to: number;
+      }>;
+    }>(`/v3/reference/splits`, {
+      ticker: symbol,
+      limit: "10",
+      order: "desc",
+      sort: "execution_date",
+    });
+
+    return (data.results || []).map((r) => ({
+      symbol: r.ticker,
+      executionDate: r.execution_date,
+      splitFrom: r.split_from,
+      splitTo: r.split_to,
     }));
   }
 
