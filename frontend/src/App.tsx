@@ -23,6 +23,7 @@ const ResearchSection = lazy(() => import("@/pages/settings/ResearchSection").th
 const SpreadsSection = lazy(() => import("@/pages/settings/SpreadsSection").then((m) => ({ default: m.SpreadsSection })));
 const FlexAutoImportSection = lazy(() => import("@/pages/settings/FlexAutoImportSection").then((m) => ({ default: m.FlexAutoImportSection })));
 const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ default: m.CalendarPage })));
+const CalendarSection = lazy(() => import("@/pages/settings/CalendarSection").then((m) => ({ default: m.CalendarSection })));
 
 function SymbolRedirect() {
   const { symbol } = useParams();
@@ -64,6 +65,7 @@ function App() {
               <Route path="spreads" element={<SpreadsSection />} />
               <Route path="flex-import" element={<FlexAutoImportSection />} />
               <Route path="taxes" element={<TaxesPage />} />
+              <Route path="calendar" element={<CalendarSection />} />
             </Route>
           </Route>
         </Routes>
