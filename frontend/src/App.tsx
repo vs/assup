@@ -21,7 +21,6 @@ const AssetClassesSection = lazy(() => import("@/pages/settings/AssetClassesSect
 const ExchangeRatesSection = lazy(() => import("@/pages/settings/ExchangeRatesSection").then((m) => ({ default: m.ExchangeRatesSection })));
 const ResearchSection = lazy(() => import("@/pages/settings/ResearchSection").then((m) => ({ default: m.ResearchSection })));
 const SpreadsSection = lazy(() => import("@/pages/settings/SpreadsSection").then((m) => ({ default: m.SpreadsSection })));
-const FlexAutoImportSection = lazy(() => import("@/pages/settings/FlexAutoImportSection").then((m) => ({ default: m.FlexAutoImportSection })));
 const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ default: m.CalendarPage })));
 const CalendarSection = lazy(() => import("@/pages/settings/CalendarSection").then((m) => ({ default: m.CalendarSection })));
 
@@ -63,7 +62,6 @@ function App() {
               <Route path="exchange-rates" element={<ExchangeRatesSection />} />
               <Route path="research" element={<ResearchSection />} />
               <Route path="spreads" element={<SpreadsSection />} />
-              <Route path="flex-import" element={<FlexAutoImportSection />} />
               <Route path="taxes" element={<TaxesPage />} />
               <Route path="calendar" element={<CalendarSection />} />
             </Route>

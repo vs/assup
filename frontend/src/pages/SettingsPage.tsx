@@ -3,7 +3,6 @@ import { PageHeader } from "@/components/common";
 
 const settingsTabs = [
   { to: "/settings/imports", label: "FLEX Imports" },
-  { to: "/settings/flex-import", label: "FLEX Auto-Import" },
   { to: "/settings/asset-classes", label: "Asset Classes" },
   { to: "/settings/research", label: "Research" },
   { to: "/settings/spreads", label: "Spreads" },
