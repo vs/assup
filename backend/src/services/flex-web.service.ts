@@ -137,7 +137,7 @@ export class FlexWebService {
       const response = await fetch(url);
       const text = await response.text();
 
-      console.log(`[FLEX] Poll attempt ${attempt + 1}/${maxAttempts} (${delay}ms delay), response length: ${text.length}`);
+      console.log(`[FLEX] Poll attempt ${attempt + 1}/${maxAttempts} (${delay}ms delay), response length: ${text.length}, start: ${text.slice(0, 200)}`);
 
       // If the response is a proper FLEX report, return it.
       if (text.includes("<FlexQueryResponse") || text.includes("<FlexStatements")) {
