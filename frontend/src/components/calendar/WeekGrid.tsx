@@ -1,5 +1,5 @@
 import type { CalendarEvent } from "@assup/shared";
-import { formatDate, DAY_NAMES, getWeekDates, getWeekStart } from "./calendarUtils";
+import { formatDate, DAY_NAMES, getWeekDates } from "./calendarUtils";
 import { EventRow } from "./EventRow";
 
 interface WeekGridProps {
