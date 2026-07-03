@@ -31,9 +31,12 @@ export interface CalendarEvent {
   sourceId: string | null;
 }
 
+export type WeekStartDay = "monday" | "sunday";
+
 export interface CalendarSettings {
   excludedEventTypes: CalendarEventType[];
   excludeSpreadExpirations: boolean;
+  weekStartDay: WeekStartDay;
 }
 
 export const EVENT_TYPE_CATEGORY: Record<CalendarEventType, CalendarEventCategory> = {

@@ -307,13 +307,15 @@ export class CalendarService {
   }
 
   async getSettings(): Promise<CalendarSettings> {
-    const [excludedSetting, spreadSetting] = await Promise.all([
+    const [excludedSetting, spreadSetting, weekStartSetting] = await Promise.all([
       prisma.setting.findUnique({ where: { key: "calendar.excludedEventTypes" } }),
       prisma.setting.findUnique({ where: { key: "calendar.excludeSpreadExpirations" } }),
+      prisma.setting.findUnique({ where: { key: "calendar.weekStartDay" } }),
     ]);
     return {
       excludedEventTypes: excludedSetting ? (excludedSetting.value as CalendarEventType[]) : [],
       excludeSpreadExpirations: spreadSetting ? (spreadSetting.value as boolean) : false,
+      weekStartDay: weekStartSetting ? (weekStartSetting.value as CalendarSettings["weekStartDay"]) : "monday",
     };
   }
 
@@ -334,6 +336,14 @@ export class CalendarService {
           value: settings.excludeSpreadExpirations as unknown as Prisma.InputJsonValue,
         },
         update: { value: settings.excludeSpreadExpirations as unknown as Prisma.InputJsonValue },
+      }),
+      prisma.setting.upsert({
+        where: { key: "calendar.weekStartDay" },
+        create: {
+          key: "calendar.weekStartDay",
+          value: settings.weekStartDay as unknown as Prisma.InputJsonValue,
+        },
+        update: { value: settings.weekStartDay as unknown as Prisma.InputJsonValue },
       }),
     ]);
   }

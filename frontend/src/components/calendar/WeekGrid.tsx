@@ -1,14 +1,16 @@
-import type { CalendarEvent } from "@assup/shared";
-import { formatDate, DAY_NAMES, getWeekDates } from "./calendarUtils";
+import type { CalendarEvent, WeekStartDay } from "@assup/shared";
+import { formatDate, getDayNames, getWeekDates } from "./calendarUtils";
 import { EventRow } from "./EventRow";
 
 interface WeekGridProps {
   weekStart: Date;
   events: CalendarEvent[];
+  weekStartDay: WeekStartDay;
 }
 
-export function WeekGrid({ weekStart, events }: WeekGridProps) {
+export function WeekGrid({ weekStart, events, weekStartDay }: WeekGridProps) {
   const dates = getWeekDates(weekStart);
+  const dayNames = getDayNames(weekStartDay);
   const today = formatDate(new Date());
 
   const eventsByDate = new Map<string, CalendarEvent[]>();
@@ -34,7 +36,7 @@ export function WeekGrid({ weekStart, events }: WeekGridProps) {
             >
               {/* Day header */}
               <div className="border-b bg-muted/50 px-2 py-2 text-center">
-                <div className="text-xs text-muted-foreground font-medium">{DAY_NAMES[i]}</div>
+                <div className="text-xs text-muted-foreground font-medium">{dayNames[i]}</div>
                 <div className={`text-sm mt-0.5 ${isToday
                   ? "inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground font-bold"
                   : "font-medium"}`}

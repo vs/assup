@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { calendarApi } from "@/api/calendar";
-import type { CalendarEventType } from "@assup/shared";
+import type { CalendarEventType, WeekStartDay } from "@assup/shared";
 
 const EVENT_GROUPS = [
   {
@@ -59,16 +59,21 @@ export function CalendarSection() {
 
   const excluded = settings?.excludedEventTypes ?? [];
   const excludeSpreadExpirations = settings?.excludeSpreadExpirations ?? false;
+  const weekStartDay = settings?.weekStartDay ?? "monday";
+
+  const save = (patch: Partial<{ excludedEventTypes: CalendarEventType[]; excludeSpreadExpirations: boolean; weekStartDay: WeekStartDay }>) => {
+    mutation.mutate({ excludedEventTypes: excluded, excludeSpreadExpirations, weekStartDay, ...patch });
+  };
 
   const toggleType = (type: CalendarEventType) => {
     const newExcluded = excluded.includes(type)
       ? excluded.filter((t) => t !== type)
       : [...excluded, type];
-    mutation.mutate({ excludedEventTypes: newExcluded, excludeSpreadExpirations });
+    save({ excludedEventTypes: newExcluded });
   };
 
   const toggleSpreadExpirations = () => {
-    mutation.mutate({ excludedEventTypes: excluded, excludeSpreadExpirations: !excludeSpreadExpirations });
+    save({ excludeSpreadExpirations: !excludeSpreadExpirations });
   };
 
   return (
@@ -101,6 +106,27 @@ export function CalendarSection() {
             </div>
           </div>
         ))}
+
+        <div className="border-t pt-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Week Start
+          </div>
+          <div className="flex gap-2 px-2">
+            {([["monday", "Monday"], ["sunday", "Sunday"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => save({ weekStartDay: value })}
+                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                  weekStartDay === value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="border-t pt-4">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">

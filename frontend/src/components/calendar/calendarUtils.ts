@@ -1,13 +1,17 @@
 import { EVENT_TYPE_CATEGORY, EVENT_CATEGORY_COLOR } from "@assup/shared";
-import type { CalendarEventType, CalendarEventCategory } from "@assup/shared";
+import type { CalendarEventType, CalendarEventCategory, WeekStartDay } from "@assup/shared";
 
 export function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
 }
 
-export function getFirstDayOfMonth(year: number, month: number): number {
-  const day = new Date(year, month, 1).getDay();
-  return day === 0 ? 6 : day - 1;
+/** Get the offset of day 1 in the month grid (0-indexed from week start) */
+export function getFirstDayOfMonth(year: number, month: number, weekStartDay: WeekStartDay = "monday"): number {
+  const day = new Date(year, month, 1).getDay(); // 0=Sun, 1=Mon, ...
+  if (weekStartDay === "monday") {
+    return day === 0 ? 6 : day - 1;
+  }
+  return day; // Sunday-start: Sunday=0 is already correct
 }
 
 export function formatDate(date: Date): string {
@@ -46,19 +50,31 @@ export const MONTH_NAMES_SHORT = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-export const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_NAMES_MONDAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_NAMES_SUNDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Get the Monday of the week containing the given date */
-export function getWeekStart(date: Date): Date {
+export function getDayNames(weekStartDay: WeekStartDay = "monday"): string[] {
+  return weekStartDay === "monday" ? DAY_NAMES_MONDAY : DAY_NAMES_SUNDAY;
+}
+
+/** For backward compat — default Monday start */
+export const DAY_NAMES = DAY_NAMES_MONDAY;
+
+/** Get the first day of the week containing the given date */
+export function getWeekStart(date: Date, weekStartDay: WeekStartDay = "monday"): Date {
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day; // Monday-based
-  d.setDate(d.getDate() + diff);
+  const day = d.getDay(); // 0=Sun
+  if (weekStartDay === "monday") {
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+  } else {
+    d.setDate(d.getDate() - day);
+  }
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-/** Get 7 dates starting from a Monday */
+/** Get 7 dates starting from the week start */
 export function getWeekDates(weekStart: Date): string[] {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);

@@ -1,5 +1,5 @@
-import type { CalendarEvent } from "@assup/shared";
-import { getDaysInMonth, getFirstDayOfMonth, formatDate, DAY_NAMES } from "./calendarUtils";
+import type { CalendarEvent, WeekStartDay } from "@assup/shared";
+import { getDaysInMonth, getFirstDayOfMonth, formatDate, getDayNames } from "./calendarUtils";
 import { EventBadge } from "./EventBadge";
 
 interface MonthGridProps {
@@ -8,11 +8,13 @@ interface MonthGridProps {
   events: CalendarEvent[];
   selectedDate: string | null;
   onSelectDate: (date: string) => void;
+  weekStartDay: WeekStartDay;
 }
 
-export function MonthGrid({ year, month, events, selectedDate, onSelectDate }: MonthGridProps) {
+export function MonthGrid({ year, month, events, selectedDate, onSelectDate, weekStartDay }: MonthGridProps) {
   const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfMonth(year, month);
+  const firstDay = getFirstDayOfMonth(year, month, weekStartDay);
+  const dayNames = getDayNames(weekStartDay);
   const today = formatDate(new Date());
 
   const eventsByDate = new Map<string, CalendarEvent[]>();
@@ -37,7 +39,7 @@ export function MonthGrid({ year, month, events, selectedDate, onSelectDate }: M
   return (
     <div className="border rounded-xl overflow-hidden shadow-sm">
       <div className="grid grid-cols-7 border-b bg-muted/50">
-        {DAY_NAMES.map((name) => (
+        {dayNames.map((name) => (
           <div key={name} className="text-center py-2 text-xs text-muted-foreground font-medium">
             {name}
           </div>

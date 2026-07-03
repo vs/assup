@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { WeekStartDay } from "@assup/shared";
 import { calendarApi } from "@/api/calendar";
 import { PageHeader } from "@/components/common";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
@@ -16,7 +17,17 @@ export function CalendarPage() {
   const [month, setMonth] = useState(now.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(formatDate(now));
   const [viewMode, setViewMode] = useState<ViewMode>("month");
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(now));
+  const [weekStartOverride, setWeekStartOverride] = useState<Date | null>(null);
+
+  const { data: settings } = useQuery({
+    queryKey: ["calendar", "settings"],
+    queryFn: () => calendarApi.getSettings(),
+  });
+
+  const weekStartDay: WeekStartDay = settings?.weekStartDay ?? "monday";
+
+  // Compute actual week start from override or today
+  const weekStart = weekStartOverride ?? getWeekStart(now, weekStartDay);
 
   // Data range depends on view mode
   const start = viewMode === "month" ? getMonthStart(year, month) : formatDate(weekStart);
@@ -33,7 +44,7 @@ export function CalendarPage() {
     if (viewMode === "week") {
       const prev = new Date(weekStart);
       prev.setDate(prev.getDate() - 7);
-      setWeekStart(prev);
+      setWeekStartOverride(prev);
     } else {
       if (month === 0) { setMonth(11); setYear(year - 1); }
       else setMonth(month - 1);
@@ -44,7 +55,7 @@ export function CalendarPage() {
     if (viewMode === "week") {
       const next = new Date(weekStart);
       next.setDate(next.getDate() + 7);
-      setWeekStart(next);
+      setWeekStartOverride(next);
     } else {
       if (month === 11) { setMonth(0); setYear(year + 1); }
       else setMonth(month + 1);
@@ -56,7 +67,7 @@ export function CalendarPage() {
     setYear(now.getFullYear());
     setMonth(now.getMonth());
     setSelectedDate(formatDate(now));
-    setWeekStart(getWeekStart(now));
+    setWeekStartOverride(getWeekStart(now, weekStartDay));
   };
 
   const handleMonthYearChange = (y: number, m: number) => {
@@ -67,11 +78,9 @@ export function CalendarPage() {
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
     if (mode === "week") {
-      // Jump to week containing the selected date or today
       const target = selectedDate ? new Date(selectedDate + "T12:00:00") : new Date();
-      setWeekStart(getWeekStart(target));
+      setWeekStartOverride(getWeekStart(target, weekStartDay));
     } else {
-      // Jump month to match current week
       setYear(weekStart.getFullYear());
       setMonth(weekStart.getMonth());
     }
@@ -142,6 +151,7 @@ export function CalendarPage() {
             events={events}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+            weekStartDay={weekStartDay}
           />
           <AgendaPanel
             selectedDate={selectedDate}
@@ -150,7 +160,7 @@ export function CalendarPage() {
           />
         </div>
       ) : (
-        <WeekGrid weekStart={weekStart} events={events} />
+        <WeekGrid weekStart={weekStart} events={events} weekStartDay={weekStartDay} />
       )}
     </div>
   );
