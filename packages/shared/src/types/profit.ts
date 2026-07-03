@@ -26,6 +26,8 @@ export interface ImportResult {
     otherCashImported: number;
     corporateActionsImported: number;
     assignmentsDetected: number;
+    snapshotsImported: number;
+    fundFlowsImported: number;
   };
 }
 
