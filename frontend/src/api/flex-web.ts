@@ -21,4 +21,6 @@ export const flexWebApi = {
     request<FlexFetchLogsResponse>(
       `/api/flex-web/log?page=${page}&limit=${limit}`
     ),
+  clearLogs: () =>
+    request<{ deleted: number }>("/api/flex-web/log", { method: "DELETE" }),
 };

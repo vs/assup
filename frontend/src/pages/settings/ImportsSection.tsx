@@ -483,15 +483,28 @@ export function ImportsSection() {
                 Fetch Log
                 {logTotal > 0 && <Badge variant="secondary">{logTotal}</Badge>}
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => logsQuery.refetch()}
-                disabled={logsQuery.isFetching}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${logsQuery.isFetching ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => logsQuery.refetch()}
+                  disabled={logsQuery.isFetching}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${logsQuery.isFetching ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    if (!confirm("Clear all fetch log entries?")) return;
+                    await flexWebApi.clearLogs();
+                    logsQuery.refetch();
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>

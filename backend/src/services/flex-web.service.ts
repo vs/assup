@@ -201,6 +201,11 @@ export class FlexWebService {
     ]);
     return { logs, total };
   }
+
+  async clearLogs() {
+    const { count } = await prisma.flexFetchLog.deleteMany();
+    return count;
+  }
 }
 
 export const flexWebService = new FlexWebService();

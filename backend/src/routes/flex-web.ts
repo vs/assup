@@ -54,4 +54,13 @@ router.get(
   })
 );
 
+// DELETE /api/flex-web/log
+router.delete(
+  "/log",
+  asyncHandler(async (_req, res) => {
+    const count = await flexWebService.clearLogs();
+    res.json({ deleted: count });
+  })
+);
+
 export default router;
