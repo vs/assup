@@ -10,7 +10,7 @@ interface CalendarQueryParams {
 
 export const calendarApi = {
   getEvents(params: CalendarQueryParams): Promise<CalendarEvent[]> {
-    const query = buildQuery(params);
+    const query = buildQuery({ ...params });
     return request<CalendarEvent[]>(`/api/calendar${query}`);
   },
 
