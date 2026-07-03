@@ -5,10 +5,10 @@ import { PageHeader } from "@/components/common";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { AgendaPanel } from "@/components/calendar/AgendaPanel";
 import { MonthYearPicker } from "@/components/calendar/MonthYearPicker";
-import { EventRow } from "@/components/calendar/EventRow";
-import { getMonthStart, getMonthEnd, formatDate } from "@/components/calendar/calendarUtils";
+import { WeekGrid } from "@/components/calendar/WeekGrid";
+import { getMonthStart, getMonthEnd, formatDate, getWeekStart, getWeekDates } from "@/components/calendar/calendarUtils";
 
-type ViewMode = "month" | "agenda";
+type ViewMode = "month" | "week";
 
 export function CalendarPage() {
   const now = new Date();
@@ -16,23 +16,39 @@ export function CalendarPage() {
   const [month, setMonth] = useState(now.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(formatDate(now));
   const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [weekStart, setWeekStart] = useState(() => getWeekStart(now));
 
-  const start = getMonthStart(year, month);
-  const end = getMonthEnd(year, month);
+  // Data range depends on view mode
+  const start = viewMode === "month" ? getMonthStart(year, month) : formatDate(weekStart);
+  const end = viewMode === "month"
+    ? getMonthEnd(year, month)
+    : (() => { const d = new Date(weekStart); d.setDate(d.getDate() + 6); return formatDate(d); })();
 
   const { data: events = [] } = useQuery({
     queryKey: ["calendar", "events", start, end],
     queryFn: () => calendarApi.getEvents({ start, end }),
   });
 
-  const handlePrevMonth = () => {
-    if (month === 0) { setMonth(11); setYear(year - 1); }
-    else setMonth(month - 1);
+  const handlePrev = () => {
+    if (viewMode === "week") {
+      const prev = new Date(weekStart);
+      prev.setDate(prev.getDate() - 7);
+      setWeekStart(prev);
+    } else {
+      if (month === 0) { setMonth(11); setYear(year - 1); }
+      else setMonth(month - 1);
+    }
   };
 
-  const handleNextMonth = () => {
-    if (month === 11) { setMonth(0); setYear(year + 1); }
-    else setMonth(month + 1);
+  const handleNext = () => {
+    if (viewMode === "week") {
+      const next = new Date(weekStart);
+      next.setDate(next.getDate() + 7);
+      setWeekStart(next);
+    } else {
+      if (month === 11) { setMonth(0); setYear(year + 1); }
+      else setMonth(month + 1);
+    }
   };
 
   const handleToday = () => {
@@ -40,6 +56,7 @@ export function CalendarPage() {
     setYear(now.getFullYear());
     setMonth(now.getMonth());
     setSelectedDate(formatDate(now));
+    setWeekStart(getWeekStart(now));
   };
 
   const handleMonthYearChange = (y: number, m: number) => {
@@ -47,14 +64,30 @@ export function CalendarPage() {
     setMonth(m);
   };
 
-  const eventsByDate = useMemo(() => {
-    const map = new Map<string, typeof events>();
-    for (const event of events) {
-      if (!map.has(event.date)) map.set(event.date, []);
-      map.get(event.date)!.push(event);
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === "week") {
+      // Jump to week containing the selected date or today
+      const target = selectedDate ? new Date(selectedDate + "T12:00:00") : new Date();
+      setWeekStart(getWeekStart(target));
+    } else {
+      // Jump month to match current week
+      setYear(weekStart.getFullYear());
+      setMonth(weekStart.getMonth());
     }
-    return map;
-  }, [events]);
+  };
+
+  // Week label for header
+  const weekDates = getWeekDates(weekStart);
+  const weekLabel = (() => {
+    const first = new Date(weekDates[0] + "T12:00:00");
+    const last = new Date(weekDates[6] + "T12:00:00");
+    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+    if (first.getMonth() === last.getMonth()) {
+      return `${first.toLocaleDateString("en-US", opts)} – ${last.getDate()}`;
+    }
+    return `${first.toLocaleDateString("en-US", opts)} – ${last.toLocaleDateString("en-US", opts)}`;
+  })();
 
   return (
     <div className="space-y-4">
@@ -62,12 +95,18 @@ export function CalendarPage() {
         <PageHeader title="Calendar" subtitle="Portfolio events and upcoming dates" />
         <div className="flex items-center gap-2">
           <button
-            onClick={handlePrevMonth}
+            onClick={handlePrev}
             className="inline-flex items-center justify-center bg-background border rounded-md px-2.5 py-1.5 text-sm shadow-xs hover:bg-accent transition-colors"
           >←</button>
-          <MonthYearPicker year={year} month={month} onChange={handleMonthYearChange} />
+
+          {viewMode === "month" ? (
+            <MonthYearPicker year={year} month={month} onChange={handleMonthYearChange} />
+          ) : (
+            <span className="text-sm font-semibold px-3 py-1.5 min-w-[160px] text-center">{weekLabel}</span>
+          )}
+
           <button
-            onClick={handleNextMonth}
+            onClick={handleNext}
             className="inline-flex items-center justify-center bg-background border rounded-md px-2.5 py-1.5 text-sm shadow-xs hover:bg-accent transition-colors"
           >→</button>
           <button
@@ -81,16 +120,16 @@ export function CalendarPage() {
                   ? "bg-primary text-primary-foreground"
                   : "bg-background text-muted-foreground hover:text-foreground"
               }`}
-              onClick={() => setViewMode("month")}
+              onClick={() => handleViewModeChange("month")}
             >Month</button>
             <button
               className={`px-3.5 py-1.5 text-xs font-medium border-l transition-colors ${
-                viewMode === "agenda"
+                viewMode === "week"
                   ? "bg-primary text-primary-foreground"
                   : "bg-background text-muted-foreground hover:text-foreground"
               }`}
-              onClick={() => setViewMode("agenda")}
-            >Agenda</button>
+              onClick={() => handleViewModeChange("week")}
+            >Week</button>
           </div>
         </div>
       </div>
@@ -111,29 +150,7 @@ export function CalendarPage() {
           />
         </div>
       ) : (
-        <div className="border rounded-xl shadow-sm p-4 space-y-1">
-          {Array.from(eventsByDate.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([date, dateEvents]) => (
-              <div key={date}>
-                <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider py-1.5">
-                  {new Date(date + "T12:00:00").toLocaleDateString("en-US", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </div>
-                <div className="space-y-1">
-                  {dateEvents.map((event) => (
-                    <EventRow key={event.id} event={event} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          {events.length === 0 && (
-            <div className="text-sm text-muted-foreground py-8 text-center">No events this month</div>
-          )}
-        </div>
+        <WeekGrid weekStart={weekStart} events={events} />
       )}
     </div>
   );
