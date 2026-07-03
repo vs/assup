@@ -72,7 +72,9 @@ export class FlexWebService {
       const reportContent = await this.pollForReport(config.token, referenceCode);
 
       // Step 3: Import via existing pipeline
-      const filename = `flex-web-${new Date().toISOString().split("T")[0]}.xml`;
+      const isXml = reportContent.trimStart().startsWith("<");
+      const ext = isXml ? "xml" : "csv";
+      const filename = `flex-web-${new Date().toISOString().split("T")[0]}.${ext}`;
       const result = await importService.importFlexQuery(reportContent, filename);
 
       const status = result.duplicate ? "no_new_data" : "success";
@@ -139,8 +141,14 @@ export class FlexWebService {
 
       console.log(`[FLEX] Poll attempt ${attempt + 1}/${maxAttempts} (${delay}ms delay), response length: ${text.length}, start: ${text.slice(0, 200)}`);
 
-      // If the response is a proper FLEX report, return it.
-      if (text.includes("<FlexQueryResponse") || text.includes("<FlexStatements")) {
+      // If the response is a proper FLEX report (XML or CSV), return it.
+      if (
+        text.includes("<FlexQueryResponse") ||
+        text.includes("<FlexStatements") ||
+        text.startsWith('"TradeID"') ||
+        text.startsWith("TradeID")
+      ) {
+        console.log(`[FLEX] Report received (${text.length} bytes)`);
         return text;
       }
 
