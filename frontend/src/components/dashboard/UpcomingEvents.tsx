@@ -18,17 +18,18 @@ export function UpcomingEvents() {
     eventsByDate.get(event.date)!.push(event);
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   const formatDateHeader = (dateStr: string) => {
     const date = new Date(dateStr + "T12:00:00");
-    if (dateStr === today) return `Today, ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    if (dateStr === todayStr) return `Today, ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
     return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   };
 
   return (
-    <Card className="flex-1">
-      <CardHeader className="pb-2 pt-4 px-4 flex-row items-center justify-between">
+    <Card className="flex-1 flex flex-col min-h-0">
+      <CardHeader className="pb-2 pt-4 px-4 flex-row items-center justify-between flex-shrink-0">
         <CardTitle className="text-sm font-semibold">Upcoming Events</CardTitle>
         <button
           onClick={() => navigate("/calendar")}
@@ -37,7 +38,7 @@ export function UpcomingEvents() {
           View all →
         </button>
       </CardHeader>
-      <CardContent className="px-4 pb-4 space-y-1">
+      <CardContent className="px-4 pb-4 space-y-1 overflow-y-auto min-h-0">
         {Array.from(eventsByDate.entries())
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, dateEvents]) => (

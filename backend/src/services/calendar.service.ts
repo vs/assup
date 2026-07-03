@@ -27,7 +27,7 @@ export class CalendarService {
       orderBy: { date: "asc" },
     });
 
-    return events.map((e) => ({
+    const mapped = events.map((e) => ({
       id: e.id,
       eventType: e.eventType as CalendarEventType,
       symbol: e.symbol,
@@ -37,6 +37,7 @@ export class CalendarService {
       source: e.source,
       sourceId: e.sourceId,
     }));
+    return this.filterSpreadExpirations(mapped);
   }
 
   async getEventsBySymbol(symbol: string, limit = 5): Promise<CalendarEvent[]> {
@@ -54,7 +55,7 @@ export class CalendarService {
       take: limit,
     });
 
-    return events.map((e) => ({
+    const mapped = events.map((e) => ({
       id: e.id,
       eventType: e.eventType as CalendarEventType,
       symbol: e.symbol,
@@ -64,6 +65,7 @@ export class CalendarService {
       source: e.source,
       sourceId: e.sourceId,
     }));
+    return this.filterSpreadExpirations(mapped);
   }
 
   async getTodayAndUpcoming(days = 5): Promise<CalendarEvent[]> {
@@ -305,28 +307,56 @@ export class CalendarService {
   }
 
   async getSettings(): Promise<CalendarSettings> {
-    const setting = await prisma.setting.findUnique({
-      where: { key: "calendar.excludedEventTypes" },
-    });
+    const [excludedSetting, spreadSetting] = await Promise.all([
+      prisma.setting.findUnique({ where: { key: "calendar.excludedEventTypes" } }),
+      prisma.setting.findUnique({ where: { key: "calendar.excludeSpreadExpirations" } }),
+    ]);
     return {
-      excludedEventTypes: setting ? (setting.value as CalendarEventType[]) : [],
+      excludedEventTypes: excludedSetting ? (excludedSetting.value as CalendarEventType[]) : [],
+      excludeSpreadExpirations: spreadSetting ? (spreadSetting.value as boolean) : false,
     };
   }
 
   async updateSettings(settings: CalendarSettings): Promise<void> {
-    await prisma.setting.upsert({
-      where: { key: "calendar.excludedEventTypes" },
-      create: {
-        key: "calendar.excludedEventTypes",
-        value: settings.excludedEventTypes as unknown as Prisma.InputJsonValue,
-      },
-      update: { value: settings.excludedEventTypes as unknown as Prisma.InputJsonValue },
-    });
+    await Promise.all([
+      prisma.setting.upsert({
+        where: { key: "calendar.excludedEventTypes" },
+        create: {
+          key: "calendar.excludedEventTypes",
+          value: settings.excludedEventTypes as unknown as Prisma.InputJsonValue,
+        },
+        update: { value: settings.excludedEventTypes as unknown as Prisma.InputJsonValue },
+      }),
+      prisma.setting.upsert({
+        where: { key: "calendar.excludeSpreadExpirations" },
+        create: {
+          key: "calendar.excludeSpreadExpirations",
+          value: settings.excludeSpreadExpirations as unknown as Prisma.InputJsonValue,
+        },
+        update: { value: settings.excludeSpreadExpirations as unknown as Prisma.InputJsonValue },
+      }),
+    ]);
+  }
+
+  private async getSpreadSymbols(): Promise<Set<string>> {
+    const setting = await prisma.setting.findUnique({ where: { key: "spreads" } });
+    return new Set<string>(
+      (setting?.value as Record<string, unknown>)?.symbols as string[] ?? ["SPX", "XSP", "RUT"]
+    );
   }
 
   private async getExcludedTypes(): Promise<string[]> {
     const settings = await this.getSettings();
     return settings.excludedEventTypes;
+  }
+
+  private async filterSpreadExpirations(events: CalendarEvent[]): Promise<CalendarEvent[]> {
+    const settings = await this.getSettings();
+    if (!settings.excludeSpreadExpirations) return events;
+    const spreadSymbols = await this.getSpreadSymbols();
+    return events.filter(
+      (e) => !(e.eventType === "OPTION_EXPIRATION" && e.symbol && spreadSymbols.has(e.symbol))
+    );
   }
 
   private async getTrackedSymbols(): Promise<string[]> {

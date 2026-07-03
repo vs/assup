@@ -33,6 +33,7 @@ export interface CalendarEvent {
 
 export interface CalendarSettings {
   excludedEventTypes: CalendarEventType[];
+  excludeSpreadExpirations: boolean;
 }
 
 export const EVENT_TYPE_CATEGORY: Record<CalendarEventType, CalendarEventCategory> = {

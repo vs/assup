@@ -73,9 +73,9 @@ export function DashboardPage() {
         profitPositions={profitPositions.data}
       />
 
-      {/* Chart (4/6) + Right sidebar (2/6) — chart stretches to match right column height */}
-      <div className="grid grid-cols-6 gap-3 items-stretch">
-        <div className="col-span-4">
+      {/* Chart (4/6) + Right sidebar (2/6) — constrained height */}
+      <div className="grid grid-cols-6 gap-3 items-stretch min-h-[320px] max-h-[480px]">
+        <div className="col-span-4 min-h-0">
           {dashboardData.isLoading && (
             <div className="text-muted-foreground text-sm p-4">Loading...</div>
           )}
@@ -87,7 +87,7 @@ export function DashboardPage() {
             />
           )}
         </div>
-        <div className="col-span-2 flex flex-col gap-3">
+        <div className="col-span-2 flex flex-col gap-3 min-h-0">
           {data && <CurrentMonthPace data={data.currentMonthPace} />}
           <UpcomingEvents />
         </div>

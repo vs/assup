@@ -58,12 +58,17 @@ export function CalendarSection() {
   });
 
   const excluded = settings?.excludedEventTypes ?? [];
+  const excludeSpreadExpirations = settings?.excludeSpreadExpirations ?? false;
 
   const toggleType = (type: CalendarEventType) => {
     const newExcluded = excluded.includes(type)
       ? excluded.filter((t) => t !== type)
       : [...excluded, type];
-    mutation.mutate({ excludedEventTypes: newExcluded });
+    mutation.mutate({ excludedEventTypes: newExcluded, excludeSpreadExpirations });
+  };
+
+  const toggleSpreadExpirations = () => {
+    mutation.mutate({ excludedEventTypes: excluded, excludeSpreadExpirations: !excludeSpreadExpirations });
   };
 
   return (
@@ -96,6 +101,24 @@ export function CalendarSection() {
             </div>
           </div>
         ))}
+
+        <div className="border-t pt-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Filtering
+          </div>
+          <label className="flex items-center gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={excludeSpreadExpirations}
+              onChange={toggleSpreadExpirations}
+              className="rounded border-input"
+            />
+            <div>
+              <span className="text-sm">Hide spread expirations</span>
+              <p className="text-xs text-muted-foreground">Hide option expirations for spread symbols (SPX, XSP, RUT)</p>
+            </div>
+          </label>
+        </div>
       </CardContent>
     </Card>
   );
