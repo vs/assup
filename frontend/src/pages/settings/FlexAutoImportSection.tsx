@@ -15,80 +15,47 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { Link } from "react-router-dom";
 import { flexWebApi } from "@/api/flex-web";
-import type { FlexWebConfig } from "@assup/shared";
+import type { FlexScheduleConfig } from "@assup/shared";
 
 // ---------------------------------------------------------------------------
-// Cron description helper (no external library)
+// Schedule helpers
 // ---------------------------------------------------------------------------
 
-const DAY_NAMES: Record<string, string> = {
-  "0": "Sun",
-  "1": "Mon",
-  "2": "Tue",
-  "3": "Wed",
-  "4": "Thu",
-  "5": "Fri",
-  "6": "Sat",
+const DAYS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 0, label: "Sun" },
+];
+
+const DEFAULT_SCHEDULE: FlexScheduleConfig = {
+  days: [2, 3, 4, 5, 6],
+  hour: 6,
+  minute: 0,
 };
 
-function describeCronSchedule(cron: string): string {
-  if (!cron.trim()) return "";
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return "Custom schedule";
-
-  const [minute, hour, , , dayOfWeek] = parts;
-
-  // Only describe simple "at HH:MM" patterns
-  const minuteNum = parseInt(minute, 10);
-  const hourNum = parseInt(hour, 10);
-  if (
-    isNaN(minuteNum) ||
-    isNaN(hourNum) ||
-    minuteNum < 0 ||
-    minuteNum > 59 ||
-    hourNum < 0 ||
-    hourNum > 23
-  ) {
-    return "Custom schedule";
+function describeSchedule(s: FlexScheduleConfig): string {
+  if (s.days.length === 0) return "";
+  const dayNames = DAYS.filter((d) => s.days.includes(d.value)).map((d) => d.label);
+  const time = `${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}`;
+  const dayStr = dayNames.length === 7 ? "daily" : dayNames.join(", ");
+  if (s.repeatHours) {
+    return `Every ${s.repeatHours}h starting at ${time} ET, ${dayStr}`;
   }
-
-  const timeStr = `${String(hourNum).padStart(2, "0")}:${String(minuteNum).padStart(2, "0")}`;
-
-  // Parse day-of-week
-  let dayStr = "";
-  if (dayOfWeek === "*") {
-    dayStr = "daily";
-  } else {
-    // Handle range like "1-5", "2-6", or list like "1,2,3"
-    const rangeMatch = dayOfWeek.match(/^(\d)-(\d)$/);
-    if (rangeMatch) {
-      const start = rangeMatch[1];
-      const end = rangeMatch[2];
-      const startName = DAY_NAMES[start];
-      const endName = DAY_NAMES[end];
-      if (startName && endName) {
-        dayStr = `${startName}-${endName}`;
-      } else {
-        return "Custom schedule";
-      }
-    } else {
-      // Try comma-separated list
-      const days = dayOfWeek.split(",");
-      const names = days.map((d) => DAY_NAMES[d.trim()]).filter(Boolean);
-      if (names.length === days.length) {
-        dayStr = names.join(", ");
-      } else {
-        return "Custom schedule";
-      }
-    }
-  }
-
-  return dayStr === "daily"
-    ? `At ${timeStr} ET, daily`
-    : `At ${timeStr} ET, ${dayStr}`;
+  return `At ${time} ET, ${dayStr}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,10 +111,11 @@ export function FlexAutoImportSection() {
   // Config form state
   const [token, setToken] = useState("");
   const [queryId, setQueryId] = useState("");
-  const [schedule, setSchedule] = useState("0 6 * * 2-6");
+  const [schedule, setSchedule] = useState<FlexScheduleConfig>(DEFAULT_SCHEDULE);
   const [enabled, setEnabled] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<"once" | "repeat">("once");
 
   // Operation state
   const [saving, setSaving] = useState(false);
@@ -168,10 +136,12 @@ export function FlexAutoImportSection() {
 
   // Populate form once config loads
   if (configQuery.data && !configLoaded) {
-    const cfg: FlexWebConfig = configQuery.data;
+    const cfg = configQuery.data;
     setToken(cfg.token ?? "");
     setQueryId(cfg.queryId ?? "");
-    setSchedule(cfg.schedule ?? "0 6 * * 2-6");
+    const s = cfg.schedule ?? DEFAULT_SCHEDULE;
+    setSchedule(s);
+    setRepeatMode(s.repeatHours ? "repeat" : "once");
     setEnabled(cfg.enabled ?? false);
     setConfigLoaded(true);
   }
@@ -187,13 +157,31 @@ export function FlexAutoImportSection() {
   const total = logsQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
+  // Schedule updaters
+  const toggleDay = (day: number) => {
+    setSchedule((prev) => ({
+      ...prev,
+      days: prev.days.includes(day)
+        ? prev.days.filter((d) => d !== day)
+        : [...prev.days, day],
+    }));
+  };
+
   // Handlers
   const handleSave = async () => {
+    if (schedule.days.length === 0) {
+      setOpError("Select at least one day");
+      return;
+    }
     setSaving(true);
     setSaveSuccess(false);
     setOpError(null);
     try {
-      await flexWebApi.config.update({ token, queryId, schedule, enabled });
+      const scheduleToSave: FlexScheduleConfig = {
+        ...schedule,
+        repeatHours: repeatMode === "repeat" ? (schedule.repeatHours || 4) : undefined,
+      };
+      await flexWebApi.config.update({ token, queryId, schedule: scheduleToSave, enabled });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
@@ -218,7 +206,6 @@ export function FlexAutoImportSection() {
       } else {
         setOpError(result.error ?? "Fetch returned an error");
       }
-      // Refresh logs after fetch
       logsQuery.refetch();
     } catch (err) {
       setOpError(err instanceof Error ? err.message : "Fetch failed");
@@ -228,7 +215,11 @@ export function FlexAutoImportSection() {
   };
 
   const canFetch = token.trim().length > 0 && queryId.trim().length > 0;
-  const cronHint = describeCronSchedule(schedule);
+  const scheduleHint = describeSchedule(
+    repeatMode === "repeat"
+      ? { ...schedule, repeatHours: schedule.repeatHours || 4 }
+      : { ...schedule, repeatHours: undefined }
+  );
 
   if (configQuery.isLoading && !configLoaded) {
     return <PageLoadingSkeleton />;
@@ -297,17 +288,122 @@ export function FlexAutoImportSection() {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="flex-schedule">Cron Schedule</Label>
-            <Input
-              id="flex-schedule"
-              type="text"
-              placeholder="0 6 * * 2-6"
-              value={schedule}
-              onChange={(e) => setSchedule(e.target.value)}
-            />
-            {cronHint && (
-              <p className="text-sm text-muted-foreground">{cronHint}</p>
+          {/* Schedule section */}
+          <div className="space-y-3">
+            <Label>Schedule</Label>
+
+            {/* Day checkboxes */}
+            <div className="flex gap-1.5">
+              {DAYS.map((day) => {
+                const active = schedule.days.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleDay(day.value)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                      active
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-input hover:bg-accent"
+                    }`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Time + repeat */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-sm text-muted-foreground">at</Label>
+                <Select
+                  value={String(schedule.hour)}
+                  onValueChange={(v) => setSchedule((prev) => ({ ...prev, hour: Number(v) }))}
+                >
+                  <SelectTrigger className="w-[70px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <SelectItem key={i} value={String(i)}>
+                        {String(i).padStart(2, "0")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-muted-foreground">:</span>
+                <Select
+                  value={String(schedule.minute)}
+                  onValueChange={(v) => setSchedule((prev) => ({ ...prev, minute: Number(v) }))}
+                >
+                  <SelectTrigger className="w-[70px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[0, 15, 30, 45].map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        {String(m).padStart(2, "0")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">ET</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRepeatMode("once")}
+                  className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                    repeatMode === "once"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-input hover:bg-accent"
+                  }`}
+                >
+                  Once daily
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRepeatMode("repeat");
+                    if (!schedule.repeatHours) {
+                      setSchedule((prev) => ({ ...prev, repeatHours: 4 }));
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                    repeatMode === "repeat"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-input hover:bg-accent"
+                  }`}
+                >
+                  Repeat
+                </button>
+                {repeatMode === "repeat" && (
+                  <div className="flex items-center gap-1.5">
+                    <Label className="text-sm text-muted-foreground">every</Label>
+                    <Select
+                      value={String(schedule.repeatHours || 4)}
+                      onValueChange={(v) => setSchedule((prev) => ({ ...prev, repeatHours: Number(v) }))}
+                    >
+                      <SelectTrigger className="w-[70px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 6, 8, 12].map((h) => (
+                          <SelectItem key={h} value={String(h)}>
+                            {h}h
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {scheduleHint && (
+              <p className="text-sm text-muted-foreground">{scheduleHint}</p>
             )}
           </div>
 

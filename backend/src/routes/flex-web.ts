@@ -1,5 +1,4 @@
 import { Router } from "express";
-import cron from "node-cron";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { flexWebConfigSchema, flexFetchLogQuerySchema } from "@assup/shared";
@@ -26,11 +25,6 @@ router.put(
   "/config",
   validate({ body: flexWebConfigSchema }),
   asyncHandler(async (req, res) => {
-    // Server-side cron validation using node-cron (Zod only checks field count)
-    if (req.body.schedule && !cron.validate(req.body.schedule)) {
-      res.status(400).json({ error: "Invalid cron expression" });
-      return;
-    }
     await flexWebService.updateConfig(req.body);
     // Refresh the cron job if scheduler is enabled
     if (process.env.SCHEDULER_ENABLED === "true") {

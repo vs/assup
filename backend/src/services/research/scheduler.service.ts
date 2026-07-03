@@ -4,7 +4,7 @@ import { collectionService } from "./collection.service.js";
 import { macroService } from "./macro.service.js";
 import { pipelineService } from "./pipeline.service.js";
 import { marketScannerService } from "./market-scanner.service.js";
-import { flexWebService } from "../flex-web.service.js";
+import { flexWebService, scheduleToCron } from "../flex-web.service.js";
 
 
 const DAILY_SOURCES = [
@@ -148,21 +148,22 @@ class SchedulerService {
     const config = await flexWebService.getConfig();
     if (!config.enabled) return;
 
-    if (!cron.validate(config.schedule)) {
-      console.warn(`[Scheduler] Invalid FLEX cron expression: ${config.schedule}`);
+    const cronExpr = scheduleToCron(config.schedule);
+    if (!cron.validate(cronExpr)) {
+      console.warn(`[Scheduler] Invalid FLEX cron expression: ${cronExpr}`);
       return;
     }
 
     this.flexJob = cron.schedule(
-      config.schedule,
+      cronExpr,
       () => {
         flexWebService.fetchAndImport("schedule").catch((err) =>
-          console.error("Scheduled FLEX fetch failed:", err)
+          console.error("[Scheduler] Scheduled FLEX fetch failed:", err)
         );
       },
       { timezone: "America/New_York" }
     );
-    console.log(`FLEX auto-import scheduled: ${config.schedule} ET`);
+    console.log(`[Scheduler] FLEX auto-import scheduled: ${cronExpr} ET`);
   }
 
   async refreshFlexSchedule(): Promise<void> {

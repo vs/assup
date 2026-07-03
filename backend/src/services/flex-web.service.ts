@@ -1,9 +1,24 @@
 import { XMLParser } from "fast-xml-parser";
 import { prisma } from "../db/index.js";
 import { importService } from "./import.service.js";
-import type { FlexFetchResult } from "@assup/shared";
+import type { FlexFetchResult, FlexScheduleConfig } from "@assup/shared";
 
 const FLEX_BASE = "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService";
+
+const DEFAULT_SCHEDULE: FlexScheduleConfig = {
+  days: [2, 3, 4, 5, 6], // Tue-Sat
+  hour: 6,
+  minute: 0,
+};
+
+export function scheduleToCron(s: FlexScheduleConfig): string {
+  const days = s.days.length === 7 ? "*" : s.days.sort((a, b) => a - b).join(",");
+  if (s.repeatHours) {
+    // Every N hours on selected days, starting at the configured hour
+    return `${s.minute} ${s.hour}-23/${s.repeatHours} * * ${days}`;
+  }
+  return `${s.minute} ${s.hour} * * ${days}`;
+}
 
 export class FlexWebService {
   private fetching = false;
@@ -18,7 +33,7 @@ export class FlexWebService {
     return {
       token: (map["flex.token"] as string) || "",
       queryId: (map["flex.queryId"] as string) || "",
-      schedule: (map["flex.schedule"] as string) || "0 6 * * 2-6",
+      schedule: (map["flex.schedule"] as unknown as FlexScheduleConfig) || DEFAULT_SCHEDULE,
       enabled: (map["flex.enabled"] as boolean) || false,
     };
   }
@@ -26,7 +41,7 @@ export class FlexWebService {
   async updateConfig(config: {
     token?: string;
     queryId?: string;
-    schedule?: string;
+    schedule?: FlexScheduleConfig;
     enabled?: boolean;
   }) {
     const entries = Object.entries(config)

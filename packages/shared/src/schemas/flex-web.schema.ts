@@ -1,16 +1,16 @@
 import { z } from "zod";
 
+export const flexScheduleConfigSchema = z.object({
+  days: z.array(z.number().int().min(0).max(6)).min(1, "Select at least one day"),
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+  repeatHours: z.number().int().min(1).max(23).optional(),
+});
+
 export const flexWebConfigSchema = z.object({
   token: z.string().min(1, "Token is required"),
   queryId: z.string().min(1, "Query ID is required"),
-  schedule: z.string().min(1, "Schedule is required").refine(
-    (val) => {
-      // Basic cron validation: 5 space-separated fields
-      const parts = val.trim().split(/\s+/);
-      return parts.length === 5;
-    },
-    { message: "Invalid cron expression (expected 5 fields: min hour dom mon dow)" }
-  ),
+  schedule: flexScheduleConfigSchema,
   enabled: z.boolean(),
 });
 

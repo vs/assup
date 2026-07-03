@@ -1,7 +1,14 @@
+export interface FlexScheduleConfig {
+  days: number[];       // 0=Sun, 1=Mon, ..., 6=Sat
+  hour: number;         // 0-23
+  minute: number;       // 0-59
+  repeatHours?: number; // null/undefined = once daily, N = every N hours on selected days
+}
+
 export interface FlexWebConfig {
   token: string;
   queryId: string;
-  schedule: string;
+  schedule: FlexScheduleConfig;
   enabled: boolean;
 }
 
