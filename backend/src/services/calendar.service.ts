@@ -83,13 +83,19 @@ export class CalendarService {
     const symbols = await this.getTrackedSymbols();
     console.log(`[CalendarSync] Syncing ${symbols.length} symbols`);
 
-    // Sync macro events (fast, no rate limits)
-    await this.syncMacroEvents();
+    // Sync each source independently — one failure shouldn't block others
+    try {
+      await this.syncMacroEvents();
+    } catch (error) {
+      console.error("[CalendarSync] Error syncing macro events:", error);
+    }
 
-    // Sync IBKR option expirations
-    await this.syncOptionExpirations();
+    try {
+      await this.syncOptionExpirations();
+    } catch (error) {
+      console.error("[CalendarSync] Error syncing option expirations:", error);
+    }
 
-    // Sync Polygon data per ticker (rate limited)
     for (const symbol of symbols) {
       await this.syncTickerFromPolygon(symbol);
     }
