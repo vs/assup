@@ -137,16 +137,18 @@ export class FlexWebService {
       const response = await fetch(url);
       const text = await response.text();
 
-      // If the response is a proper FLEX report (starts with XML declaration or FlexQuery),
-      // return it. Otherwise check for status.
+      console.log(`[FLEX] Poll attempt ${attempt + 1}/${maxAttempts} (${delay}ms delay), response length: ${text.length}`);
+
+      // If the response is a proper FLEX report, return it.
       if (text.includes("<FlexQueryResponse") || text.includes("<FlexStatements")) {
         return text;
       }
 
       const parsed = this.parser.parse(text);
       const root = parsed.FlexStatementResponse || parsed;
+      console.log(`[FLEX] Poll status: ErrorCode=${root.ErrorCode}, Status=${root.Status}`);
 
-      if (root.ErrorCode === "1019") {
+      if (String(root.ErrorCode) === "1019") {
         // Statement generation in progress, retry
         delay = Math.min(delay * 2, 16000);
         continue;
