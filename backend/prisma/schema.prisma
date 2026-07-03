@@ -175,6 +175,8 @@ model ImportBatch {
   cashTransactions CashTransaction[]
   corporateActions CorporateAction[]
   flexFetchLog     FlexFetchLog?
+  accountSnapshots AccountSnapshot[]
+  fundFlows        FundFlow[]
 
   @@index([fileHash])
   @@map("import_batches")
@@ -527,4 +529,32 @@ model CalendarSyncStatus {
 
   @@unique([source, symbol])
   @@map("calendar_sync_status")
+}
+
+model AccountSnapshot {
+  id              String      @id @default(uuid()) @db.Uuid
+  date            DateTime    @unique @db.Date
+  netLiquidation  Float       @map("net_liquidation") @db.DoublePrecision
+  currency        String      @default("USD") @db.VarChar(10)
+  importBatchId   String      @map("import_batch_id") @db.Uuid
+  importBatch     ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@map("account_snapshots")
+}
+
+model FundFlow {
+  id              String      @id @default(uuid()) @db.Uuid
+  transactionId   String      @unique @map("transaction_id") @db.VarChar(255)
+  date            DateTime    @db.Date
+  type            String      @db.VarChar(20)
+  amount          Float       @db.DoublePrecision
+  currency        String      @default("USD") @db.VarChar(10)
+  description     String
+  importBatchId   String      @map("import_batch_id") @db.Uuid
+  importBatch     ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([type])
+  @@map("fund_flows")
 }
