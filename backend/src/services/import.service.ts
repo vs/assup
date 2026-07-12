@@ -63,11 +63,19 @@ interface FlexFundFlow {
   description: string;
 }
 
+interface FlexEquitySnapshot {
+  reportDate: string;
+  total: string;
+  currency?: string;
+  accountId?: string;
+}
+
 interface ParsedFlexData {
   trades: FlexTrade[];
   cashTransactions: FlexCashTransaction[];
   corporateActions: FlexCorporateAction[];
   fundFlows: FlexFundFlow[];
+  equitySnapshots: FlexEquitySnapshot[];
   periodStart: Date;
   periodEnd: Date;
 }
@@ -164,6 +172,10 @@ class ImportService {
     const fundFlowsImported = await this.importFundFlows(batch.id, parsed.fundFlows);
     console.log(`[Import] Fund flow import complete: ${fundFlowsImported} imported`);
 
+    console.log(`[Import] Importing ${parsed.equitySnapshots.length} equity snapshots...`);
+    const snapshotsImported = await this.importEquitySnapshots(batch.id, parsed.equitySnapshots);
+    console.log(`[Import] Equity snapshot import complete: ${snapshotsImported} imported`);
+
     // Detect assignments
     console.log(`[Import] Detecting assignments...`);
     const assignmentsDetected = await this.detectAssignments();
@@ -182,7 +194,7 @@ class ImportService {
         otherCashImported: cashStats.other,
         corporateActionsImported: caStats.imported,
         assignmentsDetected,
-        snapshotsImported: 0,
+        snapshotsImported,
         fundFlowsImported,
       },
     };
@@ -283,6 +295,20 @@ class ImportService {
       value: ca.value,
     }));
 
+    // Extract equity summary (NLV snapshots) — optional section
+    const equitySummarySection = statement.EquitySummaryInBase || {};
+    const rawEquity = equitySummarySection.EquitySummaryByReportDateInBase || [];
+    const equitySnapshots: FlexEquitySnapshot[] = (
+      Array.isArray(rawEquity) ? rawEquity : rawEquity ? [rawEquity] : []
+    )
+      .filter((r: Record<string, string>) => r.reportDate && r.total)
+      .map((r: Record<string, string>) => ({
+        reportDate: r.reportDate,
+        total: r.total,
+        currency: r.currency,
+        accountId: r.accountId,
+      }));
+
     // Determine period from data
     const allDates = [
       ...trades.map((t) => this.parseDate(t.tradeDate)),
@@ -300,7 +326,7 @@ class ImportService {
         ? new Date(Math.max(...allDates.map((d) => d.getTime())))
         : new Date();
 
-    return { trades, cashTransactions: incomeCashTransactions, corporateActions, fundFlows, periodStart, periodEnd };
+    return { trades, cashTransactions: incomeCashTransactions, corporateActions, fundFlows, equitySnapshots, periodStart, periodEnd };
   }
 
   /**
@@ -438,7 +464,7 @@ class ImportService {
     console.log(`[Import] Parsed ${trades.length} trades, ${incomeCashTransactions.length} cash transactions, ${corporateActions.length} corporate actions, ${fundFlows.length} fund flows`);
     console.log(`[Import] Period: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
-    return { trades, cashTransactions: incomeCashTransactions, corporateActions, fundFlows, periodStart, periodEnd };
+    return { trades, cashTransactions: incomeCashTransactions, corporateActions, fundFlows, equitySnapshots: [], periodStart, periodEnd };
   }
 
   /**
@@ -899,6 +925,69 @@ class ImportService {
     }
 
     return validatedData.length;
+  }
+
+  private async importEquitySnapshots(
+    batchId: string,
+    snapshots: FlexEquitySnapshot[]
+  ): Promise<number> {
+    if (snapshots.length === 0) return 0;
+
+    const byDate = new Map<string, { total: number; currency: string }>();
+
+    for (const snap of snapshots) {
+      const date = this.parseDate(snap.reportDate);
+      if (!date) {
+        throw new Error(
+          `Import failed: Invalid date format '${snap.reportDate}' for equity snapshot. ` +
+            `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+        );
+      }
+
+      const total = parseFloat(snap.total);
+      if (isNaN(total)) {
+        throw new Error(
+          `Import failed: Invalid NLV value '${snap.total}' for equity snapshot on ${snap.reportDate}.`
+        );
+      }
+
+      const dateKey = date.toISOString().split("T")[0];
+      const existing = byDate.get(dateKey);
+
+      if (existing) {
+        const snapCurrency = snap.currency || "USD";
+        if (existing.currency !== snapCurrency) {
+          console.warn(
+            `[Import] Skipping equity snapshot for ${dateKey}: mixed currencies (${existing.currency} vs ${snapCurrency}). V1 supports single-currency only.`
+          );
+          continue;
+        }
+        existing.total += total;
+      } else {
+        byDate.set(dateKey, { total, currency: snap.currency || "USD" });
+      }
+    }
+
+    let count = 0;
+    for (const [dateKey, data] of byDate) {
+      await prisma.accountSnapshot.upsert({
+        where: { date: new Date(dateKey) },
+        create: {
+          date: new Date(dateKey),
+          netLiquidation: data.total,
+          currency: data.currency,
+          importBatchId: batchId,
+        },
+        update: {
+          netLiquidation: data.total,
+          currency: data.currency,
+          importBatchId: batchId,
+        },
+      });
+      count++;
+    }
+
+    return count;
   }
 
   /**
