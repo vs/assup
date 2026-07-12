@@ -81,6 +81,27 @@ export function CalendarSection() {
       <CardContent className="space-y-4">
         <div>
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Week Start
+          </div>
+          <div className="flex gap-2 px-2">
+            {([["monday", "Monday"], ["sunday", "Sunday"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => save({ weekStartDay: value })}
+                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                  weekStartDay === value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             Expirations
           </div>
           <div className="space-y-1">
@@ -135,26 +156,6 @@ export function CalendarSection() {
           </div>
         ))}
 
-        <div className="border-t pt-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            Week Start
-          </div>
-          <div className="flex gap-2 px-2">
-            {([["monday", "Monday"], ["sunday", "Sunday"]] as const).map(([value, label]) => (
-              <button
-                key={value}
-                onClick={() => save({ weekStartDay: value })}
-                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                  weekStartDay === value
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
       </CardContent>
     </Card>
   );
