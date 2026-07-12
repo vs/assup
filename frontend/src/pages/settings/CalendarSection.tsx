@@ -99,13 +99,13 @@ export function CalendarSection() {
             <label className="flex items-start gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer">
               <input
                 type="checkbox"
-                checked={excludeSpreadExpirations}
+                checked={!excludeSpreadExpirations}
                 onChange={toggleSpreadExpirations}
                 className="rounded border-input mt-0.5"
               />
               <div>
-                <span className="text-sm">Hide spread expirations</span>
-                <p className="text-xs text-muted-foreground">Hide expirations for spread symbols (SPX, XSP, RUT) — useful if you roll these frequently</p>
+                <span className="text-sm">Spread expirations</span>
+                <p className="text-xs text-muted-foreground">Expiration dates for spread positions (SPX, XSP, RUT)</p>
               </div>
             </label>
           </div>
