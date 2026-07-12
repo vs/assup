@@ -74,7 +74,9 @@ Select these fields in your FLEX query (exact names as shown in IBKR):
 
 **Included transaction types:** Dividends, Interest, Withholding Tax, Fees
 
-**Automatically filtered out:** Deposits, Withdrawals, Transfers, Forex conversions
+**Also imported (for Account History):** Deposits, Withdrawals — stored separately as fund flows for the Account Value chart on the Dashboard. These do not affect P&L calculations.
+
+**Automatically filtered out:** Internal Transfers, Forex conversions
 
 #### Corporate Actions Section
 
@@ -106,6 +108,22 @@ Select these fields in your FLEX query:
 - Type: `FS`
 - Quantity: `90` (new shares received)
 - Description: `SPLIT 10 FOR 1`
+
+#### Equity Summary Section (Optional)
+
+Enable this section to track your account value (NLV) over time on the Dashboard's Account Value chart.
+
+In your FLEX query, enable the **Equity Summary in Base** section. Required fields:
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| Report Date | Yes | Business day |
+| Total | Yes | End-of-day net liquidation value in base currency |
+
+**Notes:**
+- XML format required for this section (CSV not supported)
+- If this section is not included, FLEX imports still work — the Account Value chart will simply show no data
+- Daily granularity provides the best chart resolution
 
 ### Output Settings
 
@@ -153,6 +171,15 @@ The same imported data is used by both Profit and Taxes pages.
 **Currency Conversion (Taxes):**
 - Non-CZK amounts are converted using CNB exchange rates for the trade date
 - Both USD and EUR rates are fetched automatically
+
+**Fund Flows:**
+- Deposits and withdrawals are stored separately from P&L data
+- Internal transfers between sub-accounts are excluded (they don't change total account value)
+- Used for the Account Value chart markers on the Dashboard
+
+**Equity Summary:**
+- Daily NLV snapshots are stored with upsert semantics (re-importing updates existing dates)
+- Powers the Account Value chart on the Dashboard
 
 ### Troubleshooting
 
