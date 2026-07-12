@@ -158,8 +158,6 @@ export class FlexWebService {
       const response = await fetch(url);
       const text = await response.text();
 
-      console.log(`[FLEX] Poll attempt ${attempt + 1}/${maxAttempts} (${delay}ms delay), response length: ${text.length}, start: ${text.slice(0, 200)}`);
-
       // If the response is a proper FLEX report (XML or CSV), return it.
       if (
         text.includes("<FlexQueryResponse") ||
@@ -167,13 +165,11 @@ export class FlexWebService {
         text.startsWith('"TradeID"') ||
         text.startsWith("TradeID")
       ) {
-        console.log(`[FLEX] Report received (${text.length} bytes)`);
         return text;
       }
 
       const parsed = this.parser.parse(text);
       const root = parsed.FlexStatementResponse || parsed;
-      console.log(`[FLEX] Poll status: ErrorCode=${root.ErrorCode}, Status=${root.Status}`);
 
       if (String(root.ErrorCode) === "1019") {
         // Statement generation in progress, retry
