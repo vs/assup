@@ -46,8 +46,8 @@ function NlvTooltip({ active, payload }: any) {
           {d.fundFlows.map((ff, i) => (
             <div key={i}>
               <div className="flex justify-between gap-4">
-                <span className={ff.type === "DEPOSIT" ? "text-green-600" : "text-red-600"}>
-                  {ff.type}
+                <span className={ff.amount >= 0 ? "text-green-600" : "text-red-600"}>
+                  {ff.amount >= 0 ? "DEPOSIT" : "WITHDRAWAL"}
                 </span>
                 <span>
                   {formatCurrency(ff.amount)} {ff.currency}
@@ -175,7 +175,7 @@ export function NlvChart() {
                 x={m.date}
                 y={m.netLiquidation}
                 r={5}
-                fill={m.flow.type === "DEPOSIT" ? "#16a34a" : "#dc2626"}
+                fill={m.flow.amount >= 0 ? "#16a34a" : "#dc2626"}
                 stroke="white"
                 strokeWidth={2}
               />
