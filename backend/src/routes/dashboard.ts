@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { DashboardService } from "../services/dashboard.service.js";
+import { accountHistoryService } from "../services/accountHistory.service.js";
 import { DashboardPeriod } from "@assup/shared";
 
 const router = Router();
@@ -26,6 +27,42 @@ router.get("/summary", async (req, res, next) => {
     const summary = await dashboardService.getSummary(period as DashboardPeriod, year);
 
     res.json(summary);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const validGranularities = ["daily", "weekly", "monthly"];
+
+router.get("/account-history", async (req, res, next) => {
+  try {
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+    const granularity = req.query.granularity as string | undefined;
+
+    if (from && isNaN(Date.parse(from))) {
+      return res.status(400).json({
+        error: `Invalid 'from' date '${from}'. Expected ISO date format: YYYY-MM-DD.`,
+      });
+    }
+    if (to && isNaN(Date.parse(to))) {
+      return res.status(400).json({
+        error: `Invalid 'to' date '${to}'. Expected ISO date format: YYYY-MM-DD.`,
+      });
+    }
+    if (from && to && new Date(from) > new Date(to)) {
+      return res.status(400).json({
+        error: `'from' date (${from}) must be before 'to' date (${to}).`,
+      });
+    }
+    if (granularity && !validGranularities.includes(granularity)) {
+      return res.status(400).json({
+        error: `Invalid granularity '${granularity}'. Supported: ${validGranularities.join(", ")}.`,
+      });
+    }
+
+    const result = await accountHistoryService.getHistory(from, to, granularity as any);
+    res.json(result);
   } catch (error) {
     next(error);
   }

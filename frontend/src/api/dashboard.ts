@@ -1,4 +1,4 @@
-import type { DashboardPeriod, DashboardSummary } from "@assup/shared";
+import type { DashboardPeriod, DashboardSummary, AccountHistoryResponse, AccountHistoryGranularity } from "@assup/shared";
 import { request, buildQuery } from "./client";
 
 interface DashboardQueryParams {
@@ -13,5 +13,18 @@ export const dashboardApi = {
       year: params?.year,
     });
     return request<DashboardSummary>(`/api/dashboard/summary${query}`);
+  },
+
+  accountHistory(params?: {
+    from?: string;
+    to?: string;
+    granularity?: AccountHistoryGranularity;
+  }): Promise<AccountHistoryResponse> {
+    const query = buildQuery({
+      from: params?.from,
+      to: params?.to,
+      granularity: params?.granularity,
+    });
+    return request<AccountHistoryResponse>(`/api/dashboard/account-history${query}`);
   },
 };
