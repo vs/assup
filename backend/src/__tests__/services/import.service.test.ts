@@ -404,3 +404,29 @@ describe("ImportService CSV Parsing", () => {
     });
   });
 });
+
+describe("fund flow type classification", () => {
+  function classifyFundFlowType(type: string): "DEPOSIT" | "WITHDRAWAL" | null {
+    const upper = (type || "").toUpperCase();
+    if (upper.includes("DEPOSIT")) return "DEPOSIT";
+    if (upper.includes("WITHDRAWAL")) return "WITHDRAWAL";
+    return null;
+  }
+
+  it("classifies deposit types", () => {
+    expect(classifyFundFlowType("Deposits & Withdrawals")).toBe("DEPOSIT");
+    expect(classifyFundFlowType("DEPOSIT")).toBe("DEPOSIT");
+  });
+
+  it("classifies withdrawal types", () => {
+    expect(classifyFundFlowType("WITHDRAWAL")).toBe("WITHDRAWAL");
+  });
+
+  it("returns null for non-fund-flow types", () => {
+    expect(classifyFundFlowType("DIVIDEND")).toBeNull();
+    expect(classifyFundFlowType("INTEREST")).toBeNull();
+    expect(classifyFundFlowType("TRANSFER")).toBeNull();
+    expect(classifyFundFlowType("INTERNAL")).toBeNull();
+    expect(classifyFundFlowType("FOREX")).toBeNull();
+  });
+});
