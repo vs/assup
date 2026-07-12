@@ -11,6 +11,10 @@ const DEFAULT_SCHEDULE: FlexScheduleConfig = {
   minute: 0,
 };
 
+function isScheduleConfig(val: unknown): val is FlexScheduleConfig {
+  return val != null && typeof val === "object" && Array.isArray((val as any).days);
+}
+
 export function scheduleToCron(s: FlexScheduleConfig): string {
   const days = s.days.length === 7 ? "*" : s.days.sort((a, b) => a - b).join(",");
   if (s.repeatHours) {
@@ -33,7 +37,7 @@ export class FlexWebService {
     return {
       token: (map["flex.token"] as string) || "",
       queryId: (map["flex.queryId"] as string) || "",
-      schedule: (map["flex.schedule"] as unknown as FlexScheduleConfig) || DEFAULT_SCHEDULE,
+      schedule: isScheduleConfig(map["flex.schedule"]) ? map["flex.schedule"] : DEFAULT_SCHEDULE,
       enabled: (map["flex.enabled"] as boolean) || false,
     };
   }
