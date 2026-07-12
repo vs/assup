@@ -5,10 +5,6 @@ import type { CalendarEventType, WeekStartDay } from "@assup/shared";
 
 const EVENT_GROUPS = [
   {
-    label: "Expirations",
-    types: ["OPTION_EXPIRATION"] as CalendarEventType[],
-  },
-  {
     label: "Earnings & Dividends",
     types: ["EARNINGS", "DIVIDEND_ANNOUNCED", "DIVIDEND_EX_DATE", "DIVIDEND_PAYMENT"] as CalendarEventType[],
   },
@@ -83,6 +79,38 @@ export function CalendarSection() {
         <p className="text-xs text-muted-foreground">Choose which event types appear in the calendar, dashboard, and ticker pages.</p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Expirations
+          </div>
+          <div className="space-y-1">
+            <label className="flex items-start gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!excluded.includes("OPTION_EXPIRATION")}
+                onChange={() => toggleType("OPTION_EXPIRATION")}
+                className="rounded border-input mt-0.5"
+              />
+              <div>
+                <span className="text-sm">Option expirations</span>
+                <p className="text-xs text-muted-foreground">Expiration dates for open option contracts in your portfolio (puts and calls you hold)</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={excludeSpreadExpirations}
+                onChange={toggleSpreadExpirations}
+                className="rounded border-input mt-0.5"
+              />
+              <div>
+                <span className="text-sm">Hide spread expirations</span>
+                <p className="text-xs text-muted-foreground">Hide expirations for spread symbols (SPX, XSP, RUT) — useful if you roll these frequently</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
         {EVENT_GROUPS.map((group) => (
           <div key={group.label}>
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
@@ -126,24 +154,6 @@ export function CalendarSection() {
               </button>
             ))}
           </div>
-        </div>
-
-        <div className="border-t pt-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            Filtering
-          </div>
-          <label className="flex items-center gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={excludeSpreadExpirations}
-              onChange={toggleSpreadExpirations}
-              className="rounded border-input"
-            />
-            <div>
-              <span className="text-sm">Hide spread expirations</span>
-              <p className="text-xs text-muted-foreground">Hide option expirations for spread symbols (SPX, XSP, RUT)</p>
-            </div>
-          </label>
         </div>
       </CardContent>
     </Card>
