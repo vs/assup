@@ -15,6 +15,7 @@ import { MetricsRow } from "@/components/dashboard/MetricsRow";
 import { GainersLosers } from "@/components/dashboard/GainersLosers";
 import { ActiveWheelsList } from "@/components/dashboard/ActiveWheelsList";
 import { ActiveSpreadsList } from "@/components/dashboard/ActiveSpreadsList";
+import { NlvChart } from "@/components/dashboard/NlvChart";
 
 export function DashboardPage() {
   const [period, setPeriod] = useState<DashboardPeriod>("year");
@@ -99,6 +100,9 @@ export function DashboardPage() {
         <ActiveWheelsList tickers={wheelData.data?.tickers} />
         <ActiveSpreadsList spreads={spreadsData.data?.spreads} />
       </div>
+
+      {/* Account value history */}
+      <NlvChart />
     </div>
   );
 }

@@ -54,10 +54,28 @@ interface FlexCorporateAction {
   value?: string;
 }
 
+interface FlexFundFlow {
+  transactionID: string;
+  dateTime: string;
+  amount: string;
+  currency?: string;
+  type: string;
+  description: string;
+}
+
+interface FlexEquitySnapshot {
+  reportDate: string;
+  total: string;
+  currency?: string;
+  accountId?: string;
+}
+
 interface ParsedFlexData {
   trades: FlexTrade[];
   cashTransactions: FlexCashTransaction[];
   corporateActions: FlexCorporateAction[];
+  fundFlows: FlexFundFlow[];
+  equitySnapshots: FlexEquitySnapshot[];
   periodStart: Date;
   periodEnd: Date;
 }
@@ -104,6 +122,8 @@ class ImportService {
           otherCashImported: 0,
           corporateActionsImported: 0,
           assignmentsDetected: 0,
+          snapshotsImported: 0,
+          fundFlowsImported: 0,
         },
       };
     }
@@ -148,6 +168,14 @@ class ImportService {
     );
     console.log(`[Import] Corporate actions import complete: ${caStats.imported} imported, ${caStats.skipped} skipped`);
 
+    console.log(`[Import] Importing ${parsed.fundFlows.length} fund flows...`);
+    const fundFlowsImported = await this.importFundFlows(batch.id, parsed.fundFlows);
+    console.log(`[Import] Fund flow import complete: ${fundFlowsImported} imported`);
+
+    console.log(`[Import] Importing ${parsed.equitySnapshots.length} equity snapshots...`);
+    const snapshotsImported = await this.importEquitySnapshots(batch.id, parsed.equitySnapshots);
+    console.log(`[Import] Equity snapshot import complete: ${snapshotsImported} imported`);
+
     // Detect assignments
     console.log(`[Import] Detecting assignments...`);
     const assignmentsDetected = await this.detectAssignments();
@@ -166,6 +194,8 @@ class ImportService {
         otherCashImported: cashStats.other,
         corporateActionsImported: caStats.imported,
         assignmentsDetected,
+        snapshotsImported,
+        fundFlowsImported,
       },
     };
   }
@@ -229,6 +259,25 @@ class ImportService {
       type: c.type,
     }));
 
+    // Separate fund flows from income cash transactions
+    const fundFlows: FlexFundFlow[] = [];
+    const incomeCashTransactions: FlexCashTransaction[] = [];
+    for (const ct of cashTransactions) {
+      const fundFlowType = this.classifyFundFlowType(ct.type);
+      if (fundFlowType) {
+        fundFlows.push({
+          transactionID: ct.transactionID,
+          dateTime: ct.dateTime,
+          amount: ct.amount,
+          currency: ct.currency,
+          type: fundFlowType,
+          description: ct.description,
+        });
+      } else {
+        incomeCashTransactions.push(ct);
+      }
+    }
+
     // Extract corporate actions
     const caSection = statement.CorporateActions || {};
     const rawCA = caSection.CorporateAction || [];
@@ -246,11 +295,26 @@ class ImportService {
       value: ca.value,
     }));
 
+    // Extract equity summary (NLV snapshots) — optional section
+    const equitySummarySection = statement.EquitySummaryInBase || {};
+    const rawEquity = equitySummarySection.EquitySummaryByReportDateInBase || [];
+    const equitySnapshots: FlexEquitySnapshot[] = (
+      Array.isArray(rawEquity) ? rawEquity : rawEquity ? [rawEquity] : []
+    )
+      .filter((r: Record<string, string>) => r.reportDate && r.total)
+      .map((r: Record<string, string>) => ({
+        reportDate: r.reportDate,
+        total: r.total,
+        currency: r.currency,
+        accountId: r.accountId,
+      }));
+
     // Determine period from data
     const allDates = [
       ...trades.map((t) => this.parseDate(t.tradeDate)),
-      ...cashTransactions.map((c) => this.parseDate(c.dateTime)),
+      ...incomeCashTransactions.map((c) => this.parseDate(c.dateTime)),
       ...corporateActions.map((ca) => this.parseDate(ca.exDate)),
+      ...fundFlows.map((f) => this.parseDate(f.dateTime)),
     ].filter((d) => d !== null) as Date[];
 
     const periodStart =
@@ -262,7 +326,7 @@ class ImportService {
         ? new Date(Math.max(...allDates.map((d) => d.getTime())))
         : new Date();
 
-    return { trades, cashTransactions, corporateActions, periodStart, periodEnd };
+    return { trades, cashTransactions: incomeCashTransactions, corporateActions, fundFlows, equitySnapshots, periodStart, periodEnd };
   }
 
   /**
@@ -362,10 +426,30 @@ class ImportService {
       }
     }
 
+    // Separate fund flows from income cash transactions
+    const fundFlows: FlexFundFlow[] = [];
+    const incomeCashTransactions: FlexCashTransaction[] = [];
+    for (const ct of cashTransactions) {
+      const fundFlowType = this.classifyFundFlowType(ct.type);
+      if (fundFlowType) {
+        fundFlows.push({
+          transactionID: ct.transactionID,
+          dateTime: ct.dateTime,
+          amount: ct.amount,
+          currency: ct.currency,
+          type: fundFlowType,
+          description: ct.description,
+        });
+      } else {
+        incomeCashTransactions.push(ct);
+      }
+    }
+
     const allDates = [
       ...trades.map((t) => this.parseDate(t.tradeDate)),
-      ...cashTransactions.map((c) => this.parseDate(c.dateTime)),
+      ...incomeCashTransactions.map((c) => this.parseDate(c.dateTime)),
       ...corporateActions.map((ca) => this.parseDate(ca.exDate)),
+      ...fundFlows.map((f) => this.parseDate(f.dateTime)),
     ].filter((d) => d !== null) as Date[];
 
     const periodStart =
@@ -377,10 +461,10 @@ class ImportService {
         ? new Date(Math.max(...allDates.map((d) => d.getTime())))
         : new Date();
 
-    console.log(`[Import] Parsed ${trades.length} trades, ${cashTransactions.length} cash transactions, ${corporateActions.length} corporate actions`);
+    console.log(`[Import] Parsed ${trades.length} trades, ${incomeCashTransactions.length} cash transactions, ${corporateActions.length} corporate actions, ${fundFlows.length} fund flows`);
     console.log(`[Import] Period: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
-    return { trades, cashTransactions, corporateActions, periodStart, periodEnd };
+    return { trades, cashTransactions: incomeCashTransactions, corporateActions, fundFlows, equitySnapshots: [], periodStart, periodEnd };
   }
 
   /**
@@ -782,6 +866,128 @@ class ImportService {
     }
 
     return { dividends, interest, other };
+  }
+
+  private async importFundFlows(
+    batchId: string,
+    flows: FlexFundFlow[]
+  ): Promise<number> {
+    if (flows.length === 0) return 0;
+
+    const existingIds = new Set(
+      (await prisma.fundFlow.findMany({
+        where: { transactionId: { in: flows.map((f) => f.transactionID) } },
+        select: { transactionId: true },
+      })).map((f) => f.transactionId)
+    );
+
+    const validatedData: Array<{
+      importBatchId: string;
+      transactionId: string;
+      date: Date;
+      type: string;
+      amount: number;
+      currency: string;
+      description: string;
+    }> = [];
+
+    for (const flow of flows) {
+      if (existingIds.has(flow.transactionID)) continue;
+
+      const date = this.parseDate(flow.dateTime);
+      if (!date) {
+        throw new Error(
+          `Import failed: Invalid date format '${flow.dateTime}' for fund flow ${flow.transactionID}. ` +
+            `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+        );
+      }
+
+      const amount = parseFloat(flow.amount);
+      if (isNaN(amount)) {
+        throw new Error(
+          `Import failed: Invalid amount '${flow.amount}' for fund flow ${flow.transactionID}.`
+        );
+      }
+
+      validatedData.push({
+        importBatchId: batchId,
+        transactionId: flow.transactionID,
+        date,
+        type: flow.type,
+        amount,
+        currency: flow.currency || "USD",
+        description: flow.description,
+      });
+    }
+
+    if (validatedData.length > 0) {
+      await prisma.fundFlow.createMany({ data: validatedData, skipDuplicates: true });
+    }
+
+    return validatedData.length;
+  }
+
+  private async importEquitySnapshots(
+    batchId: string,
+    snapshots: FlexEquitySnapshot[]
+  ): Promise<number> {
+    if (snapshots.length === 0) return 0;
+
+    const byDate = new Map<string, { total: number; currency: string }>();
+
+    for (const snap of snapshots) {
+      const date = this.parseDate(snap.reportDate);
+      if (!date) {
+        throw new Error(
+          `Import failed: Invalid date format '${snap.reportDate}' for equity snapshot. ` +
+            `Supported formats: YYYYMMDD, YYYYMMDD;HHMMSS, YYYY-MM-DD, MM/DD/YYYY, DD-MMM-YY.`
+        );
+      }
+
+      const total = parseFloat(snap.total);
+      if (isNaN(total)) {
+        throw new Error(
+          `Import failed: Invalid NLV value '${snap.total}' for equity snapshot on ${snap.reportDate}.`
+        );
+      }
+
+      const dateKey = date.toISOString().split("T")[0];
+      const existing = byDate.get(dateKey);
+
+      if (existing) {
+        const snapCurrency = snap.currency || "USD";
+        if (existing.currency !== snapCurrency) {
+          console.warn(
+            `[Import] Skipping equity snapshot for ${dateKey}: mixed currencies (${existing.currency} vs ${snapCurrency}). V1 supports single-currency only.`
+          );
+          continue;
+        }
+        existing.total += total;
+      } else {
+        byDate.set(dateKey, { total, currency: snap.currency || "USD" });
+      }
+    }
+
+    let count = 0;
+    for (const [dateKey, data] of byDate) {
+      await prisma.accountSnapshot.upsert({
+        where: { date: new Date(dateKey) },
+        create: {
+          date: new Date(dateKey),
+          netLiquidation: data.total,
+          currency: data.currency,
+          importBatchId: batchId,
+        },
+        update: {
+          netLiquidation: data.total,
+          currency: data.currency,
+          importBatchId: batchId,
+        },
+      });
+      count++;
+    }
+
+    return count;
   }
 
   /**
@@ -1258,6 +1464,14 @@ class ImportService {
     }
 
     return "OTHER";
+  }
+
+  // Substring matching consistent with mapCashTransactionType pattern.
+  private classifyFundFlowType(type: string): "DEPOSIT" | "WITHDRAWAL" | null {
+    const upper = (type || "").toUpperCase();
+    if (upper.includes("DEPOSIT")) return "DEPOSIT";
+    if (upper.includes("WITHDRAWAL")) return "WITHDRAWAL";
+    return null;
   }
 }
 

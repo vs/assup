@@ -404,3 +404,79 @@ describe("ImportService CSV Parsing", () => {
     });
   });
 });
+
+describe("equity summary parsing", () => {
+  function parseEquitySummary(statement: Record<string, any>): Array<{ reportDate: string; total: string }> {
+    const section = statement.EquitySummaryInBase || {};
+    const rows = section.EquitySummaryByReportDateInBase || [];
+    const items = Array.isArray(rows) ? rows : rows ? [rows] : [];
+    return items
+      .filter((r: any) => r.reportDate && r.total)
+      .map((r: any) => ({ reportDate: r.reportDate, total: r.total }));
+  }
+
+  it("parses equity summary rows", () => {
+    const statement = {
+      EquitySummaryInBase: {
+        EquitySummaryByReportDateInBase: [
+          { reportDate: "2024-01-15", total: "150000.50" },
+          { reportDate: "2024-01-16", total: "151200.75" },
+        ],
+      },
+    };
+    const result = parseEquitySummary(statement);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ reportDate: "2024-01-15", total: "150000.50" });
+  });
+
+  it("handles missing section gracefully", () => {
+    expect(parseEquitySummary({})).toHaveLength(0);
+  });
+
+  it("handles single row (not array)", () => {
+    const statement = {
+      EquitySummaryInBase: {
+        EquitySummaryByReportDateInBase: { reportDate: "2024-01-15", total: "150000" },
+      },
+    };
+    expect(parseEquitySummary(statement)).toHaveLength(1);
+  });
+
+  it("skips rows with missing total", () => {
+    const statement = {
+      EquitySummaryInBase: {
+        EquitySummaryByReportDateInBase: [
+          { reportDate: "2024-01-15", total: "150000" },
+          { reportDate: "2024-01-16" },
+        ],
+      },
+    };
+    expect(parseEquitySummary(statement)).toHaveLength(1);
+  });
+});
+
+describe("fund flow type classification", () => {
+  function classifyFundFlowType(type: string): "DEPOSIT" | "WITHDRAWAL" | null {
+    const upper = (type || "").toUpperCase();
+    if (upper.includes("DEPOSIT")) return "DEPOSIT";
+    if (upper.includes("WITHDRAWAL")) return "WITHDRAWAL";
+    return null;
+  }
+
+  it("classifies deposit types", () => {
+    expect(classifyFundFlowType("Deposits & Withdrawals")).toBe("DEPOSIT");
+    expect(classifyFundFlowType("DEPOSIT")).toBe("DEPOSIT");
+  });
+
+  it("classifies withdrawal types", () => {
+    expect(classifyFundFlowType("WITHDRAWAL")).toBe("WITHDRAWAL");
+  });
+
+  it("returns null for non-fund-flow types", () => {
+    expect(classifyFundFlowType("DIVIDEND")).toBeNull();
+    expect(classifyFundFlowType("INTEREST")).toBeNull();
+    expect(classifyFundFlowType("TRANSFER")).toBeNull();
+    expect(classifyFundFlowType("INTERNAL")).toBeNull();
+    expect(classifyFundFlowType("FOREX")).toBeNull();
+  });
+});
