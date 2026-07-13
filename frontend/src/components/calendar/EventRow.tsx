@@ -1,5 +1,6 @@
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { CalendarEvent } from "@assup/shared";
+import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { getEventColor } from "./calendarUtils";
 
 interface EventRowProps {
@@ -7,15 +8,11 @@ interface EventRowProps {
 }
 
 export function EventRow({ event }: EventRowProps) {
-  const navigate = useNavigate();
   const color = getEventColor(event.eventType);
   const subtitle = buildSubtitle(event);
 
-  return (
-    <div
-      className="flex items-center gap-2.5 border rounded-md px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
-      onClick={() => event.symbol && navigate(`/tickers/${event.symbol}`)}
-    >
+  const content = (
+    <div className="flex items-center gap-2.5 border rounded-md px-3 py-2 hover:bg-muted/50 transition-colors">
       <div
         className="w-[3px] h-7 rounded-sm flex-shrink-0"
         style={{ backgroundColor: color }}
@@ -27,6 +24,16 @@ export function EventRow({ event }: EventRowProps) {
         )}
       </div>
     </div>
+  );
+
+  if (!event.symbol) return content;
+
+  return (
+    <TickerHoverCard symbol={event.symbol}>
+      <Link to={`/tickers/${event.symbol}`} className="block">
+        {content}
+      </Link>
+    </TickerHoverCard>
   );
 }
 
