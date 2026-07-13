@@ -75,8 +75,7 @@ export function CalendarSection() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold">Calendar Events</CardTitle>
-        <p className="text-xs text-muted-foreground">Choose which event types appear in the calendar, dashboard, and ticker pages.</p>
+        <CardTitle className="text-sm font-semibold">Calendar</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
@@ -100,7 +99,9 @@ export function CalendarSection() {
           </div>
         </div>
 
-        <div>
+        <div className="border-t pt-4">
+          <div className="text-sm font-semibold mb-0.5">Calendar Events</div>
+          <p className="text-xs text-muted-foreground mb-3">Choose which event types appear in the calendar, dashboard, and ticker pages.</p>
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             Expirations
           </div>
