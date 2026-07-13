@@ -147,6 +147,10 @@ class IBKRService {
   // Account data
   private accountSummary: Map<string, AccountSummaryTagValues> = new Map();
   private accountSubscription: Subscription | null = null;
+  private pnlSubscription: Subscription | null = null;
+  private dailyPnlData: { dailyPnL: number; unrealizedPnL: number; realizedPnL: number } = {
+    dailyPnL: 0, unrealizedPnL: 0, realizedPnL: 0,
+  };
   private connectionSubscription: Subscription | null = null;
 
   // Deduplication cache for getExecutions() — concurrent callers share one TWS request
@@ -259,6 +263,7 @@ class IBKRService {
 
     // Subscribe to account summary for cash balance
     this.subscribeToAccountSummary();
+    this.subscribeToPnL();
   }
 
   private subscribeToAccountSummary() {
@@ -290,6 +295,44 @@ class IBKRService {
       });
   }
 
+  private subscribeToPnL() {
+    if (!this.api) return;
+
+    if (this.pnlSubscription) {
+      this.pnlSubscription.unsubscribe();
+    }
+
+    const account = this.connectionStatus.account;
+    if (!account) {
+      // Retry once account is known (subscribeToAccountSummary will set it)
+      const checkInterval = setInterval(() => {
+        if (this.connectionStatus.account) {
+          clearInterval(checkInterval);
+          this.subscribeToPnL();
+        }
+      }, 1000);
+      setTimeout(() => clearInterval(checkInterval), 30000);
+      return;
+    }
+
+    this.pnlSubscription = this.api.getPnL(account).subscribe({
+      next: (pnl) => {
+        this.dailyPnlData = {
+          dailyPnL: pnl.dailyPnL ?? 0,
+          unrealizedPnL: pnl.unrealizedPnL ?? 0,
+          realizedPnL: pnl.realizedPnL ?? 0,
+        };
+      },
+      error: (err) => {
+        console.error("PnL subscription error:", err);
+      },
+    });
+  }
+
+  getDailyPnL(): { dailyPnL: number; unrealizedPnL: number; realizedPnL: number } {
+    return { ...this.dailyPnlData };
+  }
+
   private handleDisconnected() {
     this.updateStatus({
       connected: false,
@@ -301,6 +344,11 @@ class IBKRService {
 
     // Clear account data
     this.accountSummary.clear();
+    this.dailyPnlData = { dailyPnL: 0, unrealizedPnL: 0, realizedPnL: 0 };
+    if (this.pnlSubscription) {
+      this.pnlSubscription.unsubscribe();
+      this.pnlSubscription = null;
+    }
   }
 
   private handleError(err: unknown) {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { DashboardService } from "../services/dashboard.service.js";
 import { accountHistoryService } from "../services/accountHistory.service.js";
+import { ibkrService } from "../services/ibkr.js";
 import { DashboardPeriod } from "@assup/shared";
 
 const router = Router();
@@ -63,6 +64,15 @@ router.get("/account-history", async (req, res, next) => {
 
     const result = await accountHistoryService.getHistory(from, to, granularity as any);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/daily-pnl", async (_req, res, next) => {
+  try {
+    const pnl = ibkrService.getDailyPnL();
+    res.json(pnl);
   } catch (error) {
     next(error);
   }

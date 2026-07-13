@@ -1,6 +1,8 @@
+import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@assup/shared";
 import type { PositionSummary, DashboardSummary } from "@assup/shared";
 import { Card, CardContent } from "@/components/ui/card";
+import { dashboardApi } from "@/api/dashboard";
 
 interface MetricCardProps {
   label: string;
@@ -35,7 +37,7 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
   const putDelta = positionSummary?.summary.totalPutDelta ?? 0;
   const callDelta = positionSummary?.summary.totalCallDelta ?? 0;
 
-  // Total P&L across all positions
+  // Total unrealized P&L across all positions
   const totalUnrealized = positionSummary?.positions.reduce(
     (sum, p) => sum + (p.unrealizedPnl ?? 0), 0
   ) ?? 0;
@@ -47,8 +49,19 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
   // Current month pace
   const pace = dashboardData?.currentMonthPace;
 
+  // Today's P&L from IBKR real-time subscription
+  const { data: dailyPnl } = useQuery({
+    queryKey: ["dashboard", "daily-pnl"],
+    queryFn: () => dashboardApi.dailyPnl(),
+    refetchInterval: 30_000,
+  });
+
+  const todayTotal = dailyPnl?.dailyPnL ?? 0;
+  const todayRealized = dailyPnl?.realizedPnL ?? 0;
+  const todayUnrealized = dailyPnl?.unrealizedPnL ?? 0;
+
   return (
-    <div className="grid grid-cols-5 gap-3">
+    <div className="grid grid-cols-6 gap-3">
       <MetricCard
         label="Net Liquidation"
         value={formatCurrency(nlv)}
@@ -65,6 +78,12 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         value={pace ? formatCurrency(pace.estimatedTotal) : "—"}
         detail={pace ? `Realized ${formatCurrency(pace.realized)} · Projected ${formatCurrency(pace.projected)}` : ""}
         valueClassName={pace && pace.estimatedTotal >= 0 ? "text-green-600" : "text-red-600"}
+      />
+      <MetricCard
+        label="Today's P&L"
+        value={formatCurrency(todayTotal)}
+        detail={`Realized ${formatCurrency(todayRealized)} · Unrealized ${formatCurrency(todayUnrealized)}`}
+        valueClassName={todayTotal >= 0 ? "text-green-600" : "text-red-600"}
       />
       <MetricCard
         label="Puts Exposure"

@@ -27,4 +27,7 @@ export const dashboardApi = {
     });
     return request<AccountHistoryResponse>(`/api/dashboard/account-history${query}`);
   },
+  dailyPnl(): Promise<{ dailyPnL: number; unrealizedPnL: number; realizedPnL: number }> {
+    return request<{ dailyPnL: number; unrealizedPnL: number; realizedPnL: number }>("/api/dashboard/daily-pnl");
+  },
 };
