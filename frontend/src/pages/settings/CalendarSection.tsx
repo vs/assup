@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { calendarApi } from "@/api/calendar";
 import type { CalendarEventType, WeekStartDay } from "@assup/shared";
 
@@ -71,6 +73,16 @@ export function CalendarSection() {
   const toggleSpreadExpirations = () => {
     save({ excludeSpreadExpirations: !excludeSpreadExpirations });
   };
+
+  const [purging, setPurging] = useState(false);
+  const purgeMutation = useMutation({
+    mutationFn: () => calendarApi.purge(),
+    onMutate: () => setPurging(true),
+    onSettled: () => setPurging(false),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    },
+  });
 
   return (
     <Card>
@@ -157,6 +169,22 @@ export function CalendarSection() {
           </div>
         ))}
 
+        <div className="border-t pt-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Data
+          </div>
+          <div className="flex items-center gap-3 px-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => purgeMutation.mutate()}
+              disabled={purging}
+            >
+              {purging ? "Purging..." : "Purge & Resync Events"}
+            </Button>
+            <span className="text-xs text-muted-foreground">Delete all cached events and resync from scratch. Removes stale events from tickers no longer in your portfolio.</span>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

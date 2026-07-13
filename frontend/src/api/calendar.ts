@@ -28,6 +28,10 @@ export const calendarApi = {
     return request<{ success: boolean }>("/api/calendar/sync", { method: "POST" });
   },
 
+  purge(): Promise<{ success: boolean }> {
+    return request<{ success: boolean }>("/api/calendar/purge", { method: "POST" });
+  },
+
   getSettings(): Promise<CalendarSettings> {
     return request<CalendarSettings>("/api/calendar/settings");
   },

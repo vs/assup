@@ -55,6 +55,16 @@ router.post("/sync", async (req, res, next) => {
   }
 });
 
+// POST /api/calendar/purge
+router.post("/purge", async (req, res, next) => {
+  try {
+    await calendarService.purgeAndResync();
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/calendar/settings
 router.get("/settings", async (req, res, next) => {
   try {

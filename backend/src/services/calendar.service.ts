@@ -27,16 +27,19 @@ export class CalendarService {
       orderBy: { date: "asc" },
     });
 
-    const mapped = events.map((e) => ({
-      id: e.id,
-      eventType: e.eventType as CalendarEventType,
-      symbol: e.symbol,
-      date: e.date.toISOString().split("T")[0],
-      title: e.title,
-      details: e.details as Record<string, unknown> | null,
-      source: e.source,
-      sourceId: e.sourceId,
-    }));
+    const portfolioSymbols = await this.getPortfolioSymbolSet();
+    const mapped = events
+      .filter((e) => !e.symbol || portfolioSymbols.has(e.symbol))
+      .map((e) => ({
+        id: e.id,
+        eventType: e.eventType as CalendarEventType,
+        symbol: e.symbol,
+        date: e.date.toISOString().split("T")[0],
+        title: e.title,
+        details: e.details as Record<string, unknown> | null,
+        source: e.source,
+        sourceId: e.sourceId,
+      }));
     return this.filterSpreadExpirations(mapped);
   }
 
@@ -369,17 +372,26 @@ export class CalendarService {
     );
   }
 
-  private async getTrackedSymbols(): Promise<string[]> {
-    // Only sync events for tickers in IBKR positions (not watchlists)
+  private async getPortfolioSymbolSet(): Promise<Set<string>> {
     const positions = await ibkrService.getPositions();
-    const positionSymbols = new Set(
+    return new Set(
       positions
         .filter((p) => p.contract.secType === "STK")
         .map((p) => p.contract.symbol)
         .filter(Boolean) as string[]
     );
+  }
 
-    return Array.from(positionSymbols);
+  private async getTrackedSymbols(): Promise<string[]> {
+    return Array.from(await this.getPortfolioSymbolSet());
+  }
+
+  async purgeAndResync(): Promise<void> {
+    console.log("[CalendarSync] Purging all events and sync status...");
+    await prisma.calendarEvent.deleteMany({});
+    await prisma.calendarSyncStatus.deleteMany({});
+    console.log("[CalendarSync] Purge complete, starting full resync...");
+    await this.syncAll();
   }
 
   startBackgroundSync(): void {
