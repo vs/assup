@@ -47,19 +47,15 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
   // Current month pace
   const pace = dashboardData?.currentMonthPace;
 
-  // Today's P&L — realized from dashboard (MTD has daily granularity), unrealized from positions
-  const todayRealized = dashboardData?.periodTotal.realized ?? 0;
-  const todayUnrealized = totalUnrealized;
-
   return (
-    <div className="grid grid-cols-6 gap-3">
+    <div className="grid grid-cols-5 gap-3">
       <MetricCard
         label="Net Liquidation"
         value={formatCurrency(nlv)}
         detail={`Cash ${formatCurrency(cash)} · Stocks ${formatCurrency(stockValue)}`}
       />
       <MetricCard
-        label="Total P&L"
+        label="Unrealized P&L"
         value={formatCurrency(totalUnrealized)}
         detail={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}% of cost basis`}
         valueClassName={totalUnrealized >= 0 ? "text-green-600" : "text-red-600"}
@@ -69,12 +65,6 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         value={pace ? formatCurrency(pace.estimatedTotal) : "—"}
         detail={pace ? `Realized ${formatCurrency(pace.realized)} · Projected ${formatCurrency(pace.projected)}` : ""}
         valueClassName={pace && pace.estimatedTotal >= 0 ? "text-green-600" : "text-red-600"}
-      />
-      <MetricCard
-        label="Today's P&L"
-        value={formatCurrency(todayRealized + todayUnrealized)}
-        detail={`Realized ${formatCurrency(todayRealized)} · Unrealized ${formatCurrency(todayUnrealized)}`}
-        valueClassName={(todayRealized + todayUnrealized) >= 0 ? "text-green-600" : "text-red-600"}
       />
       <MetricCard
         label="Puts Exposure"
