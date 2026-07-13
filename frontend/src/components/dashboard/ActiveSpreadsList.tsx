@@ -2,30 +2,18 @@ import { useNavigate, Link } from "react-router-dom";
 import { formatCurrency } from "@assup/shared";
 import type { ActiveSpread, SpreadMode, ActiveSpreadLeg } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 
 function SpreadTypeBadge({ type }: { type: SpreadMode }) {
-  const config: Record<SpreadMode, { label: string; className: string }> = {
-    "iron-condor": {
-      label: "Iron Condor",
-      className: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
-    },
-    "put-spread": {
-      label: "Put Spread",
-      className: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
-    },
-    "call-spread": {
-      label: "Call Spread",
-      className: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
-    },
+  const config: Record<SpreadMode, { label: string; variant: "danger" | "success" | "purple" }> = {
+    "iron-condor": { label: "Iron Condor", variant: "purple" },
+    "put-spread": { label: "Put Spread", variant: "danger" },
+    "call-spread": { label: "Call Spread", variant: "success" },
   };
-  const { label, className } = config[type];
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${className}`}>
-      {label}
-    </span>
-  );
+  const { label, variant } = config[type];
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
 function formatExpiry(expiry: string): string {

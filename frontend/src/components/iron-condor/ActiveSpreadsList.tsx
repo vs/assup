@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ActiveSpread, ActiveSpreadLeg } from "@assup/shared";
@@ -82,13 +83,9 @@ function SpreadCard({ spread, onClose }: { spread: ActiveSpread; onClose: () => 
           <button onClick={() => setExpanded(!expanded)} className="text-muted-foreground hover:text-foreground">
             {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
-          <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
-            spread.type === "put-spread" ? "bg-amber-100 text-amber-800"
-            : spread.type === "call-spread" ? "bg-blue-100 text-blue-700"
-            : "bg-violet-100 text-violet-700"
-          }`}>
+          <Badge variant={spread.type === "put-spread" ? "danger" : spread.type === "call-spread" ? "success" : "purple"}>
             {spreadModeLabel(spread.type)}
-          </span>
+          </Badge>
           <span className="font-semibold">{strikeSummary(spread)}</span>
           <span className="text-sm text-muted-foreground">{formatExpiry(spread.expiry)}</span>
           <span className="text-sm text-muted-foreground">{"\u00D7"}{spread.quantity}</span>

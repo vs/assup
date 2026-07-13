@@ -242,10 +242,10 @@ export function formatLiveSpreadName(type: SpreadType, underlying: string, legs:
   }
 }
 
-export function spreadTypeBadgeProps(type: SpreadType): { label: string; className: string } {
+export function spreadTypeBadgeProps(type: SpreadType): { label: string; variant: "danger" | "success" | "purple" } {
   switch (type) {
-    case "put-spread": return { label: "PS", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" };
-    case "call-spread": return { label: "CS", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" };
-    case "iron-condor": return { label: "IC", className: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400" };
+    case "put-spread": return { label: "PS", variant: "danger" };
+    case "call-spread": return { label: "CS", variant: "success" };
+    case "iron-condor": return { label: "IC", variant: "purple" };
   }
 }

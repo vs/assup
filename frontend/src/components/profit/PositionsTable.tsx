@@ -308,9 +308,7 @@ function OpenSpreadRow({
           />
         </TableCell>
         <TableCell>
-          <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${badge.className}`}>
-            {badge.label}
-          </span>
+          <Badge variant={badge.variant}>{badge.label}</Badge>
         </TableCell>
         <TableCell>
           {spread.assetClassName ? (
