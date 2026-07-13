@@ -809,9 +809,12 @@ class ProfitService {
     try {
       const positions = await ibkrService.getPositions();
 
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       for (const pos of positions) {
         if (pos.contract.secType !== "OPT") continue;
-        if (pos.pos >= 0) continue; // Only short positions have projected profit
+        if (pos.pos === 0) continue;
 
         const expiryStr = pos.contract.lastTradeDateOrContractMonth;
         if (!expiryStr) continue;
@@ -819,9 +822,14 @@ class ProfitService {
         const expiry = this.parseContractExpiry(expiryStr);
         if (!expiry) continue;
 
+        // Skip already-expired options
+        if (expiry < today) continue;
+
         const costBasis = pos.avgCost * Math.abs(pos.pos);
+        // Short: keep premium (+), Long: lose premium (-)
+        const projected = pos.pos < 0 ? costBasis : -costBasis;
         const period = `${expiry.getFullYear()}-${String(expiry.getMonth() + 1).padStart(2, "0")}`;
-        result.set(period, (result.get(period) ?? 0) + costBasis);
+        result.set(period, (result.get(period) ?? 0) + projected);
       }
     } catch {
       // IBKR not connected
@@ -912,10 +920,8 @@ class ProfitService {
             ? costBasis + marketValue
             : marketValue - costBasis;
 
-          let projectedProfit = 0;
-          if (pos.pos < 0) {
-            projectedProfit = costBasis;
-          }
+          // Short: keep premium, Long: lose premium
+          const projectedProfit = pos.pos < 0 ? costBasis : -costBasis;
 
           const symbol = pos.contract.symbol || "";
           const underlying = symbol.split(" ")[0] || symbol;
@@ -1074,11 +1080,12 @@ class ProfitService {
 
           // Projected profit if option expires worthless
           // For short positions: we keep the premium (cost basis)
-          // For long positions: we lose the premium (negative)
-          let projectedProfit = 0;
+          // For long positions: we lose the premium (cost paid is gone)
+          let projectedProfit: number;
           if (pos.pos < 0) {
-            // Short position - premium received is cost basis
             projectedProfit = costBasis;
+          } else {
+            projectedProfit = -costBasis;
           }
 
           const symbol = pos.contract.symbol || "";
@@ -1111,7 +1118,7 @@ class ProfitService {
           };
 
           unrealizedPositions.push(optionPos);
-          if (projectedProfit > 0) {
+          if (projectedProfit !== 0) {
             projectedPositions.push(optionPos);
           }
         }
