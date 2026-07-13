@@ -29,16 +29,16 @@ export function UpcomingEvents() {
 
   return (
     <Card className="flex-1 flex flex-col min-h-0">
-      <CardHeader className="pb-2 pt-4 px-4 flex-row items-center justify-between flex-shrink-0">
-        <CardTitle className="text-sm font-semibold">Upcoming Events</CardTitle>
+      <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-shrink-0">
+        <span className="text-xs font-semibold">Events</span>
         <button
           onClick={() => navigate("/calendar")}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
         >
           View all →
         </button>
-      </CardHeader>
-      <CardContent className="px-4 pb-4 space-y-1 overflow-y-auto min-h-0">
+      </div>
+      <CardContent className="px-3 pb-3 space-y-1 overflow-y-auto min-h-0">
         {Array.from(eventsByDate.entries())
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, dateEvents]) => (
