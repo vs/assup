@@ -70,13 +70,11 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         label="Puts Exposure"
         value={formatCurrency(putNotional)}
         detail={`Delta ${formatCurrency(putDelta)}`}
-        valueClassName="text-red-600"
       />
       <MetricCard
         label="Calls Exposure"
         value={formatCurrency(callNotional)}
         detail={`Delta ${formatCurrency(callDelta)}`}
-        valueClassName="text-green-600"
       />
     </div>
   );
