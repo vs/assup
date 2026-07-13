@@ -68,6 +68,16 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         detail={`Cash ${formatCurrency(cash)} · Stocks ${formatCurrency(stockValue)}`}
       />
       <MetricCard
+        label="Puts Exposure"
+        value={formatCurrency(putNotional)}
+        detail={`Delta ${formatCurrency(putDelta)}`}
+      />
+      <MetricCard
+        label="Calls Exposure"
+        value={formatCurrency(callNotional)}
+        detail={`Delta ${formatCurrency(callDelta)}`}
+      />
+      <MetricCard
         label="Unrealized P&L"
         value={formatCurrency(totalUnrealized)}
         detail={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}% of cost basis`}
@@ -84,16 +94,6 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         value={formatCurrency(todayTotal)}
         detail={`Realized ${formatCurrency(todayRealized)} · ${nlv > 0 ? `${(todayTotal / nlv * 100).toFixed(2)}% of portfolio` : ""}`}
         valueClassName={todayTotal >= 0 ? "text-green-600" : "text-red-600"}
-      />
-      <MetricCard
-        label="Puts Exposure"
-        value={formatCurrency(putNotional)}
-        detail={`Delta ${formatCurrency(putDelta)}`}
-      />
-      <MetricCard
-        label="Calls Exposure"
-        value={formatCurrency(callNotional)}
-        detail={`Delta ${formatCurrency(callDelta)}`}
       />
     </div>
   );
