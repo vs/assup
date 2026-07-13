@@ -7,7 +7,6 @@ import { positionsApi } from "@/api/positions";
 import { ironCondorApi } from "@/api/ironCondor";
 import { wheelApi } from "@/api/wheel";
 import { PageHeader } from "@/components/common";
-import { CurrentMonthPace } from "@/components/dashboard/CurrentMonthPace";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { PnlChart } from "@/components/dashboard/PnlChart";
 import { UpcomingEvents } from "@/components/dashboard/UpcomingEvents";
@@ -46,11 +45,6 @@ export function DashboardPage() {
     queryFn: () => wheelApi.list({ includeSuggestions: false }),
   });
 
-  const profitPositions = useQuery({
-    queryKey: ["profit", "positions"],
-    queryFn: () => profitApi.positions(),
-  });
-
   const availableYears = yearsData.data?.years ?? [new Date().getFullYear()];
   const data = dashboardData.data;
 
@@ -69,12 +63,10 @@ export function DashboardPage() {
 
       <MetricsRow
         positionSummary={positionSummary.data}
-        spreads={spreadsData.data?.spreads}
-        wheelData={wheelData.data}
-        profitPositions={profitPositions.data}
+        dashboardData={data}
       />
 
-      {/* Chart (4/6) + Right sidebar (2/6) */}
+      {/* Chart (4/6) + Events sidebar (2/6) */}
       <div className="grid grid-cols-6 gap-3">
         <div className="col-span-4 h-[400px]">
           {dashboardData.isLoading && (
@@ -88,8 +80,7 @@ export function DashboardPage() {
             />
           )}
         </div>
-        <div className="col-span-2 flex flex-col gap-3 h-[400px]">
-          {data && <CurrentMonthPace data={data.currentMonthPace} />}
+        <div className="col-span-2 h-[400px]">
           <UpcomingEvents />
         </div>
       </div>

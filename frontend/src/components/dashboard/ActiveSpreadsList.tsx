@@ -106,7 +106,16 @@ export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
     <Card>
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Active Spreads</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-semibold">Active Spreads</CardTitle>
+            {spreads && spreads.length > 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {spreads.length} · P&L <span className={(spreads.reduce((s, sp) => s + (sp.totalPnl ?? 0), 0)) >= 0 ? "text-green-600" : "text-red-600"}>
+                  {formatCurrency(spreads.reduce((s, sp) => s + (sp.totalPnl ?? 0), 0))}
+                </span>
+              </span>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="sm"

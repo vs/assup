@@ -1,8 +1,5 @@
 import { formatCurrency } from "@assup/shared";
-import type { PositionSummary } from "@assup/shared";
-import type { ActiveSpread } from "@assup/shared";
-import type { WheelListResponse } from "@assup/shared";
-import type { AllPositionsView } from "@assup/shared";
+import type { PositionSummary, DashboardSummary } from "@assup/shared";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface MetricCardProps {
@@ -26,12 +23,10 @@ function MetricCard({ label, value, detail, valueClassName }: MetricCardProps) {
 
 interface MetricsRowProps {
   positionSummary: PositionSummary | undefined;
-  spreads: ActiveSpread[] | undefined;
-  wheelData: WheelListResponse | undefined;
-  profitPositions: AllPositionsView | undefined;
+  dashboardData: DashboardSummary | undefined;
 }
 
-export function MetricsRow({ positionSummary, spreads, wheelData, profitPositions }: MetricsRowProps) {
+export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) {
   const nlv = positionSummary?.account.netLiquidation ?? 0;
   const cash = positionSummary?.account.cashValue ?? 0;
   const stockValue = positionSummary?.summary.totalStockValue ?? 0;
@@ -40,14 +35,21 @@ export function MetricsRow({ positionSummary, spreads, wheelData, profitPosition
   const putDelta = positionSummary?.summary.totalPutDelta ?? 0;
   const callDelta = positionSummary?.summary.totalCallDelta ?? 0;
 
-  const spreadCount = spreads?.length ?? 0;
-  const spreadPnl = spreads?.reduce((sum, s) => sum + (s.totalPnl ?? 0), 0) ?? 0;
+  // Total P&L across all positions
+  const totalUnrealized = positionSummary?.positions.reduce(
+    (sum, p) => sum + (p.unrealizedPnl ?? 0), 0
+  ) ?? 0;
+  const totalCostBasis = positionSummary?.positions.reduce(
+    (sum, p) => sum + p.costBasis, 0
+  ) ?? 0;
+  const pnlPct = totalCostBasis !== 0 ? (totalUnrealized / totalCostBasis) * 100 : 0;
 
-  const activeWheels = wheelData?.metrics.activeWheels ?? 0;
-  const capitalDeployed = wheelData?.metrics.capitalDeployed ?? 0;
+  // Current month pace
+  const pace = dashboardData?.currentMonthPace;
 
-  const openOptionsCount = profitPositions?.positions.length ?? 0;
-  const totalProjected = profitPositions?.totalProjected ?? 0;
+  // Today's P&L — realized from dashboard (MTD has daily granularity), unrealized from positions
+  const todayRealized = dashboardData?.periodTotal.realized ?? 0;
+  const todayUnrealized = totalUnrealized;
 
   return (
     <div className="grid grid-cols-6 gap-3">
@@ -55,6 +57,24 @@ export function MetricsRow({ positionSummary, spreads, wheelData, profitPosition
         label="Net Liquidation"
         value={formatCurrency(nlv)}
         detail={`Cash ${formatCurrency(cash)} · Stocks ${formatCurrency(stockValue)}`}
+      />
+      <MetricCard
+        label="Total P&L"
+        value={formatCurrency(totalUnrealized)}
+        detail={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}% of cost basis`}
+        valueClassName={totalUnrealized >= 0 ? "text-green-600" : "text-red-600"}
+      />
+      <MetricCard
+        label="Current Month"
+        value={pace ? formatCurrency(pace.estimatedTotal) : "—"}
+        detail={pace ? `Realized ${formatCurrency(pace.realized)} · Projected ${formatCurrency(pace.projected)}` : ""}
+        valueClassName={pace && pace.estimatedTotal >= 0 ? "text-green-600" : "text-red-600"}
+      />
+      <MetricCard
+        label="Today's P&L"
+        value={formatCurrency(todayRealized + todayUnrealized)}
+        detail={`Realized ${formatCurrency(todayRealized)} · Unrealized ${formatCurrency(todayUnrealized)}`}
+        valueClassName={(todayRealized + todayUnrealized) >= 0 ? "text-green-600" : "text-red-600"}
       />
       <MetricCard
         label="Puts Exposure"
@@ -67,24 +87,6 @@ export function MetricsRow({ positionSummary, spreads, wheelData, profitPosition
         value={formatCurrency(callNotional)}
         detail={`Delta ${formatCurrency(callDelta)}`}
         valueClassName="text-green-600"
-      />
-      <MetricCard
-        label="Active Spreads"
-        value={String(spreadCount)}
-        detail={`P&L ${formatCurrency(spreadPnl)}`}
-        valueClassName={spreadPnl >= 0 ? "text-green-600" : "text-red-600"}
-      />
-      <MetricCard
-        label="Active Wheels"
-        value={String(activeWheels)}
-        detail={`Capital ${formatCurrency(capitalDeployed)}`}
-        valueClassName="text-purple-600"
-      />
-      <MetricCard
-        label="Open Options"
-        value={String(openOptionsCount)}
-        detail={`Projected ${formatCurrency(totalProjected)}`}
-        valueClassName="text-blue-600"
       />
     </div>
   );

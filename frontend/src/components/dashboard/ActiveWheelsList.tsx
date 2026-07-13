@@ -35,7 +35,14 @@ export function ActiveWheelsList({ tickers }: ActiveWheelsListProps) {
     <Card>
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Active Wheels</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-semibold">Active Wheels</CardTitle>
+            {tickers && tickers.length > 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {tickers.filter((t) => t.currentPhase !== "idle").length} active · Capital {formatCurrency(tickers.reduce((s, t) => s + (t.capitalDeployed ?? 0), 0))}
+              </span>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="sm"

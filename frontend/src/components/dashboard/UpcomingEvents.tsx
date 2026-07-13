@@ -28,7 +28,7 @@ export function UpcomingEvents() {
   };
 
   return (
-    <Card className="flex-1 flex flex-col min-h-0">
+    <Card className="h-full flex flex-col min-h-0">
       <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-shrink-0">
         <span className="text-xs font-semibold">Events</span>
         <button
