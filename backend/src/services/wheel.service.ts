@@ -213,11 +213,63 @@ function buildActiveOptions(
     return { strike: best.contract.strike!, expiry: bestDate.toISOString().split("T")[0], dte };
   };
 
+  // Compute P&L for puts
+  let putsPnL: number | null = null;
+  let putsPnLPercent: number | null = null;
+  if (puts.length > 0) {
+    let totalPnL = 0;
+    let totalCostBasis = 0;
+    let hasPnL = false;
+    for (const p of puts) {
+      const costBasis = Math.abs(p.pos * p.avgCost);
+      totalCostBasis += costBasis;
+      if (p.unrealizedPnl != null) {
+        totalPnL += p.unrealizedPnl;
+        hasPnL = true;
+      } else if (p.marketValue !== undefined) {
+        totalPnL += costBasis - Math.abs(p.marketValue);
+        hasPnL = true;
+      }
+    }
+    if (hasPnL) {
+      putsPnL = totalPnL;
+      putsPnLPercent = totalCostBasis > 0 ? (totalPnL / totalCostBasis) * 100 : null;
+    }
+  }
+
+  // Compute P&L for calls
+  let callsPnL: number | null = null;
+  let callsPnLPercent: number | null = null;
+  if (calls.length > 0) {
+    let totalPnL = 0;
+    let totalCostBasis = 0;
+    let hasPnL = false;
+    for (const p of calls) {
+      const costBasis = Math.abs(p.pos * p.avgCost);
+      totalCostBasis += costBasis;
+      if (p.unrealizedPnl != null) {
+        totalPnL += p.unrealizedPnl;
+        hasPnL = true;
+      } else if (p.marketValue !== undefined) {
+        totalPnL += costBasis - Math.abs(p.marketValue);
+        hasPnL = true;
+      }
+    }
+    if (hasPnL) {
+      callsPnL = totalPnL;
+      callsPnLPercent = totalCostBasis > 0 ? (totalPnL / totalCostBasis) * 100 : null;
+    }
+  }
+
   return {
     nearestPut: nearest(puts),
     nearestCall: nearest(calls),
     totalPutContracts: puts.reduce((sum, p) => sum + Math.abs(p.pos), 0),
     totalCallContracts: calls.reduce((sum, p) => sum + Math.abs(p.pos), 0),
+    putsPnL,
+    putsPnLPercent,
+    callsPnL,
+    callsPnLPercent,
   };
 }
 
@@ -311,8 +363,15 @@ const applyLiveDataToSummary = (
   let unrealizedPnL = 0;
 
   const shareQuantity = stockPos?.pos ?? 0;
+  // Per-position share P&L (vs avg cost from IBKR, not premium-adjusted)
+  let sharePnL: number | null = null;
+  let sharePnLPercent: number | null = null;
   if (shareQuantity > 0 && currentPrice != null && adjustedCostBasis > 0) {
     unrealizedPnL += (currentPrice - adjustedCostBasis) * shareQuantity;
+    // Share P&L uses IBKR avg cost for the % display
+    const avgCost = positionAvgCost ?? adjustedCostBasis;
+    sharePnL = (currentPrice - avgCost) * shareQuantity;
+    sharePnLPercent = avgCost > 0 ? ((currentPrice - avgCost) / avgCost) * 100 : null;
   }
 
   for (const pos of positions) {
@@ -360,6 +419,8 @@ const applyLiveDataToSummary = (
     hasUncoveredShares,
     shareQuantity: liveShareQuantity,
     positionAvgCost,
+    sharePnL,
+    sharePnLPercent,
     currentPosition,
     activeOptions: buildActiveOptions(shortOptionPositions),
     currentPrice,
@@ -811,6 +872,14 @@ export const wheelService = {
       ? (totalPnL / tickerCapitalDeployed) * 100
       : null;
 
+    // Per-position share P&L
+    let sharePnL: number | null = null;
+    let sharePnLPercent: number | null = null;
+    if (liveShareQuantity > 0 && currentPrice != null && positionAvgCost != null && positionAvgCost > 0) {
+      sharePnL = (currentPrice - positionAvgCost) * liveShareQuantity;
+      sharePnLPercent = ((currentPrice - positionAvgCost) / positionAvgCost) * 100;
+    }
+
     return {
       symbol,
       currentPhase,
@@ -818,6 +887,8 @@ export const wheelService = {
       hasUncoveredShares,
       shareQuantity: liveShareQuantity,
       positionAvgCost,
+      sharePnL,
+      sharePnLPercent,
       adjustedCostBasis,
       totalPremiums,
       currentPrice,

@@ -115,12 +115,24 @@ export interface WheelTickerSummary {
     premium?: number;
     unrealizedPnl?: number;
   } | null;
+  /** Unrealized P&L for the stock position only */
+  sharePnL: number | null;
+  /** Percent return on the stock position (vs avg cost) */
+  sharePnLPercent: number | null;
   /** Summary of active short option positions */
   activeOptions: {
     nearestPut: { strike: number; expiry: string; dte: number } | null;
     nearestCall: { strike: number; expiry: string; dte: number } | null;
     totalPutContracts: number;
     totalCallContracts: number;
+    /** Total unrealized P&L across all short puts */
+    putsPnL: number | null;
+    /** Percent of projected profit captured across all short puts */
+    putsPnLPercent: number | null;
+    /** Total unrealized P&L across all short calls */
+    callsPnL: number | null;
+    /** Percent of projected profit captured across all short calls */
+    callsPnLPercent: number | null;
   };
   // P&L fields
   realizedPnL: number;
