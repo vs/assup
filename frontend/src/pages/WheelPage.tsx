@@ -544,69 +544,79 @@ function WheelTickerCard({
           </div>
           <div className="shrink-0 ml-2">
             {ticker.activePhases && ticker.activePhases.length > 0 ? (
-              <div className="flex items-start gap-3">
-                {ticker.activePhases.includes("holding_shares") && ticker.shareQuantity > 0 && (
-                  <div className="flex flex-col items-start">
-                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${phaseColors.holding_shares}`}>
-                      {ticker.shareQuantity} @ ${(ticker.positionAvgCost ?? ticker.adjustedCostBasis).toFixed(2)}
-                    </span>
-                    {ticker.sharePnL != null && (
-                      <span className={`text-xs font-medium mt-0.5 px-1 ${ticker.sharePnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {ticker.sharePnL >= 0 ? "+" : ""}{formatCurrency(ticker.sharePnL)}
-                        {ticker.sharePnLPercent != null && (
-                          <span className="ml-1 opacity-75">{ticker.sharePnLPercent >= 0 ? "+" : ""}{ticker.sharePnLPercent.toFixed(0)}%</span>
-                        )}
-                      </span>
+              <table className="text-xs border-spacing-x-4 border-spacing-y-0" style={{ borderCollapse: "separate" }}>
+                <tbody>
+                  <tr>
+                    {ticker.activePhases.includes("holding_shares") && ticker.shareQuantity > 0 && (
+                      <td className="text-blue-700 font-medium whitespace-nowrap pr-4">
+                        {ticker.shareQuantity} @ ${(ticker.positionAvgCost ?? ticker.adjustedCostBasis).toFixed(2)}
+                      </td>
                     )}
-                  </div>
-                )}
-                {ticker.activePhases.includes("cc_open") && (
-                  <div className="flex flex-col items-start">
-                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${phaseColors.cc_open}`}>
-                      CC
-                      {ticker.activeOptions?.nearestCall && (
-                        <> {formatShortExpiry(ticker.activeOptions.nearestCall.expiry)} ${ticker.activeOptions.nearestCall.strike}</>
-                      )}
-                      {(ticker.activeOptions?.totalCallContracts ?? 0) > 1 && (
-                        <span className="ml-1 opacity-75">x{ticker.activeOptions!.totalCallContracts}</span>
-                      )}
-                    </span>
-                    {ticker.activeOptions?.callsPnL != null && (
-                      <span className={`text-xs font-medium mt-0.5 px-1 ${ticker.activeOptions.callsPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {ticker.activeOptions.callsPnL >= 0 ? "+" : ""}{formatCurrency(ticker.activeOptions.callsPnL)}
-                        {ticker.activeOptions.callsPnLPercent != null && (
-                          <span className="ml-1 opacity-75">{ticker.activeOptions.callsPnLPercent >= 0 ? "+" : ""}{ticker.activeOptions.callsPnLPercent.toFixed(0)}%</span>
+                    {ticker.activePhases.includes("cc_open") && (
+                      <td className="text-purple-700 font-medium whitespace-nowrap pr-4">
+                        CC{ticker.activeOptions?.nearestCall && (
+                          <> {formatShortExpiry(ticker.activeOptions.nearestCall.expiry)} ${ticker.activeOptions.nearestCall.strike}</>
                         )}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {ticker.activePhases.includes("csp_open") && (
-                  <div className="flex flex-col items-start">
-                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${phaseColors.csp_open}`}>
-                      CSP
-                      {ticker.activeOptions?.nearestPut && (
-                        <> {formatShortExpiry(ticker.activeOptions.nearestPut.expiry)} ${ticker.activeOptions.nearestPut.strike}</>
-                      )}
-                      {(ticker.activeOptions?.totalPutContracts ?? 0) > 1 && (
-                        <span className="ml-1 opacity-75">x{ticker.activeOptions!.totalPutContracts}</span>
-                      )}
-                    </span>
-                    {ticker.activeOptions?.putsPnL != null && (
-                      <span className={`text-xs font-medium mt-0.5 px-1 ${ticker.activeOptions.putsPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {ticker.activeOptions.putsPnL >= 0 ? "+" : ""}{formatCurrency(ticker.activeOptions.putsPnL)}
-                        {ticker.activeOptions.putsPnLPercent != null && (
-                          <span className="ml-1 opacity-75">{ticker.activeOptions.putsPnLPercent >= 0 ? "+" : ""}{ticker.activeOptions.putsPnLPercent.toFixed(0)}%</span>
+                        {(ticker.activeOptions?.totalCallContracts ?? 0) > 1 && (
+                          <span className="opacity-75"> x{ticker.activeOptions!.totalCallContracts}</span>
                         )}
-                      </span>
+                      </td>
                     )}
-                  </div>
-                )}
-              </div>
+                    {ticker.activePhases.includes("csp_open") && (
+                      <td className="text-yellow-700 font-medium whitespace-nowrap">
+                        CSP{ticker.activeOptions?.nearestPut && (
+                          <> {formatShortExpiry(ticker.activeOptions.nearestPut.expiry)} ${ticker.activeOptions.nearestPut.strike}</>
+                        )}
+                        {(ticker.activeOptions?.totalPutContracts ?? 0) > 1 && (
+                          <span className="opacity-75"> x{ticker.activeOptions!.totalPutContracts}</span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                  <tr>
+                    {ticker.activePhases.includes("holding_shares") && ticker.shareQuantity > 0 && (
+                      <td className="whitespace-nowrap pr-4">
+                        {ticker.sharePnL != null ? (
+                          <span className={`font-medium ${ticker.sharePnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {ticker.sharePnL >= 0 ? "+" : ""}{formatCurrency(ticker.sharePnL)}
+                            {ticker.sharePnLPercent != null && (
+                              <span className="ml-1 opacity-75">{ticker.sharePnLPercent >= 0 ? "+" : ""}{ticker.sharePnLPercent.toFixed(0)}%</span>
+                            )}
+                          </span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                    )}
+                    {ticker.activePhases.includes("cc_open") && (
+                      <td className="whitespace-nowrap pr-4">
+                        {ticker.activeOptions?.callsPnL != null ? (
+                          <span className={`font-medium ${ticker.activeOptions.callsPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {ticker.activeOptions.callsPnL >= 0 ? "+" : ""}{formatCurrency(ticker.activeOptions.callsPnL)}
+                            {ticker.activeOptions.callsPnLPercent != null && (
+                              <span className="ml-1 opacity-75">{ticker.activeOptions.callsPnLPercent >= 0 ? "+" : ""}{ticker.activeOptions.callsPnLPercent.toFixed(0)}%</span>
+                            )}
+                          </span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                    )}
+                    {ticker.activePhases.includes("csp_open") && (
+                      <td className="whitespace-nowrap">
+                        {ticker.activeOptions?.putsPnL != null ? (
+                          <span className={`font-medium ${ticker.activeOptions.putsPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {ticker.activeOptions.putsPnL >= 0 ? "+" : ""}{formatCurrency(ticker.activeOptions.putsPnL)}
+                            {ticker.activeOptions.putsPnLPercent != null && (
+                              <span className="ml-1 opacity-75">{ticker.activeOptions.putsPnLPercent >= 0 ? "+" : ""}{ticker.activeOptions.putsPnLPercent.toFixed(0)}%</span>
+                            )}
+                          </span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                    )}
+                  </tr>
+                </tbody>
+              </table>
             ) : (
-              <Badge className={phaseColors[ticker.currentPhase]}>
+              <span className={`text-xs font-medium ${phaseColors[ticker.currentPhase]} rounded-md px-2 py-0.5`}>
                 {phaseLabels[ticker.currentPhase]}
-              </Badge>
+              </span>
             )}
           </div>
           <div className="flex items-center justify-end gap-8 flex-1">
