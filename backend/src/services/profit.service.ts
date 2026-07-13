@@ -823,7 +823,7 @@ class ProfitService {
         if (!expiry) continue;
 
         // Skip already-expired options
-        if (expiry < today) continue;
+        if (expiry <= today) continue;
 
         const costBasis = pos.avgCost * Math.abs(pos.pos);
         // Short: keep premium (+), Long: lose premium (-)
@@ -912,7 +912,7 @@ class ProfitService {
           // Skip already-expired options (still in IBKR positions awaiting settlement)
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          if (expiry < today) continue;
+          if (expiry <= today) continue;
 
           // NOTE: No month filter — include all expiry months
 
@@ -1064,7 +1064,7 @@ class ProfitService {
           // Skip already-expired options (still in IBKR positions awaiting settlement)
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          if (expiry < today) {
+          if (expiry <= today) {
             continue;
           }
 
