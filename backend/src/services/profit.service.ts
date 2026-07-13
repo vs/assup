@@ -909,6 +909,11 @@ class ProfitService {
           const expiry = this.parseContractExpiry(expiryStr);
           if (!expiry) continue;
 
+          // Skip already-expired options (still in IBKR positions awaiting settlement)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (expiry < today) continue;
+
           // NOTE: No month filter — include all expiry months
 
           const strike = pos.contract.strike || 0;
