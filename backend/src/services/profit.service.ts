@@ -1050,6 +1050,13 @@ class ProfitService {
             continue;
           }
 
+          // Skip already-expired options (still in IBKR positions awaiting settlement)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (expiry < today) {
+            continue;
+          }
+
           const strike = pos.contract.strike || 0;
           const right = (pos.contract.right || "C") as "C" | "P";
 
