@@ -370,7 +370,7 @@ export class CalendarService {
   }
 
   private async getTrackedSymbols(): Promise<string[]> {
-    // Get symbols from IBKR positions (stock positions only, options tracked separately)
+    // Only sync events for tickers in IBKR positions (not watchlists)
     const positions = await ibkrService.getPositions();
     const positionSymbols = new Set(
       positions
@@ -378,14 +378,6 @@ export class CalendarService {
         .map((p) => p.contract.symbol)
         .filter(Boolean) as string[]
     );
-
-    // Get symbols from watchlists
-    const watchlistItems = await prisma.watchlistItem.findMany({
-      select: { symbol: true },
-    });
-    for (const item of watchlistItems) {
-      positionSymbols.add(item.symbol);
-    }
 
     return Array.from(positionSymbols);
   }
