@@ -43,6 +43,14 @@ vi.mock("../../../services/research/market-scanner.service.js", () => ({
   },
 }));
 
+vi.mock("../../../services/flex-web.service.js", () => ({
+  flexWebService: {
+    getConfig: vi.fn().mockResolvedValue({ enabled: false }),
+    fetchAndImport: vi.fn(),
+  },
+  scheduleToCron: vi.fn().mockReturnValue("0 6 * * 2-6"),
+}));
+
 import { prisma } from "../../../services/research/db.js";
 import { schedulerService } from "../../../services/research/scheduler.service.js";
 
@@ -59,11 +67,11 @@ describe("schedulerService", () => {
   });
 
   describe("start", () => {
-    it("schedules 4 core cron jobs", () => {
+    it("schedules 3 core cron jobs", () => {
       schedulerService.start();
 
-      // 4 core jobs: daily collection, social, report generation, weekly wheel scan
-      expect(mockSchedule).toHaveBeenCalledTimes(4);
+      // 3 core jobs: daily collection, social, report generation
+      expect(mockSchedule).toHaveBeenCalledTimes(3);
 
       // Verify cron expressions
       expect(mockSchedule).toHaveBeenCalledWith(
@@ -81,22 +89,16 @@ describe("schedulerService", () => {
         expect.any(Function),
         { timezone: "America/New_York" }
       );
-      expect(mockSchedule).toHaveBeenCalledWith(
-        "0 10 * * 6",
-        expect.any(Function),
-        { timezone: "America/New_York" }
-      );
     });
   });
 
   describe("stop", () => {
     it("stops all jobs", () => {
-      const stopFns = [vi.fn(), vi.fn(), vi.fn(), vi.fn()];
+      const stopFns = [vi.fn(), vi.fn(), vi.fn()];
       mockSchedule
         .mockReturnValueOnce({ stop: stopFns[0] })
         .mockReturnValueOnce({ stop: stopFns[1] })
-        .mockReturnValueOnce({ stop: stopFns[2] })
-        .mockReturnValueOnce({ stop: stopFns[3] });
+        .mockReturnValueOnce({ stop: stopFns[2] });
 
       schedulerService.start();
       schedulerService.stop();

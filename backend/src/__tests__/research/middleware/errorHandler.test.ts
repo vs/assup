@@ -12,7 +12,7 @@ function createMockRes() {
   return res;
 }
 
-const mockReq = {} as Request;
+const mockReq = { method: "GET", path: "/test" } as Request;
 const mockNext = vi.fn() as NextFunction;
 
 describe("errorHandler", () => {
@@ -75,7 +75,7 @@ describe("errorHandler", () => {
 
     errorHandler(error, mockReq, res, mockNext);
 
-    expect(consoleSpy).toHaveBeenCalledWith("Unhandled error:", error);
+    expect(consoleSpy).toHaveBeenCalledWith("[GET] /test: unexpected");
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ error: "Internal server error" });
 

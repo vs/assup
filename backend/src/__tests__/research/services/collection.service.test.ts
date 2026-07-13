@@ -45,7 +45,8 @@ describe("collectionService", () => {
         id: "dc-1",
         symbol: "AAPL",
         source: "technical",
-        data: {},
+        status: "ok",
+        data: { ohlcv: { close: 150 } },
         expiresAt: futureDate,
         collectedAt: new Date(),
       } as any);
