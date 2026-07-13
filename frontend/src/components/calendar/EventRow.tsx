@@ -11,29 +11,42 @@ export function EventRow({ event }: EventRowProps) {
   const color = getEventColor(event.eventType);
   const subtitle = buildSubtitle(event);
 
-  const content = (
-    <div className="flex items-center gap-2.5 border rounded-md px-3 py-2 hover:bg-muted/50 transition-colors">
+  // Extract the symbol prefix from the title so we can make just that part interactive
+  const symbol = event.symbol;
+  const titleAfterSymbol = symbol && event.title.startsWith(symbol)
+    ? event.title.slice(symbol.length)
+    : null;
+
+  return (
+    <div className="flex items-center gap-2.5 border rounded-md px-3 py-2 transition-colors">
       <div
         className="w-[3px] h-7 rounded-sm flex-shrink-0"
         style={{ backgroundColor: color }}
       />
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{event.title}</div>
+        <div className="text-sm font-medium truncate">
+          {symbol && titleAfterSymbol !== null ? (
+            <>
+              <TickerHoverCard symbol={symbol}>
+                <Link
+                  to={`/tickers/${symbol}`}
+                  className="font-semibold hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {symbol}
+                </Link>
+              </TickerHoverCard>
+              {titleAfterSymbol}
+            </>
+          ) : (
+            event.title
+          )}
+        </div>
         {subtitle && (
           <div className="text-xs text-muted-foreground">{subtitle}</div>
         )}
       </div>
     </div>
-  );
-
-  if (!event.symbol) return content;
-
-  return (
-    <TickerHoverCard symbol={event.symbol}>
-      <Link to={`/tickers/${event.symbol}`} className="block">
-        {content}
-      </Link>
-    </TickerHoverCard>
   );
 }
 

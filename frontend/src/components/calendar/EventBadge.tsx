@@ -10,7 +10,7 @@ interface EventBadgeProps {
 export function EventBadge({ event }: EventBadgeProps) {
   const color = getEventColor(event.eventType);
 
-  const badge = (
+  return (
     <div
       className="text-[10px] px-1.5 py-px rounded truncate border mt-0.5"
       style={{
@@ -19,17 +19,15 @@ export function EventBadge({ event }: EventBadgeProps) {
         borderColor: `${color}30`,
       }}
     >
-      {event.title}
+      {event.symbol ? (
+        <TickerHoverCard symbol={event.symbol}>
+          <Link to={`/tickers/${event.symbol}`} className="hover:underline">
+            {event.title}
+          </Link>
+        </TickerHoverCard>
+      ) : (
+        event.title
+      )}
     </div>
-  );
-
-  if (!event.symbol) return badge;
-
-  return (
-    <TickerHoverCard symbol={event.symbol}>
-      <Link to={`/tickers/${event.symbol}`} className="block">
-        {badge}
-      </Link>
-    </TickerHoverCard>
   );
 }
