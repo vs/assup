@@ -82,7 +82,7 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
       <MetricCard
         label="Today's P&L"
         value={formatCurrency(todayTotal)}
-        detail={`Realized ${formatCurrency(todayRealized)} · Unrealized ${formatCurrency(todayUnrealized)}`}
+        detail={`Realized ${formatCurrency(todayRealized)} · ${nlv > 0 ? `${(todayTotal / nlv * 100).toFixed(2)}% of portfolio` : ""}`}
         valueClassName={todayTotal >= 0 ? "text-green-600" : "text-red-600"}
       />
       <MetricCard
