@@ -834,12 +834,14 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
 
       {/* Active positions + trade log for selected cycle */}
       {selectedCycle && (
-        <div className="space-y-4">
-          {selectedCycle.status === "in_progress" && detail.livePositions?.length > 0 && (
+        selectedCycle.status === "in_progress" && detail.livePositions?.length > 0 ? (
+          <div className="grid grid-cols-[auto_1fr] gap-6 items-start">
             <ActivePositions positions={detail.livePositions} />
-          )}
+            <CycleTradesView cycle={selectedCycle} />
+          </div>
+        ) : (
           <CycleTradesView cycle={selectedCycle} />
-        </div>
+        )
       )}
 
       {/* Messages for empty/filtered states */}
@@ -1046,7 +1048,7 @@ function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle 
           {cycle.trades.length} trade{cycle.trades.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <table className="text-xs w-full max-w-2xl">
+      <table className="text-xs w-full">
         <tbody>
           {cycle.trades.map((trade) => {
             const desc = formatTradeDesc(trade);
