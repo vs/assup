@@ -826,19 +826,20 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       </div>
 
       {/* Active positions + trade log for selected cycle */}
-      {selectedCycle && (
-        selectedCycle.status === "in_progress" && detail.livePositions?.length > 0 ? (
-          <div className="grid grid-cols-[1fr_2fr] gap-6 items-start">
-            <ActivePositions positions={detail.livePositions} />
+      {detail.livePositions?.length > 0 ? (
+        <div className="grid grid-cols-[1fr_2fr] gap-6 items-start">
+          <ActivePositions positions={detail.livePositions} />
+          {selectedCycle ? (
             <CycleTradesView cycle={selectedCycle} />
-          </div>
-        ) : (
-          <CycleTradesView cycle={selectedCycle} />
-        )
-      )}
-
-      {/* Messages for empty/filtered states */}
-      {recentCycles.length === 0 && detail.cycles.length === 0 && (
+          ) : (
+            <div className="text-sm text-muted-foreground py-4">
+              No trade history yet — import a FLEX report to see trades.
+            </div>
+          )}
+        </div>
+      ) : selectedCycle ? (
+        <CycleTradesView cycle={selectedCycle} />
+      ) : (
         <div className="text-center text-muted-foreground py-4">
           No wheel cycles found. Sell a PUT or buy shares to start tracking.
         </div>
