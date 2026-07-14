@@ -121,6 +121,10 @@ export class SpreadStreamSession {
     const optionSymbol = config.optionSymbol ?? this.symbol;
     const priceDivisor = config.priceDivisor ?? 1;
 
+    // Acquire live market data early — some indices (e.g. RUT) don't have
+    // delayed data, so the underlying price snapshot would return nothing.
+    ibkrService.acquireLiveMarketData();
+
     // 1. Fetch underlying price
     const underlyingContract: Contract = {
       symbol: optionSymbol,
@@ -209,10 +213,6 @@ export class SpreadStreamSession {
     const multiplier = Number(
       activeDefs[0]?.multiplier ?? config.multiplier,
     );
-
-    // Acquire live market data BEFORE conId resolution — IBKR may reject
-    // contract lookups when market data type is delayed for some instruments
-    ibkrService.acquireLiveMarketData();
 
     const conIdMap = await this.resolveConIds(
       api,
