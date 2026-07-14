@@ -835,7 +835,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       {/* Active positions + trade log for selected cycle */}
       {selectedCycle && (
         <div className="space-y-4">
-          {selectedCycle.status === "in_progress" && detail.livePositions.length > 0 && (
+          {selectedCycle.status === "in_progress" && detail.livePositions?.length > 0 && (
             <ActivePositions positions={detail.livePositions} />
           )}
           <CycleTradesView cycle={selectedCycle} />
