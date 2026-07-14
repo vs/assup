@@ -555,8 +555,8 @@ function WheelTickerCard({
                   </div>
                 )}
                 {ticker.activePhases.includes("cc_open") && (
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground whitespace-nowrap">
+                  <div className="text-right rounded-md bg-purple-50 dark:bg-purple-950/30 px-3 py-1">
+                    <div className="text-xs text-purple-600 dark:text-purple-400 whitespace-nowrap">
                       CC{ticker.activeOptions?.nearestCall && (
                         <> {formatShortExpiry(ticker.activeOptions.nearestCall.expiry)} ${ticker.activeOptions.nearestCall.strike}</>
                       )}
@@ -577,8 +577,8 @@ function WheelTickerCard({
                   </div>
                 )}
                 {ticker.activePhases.includes("csp_open") && (
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground whitespace-nowrap">
+                  <div className="text-right rounded-md bg-amber-50 dark:bg-amber-950/30 px-3 py-1">
+                    <div className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">
                       CSP{ticker.activeOptions?.nearestPut && (
                         <> {formatShortExpiry(ticker.activeOptions.nearestPut.expiry)} ${ticker.activeOptions.nearestPut.strike}</>
                       )}
