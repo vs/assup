@@ -613,16 +613,16 @@ function WheelTickerCard({
               )}
             </div>
           </div>
-          <div className="grid shrink-0 ml-2 w-[520px]" style={{ gridTemplateColumns: "80px 80px 1fr 1fr 50px" }}>
+          <div className="grid shrink-0 ml-auto w-[520px]" style={{ gridTemplateColumns: "80px 80px 1fr 1fr 50px" }}>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Price</div>
               <div className="font-semibold">{ticker.currentPrice ? `$${ticker.currentPrice.toFixed(2)}` : "—"}</div>
             </div>
-            <div className="text-right">
+            <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Cost Basis</div>
               <div className="font-semibold">${ticker.adjustedCostBasis.toFixed(2)}</div>
             </div>
-            <div className="text-right">
+            <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Realized</div>
               <div className={`font-semibold ${ticker.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
                 {ticker.realizedPnL >= 0 ? "+" : ""}{formatCurrency(ticker.realizedPnL)}
@@ -631,7 +631,7 @@ function WheelTickerCard({
                 )}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Unrealized</div>
               <div className={`font-semibold ${ticker.unrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
                 {ticker.unrealizedPnL >= 0 ? "+" : ""}{formatCurrency(ticker.unrealizedPnL)}
@@ -640,7 +640,7 @@ function WheelTickerCard({
                 )}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Cycles</div>
               <div className="font-semibold">
                 {ticker.cycleCount}
