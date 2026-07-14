@@ -6,7 +6,6 @@ import { profitApi } from "@/api/profit";
 import { positionsApi } from "@/api/positions";
 import { ironCondorApi } from "@/api/ironCondor";
 import { wheelApi } from "@/api/wheel";
-import { PageHeader } from "@/components/common";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { PnlChart } from "@/components/dashboard/PnlChart";
 import { UpcomingEvents } from "@/components/dashboard/UpcomingEvents";
@@ -49,16 +48,21 @@ export function DashboardPage() {
   const data = dashboardData.data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <PageHeader title="Dashboard" subtitle="Portfolio performance overview" />
-        <PeriodSelector
-          period={period}
-          year={year}
-          availableYears={availableYears}
-          onPeriodChange={setPeriod}
-          onYearChange={setYear}
-        />
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">Portfolio performance overview</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <PeriodSelector
+            period={period}
+            year={year}
+            availableYears={availableYears}
+            onPeriodChange={setPeriod}
+            onYearChange={setYear}
+          />
+        </div>
       </div>
 
       <MetricsRow
