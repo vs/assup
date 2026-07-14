@@ -509,10 +509,10 @@ function WheelTickerCard({
   };
 
   const phaseColors: Record<string, string> = {
-    csp_open: "bg-yellow-100 text-yellow-800",
-    holding_shares: "bg-blue-100 text-blue-800",
-    cc_open: "bg-purple-100 text-purple-800",
-    idle: "bg-gray-100 text-gray-800",
+    csp_open: "bg-muted text-muted-foreground",
+    holding_shares: "bg-muted text-muted-foreground",
+    cc_open: "bg-muted text-muted-foreground",
+    idle: "bg-muted text-muted-foreground",
   };
 
   const isProfitable = ticker.currentPrice && ticker.currentPrice > ticker.adjustedCostBasis;
@@ -549,12 +549,12 @@ function WheelTickerCard({
                 <tbody>
                   <tr>
                     {ticker.activePhases.includes("holding_shares") && ticker.shareQuantity > 0 && (
-                      <td className="text-blue-700 font-medium whitespace-nowrap pr-4">
+                      <td className="font-medium whitespace-nowrap pr-4">
                         {ticker.shareQuantity} @ ${(ticker.positionAvgCost ?? ticker.adjustedCostBasis).toFixed(2)}
                       </td>
                     )}
                     {ticker.activePhases.includes("cc_open") && (
-                      <td className="text-purple-700 font-medium whitespace-nowrap pr-4">
+                      <td className="font-medium whitespace-nowrap pr-4">
                         CC{ticker.activeOptions?.nearestCall && (
                           <> {formatShortExpiry(ticker.activeOptions.nearestCall.expiry)} ${ticker.activeOptions.nearestCall.strike}</>
                         )}
@@ -564,7 +564,7 @@ function WheelTickerCard({
                       </td>
                     )}
                     {ticker.activePhases.includes("csp_open") && (
-                      <td className="text-yellow-700 font-medium whitespace-nowrap">
+                      <td className="font-medium whitespace-nowrap">
                         CSP{ticker.activeOptions?.nearestPut && (
                           <> {formatShortExpiry(ticker.activeOptions.nearestPut.expiry)} ${ticker.activeOptions.nearestPut.strike}</>
                         )}
@@ -940,7 +940,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
         <tbody>
           {shares && (
             <tr className="border-b border-border/50">
-              <td className="px-4 py-1.5 font-medium text-blue-700">
+              <td className="px-4 py-1.5 font-medium">
                 {shares.quantity} shares
               </td>
               <td className="px-4 py-1.5 text-right tabular-nums">${shares.avgCost.toFixed(2)}</td>
@@ -954,7 +954,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
           )}
           {calls.map((c, i) => (
             <tr key={`c-${i}`} className="border-b border-border/50">
-              <td className="px-4 py-1.5 font-medium text-purple-700 whitespace-nowrap">
+              <td className="px-4 py-1.5 font-medium whitespace-nowrap">
                 CC {c.expiry ? formatShortExpiry(c.expiry) : ""} ${c.strike}
                 {c.quantity > 1 && <span className="opacity-75"> x{c.quantity}</span>}
                 {c.dte != null && <span className="text-xs text-muted-foreground ml-1">({c.dte}d)</span>}
@@ -970,7 +970,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
           ))}
           {puts.map((p, i) => (
             <tr key={`p-${i}`} className={i < puts.length - 1 ? "border-b border-border/50" : ""}>
-              <td className="px-4 py-1.5 font-medium text-yellow-700 whitespace-nowrap">
+              <td className="px-4 py-1.5 font-medium whitespace-nowrap">
                 CSP {p.expiry ? formatShortExpiry(p.expiry) : ""} ${p.strike}
                 {p.quantity > 1 && <span className="opacity-75"> x{p.quantity}</span>}
                 {p.dte != null && <span className="text-xs text-muted-foreground ml-1">({p.dte}d)</span>}
