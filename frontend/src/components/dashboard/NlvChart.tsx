@@ -131,8 +131,9 @@ export function NlvChart() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium">Account Value</CardTitle>
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-center justify-between">
+        <CardTitle className="text-sm font-semibold">Account Value</CardTitle>
         <ToggleGroup
           type="single"
           value={range}
@@ -144,8 +145,9 @@ export function NlvChart() {
           <ToggleGroupItem value="5Y">5Y</ToggleGroupItem>
           <ToggleGroupItem value="ALL">All</ToggleGroupItem>
         </ToggleGroup>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 pb-4">
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={chartData}>
             <XAxis

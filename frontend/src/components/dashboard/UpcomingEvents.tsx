@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { calendarApi } from "@/api/calendar";
 import { EventRow } from "@/components/calendar/EventRow";
 
@@ -29,16 +30,20 @@ export function UpcomingEvents() {
 
   return (
     <Card className="h-full flex flex-col min-h-0">
-      <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-shrink-0">
-        <span className="text-xs font-semibold">Events</span>
-        <button
-          onClick={() => navigate("/calendar")}
-          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-        >
-          View all →
-        </button>
-      </div>
-      <CardContent className="px-3 pb-3 space-y-1 overflow-y-auto min-h-0">
+      <CardHeader className="pb-2 pt-4 px-4 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">Events</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs h-7 px-2"
+            onClick={() => navigate("/calendar")}
+          >
+            View all
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-1 overflow-y-auto min-h-0">
         {Array.from(eventsByDate.entries())
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, dateEvents]) => (

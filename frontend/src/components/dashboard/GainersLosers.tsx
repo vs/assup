@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { formatCurrency } from "@assup/shared";
 import type { Position } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 
@@ -14,6 +15,7 @@ interface GainersLosersProps {
 }
 
 export function GainersLosers({ positions }: GainersLosersProps) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("gainers");
 
   const stkPositions = (positions ?? []).filter(
@@ -35,19 +37,29 @@ export function GainersLosers({ positions }: GainersLosersProps) {
     <Card>
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Gainers &amp; Losers</CardTitle>
-          <ToggleGroup
-            type="single"
-            value={mode}
-            onValueChange={(v) => v && setMode(v as Mode)}
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-semibold">Gainers &amp; Losers</CardTitle>
+            <ToggleGroup
+              type="single"
+              value={mode}
+              onValueChange={(v) => v && setMode(v as Mode)}
+            >
+              <ToggleGroupItem value="gainers" className="text-xs px-3 h-7">
+                Gainers
+              </ToggleGroupItem>
+              <ToggleGroupItem value="losers" className="text-xs px-3 h-7">
+                Losers
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs h-7 px-2"
+            onClick={() => navigate("/positions")}
           >
-            <ToggleGroupItem value="gainers" className="text-xs px-3 h-7">
-              Gainers
-            </ToggleGroupItem>
-            <ToggleGroupItem value="losers" className="text-xs px-3 h-7">
-              Losers
-            </ToggleGroupItem>
-          </ToggleGroup>
+            View all
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">
