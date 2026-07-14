@@ -87,6 +87,23 @@ export interface WheelCycle {
   pnlPercent: number | null;
 }
 
+/** Individual live IBKR position for the wheel detail view */
+export interface WheelLivePosition {
+  type: "shares" | "put" | "call";
+  strike?: number;
+  expiry?: string;
+  dte?: number;
+  quantity: number;
+  /** Per-share avg cost (shares) or total premium received per contract (options) */
+  avgCost: number;
+  /** Current market price per share */
+  marketPrice: number | null;
+  /** Total unrealized P&L */
+  pnl: number | null;
+  /** % return on shares, or % of premium captured for options */
+  pnlPercent: number | null;
+}
+
 // Summary view of a ticker in the wheel tracker list
 export interface WheelTickerSummary {
   symbol: string;
@@ -134,6 +151,8 @@ export interface WheelTickerSummary {
     /** Percent of projected profit captured across all short calls */
     callsPnLPercent: number | null;
   };
+  /** Individual live IBKR positions (shares + each option contract) */
+  livePositions: WheelLivePosition[];
   // P&L fields
   realizedPnL: number;
   unrealizedPnL: number;

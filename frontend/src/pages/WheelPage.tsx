@@ -5,6 +5,7 @@ import type {
   WheelTickerSummary,
   WheelSuggestion,
   WheelMatchedTrade,
+  WheelLivePosition,
   SparklinePoint,
 } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
@@ -831,9 +832,14 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
         ))}
       </div>
 
-      {/* Contract Lifecycles (for selected cycle) */}
+      {/* Active positions + trade log for selected cycle */}
       {selectedCycle && (
-        <CycleTradesView cycle={selectedCycle} />
+        <div className="space-y-4">
+          {selectedCycle.status === "in_progress" && detail.livePositions.length > 0 && (
+            <ActivePositions positions={detail.livePositions} />
+          )}
+          <CycleTradesView cycle={selectedCycle} />
+        </div>
       )}
 
       {/* Messages for empty/filtered states */}
@@ -906,153 +912,173 @@ function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCy
   );
 }
 
-function MatchedTradeRow({ trade }: { trade: WheelMatchedTrade }) {
-  // Format opening action: "Sell PUT $67 Jan30 @ $1.55" or "Buy 5 shares @ $90.72"
-  const getOpenAction = () => {
-    if (!trade.openLeg) return null;
+function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
+  const shares = positions.find((p) => p.type === "shares");
+  const calls = positions.filter((p) => p.type === "call");
+  const puts = positions.filter((p) => p.type === "put");
 
-    if (trade.type === "STOCK") {
-      return {
-        action: `Buy ${trade.openLeg.quantity} shares`,
-        price: `@ $${trade.openLeg.price.toFixed(2)}`,
-        date: trade.openLeg.date,
-      };
-    }
+  const pnlColor = (v: number | null) =>
+    v == null ? "text-muted-foreground" : v >= 0 ? "text-green-600" : "text-red-600";
 
-    // Option: extract strike and expiry from displayName
+  const fmtPnL = (v: number | null) =>
+    v == null ? "—" : `${v >= 0 ? "+" : ""}${formatCurrency(v)}`;
+
+  const fmtPct = (v: number | null) =>
+    v == null ? "" : ` ${v >= 0 ? "+" : ""}${v.toFixed(0)}%`;
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-muted-foreground border-b">
+            <th className="text-left font-normal px-4 py-2">Position</th>
+            <th className="text-right font-normal px-4 py-2">Avg Cost</th>
+            <th className="text-right font-normal px-4 py-2">Mkt Price</th>
+            <th className="text-right font-normal px-4 py-2">P&L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shares && (
+            <tr className="border-b border-border/50">
+              <td className="px-4 py-1.5 font-medium text-blue-700">
+                {shares.quantity} shares
+              </td>
+              <td className="px-4 py-1.5 text-right tabular-nums">${shares.avgCost.toFixed(2)}</td>
+              <td className="px-4 py-1.5 text-right tabular-nums">
+                {shares.marketPrice != null ? `$${shares.marketPrice.toFixed(2)}` : "—"}
+              </td>
+              <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(shares.pnl)}`}>
+                {fmtPnL(shares.pnl)}{fmtPct(shares.pnlPercent)}
+              </td>
+            </tr>
+          )}
+          {calls.map((c, i) => (
+            <tr key={`c-${i}`} className="border-b border-border/50">
+              <td className="px-4 py-1.5 font-medium text-purple-700 whitespace-nowrap">
+                CC {c.expiry ? formatShortExpiry(c.expiry) : ""} ${c.strike}
+                {c.quantity > 1 && <span className="opacity-75"> x{c.quantity}</span>}
+                {c.dte != null && <span className="text-xs text-muted-foreground ml-1">({c.dte}d)</span>}
+              </td>
+              <td className="px-4 py-1.5 text-right tabular-nums">${c.avgCost.toFixed(2)}</td>
+              <td className="px-4 py-1.5 text-right tabular-nums">
+                {c.marketPrice != null ? `$${c.marketPrice.toFixed(2)}` : "—"}
+              </td>
+              <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(c.pnl)}`}>
+                {fmtPnL(c.pnl)}{fmtPct(c.pnlPercent)}
+              </td>
+            </tr>
+          ))}
+          {puts.map((p, i) => (
+            <tr key={`p-${i}`} className={i < puts.length - 1 ? "border-b border-border/50" : ""}>
+              <td className="px-4 py-1.5 font-medium text-yellow-700 whitespace-nowrap">
+                CSP {p.expiry ? formatShortExpiry(p.expiry) : ""} ${p.strike}
+                {p.quantity > 1 && <span className="opacity-75"> x{p.quantity}</span>}
+                {p.dte != null && <span className="text-xs text-muted-foreground ml-1">({p.dte}d)</span>}
+              </td>
+              <td className="px-4 py-1.5 text-right tabular-nums">${p.avgCost.toFixed(2)}</td>
+              <td className="px-4 py-1.5 text-right tabular-nums">
+                {p.marketPrice != null ? `$${p.marketPrice.toFixed(2)}` : "—"}
+              </td>
+              <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(p.pnl)}`}>
+                {fmtPnL(p.pnl)}{fmtPct(p.pnlPercent)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formatTradeDesc(trade: WheelMatchedTrade): { open: string; close: string; date: string } {
+  const date = trade.openLeg?.date ?? trade.closeLeg?.date ?? "";
+
+  if (!trade.openLeg) {
+    const cp = trade.closeLeg;
+    const price = cp?.price != null && cp.price > 0 ? ` @ $${cp.price.toFixed(2)}` : "";
+    return { open: "Rolled from previous", close: `${cp?.action ?? ""}${price}`, date };
+  }
+
+  let open: string;
+  if (trade.type === "STOCK") {
+    open = `Buy ${trade.openLeg.quantity} shares @ $${trade.openLeg.price.toFixed(2)}`;
+  } else {
     const parts = trade.displayName.split(" ");
     if (parts.length >= 4) {
-      const expiry = parts[1];
-      const strike = parts[2];
-      return {
-        action: `${trade.openLeg.action} $${strike} ${expiry}`,
-        price: `@ $${trade.openLeg.price.toFixed(2)}`,
-        date: trade.openLeg.date,
-      };
+      open = `${trade.openLeg.action} $${parts[2]} ${parts[1]} @ $${trade.openLeg.price.toFixed(2)}`;
+    } else {
+      const price = trade.openLeg.price > 0 ? ` @ $${trade.openLeg.price.toFixed(2)}` : "";
+      open = `${trade.openLeg.action}${price}`;
     }
+  }
 
-    return {
-      action: trade.openLeg.action,
-      price: trade.openLeg.price > 0 ? `@ $${trade.openLeg.price.toFixed(2)}` : "",
-      date: trade.openLeg.date,
-    };
-  };
-
-  // Format closing action: "Bought back @ $0.78" or "Expired" or "Assigned"
-  const getCloseAction = () => {
-    if (!trade.closeLeg) {
-      return { action: "Open", price: "", date: "" };
-    }
-
-    const price = trade.closeLeg.price !== null && trade.closeLeg.price > 0
-      ? `@ $${trade.closeLeg.price.toFixed(2)}`
+  let close: string;
+  if (trade.status === "open") {
+    close = "open";
+  } else if (trade.closeLeg) {
+    const price = trade.closeLeg.price != null && trade.closeLeg.price > 0
+      ? ` @ $${trade.closeLeg.price.toFixed(2)}`
       : "";
+    close = `${trade.closeLeg.action}${price}`;
+  } else {
+    close = "";
+  }
 
-    return {
-      action: trade.closeLeg.action,
-      price,
-      date: trade.closeLeg.date,
-    };
-  };
+  return { open, close, date };
+}
 
-  const openAction = getOpenAction();
-  const closeAction = getCloseAction();
-  const isOpen = trade.status === "open";
-
-  // If no openLeg, this is a close-only trade (e.g., rolled from previous cycle)
-  if (!openAction) {
+function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
+  if (cycle.trades.length === 0) {
     return (
-      <div className="rounded-lg border bg-card">
-        <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-4 px-5 py-3">
-          <div className="text-muted-foreground italic">Rolled from previous</div>
-          <div className="text-muted-foreground text-lg">→</div>
-          <div>
-            <div className="font-medium">{closeAction.action} {closeAction.price}</div>
-            <div className="text-xs text-muted-foreground">{closeAction.date}</div>
-          </div>
-          <div className="text-right min-w-[100px]">
-            {trade.netPnL !== null && (
-              <>
-                <div className={`font-mono font-semibold ${trade.netPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {trade.netPnL >= 0 ? "+" : ""}{formatCurrency(trade.netPnL)}
-                </div>
-                <div className="text-xs text-muted-foreground">P&L</div>
-              </>
-            )}
-          </div>
-        </div>
+      <div className="text-center text-muted-foreground py-4 text-sm">
+        No trades in this cycle
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-4 px-5 py-3">
-        {/* Opening action */}
-        <div>
-          <div className="font-medium">{openAction.action} {openAction.price}</div>
-          <div className="text-xs text-muted-foreground">{openAction.date}</div>
-        </div>
-
-        {/* Arrow */}
-        <div className="text-muted-foreground text-lg">→</div>
-
-        {/* Closing action */}
-        <div>
-          {isOpen ? (
-            <span className="text-blue-600 font-medium">Position open</span>
-          ) : (
-            <>
-              <div className="font-medium">{closeAction.action} {closeAction.price}</div>
-              <div className="text-xs text-muted-foreground">{closeAction.date}</div>
-            </>
-          )}
-        </div>
-
-        {/* Result */}
-        <div className="text-right min-w-[100px]">
-          {trade.netPnL !== null ? (
-            <>
-              <div className={`font-mono font-semibold ${trade.netPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {trade.netPnL >= 0 ? "+" : ""}{formatCurrency(trade.netPnL)}
-              </div>
-              <div className="text-xs text-muted-foreground">P&L</div>
-            </>
-          ) : (
-            <>
-              <div className={`font-mono font-medium ${openAction && trade.openLeg && trade.openLeg.total >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {trade.openLeg && trade.openLeg.total >= 0 ? "+" : ""}{trade.openLeg ? formatCurrency(trade.openLeg.total) : "—"}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {trade.type === "STOCK" ? "Cost" : "Premium"}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
-  return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="font-medium">Trades in Cycle {cycle.cycleNumber}</h4>
-        <span className="text-sm text-muted-foreground">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-medium text-muted-foreground">
+          Trades in Cycle {cycle.cycleNumber}
+        </h4>
+        <span className="text-xs text-muted-foreground">
           {cycle.trades.length} trade{cycle.trades.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="space-y-2">
-        {cycle.trades.map((trade) => (
-          <MatchedTradeRow key={trade.id} trade={trade} />
-        ))}
-        {cycle.trades.length === 0 && (
-          <div className="text-center text-muted-foreground py-4">
-            No trades in this cycle
-          </div>
-        )}
-      </div>
+      <table className="text-xs w-full max-w-2xl">
+        <tbody>
+          {cycle.trades.map((trade) => {
+            const desc = formatTradeDesc(trade);
+            const pnl = trade.netPnL;
+            const premium = trade.openLeg?.total;
+            return (
+              <tr key={trade.id} className="border-b border-border/30 last:border-0">
+                <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap">{desc.date}</td>
+                <td className="py-1 pr-2 whitespace-nowrap">{desc.open}</td>
+                <td className="py-1 pr-2 whitespace-nowrap">
+                  {desc.close && (
+                    trade.status === "open"
+                      ? <span className="text-blue-600">open</span>
+                      : <span className="text-muted-foreground">→ {desc.close}</span>
+                  )}
+                </td>
+                <td className="py-1 text-right tabular-nums whitespace-nowrap font-medium">
+                  {pnl !== null ? (
+                    <span className={pnl >= 0 ? "text-green-600" : "text-red-600"}>
+                      {pnl >= 0 ? "+" : ""}{formatCurrency(pnl)}
+                    </span>
+                  ) : premium != null ? (
+                    <span className={premium >= 0 ? "text-green-600" : "text-red-600"}>
+                      {premium >= 0 ? "+" : ""}{formatCurrency(premium)}
+                    </span>
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

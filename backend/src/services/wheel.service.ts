@@ -15,6 +15,7 @@ import type {
   WheelTickerDetail,
   WheelSuggestion,
   WheelAggregateMetrics,
+  WheelLivePosition,
 } from "@assup/shared";
 import {
   groupOptionTrades,
@@ -273,6 +274,82 @@ function buildActiveOptions(
   };
 }
 
+function buildLivePositions(
+  stockPos: CachedIBKRData["positions"][0] | undefined,
+  shortOptionPositions: CachedIBKRData["positions"],
+  currentPrice: number | null,
+): WheelLivePosition[] {
+  const positions: WheelLivePosition[] = [];
+
+  if (stockPos && stockPos.pos > 0) {
+    const avgCost = stockPos.avgCost;
+    const pnl = currentPrice != null ? (currentPrice - avgCost) * stockPos.pos : null;
+    const pnlPercent = currentPrice != null && avgCost > 0
+      ? ((currentPrice - avgCost) / avgCost) * 100
+      : null;
+    positions.push({
+      type: "shares",
+      quantity: stockPos.pos,
+      avgCost,
+      marketPrice: currentPrice,
+      pnl,
+      pnlPercent,
+    });
+  }
+
+  for (const p of shortOptionPositions) {
+    const raw = p.contract.lastTradeDateOrContractMonth;
+    let expiry: string | undefined;
+    let dte: number | undefined;
+    if (raw) {
+      const d = new Date(raw.slice(0, 4) + "-" + raw.slice(4, 6) + "-" + raw.slice(6, 8));
+      expiry = d.toISOString().split("T")[0];
+      dte = Math.ceil((d.getTime() - nowInET().getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    const qty = Math.abs(p.pos);
+    const costBasis = qty * p.avgCost; // total premium received
+    let pnl: number | null = null;
+    let pnlPercent: number | null = null;
+    let mktPrice: number | null = null;
+
+    if (p.unrealizedPnl != null) {
+      pnl = p.unrealizedPnl;
+      pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : null;
+    } else if (p.marketValue !== undefined) {
+      pnl = costBasis - Math.abs(p.marketValue);
+      pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : null;
+    }
+    if (p.marketPrice !== undefined) {
+      mktPrice = p.marketPrice;
+    } else if (p.marketValue !== undefined) {
+      mktPrice = Math.abs(p.marketValue) / (qty * 100);
+    }
+
+    positions.push({
+      type: p.contract.right === "C" ? "call" : "put",
+      strike: p.contract.strike,
+      expiry,
+      dte,
+      quantity: qty,
+      avgCost: p.avgCost, // premium per share
+      marketPrice: mktPrice,
+      pnl,
+      pnlPercent,
+    });
+  }
+
+  // Sort: shares first, then calls, then puts, then by expiry
+  positions.sort((a, b) => {
+    const typeOrder = { shares: 0, call: 1, put: 2 };
+    const diff = typeOrder[a.type] - typeOrder[b.type];
+    if (diff !== 0) return diff;
+    return (a.expiry ?? "").localeCompare(b.expiry ?? "");
+  });
+
+  return positions;
+}
+
 const applyLiveDataToSummary = (
   summary: WheelTickerSummary,
   cachedData?: CachedIBKRData
@@ -423,6 +500,7 @@ const applyLiveDataToSummary = (
     sharePnLPercent,
     currentPosition,
     activeOptions: buildActiveOptions(shortOptionPositions),
+    livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice),
     currentPrice,
     breakEven,
     percentBelowMarket,
@@ -898,6 +976,7 @@ export const wheelService = {
       completedCycles: completedCycles.length,
       currentPosition,
       activeOptions: buildActiveOptions(shortOptionPositions),
+      livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice),
       realizedPnL: tickerRealizedPnL,
       unrealizedPnL: tickerUnrealizedPnL,
       totalPnL,
