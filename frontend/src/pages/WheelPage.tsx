@@ -563,7 +563,7 @@ function WheelTickerCard({
               )}
             </div>
             {/* CC column */}
-            <div className={`text-right ${ticker.activePhases?.includes("cc_open") ? "rounded-md bg-purple-50/50 dark:bg-purple-950/15 px-3 py-1" : ""}`}>
+            <div className={`text-right ${ticker.activePhases?.includes("cc_open") ? "rounded-md bg-green-50/50 dark:bg-green-950/15 px-3 py-1" : ""}`}>
               {ticker.activePhases?.includes("cc_open") && (
                 <>
                   <div className="text-xs text-muted-foreground whitespace-nowrap">
@@ -588,7 +588,7 @@ function WheelTickerCard({
               )}
             </div>
             {/* CSP column */}
-            <div className={`text-right ${ticker.activePhases?.includes("csp_open") ? "rounded-md bg-amber-50/50 dark:bg-amber-950/15 px-3 py-1" : ""}`}>
+            <div className={`text-right ${ticker.activePhases?.includes("csp_open") ? "rounded-md bg-red-50/50 dark:bg-red-950/15 px-3 py-1" : ""}`}>
               {ticker.activePhases?.includes("csp_open") && (
                 <>
                   <div className="text-xs text-muted-foreground whitespace-nowrap">
