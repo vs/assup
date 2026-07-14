@@ -54,7 +54,7 @@ export function MonthGrid({ year, month, events, selectedDate, onSelectDate, wee
           return (
             <div
               key={i}
-              className={`min-h-[72px] p-1 border-b border-r last:border-r-0 cursor-pointer transition-colors ${
+              className={`min-h-[140px] p-1 border-b border-r last:border-r-0 cursor-pointer transition-colors ${
                 isSelected ? "bg-muted/50" : ""
               } ${cell.day === null ? "bg-muted/20" : "hover:bg-muted/30"}`}
               onClick={() => cell.dateStr && onSelectDate(cell.dateStr)}
@@ -67,12 +67,12 @@ export function MonthGrid({ year, month, events, selectedDate, onSelectDate, wee
                   >
                     {cell.day}
                   </div>
-                  {dayEvents.slice(0, 3).map((event) => (
+                  {dayEvents.slice(0, 5).map((event) => (
                     <EventBadge key={event.id} event={event} />
                   ))}
-                  {dayEvents.length > 3 && (
+                  {dayEvents.length > 5 && (
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      +{dayEvents.length - 3} more
+                      +{dayEvents.length - 5} more
                     </div>
                   )}
                 </>
