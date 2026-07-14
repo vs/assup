@@ -770,25 +770,35 @@ class IBKRService {
       throw new Error("Not connected to TWS");
     }
 
+    // For options, use SMART routing for market data (per TWS API documentation)
+    // This works better than specific exchanges which may be outdated (e.g., AMEX -> NYSE American)
+    const mdContract = contract.secType === SecType.OPT
+      ? { ...contract, exchange: "SMART" }
+      : contract;
+
+    // IBKR uses -1 as a sentinel for "no data available"; treat as undefined
+    const validPrice = (v: number | undefined) => v != null && v >= 0 ? v : undefined;
+
+    // Try snapshot first (fast), then fall back to Observable-based streaming
+    // snapshot (waits up to ~11s). Some indices (e.g. RUT) don't return data
+    // via getMarketDataSnapshot but work with the Observable API.
+    const result = await this.trySnapshotMarketData(mdContract, validPrice)
+      ?? await this.tryObservableMarketData(mdContract, validPrice);
+
+    if (result) {
+      return { contract, ...result };
+    }
+    return null;
+  }
+
+  private async trySnapshotMarketData(
+    mdContract: Contract,
+    validPrice: (v: number | undefined) => number | undefined,
+  ): Promise<Omit<TickerData, "contract"> | null> {
     try {
-      // For options, use SMART routing for market data (per TWS API documentation)
-      // This works better than specific exchanges which may be outdated (e.g., AMEX -> NYSE American)
-      const mdContract = contract.secType === SecType.OPT
-        ? { ...contract, exchange: "SMART" }
-        : contract;
+      const marketData = await this.api!.getMarketDataSnapshot(mdContract, "", false);
+      if (!marketData) return null;
 
-      // getMarketDataSnapshot uses snapshot=true which doesn't support generic
-      // ticks (TWS error 321). Delta/IV arrive via tickOptionComputation callback
-      // regardless, so no generic ticks are needed.
-      const marketData = await this.api.getMarketDataSnapshot(mdContract, "", false);
-
-      if (!marketData) {
-        return null;
-      }
-
-      // Extract bid, ask, last, close, volume from the market data map.
-      // When market data type is Delayed (3) TWS sends DELAYED_* tick types
-      // instead of their live equivalents, so fall back to those.
       const bidTick = marketData.get(1) ?? marketData.get(66);       // BID / DELAYED_BID
       const askTick = marketData.get(2) ?? marketData.get(67);       // ASK / DELAYED_ASK
       const lastTick = marketData.get(4) ?? marketData.get(68);      // LAST / DELAYED_LAST
@@ -796,41 +806,41 @@ class IBKRService {
       const closeTick = marketData.get(9) ?? marketData.get(75);     // CLOSE / DELAYED_CLOSE
       const openTick = marketData.get(14) ?? marketData.get(76);     // OPEN / DELAYED_OPEN
 
-      // Extract delta and IV for options (IBApiNext tick types)
-      // MODEL_OPTION_DELTA=10041, DELAYED_MODEL_OPTION_DELTA=10047
-      // BID_OPTION_DELTA=10005, DELAYED_BID_OPTION_DELTA=10011
-      // MODEL_OPTION_IV=10039, DELAYED_MODEL_OPTION_IV=10045
-      // OPTION_IMPLIED_VOL=24
+      const bid = validPrice(bidTick?.value);
+      const ask = validPrice(askTick?.value);
+      const last = validPrice(lastTick?.value);
+      const close = validPrice(closeTick?.value);
+
+      // If no usable price data at all, return null to trigger fallback
+      if (last == null && bid == null && ask == null && close == null) {
+        return null;
+      }
+
       let delta: number | undefined;
       let impliedVolatility: number | undefined;
-      if (contract.secType === SecType.OPT) {
-        const modelDelta = marketData.get(10041); // MODEL_OPTION_DELTA
-        const delayedModelDelta = marketData.get(10047); // DELAYED_MODEL_OPTION_DELTA
-        const bidDelta = marketData.get(10005); // BID_OPTION_DELTA
-        const delayedBidDelta = marketData.get(10011); // DELAYED_BID_OPTION_DELTA
+      if (mdContract.secType === SecType.OPT) {
+        const modelDelta = marketData.get(10041);
+        const delayedModelDelta = marketData.get(10047);
+        const bidDelta = marketData.get(10005);
+        const delayedBidDelta = marketData.get(10011);
         delta = modelDelta?.value ?? delayedModelDelta?.value ?? bidDelta?.value ?? delayedBidDelta?.value;
 
-        const modelIV = marketData.get(10039); // MODEL_OPTION_IV
-        const delayedModelIV = marketData.get(10045); // DELAYED_MODEL_OPTION_IV
-        const optionIV = marketData.get(24); // OPTION_IMPLIED_VOL
+        const modelIV = marketData.get(10039);
+        const delayedModelIV = marketData.get(10045);
+        const optionIV = marketData.get(24);
         impliedVolatility = modelIV?.value ?? delayedModelIV?.value ?? optionIV?.value;
       }
 
       return {
-        contract,
-        bid: bidTick?.value,
-        ask: askTick?.value,
-        last: lastTick?.value,
-        open: openTick?.value,
-        close: closeTick?.value,
+        bid, ask, last,
+        open: validPrice(openTick?.value),
+        close,
         volume: volumeTick?.value,
         delta,
         impliedVolatility,
       };
     } catch (err) {
-      // Check if it's a subscription error or no security definition error
       const error = err as { code?: number; message?: string };
-
       if (
         error.code === 10089 || // Snapshot not available for contract type
         error.code === 10091 || // Subscription required
@@ -840,11 +850,55 @@ class IBKRService {
         error.message?.includes("No security definition") ||
         error.message?.includes("not applicable to generic ticks")
       ) {
-        // Expected for contracts without proper subscriptions or invalid definitions
-        // TWS error already logged by the global error handler
         return null;
       }
-      console.error(`Failed to get market data for ${contract.symbol}:`, err);
+      console.error(`Snapshot market data failed for ${mdContract.symbol}:`, err);
+      return null;
+    }
+  }
+
+  private async tryObservableMarketData(
+    mdContract: Contract,
+    validPrice: (v: number | undefined) => number | undefined,
+  ): Promise<Omit<TickerData, "contract"> | null> {
+    try {
+      const update = await lastValueFrom(
+        this.api!.getMarketData(mdContract, "", true, false),
+      );
+      const marketData = update.all;
+      if (!marketData || marketData.size === 0) return null;
+
+      const last = validPrice(marketData.get(4)?.value ?? marketData.get(68)?.value);
+      const bid = validPrice(marketData.get(1)?.value ?? marketData.get(66)?.value);
+      const ask = validPrice(marketData.get(2)?.value ?? marketData.get(67)?.value);
+      const close = validPrice(marketData.get(9)?.value ?? marketData.get(75)?.value);
+
+      if (last == null && bid == null && ask == null && close == null) {
+        return null;
+      }
+
+      let delta: number | undefined;
+      let impliedVolatility: number | undefined;
+      if (mdContract.secType === SecType.OPT) {
+        delta = marketData.get(10041)?.value ?? marketData.get(10047)?.value
+          ?? marketData.get(10005)?.value ?? marketData.get(10011)?.value;
+        impliedVolatility = marketData.get(10039)?.value ?? marketData.get(10045)?.value
+          ?? marketData.get(24)?.value;
+      }
+
+      return {
+        bid, ask, last, close,
+        open: validPrice(marketData.get(14)?.value ?? marketData.get(76)?.value),
+        volume: marketData.get(8)?.value ?? marketData.get(74)?.value,
+        delta,
+        impliedVolatility,
+      };
+    } catch (err) {
+      const error = err as { code?: number; message?: string };
+      if (error.code === 200 || error.code === 10089 || error.code === 10091) {
+        return null;
+      }
+      console.error(`Observable market data failed for ${mdContract.symbol}:`, err);
       return null;
     }
   }
