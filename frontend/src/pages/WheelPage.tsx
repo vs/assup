@@ -613,13 +613,11 @@ function WheelTickerCard({
               )}
             </div>
           </div>
-          <div className="flex items-center justify-end gap-6 flex-1">
-            {ticker.currentPrice && (
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground">Price</div>
-                <div className="font-semibold">${ticker.currentPrice.toFixed(2)}</div>
-              </div>
-            )}
+          <div className="grid shrink-0 ml-2 w-[520px]" style={{ gridTemplateColumns: "80px 80px 1fr 1fr 50px" }}>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">Price</div>
+              <div className="font-semibold">{ticker.currentPrice ? `$${ticker.currentPrice.toFixed(2)}` : "—"}</div>
+            </div>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Cost Basis</div>
               <div className="font-semibold">${ticker.adjustedCostBasis.toFixed(2)}</div>
@@ -645,7 +643,7 @@ function WheelTickerCard({
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Cycles</div>
               <div className="font-semibold">
-                {ticker.cycleCount} ({ticker.completedCycles} done)
+                {ticker.cycleCount}
               </div>
             </div>
           </div>
