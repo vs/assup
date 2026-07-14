@@ -58,7 +58,6 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
 
   const todayTotal = dailyPnl?.dailyPnL ?? 0;
   const todayRealized = dailyPnl?.realizedPnL ?? 0;
-  const todayUnrealized = dailyPnl?.unrealizedPnL ?? 0;
 
   return (
     <div className="grid grid-cols-6 gap-3">
