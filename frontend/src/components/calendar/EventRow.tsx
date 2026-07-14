@@ -60,8 +60,12 @@ function buildSubtitle(event: CalendarEvent): string {
     case "DIVIDEND_EX_DATE":
     case "DIVIDEND_PAYMENT":
       return details.amount ? `$${details.amount}/share · ${details.frequency || ""}` : "";
-    case "OPTION_EXPIRATION":
-      return `${details.quantity} contract${Math.abs(details.quantity as number) !== 1 ? "s" : ""}`;
+    case "OPTION_EXPIRATION": {
+      const qty = details.quantity as number;
+      const abs = Math.abs(qty);
+      const label = `${abs} contract${abs !== 1 ? "s" : ""}`;
+      return qty < 0 ? `${label} sold` : label;
+    }
     case "STOCK_SPLIT":
       return `${details.splitTo}:${details.splitFrom} split`;
     default:
