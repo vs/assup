@@ -652,7 +652,7 @@ function WheelTickerCard({
               variant="ghost"
               size="sm"
               title="Scan puts"
-              className="text-xs px-2"
+              className="text-xs w-8 px-0"
               disabled={scanState[`${ticker.symbol}:PUT`] === "loading"}
               onClick={(e) => {
                 e.stopPropagation();
@@ -667,7 +667,7 @@ function WheelTickerCard({
               variant="ghost"
               size="sm"
               title="Scan calls"
-              className="text-xs px-2"
+              className="text-xs w-8 px-0"
               disabled={scanState[`${ticker.symbol}:CALL`] === "loading"}
               onClick={(e) => {
                 e.stopPropagation();
