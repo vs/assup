@@ -1,5 +1,4 @@
 import type { DashboardPeriod } from "@assup/shared";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface PeriodSelectorProps {
@@ -10,15 +9,29 @@ interface PeriodSelectorProps {
   onYearChange: (year: number) => void;
 }
 
+const periods: { value: DashboardPeriod; label: string }[] = [
+  { value: "mtd", label: "MTD" },
+  { value: "ytd", label: "YTD" },
+  { value: "year", label: "Year" },
+  { value: "all", label: "All Time" },
+];
+
 export function PeriodSelector({ period, year, availableYears, onPeriodChange, onYearChange }: PeriodSelectorProps) {
   return (
     <div className="flex items-center gap-3">
-      <ToggleGroup type="single" value={period} onValueChange={(v) => v && onPeriodChange(v as DashboardPeriod)}>
-        <ToggleGroupItem value="mtd" className="text-xs px-3">MTD</ToggleGroupItem>
-        <ToggleGroupItem value="ytd" className="text-xs px-3">YTD</ToggleGroupItem>
-        <ToggleGroupItem value="year" className="text-xs px-3">Year</ToggleGroupItem>
-        <ToggleGroupItem value="all" className="text-xs px-3">All Time</ToggleGroupItem>
-      </ToggleGroup>
+      <div className="flex rounded-md border overflow-hidden">
+        {periods.map((p) => (
+          <button
+            key={p.value}
+            onClick={() => onPeriodChange(p.value)}
+            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+              period === p.value ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
       {period === "year" && (
         <Select value={String(year)} onValueChange={(v) => onYearChange(parseInt(v, 10))}>
           <SelectTrigger className="w-24 h-8">
