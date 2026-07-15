@@ -6,6 +6,7 @@ import { profitApi } from "@/api/profit";
 import { positionsApi } from "@/api/positions";
 import { ironCondorApi } from "@/api/ironCondor";
 import { wheelApi } from "@/api/wheel";
+import { WarningAlert } from "@/components/common/WarningAlert";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { PnlChart } from "@/components/dashboard/PnlChart";
 import { UpcomingEvents } from "@/components/dashboard/UpcomingEvents";
@@ -64,6 +65,8 @@ export function DashboardPage() {
           />
         </div>
       </div>
+
+      {data?.warnings && <WarningAlert messages={data.warnings} />}
 
       <MetricsRow
         positionSummary={positionSummary.data}

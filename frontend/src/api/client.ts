@@ -29,13 +29,28 @@ export function isApiError(error: unknown): error is ApiError & Error {
  * Make a typed API request with error handling
  */
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiBase()}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
+  // Abort after 30s to prevent the UI from hanging when backend is slow
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBase()}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw createApiError("Request timed out — the server took too long to respond", 0);
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({ error: response.statusText }));

@@ -36,6 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks, SortableHead } from "@/components/common";
+import { WarningAlert } from "@/components/common/WarningAlert";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { PositionsTable } from "@/components/profit/PositionsTable";
@@ -206,6 +207,7 @@ export function ProfitPage() {
       />
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+      {currentMonth?.warnings && <WarningAlert messages={currentMonth.warnings} />}
 
       {/* Summary Cards */}
       {monthlyData && (
