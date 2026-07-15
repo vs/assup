@@ -7,6 +7,8 @@ import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
 import { cnbExchangeRateService } from "./cnbExchangeRate.service.js";
 import { formatDisplayName } from "@assup/shared";
+
+const INDEX_SYMBOLS = new Set(["SPX", "XSP", "RUT", "VIX", "DJX", "NDX"]);
 import { groupOptionTrades, groupStockTrades, hasExpiryPassed, type OptionTradeInput, type StockTradeInput, type AssetClassMap } from "./tradeMatching.js";
 import type { ImportedTrade } from "@prisma/client";
 import type {
@@ -882,10 +884,11 @@ class ProfitService {
         if (missingSymbols.length > 0) {
           const pricePromises = missingSymbols.map(async (symbol) => {
             try {
+              const isIndex = INDEX_SYMBOLS.has(symbol);
               const data = await ibkrService.getMarketData({
                 symbol,
-                secType: SecType.STK,
-                exchange: "SMART",
+                secType: isIndex ? SecType.IND : SecType.STK,
+                exchange: isIndex ? "CBOE" : "SMART",
                 currency: "USD",
               });
               const price = data?.last ?? data?.close;
@@ -1023,10 +1026,11 @@ class ProfitService {
         if (missingSymbols.length > 0) {
           const pricePromises = missingSymbols.map(async (symbol) => {
             try {
+              const isIndex = INDEX_SYMBOLS.has(symbol);
               const data = await ibkrService.getMarketData({
                 symbol,
-                secType: SecType.STK,
-                exchange: "SMART",
+                secType: isIndex ? SecType.IND : SecType.STK,
+                exchange: isIndex ? "CBOE" : "SMART",
                 currency: "USD",
               });
               const price = data?.last ?? data?.close;
