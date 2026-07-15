@@ -227,7 +227,8 @@ class IBKRService {
           // 200: No security definition found (during scanning)
           // 300: Can't find EId with tickerId (stale cancel after reconnect)
           // 321: Error validating request (during scanning)
-          if (code === 200 || code === 300 || code === 321) return;
+          // 10185: Failed to cancel PNL (unsubscribe when not subscribed)
+          if (code === 200 || code === 300 || code === 321 || code === 10185) return;
           if (code && err.error?.message) {
             console.error(`TWS Error ${err.code}: ${err.error.message}`);
           }
