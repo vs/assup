@@ -22,3 +22,4 @@ export * from "./dashboard.js";
 export * from "./flex-web.js";
 export * from "./calendar.js";
 export * from "./accountHistory.js";
+export * from "./gex.js";
