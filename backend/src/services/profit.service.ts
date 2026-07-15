@@ -1170,6 +1170,9 @@ class ProfitService {
         value: projectedValue,
         positions: projectedPositions,
       },
+      ...(ibkrService.executionsTimedOut
+        ? { warnings: ["Today's trades are unavailable — TWS execution data timed out"] }
+        : {}),
     };
   }
 

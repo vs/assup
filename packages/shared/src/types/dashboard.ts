@@ -40,4 +40,5 @@ export interface DashboardSummary {
     dividendsInterest: StrategyMetrics;
     fees: StrategyMetrics;
   };
+  warnings?: string[];
 }

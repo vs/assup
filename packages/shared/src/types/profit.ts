@@ -238,6 +238,7 @@ export interface MonthProfitView {
     value: number;
     positions: CurrentOptionPosition[];
   };
+  warnings?: string[];
 }
 
 // Monthly profit list response

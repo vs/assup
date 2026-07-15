@@ -157,6 +157,14 @@ class IBKRService {
   private _executionsInflight: Promise<{ executions: ExecutionDetail[]; commissions: Map<string, CommissionReport> }> | null = null;
   private _executionsCacheTs = 0;
 
+  // Track TWS API timeouts so callers can surface warnings
+  private _executionsTimedOut = false;
+
+  /** Returns true if the most recent getExecutions() call timed out. */
+  get executionsTimedOut(): boolean {
+    return this._executionsTimedOut;
+  }
+
   constructor() {
     this.connect();
     this.startStatusWatchdog();
@@ -780,11 +788,22 @@ class IBKRService {
     // IBKR uses -1 as a sentinel for "no data available"; treat as undefined
     const validPrice = (v: number | undefined) => v != null && v >= 0 ? v : undefined;
 
-    // Try snapshot first (fast), then fall back to Observable-based streaming
-    // snapshot (waits up to ~11s). Some indices (e.g. RUT) don't return data
-    // via getMarketDataSnapshot but work with the Observable API.
-    const result = await this.trySnapshotMarketData(mdContract, validPrice)
-      ?? await this.tryObservableMarketData(mdContract, validPrice);
+    // Try snapshot first (fast), then fall back to Observable-based streaming.
+    // Wrap in a 5s timeout — when TWS is unresponsive, snapshot can hang 11s+.
+    const MD_TIMEOUT_MS = 5000;
+    let result: Omit<TickerData, "contract"> | null = null;
+    try {
+      const mdPromise = (async () =>
+        await this.trySnapshotMarketData(mdContract, validPrice)
+          ?? await this.tryObservableMarketData(mdContract, validPrice))();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`getMarketData timed out after ${MD_TIMEOUT_MS}ms for ${contract.symbol}`)), MD_TIMEOUT_MS),
+      );
+      result = await Promise.race([mdPromise, timeoutPromise]);
+    } catch {
+      // Timeout or unexpected error — return null (no data)
+      return null;
+    }
 
     if (result) {
       return { contract, ...result };
@@ -979,7 +998,9 @@ class IBKRService {
     // so parallel API endpoints don't race on the TWS socket.
     const now = Date.now();
     const hasFilter = filter && Object.keys(filter).length > 0;
-    if (!hasFilter && this._executionsInflight && now - this._executionsCacheTs < 3000) {
+    // Cache TTL must exceed EXEC_TIMEOUT_MS so that a timed-out empty result
+    // is reused by subsequent calls in the same request chain.
+    if (!hasFilter && this._executionsInflight && now - this._executionsCacheTs < 30_000) {
       return this._executionsInflight;
     }
 
@@ -987,12 +1008,19 @@ class IBKRService {
       ...filter,
     };
 
+    const EXEC_TIMEOUT_MS = 5000;
     const promise = (async () => {
       try {
-        const [executions, commissionReports] = await Promise.all([
+        const dataPromise = Promise.all([
           this.api!.getExecutionDetails(execFilter),
           this.api!.getCommissionReport(execFilter),
         ]);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("getExecutions timed out after 5s")), EXEC_TIMEOUT_MS),
+        );
+        const [executions, commissionReports] = await Promise.race([dataPromise, timeoutPromise]);
+
+        this._executionsTimedOut = false;
 
         // Map commission reports by execId for easy lookup
         const commissions = new Map<string, CommissionReport>();
@@ -1005,8 +1033,9 @@ class IBKRService {
         return { executions, commissions };
       } catch (err) {
         console.error("Failed to get executions:", err);
-        // Clear cache on error so next call retries
-        this._executionsInflight = null;
+        this._executionsTimedOut = true;
+        // Keep the resolved empty result in cache so callers within the same
+        // request chain don't trigger a new TWS call that will also time out.
         return { executions: [] as ExecutionDetail[], commissions: new Map<string, CommissionReport>() };
       }
     })();

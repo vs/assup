@@ -1,5 +1,6 @@
 import { DashboardSummary, DashboardPeriod, ChartDataPoint, MonthDetail } from "@assup/shared";
 import { profitService } from "./profit.service.js";
+import { ibkrService } from "./ibkr.js";
 
 export class DashboardService {
   private profitService = profitService;
@@ -90,6 +91,15 @@ export class DashboardService {
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const daysRemaining = daysInMonth - now.getDate();
 
+    // Collect warnings about degraded TWS data
+    const warnings: string[] = [];
+    if (ibkrService.executionsTimedOut) {
+      warnings.push("Today's trades are unavailable — TWS execution data timed out");
+    }
+    if (!ibkrService.isConnected()) {
+      warnings.push("TWS is not connected — live data is unavailable");
+    }
+
     return {
       currentMonthPace: {
         realized: currentMonthRealized,
@@ -106,6 +116,7 @@ export class DashboardService {
       periodIncludesCurrentMonth: includesCurrentMonth,
       chart,
       strategies,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
