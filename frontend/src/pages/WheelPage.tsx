@@ -613,7 +613,7 @@ function WheelTickerCard({
               )}
             </div>
           </div>
-          <div className="grid shrink-0 ml-auto w-[520px]" style={{ gridTemplateColumns: "80px 80px 1fr 1fr 50px" }}>
+          <div className="grid shrink-0 ml-auto w-[580px] gap-x-3" style={{ gridTemplateColumns: "80px 80px 1fr 1fr 50px" }}>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Price</div>
               <div className="font-semibold">{ticker.currentPrice ? `$${ticker.currentPrice.toFixed(2)}` : "—"}</div>
