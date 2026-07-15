@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, BarChart3 } from "lucide-react";
 import { settingsApi } from "@/api/settings";
 import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
@@ -29,6 +29,7 @@ import { SpreadAnalysis } from "@/components/iron-condor/SpreadAnalysis";
 import { PlaceSpreadDialog } from "@/components/iron-condor/PlaceSpreadDialog";
 import { ActiveSpreadsList } from "@/components/iron-condor/ActiveSpreadsList";
 import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
+import { GexModal } from "@/components/iron-condor/GexModal";
 import type {
   SpreadMode,
   IronCondorChainStrike,
@@ -101,6 +102,7 @@ export function IronCondorPage() {
   // Active spread close
   const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [gexModalOpen, setGexModalOpen] = useState(false);
 
   // When chain is collapsed, only stream selected strikes
   const streamStrikes = useMemo(() => {
@@ -496,6 +498,15 @@ export function IronCondorPage() {
           />
         </div>
 
+        <button
+          onClick={() => setGexModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted transition-colors"
+          title="Open GEX analysis"
+        >
+          <BarChart3 className="h-4 w-4" />
+          GEX
+        </button>
+
         <div className="flex-1" />
 
         <button
@@ -611,6 +622,13 @@ export function IronCondorPage() {
         onOpenChange={setCloseDialogOpen}
         spread={closingSpread}
         onSuccess={() => {}}
+      />
+
+      <GexModal
+        open={gexModalOpen}
+        onOpenChange={setGexModalOpen}
+        symbol={symbol}
+        expiration={expiration}
       />
     </div>
   );
