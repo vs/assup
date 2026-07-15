@@ -14,6 +14,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { useActiveScanJobCount } from "@/hooks/useActiveScanJobCount";
 
 interface NavItemProps {
   to: string;
@@ -55,17 +56,30 @@ const navItems = [
   { to: "/calendar", label: "Calendar", icon: Calendar },
 ];
 
+function ScanJobBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-bold text-white">
+      {count}
+    </span>
+  );
+}
+
 export function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const activeScanJobCount = useActiveScanJobCount();
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
+
+  const getBadge = (to: string) =>
+    to === "/scanner" ? <ScanJobBadge count={activeScanJobCount} /> : undefined;
 
   return (
     <>
       {/* Desktop Navigation */}
       <nav className="hidden lg:flex items-center gap-1">
         {navItems.map((item) => (
-          <NavItem key={item.to} to={item.to} icon={item.icon}>
+          <NavItem key={item.to} to={item.to} icon={item.icon} badge={getBadge(item.to)}>
             {item.label}
           </NavItem>
         ))}
@@ -113,6 +127,7 @@ export function Navigation() {
                   to={item.to}
                   icon={item.icon}
                   onClick={closeMobileMenu}
+                  badge={getBadge(item.to)}
                 >
                   {item.label}
                 </NavItem>
