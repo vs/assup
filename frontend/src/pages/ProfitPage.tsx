@@ -42,6 +42,7 @@ import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { PositionsTable } from "@/components/profit/PositionsTable";
 import { ChartModal } from "@/components/ChartModal";
 import { useTableSort } from "@/hooks/useTableSort";
+import { spreadTypeBadgeProps } from "@/utils/spreadGrouping";
 
 function optionTradeKey(trade: OptionTradeGroup, idx: number): string {
   return trade.openTrade?.id ?? trade.closeTrade?.id ?? `${trade.underlying}-${trade.expiry}-${trade.strike}-${trade.right}-${idx}`;
@@ -73,14 +74,6 @@ function formatSpreadDisplayName(spread: SpreadTradeGroup): string {
       return `${spread.underlying} ${strikes[0]}/${strikes[1]} Call Spread`;
     case "iron-condor":
       return `${spread.underlying} ${strikes[0]}/${strikes[1]}/${strikes[2]}/${strikes[3]} IC`;
-  }
-}
-
-function spreadTypeBadge(type: SpreadTradeGroup["type"]): { label: string; className: string } {
-  switch (type) {
-    case "put-spread": return { label: "PS", className: "bg-amber-100 text-amber-800" };
-    case "call-spread": return { label: "CS", className: "bg-blue-100 text-blue-700" };
-    case "iron-condor": return { label: "IC", className: "bg-violet-100 text-violet-700" };
   }
 }
 
@@ -373,7 +366,7 @@ function SummaryCard({
 
 function SpreadTradeRow({ spread }: { spread: SpreadTradeGroup }) {
   const [expanded, setExpanded] = useState(false);
-  const badge = spreadTypeBadge(spread.type);
+  const badge = spreadTypeBadgeProps(spread.type);
   const statusVariant = spread.status === "expired" ? "success" : spread.status === "closed" ? "secondary" : "outline";
   const statusLabel = spread.status === "expired" ? "Expired" : spread.status === "closed" ? "Closed" : "Partial";
 
@@ -388,7 +381,7 @@ function SpreadTradeRow({ spread }: { spread: SpreadTradeGroup }) {
           </div>
         </TableCell>
         <TableCell>
-          <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${badge.className}`}>{badge.label}</span>
+          <Badge variant={badge.variant}>{badge.label}</Badge>
         </TableCell>
         <TableCell>
           {spread.assetClassName ? (
