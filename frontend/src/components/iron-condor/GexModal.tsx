@@ -21,9 +21,14 @@ interface GexModalProps {
 export function GexModal({ open, onOpenChange, symbol, expiration }: GexModalProps) {
   const [aggregate, setAggregate] = useState(false);
 
+  // IronCondorPage stores expirations as YYYYMMDD, but the GEX API expects YYYY-MM-DD
+  const isoExpiration = expiration && expiration.length === 8
+    ? `${expiration.slice(0, 4)}-${expiration.slice(4, 6)}-${expiration.slice(6, 8)}`
+    : expiration;
+
   const { data, isLoading, error } = useGexAnalysis(
     open ? symbol : null,
-    { expiration: aggregate ? undefined : expiration, aggregate },
+    { expiration: aggregate ? undefined : isoExpiration, aggregate },
   );
 
   return (

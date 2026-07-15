@@ -401,52 +401,66 @@ export async function getGexAnalysis(
     }
   }
 
-  const strikeMap = new Map<number, { callOI: number; putOI: number; callVol: number; putVol: number; callIV: number; putIV: number; callCount: number; putCount: number }>();
+  // Calculate GEX per-expiration with its own T, then sum across expirations.
+  // This is critical because gamma is extremely sensitive to time-to-expiry —
+  // a 0-DTE option has much higher gamma than a 7-DTE option at the same strike.
+  const gexAccumulator = new Map<number, GexStrikeData>();
 
   for (const opts of allOptions) {
+    const expDate = new Date(opts.expirationDate * 1000);
+    const dte = Math.max(0, (expDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const T = Math.max(dte / 365, 1 / (365 * 24));
+
+    // Build a per-strike map for this expiration
+    const strikeData = new Map<number, { callOI: number; putOI: number; callVol: number; putVol: number; callIV: number; putIV: number }>();
+
     for (const call of opts.calls) {
-      const entry = strikeMap.get(call.strike) ?? { callOI: 0, putOI: 0, callVol: 0, putVol: 0, callIV: 0, putIV: 0, callCount: 0, putCount: 0 };
+      const entry = strikeData.get(call.strike) ?? { callOI: 0, putOI: 0, callVol: 0, putVol: 0, callIV: 0, putIV: 0 };
       entry.callOI += call.openInterest ?? 0;
       entry.callVol += call.volume ?? 0;
-      entry.callIV += call.impliedVolatility ?? 0;
-      entry.callCount += 1;
-      strikeMap.set(call.strike, entry);
+      entry.callIV = call.impliedVolatility ?? 0;
+      strikeData.set(call.strike, entry);
     }
 
     for (const put of opts.puts) {
-      const entry = strikeMap.get(put.strike) ?? { callOI: 0, putOI: 0, callVol: 0, putVol: 0, callIV: 0, putIV: 0, callCount: 0, putCount: 0 };
+      const entry = strikeData.get(put.strike) ?? { callOI: 0, putOI: 0, callVol: 0, putVol: 0, callIV: 0, putIV: 0 };
       entry.putOI += put.openInterest ?? 0;
       entry.putVol += put.volume ?? 0;
-      entry.putIV += put.impliedVolatility ?? 0;
-      entry.putCount += 1;
-      strikeMap.set(put.strike, entry);
+      entry.putIV = put.impliedVolatility ?? 0;
+      strikeData.set(put.strike, entry);
+    }
+
+    // Calculate GEX for this expiration and accumulate
+    for (const [strike, data] of strikeData) {
+      const gex = calcStrikeGEX({
+        spot,
+        strike,
+        callOI: data.callOI,
+        putOI: data.putOI,
+        callIV: data.callIV,
+        putIV: data.putIV,
+        callVolume: data.callVol,
+        putVolume: data.putVol,
+        T,
+        riskFreeRate: 0.05,
+      });
+
+      const existing = gexAccumulator.get(strike);
+      if (existing) {
+        existing.callOI += gex.callOI;
+        existing.putOI += gex.putOI;
+        existing.callVolume += gex.callVolume;
+        existing.putVolume += gex.putVolume;
+        existing.callGEX += gex.callGEX;
+        existing.putGEX += gex.putGEX;
+        existing.netGEX += gex.netGEX;
+      } else {
+        gexAccumulator.set(strike, { ...gex });
+      }
     }
   }
 
-  const primaryExpUnix = expirationsToFetch[0];
-  const primaryExpDate = new Date(primaryExpUnix * 1000);
-  const primaryDTE = Math.max(0, (primaryExpDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  const T = Math.max(primaryDTE / 365, 1 / (365 * 24));
-
-  const strikes: GexStrikeData[] = [];
-  for (const [strike, data] of strikeMap) {
-    const avgCallIV = data.callCount > 0 ? data.callIV / data.callCount : 0;
-    const avgPutIV = data.putCount > 0 ? data.putIV / data.putCount : 0;
-
-    const gex = calcStrikeGEX({
-      spot,
-      strike,
-      callOI: data.callOI,
-      putOI: data.putOI,
-      callIV: avgCallIV,
-      putIV: avgPutIV,
-      callVolume: data.callVol,
-      putVolume: data.putVol,
-      T,
-      riskFreeRate: 0.05,
-    });
-    strikes.push(gex);
-  }
+  const strikes: GexStrikeData[] = [...gexAccumulator.values()];
 
   strikes.sort((a, b) => a.strike - b.strike);
 
