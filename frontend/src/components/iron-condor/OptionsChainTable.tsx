@@ -104,50 +104,55 @@ const ChainRow = memo(function ChainRow({
   const putActive = mode === "put-spread" || mode === "iron-condor";
   const callActive = mode === "call-spread" || mode === "iron-condor";
 
-  const handlePutClick = useCallback(() => {
+  const handlePutSell = useCallback(() => {
     if (!putActive) return;
-    if (selectedLegs.sellPut && entry.strike < selectedLegs.sellPut) {
-      onSelectLeg(entry.strike, "PUT", "BUY");
-    } else {
-      onSelectLeg(entry.strike, "PUT", "SELL");
-    }
-  }, [entry.strike, selectedLegs.sellPut, onSelectLeg, putActive]);
+    onSelectLeg(entry.strike, "PUT", "SELL");
+  }, [entry.strike, onSelectLeg, putActive]);
 
-  const handleCallClick = useCallback(() => {
+  const handleCallSell = useCallback(() => {
     if (!callActive) return;
-    if (selectedLegs.sellCall && entry.strike > selectedLegs.sellCall) {
-      onSelectLeg(entry.strike, "CALL", "BUY");
-    } else {
-      onSelectLeg(entry.strike, "CALL", "SELL");
-    }
-  }, [entry.strike, selectedLegs.sellCall, onSelectLeg, callActive]);
+    onSelectLeg(entry.strike, "CALL", "SELL");
+  }, [entry.strike, onSelectLeg, callActive]);
 
-  const putCellClass = putActive
-    ? "cursor-pointer hover:bg-red-100/60 rounded px-1"
-    : "opacity-30 px-1";
-  const callCellClass = callActive
-    ? "cursor-pointer hover:bg-green-100/60 rounded px-1"
-    : "opacity-30 px-1";
+  const putCellClass = !putActive ? "opacity-30 px-1" : "px-1";
+  const callCellClass = !callActive ? "opacity-30 px-1" : "px-1";
+
+  const isPutSellSelected = entry.strike === selectedLegs.sellPut;
+  const isCallSellSelected = entry.strike === selectedLegs.sellCall;
 
   return (
     <div ref={rowRef} className={`my-0.5 ${style}`}>
       <div className="grid gap-0.5 py-2 px-3 tabular-nums" style={{ gridTemplateColumns: GRID_COLS }}>
         {/* Put side: Bid, Ask, Mid, Delta, IV */}
-        <div className={`text-right ${putCellClass}`} onClick={handlePutClick}>
+        <div className={`text-right ${putCellClass}`}>
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.putBid ? " bg-blue-500/20" : ""}`}>
             {formatPrice(entry.put?.bid)}
           </span>
         </div>
-        <div className={`text-right ${putCellClass}`} onClick={handlePutClick}>
+        <div className={`text-right ${putCellClass}`}>
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.putAsk ? " bg-blue-500/20" : ""}`}>
             {formatPrice(entry.put?.ask)}
           </span>
         </div>
-        <div className={`text-right font-medium ${putCellClass}`} onClick={handlePutClick}>
+        <div className={`text-right font-medium ${putCellClass}`}>
           {formatPrice(entry.put?.mid)}
         </div>
-        <div className={`text-right text-red-600 ${putCellClass}`} onClick={handlePutClick}>
-          {formatDelta(entry.put?.delta)}
+        <div className={`text-right text-red-600 ${putCellClass}`}>
+          {putActive ? (
+            <button
+              onClick={handlePutSell}
+              className={`w-full text-right rounded px-1 py-0.5 transition-colors ${
+                isPutSellSelected
+                  ? "bg-red-600 text-white font-bold"
+                  : "hover:bg-red-200 hover:text-red-800 cursor-pointer"
+              }`}
+              title="Sell put at this strike"
+            >
+              {formatDelta(entry.put?.delta)}
+            </button>
+          ) : (
+            formatDelta(entry.put?.delta)
+          )}
         </div>
         <div className={`text-right text-muted-foreground ${!putActive ? "opacity-30" : ""}`}>
           {formatIV(entry.put?.iv)}
@@ -163,18 +168,32 @@ const ChainRow = memo(function ChainRow({
         <div className={`text-muted-foreground ${!callActive ? "opacity-30" : ""}`}>
           {formatIV(entry.call?.iv)}
         </div>
-        <div className={`text-green-600 ${callCellClass}`} onClick={handleCallClick}>
-          {formatDelta(entry.call?.delta)}
+        <div className={`text-green-600 ${callCellClass}`}>
+          {callActive ? (
+            <button
+              onClick={handleCallSell}
+              className={`w-full text-left rounded px-1 py-0.5 transition-colors ${
+                isCallSellSelected
+                  ? "bg-green-600 text-white font-bold"
+                  : "hover:bg-green-200 hover:text-green-800 cursor-pointer"
+              }`}
+              title="Sell call at this strike"
+            >
+              {formatDelta(entry.call?.delta)}
+            </button>
+          ) : (
+            formatDelta(entry.call?.delta)
+          )}
         </div>
-        <div className={`font-medium ${callCellClass}`} onClick={handleCallClick}>
+        <div className={`font-medium ${callCellClass}`}>
           {formatPrice(entry.call?.mid)}
         </div>
-        <div className={callCellClass} onClick={handleCallClick}>
+        <div className={callCellClass}>
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.callBid ? " bg-blue-500/20" : ""}`}>
             {formatPrice(entry.call?.bid)}
           </span>
         </div>
-        <div className={callCellClass} onClick={handleCallClick}>
+        <div className={callCellClass}>
           <span className={`transition-colors duration-300 rounded px-0.5${flashCells.callAsk ? " bg-blue-500/20" : ""}`}>
             {formatPrice(entry.call?.ask)}
           </span>
@@ -503,11 +522,11 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Bid</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Ask</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Mid</div>
-            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Delta</div>
+            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>{putActive ? <span className="text-red-600" title="Click delta to sell put at this strike">Delta <span className="normal-case">(click to sell)</span></span> : "Delta"}</div>
             <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>IV</div>
             <div className="text-center font-semibold text-foreground">Strike</div>
             <div className={!callActive ? "opacity-30" : ""}>IV</div>
-            <div className={!callActive ? "opacity-30" : ""}>Delta</div>
+            <div className={!callActive ? "opacity-30" : ""}>{callActive ? <span className="text-green-600" title="Click delta to sell call at this strike">Delta <span className="normal-case">(click to sell)</span></span> : "Delta"}</div>
             <div className={!callActive ? "opacity-30" : ""}>Mid</div>
             <div className={!callActive ? "opacity-30" : ""}>Bid</div>
             <div className={!callActive ? "opacity-30" : ""}>Ask</div>

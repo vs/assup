@@ -321,13 +321,29 @@ export function IronCondorPage() {
   // --- Leg selection handler ---
   const handleSelectLeg = useCallback((strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {
     setSelectedLegs(prev => {
-      if (type === "PUT" && side === "SELL") return { ...prev, sellPut: strike };
+      if (type === "PUT" && side === "SELL") {
+        // Auto-select wing: buy put = sell put - wingWidth (snapped to nearest chain strike)
+        const buyTarget = strike - wingWidth;
+        const buyPut = chain.reduce(
+          (closest, entry) => Math.abs(entry.strike - buyTarget) < Math.abs(closest - buyTarget) ? entry.strike : closest,
+          chain[0]?.strike ?? buyTarget,
+        );
+        return { ...prev, sellPut: strike, buyPut };
+      }
+      if (type === "CALL" && side === "SELL") {
+        // Auto-select wing: buy call = sell call + wingWidth (snapped to nearest chain strike)
+        const buyTarget = strike + wingWidth;
+        const buyCall = chain.reduce(
+          (closest, entry) => Math.abs(entry.strike - buyTarget) < Math.abs(closest - buyTarget) ? entry.strike : closest,
+          chain[chain.length - 1]?.strike ?? buyTarget,
+        );
+        return { ...prev, sellCall: strike, buyCall };
+      }
       if (type === "PUT" && side === "BUY") return { ...prev, buyPut: strike };
-      if (type === "CALL" && side === "SELL") return { ...prev, sellCall: strike };
       if (type === "CALL" && side === "BUY") return { ...prev, buyCall: strike };
       return prev;
     });
-  }, []);
+  }, [chain, wingWidth]);
 
   // --- Expiration change ---
   const handleExpirationChange = useCallback((exp: string) => {
