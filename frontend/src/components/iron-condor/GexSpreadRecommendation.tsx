@@ -324,6 +324,17 @@ export function GexSpreadRecommendation({
     [chain, gexData.levels, gexData.spot, mode, putDelta, callDelta, wingWidth],
   );
 
+  // Estimate net credit from chain mid prices (must be before early return — Rules of Hooks)
+  const estimatedCredit = useMemo(() => {
+    if (!recommendation || recommendation.legs.length === 0) return 0;
+    let credit = 0;
+    for (const leg of recommendation.legs) {
+      const mid = getMid(chain, leg.strike, leg.type);
+      credit += leg.side === "SELL" ? mid : -mid;
+    }
+    return Math.round(credit * 100) / 100;
+  }, [recommendation, chain]);
+
   if (!recommendation || recommendation.legs.length === 0) {
     return (
       <div className="border rounded-lg p-4 text-sm text-muted-foreground">
@@ -341,16 +352,6 @@ export function GexSpreadRecommendation({
   ]
     .filter(Boolean)
     .join(" / ");
-
-  // Estimate net credit from chain mid prices
-  const estimatedCredit = useMemo(() => {
-    let credit = 0;
-    for (const leg of recommendation.legs) {
-      const mid = getMid(chain, leg.strike, leg.type);
-      credit += leg.side === "SELL" ? mid : -mid;
-    }
-    return Math.round(credit * 100) / 100;
-  }, [recommendation.legs, chain]);
 
   const handleApply = () => {
     const applied: SpreadSelectedLegs = {
