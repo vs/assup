@@ -1,11 +1,12 @@
 /**
  * GEX (Gamma Exposure) calculation service.
  *
- * Fetches options chain data from Yahoo Finance, calculates Black-Scholes
- * gamma per contract, computes GEX per strike, and identifies key dealer
- * positioning levels (put wall, call wall, GEX flip).
+ * Fetches options chain data from Yahoo Finance (via yahoo-finance2),
+ * calculates Black-Scholes gamma per contract, computes GEX per strike,
+ * and identifies key dealer positioning levels (put wall, call wall, GEX flip).
  */
 
+import YahooFinance from "yahoo-finance2";
 import type {
   GexAnalysisResponse,
   GexStrikeData,
@@ -212,79 +213,55 @@ export function calcSummary(strikes: GexStrikeData[], spot: number): GexSummary 
   };
 }
 
-// --- Yahoo Finance Fetch ---
+// --- Yahoo Finance Fetch (via yahoo-finance2) ---
 
-interface YahooOptionContract {
-  strike: number;
-  openInterest: number;
-  volume: number;
-  impliedVolatility: number;
-  bid: number;
-  ask: number;
+interface OptionsChainResult {
+  spot: number;
+  expirationDates: number[];
+  options: Array<{
+    expirationDate: number;
+    calls: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }>;
+    puts: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }>;
+  }>;
 }
 
-interface YahooOptionsResponse {
-  optionChain: {
-    result: Array<{
-      quote: {
-        regularMarketPrice: number;
-      };
-      expirationDates: number[];
-      options: Array<{
-        expirationDate: number;
-        calls: YahooOptionContract[];
-        puts: YahooOptionContract[];
-      }>;
-    }>;
-    error: null | { code: string; description: string };
-  };
-}
-
-const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-const FETCH_TIMEOUT_MS = 10_000;
-const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 2000;
+const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 /**
- * Fetch options chain for a single expiration from Yahoo Finance.
- * Retries with exponential backoff on 429 rate-limit responses.
+ * Fetch options chain for a single expiration via yahoo-finance2.
+ * The library handles crumb/cookie auth automatically.
  */
-async function fetchYahooOptionsChain(
+async function fetchOptionsChain(
   yahooSymbol: string,
-  expirationUnix?: number,
-  attempt = 0,
-): Promise<YahooOptionsResponse> {
-  const url = new URL(`https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(yahooSymbol)}`);
-  if (expirationUnix != null) {
-    url.searchParams.set("date", String(expirationUnix));
-  }
+  expirationDate?: Date,
+): Promise<OptionsChainResult> {
+  const result = await yf.options(
+    yahooSymbol,
+    expirationDate ? { date: expirationDate } : {},
+  );
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const spot = (result as any).quote?.regularMarketPrice ?? 0;
+  const expirationDates = ((result as any).expirationDates ?? []).map(
+    (d: Date) => Math.floor(d.getTime() / 1000),
+  );
 
-  try {
-    const response = await globalThis.fetch(url.toString(), {
-      headers: { "User-Agent": USER_AGENT },
-      signal: controller.signal,
-    });
+  const options = ((result as any).options ?? []).map((opt: any) => ({
+    expirationDate: Math.floor(new Date(opt.expirationDate).getTime() / 1000),
+    calls: (opt.calls ?? []).map((c: any) => ({
+      strike: c.strike ?? 0,
+      openInterest: c.openInterest ?? 0,
+      volume: c.volume ?? 0,
+      impliedVolatility: c.impliedVolatility ?? 0,
+    })),
+    puts: (opt.puts ?? []).map((p: any) => ({
+      strike: p.strike ?? 0,
+      openInterest: p.openInterest ?? 0,
+      volume: p.volume ?? 0,
+      impliedVolatility: p.impliedVolatility ?? 0,
+    })),
+  }));
 
-    if (response.status === 429 && attempt < MAX_RETRIES) {
-      clearTimeout(timeoutId);
-      const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-      console.warn(`Yahoo Finance 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
-      await new Promise((r) => setTimeout(r, delay));
-      return fetchYahooOptionsChain(yahooSymbol, expirationUnix, attempt + 1);
-    }
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`Yahoo Finance returned ${response.status}: ${body.slice(0, 200)}`);
-    }
-
-    return response.json() as Promise<YahooOptionsResponse>;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return { spot, expirationDates, options };
 }
 
 // --- In-Memory Cache ---
@@ -350,12 +327,11 @@ export async function getGexAnalysis(
     }
   }
 
-  const initial = await fetchYahooOptionsChain(yahooSymbol);
-  const result = initial.optionChain.result[0];
-  if (!result) throw new Error(`No options data for ${symbol} (${yahooSymbol})`);
+  const initial = await fetchOptionsChain(yahooSymbol);
+  if (initial.spot <= 0) throw new Error(`No options data for ${symbol} (${yahooSymbol})`);
 
-  const spot = result.quote.regularMarketPrice;
-  const expirationDates = result.expirationDates;
+  const spot = initial.spot;
+  const expirationDates = initial.expirationDates;
 
   const expirationStrings = expirationDates.map((ts) => {
     const d = new Date(ts * 1000);
@@ -387,27 +363,27 @@ export async function getGexAnalysis(
       throw new Error(`Expiration ${expiration} not available for ${symbol}. Available: ${expirationStrings.slice(0, 5).join(", ")}`);
     }
   } else {
-    if (result.options.length > 0) {
-      const firstOpts = result.options[0];
+    if (initial.options.length > 0) {
+      const firstOpts = initial.options[0];
       expirationsToFetch = [firstOpts.expirationDate];
       const d = new Date(firstOpts.expirationDate * 1000);
       analyzedExpiration = d.toISOString().split("T")[0];
     }
   }
 
-  const allOptions: Array<{ expirationDate: number; calls: YahooOptionContract[]; puts: YahooOptionContract[] }> = [];
+  const allOptions: Array<{ expirationDate: number; calls: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }>; puts: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }> }> = [];
 
   for (let i = 0; i < expirationsToFetch.length; i++) {
     const expUnix = expirationsToFetch[i];
-    const existing = result.options.find((o) => o.expirationDate === expUnix);
+    const existing = initial.options.find((o) => o.expirationDate === expUnix);
     if (existing) {
       allOptions.push(existing);
     } else {
       if (i > 0) {
         await new Promise((r) => setTimeout(r, AGGREGATE_FETCH_DELAY_MS));
       }
-      const resp = await fetchYahooOptionsChain(yahooSymbol, expUnix);
-      const opts = resp.optionChain.result[0]?.options[0];
+      const resp = await fetchOptionsChain(yahooSymbol, new Date(expUnix * 1000));
+      const opts = resp.options[0];
       if (opts) allOptions.push(opts);
     }
   }
