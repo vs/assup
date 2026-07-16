@@ -110,7 +110,7 @@ const MIN_VIABLE_DELTA = 3;
  */
 function findViableStrike(
   chain: IronCondorChainStrike[],
-  fromStrike: number,
+  _fromStrike: number,
   type: "PUT" | "CALL",
   minDelta: number,
   spot: number,
