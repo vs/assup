@@ -117,8 +117,9 @@ export function calcStrikeGEX(input: CalcStrikeGEXInput): GexStrikeData {
 
 /**
  * Identify key GEX levels from per-strike data.
+ * @param spot - Current underlying price, used to filter to a relevant range.
  */
-export function findKeyLevels(strikes: GexStrikeData[]): GexKeyLevels {
+export function findKeyLevels(strikes: GexStrikeData[], spot: number): GexKeyLevels {
   if (strikes.length === 0) {
     return {
       putWall: { strike: 0, oi: 0 },
@@ -129,32 +130,49 @@ export function findKeyLevels(strikes: GexStrikeData[]): GexKeyLevels {
     };
   }
 
+  // Only consider strikes within ±20% of spot for meaningful levels.
+  // Deep OTM strikes have noise-level GEX that produces spurious crossings.
+  const minStrike = spot * 0.80;
+  const maxStrike = spot * 1.20;
+  const relevant = strikes.filter(s => s.strike >= minStrike && s.strike <= maxStrike);
+  const pool = relevant.length > 0 ? relevant : strikes;
+
   // Put wall: strike with highest put OI
-  let putWall = strikes[0];
-  for (const s of strikes) {
+  let putWall = pool[0];
+  for (const s of pool) {
     if (s.putOI > putWall.putOI) putWall = s;
   }
 
   // Call wall: strike with highest call OI
-  let callWall = strikes[0];
-  for (const s of strikes) {
+  let callWall = pool[0];
+  for (const s of pool) {
     if (s.callOI > callWall.callOI) callWall = s;
   }
 
   // Max positive and negative GEX
-  let maxPos = strikes[0];
-  let maxNeg = strikes[0];
-  for (const s of strikes) {
+  let maxPos = pool[0];
+  let maxNeg = pool[0];
+  for (const s of pool) {
     if (s.netGEX > maxPos.netGEX) maxPos = s;
     if (s.netGEX < maxNeg.netGEX) maxNeg = s;
   }
 
-  // GEX flip: where netGEX crosses zero (linear interpolation)
+  // GEX flip: nearest zero-crossing to spot (search outward from spot)
   let gexFlip: number | null = null;
-  const sorted = [...strikes].sort((a, b) => a.strike - b.strike);
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i];
-    const b = sorted[i + 1];
+  const sorted = [...pool].sort((a, b) => a.strike - b.strike);
+
+  // Find the index closest to spot, then search outward in both directions
+  let spotIdx = 0;
+  let spotDist = Infinity;
+  for (let i = 0; i < sorted.length; i++) {
+    const d = Math.abs(sorted[i].strike - spot);
+    if (d < spotDist) { spotDist = d; spotIdx = i; }
+  }
+
+  // Search downward from spot (put side)
+  for (let i = spotIdx; i > 0; i--) {
+    const a = sorted[i - 1];
+    const b = sorted[i];
     if ((a.netGEX <= 0 && b.netGEX > 0) || (a.netGEX >= 0 && b.netGEX < 0)) {
       const range = b.netGEX - a.netGEX;
       if (range !== 0) {
@@ -163,6 +181,23 @@ export function findKeyLevels(strikes: GexStrikeData[]): GexKeyLevels {
         gexFlip = Math.round(gexFlip * 100) / 100;
       }
       break;
+    }
+  }
+
+  // If no flip found below spot, search upward (call side)
+  if (gexFlip === null) {
+    for (let i = spotIdx; i < sorted.length - 1; i++) {
+      const a = sorted[i];
+      const b = sorted[i + 1];
+      if ((a.netGEX <= 0 && b.netGEX > 0) || (a.netGEX >= 0 && b.netGEX < 0)) {
+        const range = b.netGEX - a.netGEX;
+        if (range !== 0) {
+          const t = -a.netGEX / range;
+          gexFlip = a.strike + t * (b.strike - a.strike);
+          gexFlip = Math.round(gexFlip * 100) / 100;
+        }
+        break;
+      }
     }
   }
 
@@ -202,7 +237,7 @@ export function calcSummary(strikes: GexStrikeData[], spot: number): GexSummary 
   }
   const netGEXRegime = nearest && nearest.netGEX >= 0 ? "positive" : "negative";
 
-  const levels = findKeyLevels(strikes);
+  const levels = findKeyLevels(strikes, spot);
 
   return {
     totalPutOI,
@@ -451,7 +486,7 @@ export async function getGexAnalysis(
 
   strikes.sort((a, b) => a.strike - b.strike);
 
-  const levels = findKeyLevels(strikes);
+  const levels = findKeyLevels(strikes, spot);
   const summary = calcSummary(strikes, spot);
   const fetchedAt = new Date().toISOString();
 

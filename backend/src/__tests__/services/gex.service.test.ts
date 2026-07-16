@@ -96,17 +96,17 @@ describe("findKeyLevels", () => {
   }
 
   it("identifies the put wall correctly", () => {
-    const levels = findKeyLevels(strikes);
+    const levels = findKeyLevels(strikes, 5500);
     expect(levels.putWall.strike).toBe(5450);
   });
 
   it("identifies the call wall correctly", () => {
-    const levels = findKeyLevels(strikes);
+    const levels = findKeyLevels(strikes, 5500);
     expect(levels.callWall.strike).toBe(5550);
   });
 
   it("finds GEX flip point between negative and positive transition", () => {
-    const levels = findKeyLevels(strikes);
+    const levels = findKeyLevels(strikes, 5500);
     expect(levels.gexFlip).not.toBeNull();
     expect(levels.gexFlip!).toBeGreaterThanOrEqual(5490);
     expect(levels.gexFlip!).toBeLessThanOrEqual(5510);
@@ -114,7 +114,7 @@ describe("findKeyLevels", () => {
 
   it("returns null GEX flip when all GEX is same sign", () => {
     const allPositive = strikes.map(s => ({ ...s, netGEX: Math.abs(s.netGEX) + 1 }));
-    const levels = findKeyLevels(allPositive);
+    const levels = findKeyLevels(allPositive, 5500);
     expect(levels.gexFlip).toBeNull();
   });
 });
