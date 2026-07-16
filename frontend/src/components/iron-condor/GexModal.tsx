@@ -58,7 +58,7 @@ export function GexModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[1400px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="!max-w-[calc(100vw-3rem)] w-[1600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle>GEX Analysis: {symbol}</DialogTitle>
@@ -118,8 +118,10 @@ export function GexModal({
             </div>
 
             <GexMetrics levels={data.levels} summary={data.summary} spot={data.spot} />
-            <GexChart strikes={data.strikes} spot={data.spot} levels={data.levels} />
-            <OIChart strikes={data.strikes} spot={data.spot} />
+            <div className="grid grid-cols-2 gap-4">
+              <GexChart strikes={data.strikes} spot={data.spot} levels={data.levels} />
+              <OIChart strikes={data.strikes} spot={data.spot} />
+            </div>
 
             <GexSpreadRecommendation
               gexData={data}
