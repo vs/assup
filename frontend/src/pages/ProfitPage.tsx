@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api";
 import type {
@@ -451,21 +451,45 @@ function MonthProfitCard({
     loadOrders();
   }, [loadOrders]);
 
-  // Sort: realized option trades
-  const getOptionTradeValue = useCallback((trade: (typeof data.realized.closedTrades)[0], col: string): string | number => {
+  // Sort: realized option trades (spreads + individual trades unified)
+  type OptTradeItem =
+    | { kind: "trade"; trade: OptionTradeGroup }
+    | { kind: "spread"; spread: SpreadTradeGroup };
+
+  const allOptItems = useMemo<OptTradeItem[]>(() => [
+    ...(data.realized.closedSpreadTrades ?? []).map((s): OptTradeItem => ({ kind: "spread", spread: s })),
+    ...data.realized.closedTrades.map((t): OptTradeItem => ({ kind: "trade", trade: t })),
+  ], [data.realized.closedSpreadTrades, data.realized.closedTrades]);
+
+  const getOptionTradeValue = useCallback((item: OptTradeItem, col: string): string | number => {
+    if (item.kind === "spread") {
+      const s = item.spread;
+      switch (col) {
+        case "date": return s.closeDate ?? s.expiry;
+        case "contract": return formatSpreadDisplayName(s);
+        case "type": return s.type;
+        case "assetClass": return s.assetClassName ?? "";
+        case "premium": return s.costBasis;
+        case "closeCost": return s.sellPrice;
+        case "profit": return s.profit;
+        case "status": return s.status;
+        default: return 0;
+      }
+    }
+    const t = item.trade;
     switch (col) {
-      case "date": return trade.closeTrade?.tradeDate || trade.expiry;
-      case "contract": return formatTradeDisplayName(trade);
-      case "type": return trade.right;
-      case "assetClass": return trade.assetClassName ?? "";
-      case "premium": return trade.costBasis;
-      case "closeCost": return trade.sellPrice;
-      case "profit": return trade.profit;
-      case "status": return trade.wasAssigned ? "Assigned" : trade.expiredWorthless ? "Expired" : "Closed";
+      case "date": return t.closeTrade?.tradeDate || t.expiry;
+      case "contract": return formatTradeDisplayName(t);
+      case "type": return t.right;
+      case "assetClass": return t.assetClassName ?? "";
+      case "premium": return t.costBasis;
+      case "closeCost": return t.sellPrice;
+      case "profit": return t.profit;
+      case "status": return t.wasAssigned ? "Assigned" : t.expiredWorthless ? "Expired" : "Closed";
       default: return 0;
     }
   }, []);
-  const optSort = useTableSort(data.realized.closedTrades, getOptionTradeValue);
+  const optSort = useTableSort(allOptItems, getOptionTradeValue);
 
   // Sort: realized stock trades
   const getStockTradeValue = useCallback((trade: (typeof data.realized.stockTrades)[0], col: string): string | number => {
@@ -569,73 +593,74 @@ function MonthProfitCard({
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {data.realized.closedSpreadTrades?.map((spread, idx) => (
-                            <SpreadTradeRow key={`spread-${idx}`} spread={spread} />
-                          ))}
-                          {optSort.sorted.map((trade, idx) => (
-                            <TableRow key={optionTradeKey(trade, idx)}>
+                          {optSort.sorted.map((item, idx) =>
+                            item.kind === "spread" ? (
+                              <SpreadTradeRow key={`spread-${idx}`} spread={item.spread} />
+                            ) : (
+                            <TableRow key={optionTradeKey(item.trade, idx)}>
                               <TableCell className="text-muted-foreground">
-                                {trade.closeTrade?.tradeDate || trade.expiry}
+                                {item.trade.closeTrade?.tradeDate || item.trade.expiry}
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center">
-                                  <TickerHoverCard symbol={trade.underlying}>
-                                    <Link to={`/tickers/${trade.underlying}`} className="font-medium hover:text-primary hover:underline">
-                                      {formatTradeDisplayName(trade)}
+                                  <TickerHoverCard symbol={item.trade.underlying}>
+                                    <Link to={`/tickers/${item.trade.underlying}`} className="font-medium hover:text-primary hover:underline">
+                                      {formatTradeDisplayName(item.trade)}
                                     </Link>
                                   </TickerHoverCard>
-                                  <ExternalLinks symbol={trade.underlying} />
+                                  <ExternalLinks symbol={item.trade.underlying} />
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge variant={trade.right === "P" ? "danger" : "success"}>
-                                  {trade.right === "P" ? "PUT" : "CALL"}
+                                <Badge variant={item.trade.right === "P" ? "danger" : "success"}>
+                                  {item.trade.right === "P" ? "PUT" : "CALL"}
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                {trade.assetClassName ? (
+                                {item.trade.assetClassName ? (
                                   <Link
-                                    to={`/positions?assetClassId=${trade.assetClassId}`}
+                                    to={`/positions?assetClassId=${item.trade.assetClassId}`}
                                     className="flex items-center gap-2 hover:text-primary"
                                   >
                                     <div
                                       className="h-2 w-2 rounded-full shrink-0"
-                                      style={{ backgroundColor: trade.assetClassColor }}
+                                      style={{ backgroundColor: item.trade.assetClassColor }}
                                     />
-                                    <span className="truncate text-sm">{trade.assetClassName}</span>
+                                    <span className="truncate text-sm">{item.trade.assetClassName}</span>
                                   </Link>
                                 ) : (
                                   <span className="text-muted-foreground text-sm">-</span>
                                 )}
                               </TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                {formatCurrency(trade.costBasis)}
+                                {formatCurrency(item.trade.costBasis)}
                               </TableCell>
                               <TableCell className="text-right font-mono">
-                                {trade.sellPrice > 0 ? (
-                                  <span className="text-red-600">{formatCurrency(trade.sellPrice)}</span>
+                                {item.trade.sellPrice > 0 ? (
+                                  <span className="text-red-600">{formatCurrency(item.trade.sellPrice)}</span>
                                 ) : (
                                   <span className="text-muted-foreground">$0</span>
                                 )}
                               </TableCell>
                               <TableCell
                                 className={`text-right font-mono ${
-                                  trade.profit >= 0 ? "text-green-600" : "text-red-600"
+                                  item.trade.profit >= 0 ? "text-green-600" : "text-red-600"
                                 }`}
                               >
-                                {formatCurrency(trade.profit)}
+                                {formatCurrency(item.trade.profit)}
                               </TableCell>
                               <TableCell>
-                                {trade.wasAssigned ? (
+                                {item.trade.wasAssigned ? (
                                   <Badge variant="outline">Assigned</Badge>
-                                ) : trade.expiredWorthless ? (
+                                ) : item.trade.expiredWorthless ? (
                                   <Badge variant="secondary">Expired</Badge>
                                 ) : (
                                   <Badge variant="secondary">Closed</Badge>
                                 )}
                               </TableCell>
                             </TableRow>
-                          ))}
+                            )
+                          )}
                         </TableBody>
                       </Table>
                     </div>
@@ -1032,20 +1057,44 @@ function MonthDetailView({ year, month }: { year: number; month: number }) {
 }
 
 function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.profit.monthDetail>> }) {
-  const getOptionTradeValue = useCallback((trade: (typeof detail.realized.optionTrades)[0], col: string): string | number => {
+  type OptTradeItem =
+    | { kind: "trade"; trade: OptionTradeGroup }
+    | { kind: "spread"; spread: SpreadTradeGroup };
+
+  const allOptItems = useMemo<OptTradeItem[]>(() => [
+    ...(detail.realized.spreadTrades ?? []).map((s): OptTradeItem => ({ kind: "spread", spread: s })),
+    ...detail.realized.optionTrades.map((t): OptTradeItem => ({ kind: "trade", trade: t })),
+  ], [detail.realized.spreadTrades, detail.realized.optionTrades]);
+
+  const getOptionTradeValue = useCallback((item: OptTradeItem, col: string): string | number => {
+    if (item.kind === "spread") {
+      const s = item.spread;
+      switch (col) {
+        case "date": return s.closeDate ?? s.expiry;
+        case "contract": return formatSpreadDisplayName(s);
+        case "type": return s.type;
+        case "assetClass": return s.assetClassName ?? "";
+        case "premium": return s.costBasis;
+        case "closeCost": return s.sellPrice;
+        case "profit": return s.profit;
+        case "status": return s.status;
+        default: return 0;
+      }
+    }
+    const t = item.trade;
     switch (col) {
-      case "date": return trade.closeTrade?.tradeDate || trade.expiry;
-      case "contract": return formatTradeDisplayName(trade);
-      case "type": return trade.right;
-      case "assetClass": return trade.assetClassName ?? "";
-      case "premium": return trade.costBasis;
-      case "closeCost": return trade.sellPrice;
-      case "profit": return trade.profit;
-      case "status": return trade.wasAssigned ? "Assigned" : trade.expiredWorthless ? "Expired" : "Closed";
+      case "date": return t.closeTrade?.tradeDate || t.expiry;
+      case "contract": return formatTradeDisplayName(t);
+      case "type": return t.right;
+      case "assetClass": return t.assetClassName ?? "";
+      case "premium": return t.costBasis;
+      case "closeCost": return t.sellPrice;
+      case "profit": return t.profit;
+      case "status": return t.wasAssigned ? "Assigned" : t.expiredWorthless ? "Expired" : "Closed";
       default: return 0;
     }
   }, []);
-  const optSort = useTableSort(detail.realized.optionTrades, getOptionTradeValue);
+  const optSort = useTableSort(allOptItems, getOptionTradeValue);
 
   const getStockTradeValue = useCallback((trade: (typeof detail.realized.stockTrades)[0], col: string): string | number => {
     switch (col) {
@@ -1081,73 +1130,74 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
               </TableRow>
             </TableHeader>
             <TableBody>
-              {detail.realized.spreadTrades?.map((spread, idx) => (
-                <SpreadTradeRow key={`spread-${idx}`} spread={spread} />
-              ))}
-              {optSort.sorted.map((trade, idx) => (
-                <TableRow key={optionTradeKey(trade, idx)}>
+              {optSort.sorted.map((item, idx) =>
+                item.kind === "spread" ? (
+                  <SpreadTradeRow key={`spread-${idx}`} spread={item.spread} />
+                ) : (
+                <TableRow key={optionTradeKey(item.trade, idx)}>
                   <TableCell className="text-muted-foreground">
-                    {trade.closeTrade?.tradeDate || trade.expiry}
+                    {item.trade.closeTrade?.tradeDate || item.trade.expiry}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center">
-                      <TickerHoverCard symbol={trade.underlying}>
-                        <Link to={`/tickers/${trade.underlying}`} className="font-medium hover:text-primary hover:underline">
-                          {formatTradeDisplayName(trade)}
+                      <TickerHoverCard symbol={item.trade.underlying}>
+                        <Link to={`/tickers/${item.trade.underlying}`} className="font-medium hover:text-primary hover:underline">
+                          {formatTradeDisplayName(item.trade)}
                         </Link>
                       </TickerHoverCard>
-                      <ExternalLinks symbol={trade.underlying} />
+                      <ExternalLinks symbol={item.trade.underlying} />
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={trade.right === "P" ? "danger" : "success"}>
-                      {trade.right === "P" ? "PUT" : "CALL"}
+                    <Badge variant={item.trade.right === "P" ? "danger" : "success"}>
+                      {item.trade.right === "P" ? "PUT" : "CALL"}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {trade.assetClassName ? (
+                    {item.trade.assetClassName ? (
                       <Link
-                        to={`/positions?assetClassId=${trade.assetClassId}`}
+                        to={`/positions?assetClassId=${item.trade.assetClassId}`}
                         className="flex items-center gap-2 hover:text-primary"
                       >
                         <div
                           className="h-2 w-2 rounded-full shrink-0"
-                          style={{ backgroundColor: trade.assetClassColor }}
+                          style={{ backgroundColor: item.trade.assetClassColor }}
                         />
-                        <span className="truncate text-sm">{trade.assetClassName}</span>
+                        <span className="truncate text-sm">{item.trade.assetClassName}</span>
                       </Link>
                     ) : (
                       <span className="text-muted-foreground text-sm">-</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right font-mono text-green-600">
-                    {formatCurrency(trade.costBasis)}
+                    {formatCurrency(item.trade.costBasis)}
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {trade.sellPrice > 0 ? (
-                      <span className="text-red-600">{formatCurrency(trade.sellPrice)}</span>
+                    {item.trade.sellPrice > 0 ? (
+                      <span className="text-red-600">{formatCurrency(item.trade.sellPrice)}</span>
                     ) : (
                       <span className="text-muted-foreground">$0</span>
                     )}
                   </TableCell>
                   <TableCell
                     className={`text-right font-mono ${
-                      trade.profit >= 0 ? "text-green-600" : "text-red-600"
+                      item.trade.profit >= 0 ? "text-green-600" : "text-red-600"
                     }`}
                   >
-                    {formatCurrency(trade.profit)}
+                    {formatCurrency(item.trade.profit)}
                   </TableCell>
                   <TableCell>
-                    {trade.wasAssigned ? (
+                    {item.trade.wasAssigned ? (
                       <Badge variant="outline">Assigned</Badge>
-                    ) : trade.expiredWorthless ? (
+                    ) : item.trade.expiredWorthless ? (
                       <Badge variant="secondary">Expired</Badge>
                     ) : (
                       <Badge variant="secondary">Closed</Badge>
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              )}
             </TableBody>
           </Table>
         </div>
