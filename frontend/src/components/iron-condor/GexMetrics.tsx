@@ -21,16 +21,18 @@ interface MetricCardProps {
   label: string;
   value: string;
   detail: string;
+  hint?: string;
   valueClassName?: string;
 }
 
-function MetricCard({ label, value, detail, valueClassName }: MetricCardProps) {
+function MetricCard({ label, value, detail, hint, valueClassName }: MetricCardProps) {
   return (
     <Card>
       <CardContent className="py-3 px-4">
         <div className="text-xs text-muted-foreground font-medium mb-1">{label}</div>
         <div className={`text-xl font-semibold tabular-nums ${valueClassName ?? ""}`}>{value}</div>
         <div className="text-xs text-muted-foreground mt-0.5">{detail}</div>
+        {hint && <div className="text-[10px] text-muted-foreground/70 mt-1 leading-tight">{hint}</div>}
       </CardContent>
     </Card>
   );
@@ -46,12 +48,14 @@ export function GexMetrics({ levels, summary, spot }: GexMetricsProps) {
         label="Put Wall (Support)"
         value={formatPrice(levels.putWall.strike)}
         detail={`OI: ${formatOI(levels.putWall.oi)} · ${putWallDist}% below`}
+        hint="Dealers hedge here by buying — cushions drops"
         valueClassName="text-red-500"
       />
       <MetricCard
         label="Call Wall (Resistance)"
         value={formatPrice(levels.callWall.strike)}
         detail={`OI: ${formatOI(levels.callWall.oi)} · ${callWallDist}% above`}
+        hint="Dealers hedge here by selling — caps rallies"
         valueClassName="text-blue-500"
       />
       <MetricCard
@@ -60,6 +64,9 @@ export function GexMetrics({ levels, summary, spot }: GexMetricsProps) {
         detail={summary.gexFlipLevel != null
           ? `${spot > summary.gexFlipLevel ? "Price above" : "Price below"} flip`
           : "No crossover found"}
+        hint={summary.gexFlipLevel != null
+          ? "Below flip: moves amplified. Above: moves dampened"
+          : undefined}
         valueClassName="text-yellow-500"
       />
       <MetricCard
