@@ -9,16 +9,36 @@ import { useGexAnalysis } from "@/hooks/useGexAnalysis";
 import { GexMetrics } from "./GexMetrics";
 import { GexChart } from "./GexChart";
 import { OIChart } from "./OIChart";
+import { GexSpreadRecommendation } from "./GexSpreadRecommendation";
 import { Loader2 } from "lucide-react";
+import type { IronCondorChainStrike, SpreadMode, SpreadSelectedLegs } from "@assup/shared";
 
 interface GexModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   symbol: string;
   expiration?: string;
+  /** Spread builder context for recommendations */
+  chain: IronCondorChainStrike[];
+  mode: SpreadMode;
+  putDelta: number;
+  callDelta: number;
+  wingWidth: number;
+  onApplyLegs: (legs: SpreadSelectedLegs) => void;
 }
 
-export function GexModal({ open, onOpenChange, symbol, expiration }: GexModalProps) {
+export function GexModal({
+  open,
+  onOpenChange,
+  symbol,
+  expiration,
+  chain,
+  mode,
+  putDelta,
+  callDelta,
+  wingWidth,
+  onApplyLegs,
+}: GexModalProps) {
   const [aggregate, setAggregate] = useState(false);
 
   // IronCondorPage stores expirations as YYYYMMDD, but the GEX API expects YYYY-MM-DD
@@ -30,6 +50,11 @@ export function GexModal({ open, onOpenChange, symbol, expiration }: GexModalPro
     open ? symbol : null,
     { expiration: aggregate ? undefined : isoExpiration, aggregate },
   );
+
+  const handleApply = (legs: SpreadSelectedLegs) => {
+    onApplyLegs(legs);
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,6 +120,16 @@ export function GexModal({ open, onOpenChange, symbol, expiration }: GexModalPro
             <GexMetrics levels={data.levels} summary={data.summary} spot={data.spot} />
             <GexChart strikes={data.strikes} spot={data.spot} levels={data.levels} />
             <OIChart strikes={data.strikes} spot={data.spot} />
+
+            <GexSpreadRecommendation
+              gexData={data}
+              chain={chain}
+              mode={mode}
+              putDelta={putDelta}
+              callDelta={callDelta}
+              wingWidth={wingWidth}
+              onApply={handleApply}
+            />
 
             <div className="flex items-center gap-6 text-xs text-muted-foreground border-t pt-3">
               <span>P/C Ratio: <span className="font-semibold text-foreground">{data.summary.putCallRatio.toFixed(2)}</span></span>

@@ -629,6 +629,12 @@ export function IronCondorPage() {
         onOpenChange={setGexModalOpen}
         symbol={symbol}
         expiration={expiration}
+        chain={chain}
+        mode={mode}
+        putDelta={putDelta}
+        callDelta={callDelta}
+        wingWidth={wingWidth}
+        onApplyLegs={setSelectedLegs}
       />
     </div>
   );
