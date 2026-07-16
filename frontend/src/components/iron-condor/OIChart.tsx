@@ -45,7 +45,7 @@ export function OIChart({ strikes, spot }: OIChartProps) {
         <CardTitle className="text-sm font-medium">Open Interest Distribution</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-[250px]">
+        <div className="h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={strikes} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
               <XAxis

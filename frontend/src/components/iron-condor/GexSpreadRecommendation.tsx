@@ -101,6 +101,51 @@ function formatPct(spot: number, strike: number): string {
   return ((Math.abs(spot - strike) / spot) * 100).toFixed(1);
 }
 
+/** Minimum delta (as percentage, e.g. 3 = 3%) for a short strike to be viable. */
+const MIN_VIABLE_DELTA = 3;
+
+/**
+ * Find the nearest OTM strike with delta >= minDelta.
+ * For puts: search upward (closer to money). For calls: search downward.
+ */
+function findViableStrike(
+  chain: IronCondorChainStrike[],
+  fromStrike: number,
+  type: "PUT" | "CALL",
+  minDelta: number,
+  spot: number,
+): { strike: number; delta: number } | null {
+  const candidates = chain
+    .map((e) => {
+      const option = type === "PUT" ? e.put : e.call;
+      if (!option || option.delta === 0) return null;
+      // Must be OTM
+      if (type === "PUT" && e.strike >= spot) return null;
+      if (type === "CALL" && e.strike <= spot) return null;
+      if (option.delta * 100 < minDelta) return null;
+      return { strike: e.strike, delta: option.delta };
+    })
+    .filter((c): c is { strike: number; delta: number } => c !== null);
+
+  if (candidates.length === 0) return null;
+
+  // For puts: pick the furthest OTM (lowest strike) that still meets min delta
+  // For calls: pick the furthest OTM (highest strike) that still meets min delta
+  if (type === "PUT") {
+    candidates.sort((a, b) => a.strike - b.strike);
+    return candidates[0];
+  } else {
+    candidates.sort((a, b) => b.strike - a.strike);
+    return candidates[0];
+  }
+}
+
+function getMid(chain: IronCondorChainStrike[], strike: number, type: "PUT" | "CALL"): number {
+  const entry = chain.find((e) => e.strike === strike);
+  const option = type === "PUT" ? entry?.put : entry?.call;
+  return option?.mid ?? 0;
+}
+
 export function recommendGexStrikes(params: {
   chain: IronCondorChainStrike[];
   gexLevels: GexKeyLevels;
@@ -136,6 +181,20 @@ export function recommendGexStrikes(params: {
           shortPut = moved;
           overridden = true;
           rationale = `Moved from ${originalStrike} to stay above put wall (${gexLevels.putWall.strike}) \u2014 dealer support cushion`;
+        }
+      }
+
+      // Viability check: if short put delta is below minimum, find a better strike
+      const shortPutDelta = getDelta(chain, shortPut, "PUT");
+      if (shortPutDelta === null || shortPutDelta * 100 < MIN_VIABLE_DELTA) {
+        const viable = findViableStrike(chain, shortPut, "PUT", MIN_VIABLE_DELTA, spot);
+        if (viable) {
+          if (!overridden) originalStrike = shortPut;
+          shortPut = viable.strike;
+          overridden = true;
+          rationale = originalStrike
+            ? `Moved from ${originalStrike} (\u2248${putDelta}\u0394) \u2014 too far OTM for viable premium. Nearest ${MIN_VIABLE_DELTA}+\u0394 strike above put wall`
+            : `Adjusted to ${MIN_VIABLE_DELTA}+\u0394 for viable premium`;
         }
       }
 
@@ -194,6 +253,20 @@ export function recommendGexStrikes(params: {
           shortCall = moved;
           overridden = true;
           rationale = `Moved from ${originalStrike} to stay below call wall (${gexLevels.callWall.strike}) \u2014 dealer resistance cap`;
+        }
+      }
+
+      // Viability check: if short call delta is below minimum, find a better strike
+      const shortCallDelta = getDelta(chain, shortCall, "CALL");
+      if (shortCallDelta === null || shortCallDelta * 100 < MIN_VIABLE_DELTA) {
+        const viable = findViableStrike(chain, shortCall, "CALL", MIN_VIABLE_DELTA, spot);
+        if (viable) {
+          if (!overridden) originalStrike = shortCall;
+          shortCall = viable.strike;
+          overridden = true;
+          rationale = originalStrike
+            ? `Moved from ${originalStrike} (\u2248${callDelta}\u0394) \u2014 too far OTM for viable premium. Nearest ${MIN_VIABLE_DELTA}+\u0394 strike below call wall`
+            : `Adjusted to ${MIN_VIABLE_DELTA}+\u0394 for viable premium`;
         }
       }
 
@@ -269,6 +342,16 @@ export function GexSpreadRecommendation({
     .filter(Boolean)
     .join(" / ");
 
+  // Estimate net credit from chain mid prices
+  const estimatedCredit = useMemo(() => {
+    let credit = 0;
+    for (const leg of recommendation.legs) {
+      const mid = getMid(chain, leg.strike, leg.type);
+      credit += leg.side === "SELL" ? mid : -mid;
+    }
+    return Math.round(credit * 100) / 100;
+  }, [recommendation.legs, chain]);
+
   const handleApply = () => {
     const applied: SpreadSelectedLegs = {
       sellPut: null,
@@ -329,6 +412,13 @@ export function GexSpreadRecommendation({
           );
         })}
       </div>
+
+      {estimatedCredit > 0 && (
+        <div className="flex justify-between items-center text-xs px-2 pt-1 border-t">
+          <span className="text-muted-foreground font-medium">Est. Credit (mid):</span>
+          <span className="font-semibold text-green-600 tabular-nums">${estimatedCredit.toFixed(2)} per contract</span>
+        </div>
+      )}
 
       {recommendation.warnings.length > 0 && (
         <Alert className="bg-yellow-500/10 border-yellow-500/30">

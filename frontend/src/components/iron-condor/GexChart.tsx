@@ -48,7 +48,7 @@ export function GexChart({ strikes, spot, levels }: GexChartProps) {
         <CardTitle className="text-sm font-medium">GEX by Strike</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-[280px]">
+        <div className="h-[360px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={strikes} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
               <XAxis
