@@ -106,7 +106,9 @@ export function PlaceSpreadDialog({
     setSubmitting(true);
     setError(null);
     try {
-      await api.ironCondor.placeOrder({ symbol, legs: editableLegs, quantity, limitPrice });
+      // Negate limitPrice: UI shows positive credit, but IBKR BAG BUY LMT
+      // needs negative price to enforce minimum credit received.
+      await api.ironCondor.placeOrder({ symbol, legs: editableLegs, quantity, limitPrice: -limitPrice });
       setSuccess(true);
       setTimeout(() => { onOpenChange(false); setSuccess(false); }, 1500);
     } catch (err) {
