@@ -84,7 +84,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 3;
+const WHEEL_CACHE_VERSION = 4;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -892,14 +892,14 @@ export const wheelService = {
 
     if (currentCycle) {
       const hasAssignment = currentCycle.trades.some((t) => t.status === "assigned");
-      if (hasAssignment) {
-        // Shares were assigned through the wheel - use assignment price adjusted by premiums
-        adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
-      } else if (positionAvgCost !== null && wheelSharesHeld) {
-        // Shares held from before this cycle (e.g. bought long ago, now selling CCs)
-        // Use actual IBKR cost basis, not the call strike
-        const shares = currentCycle.shareQuantity || liveShareQuantity || 100;
+      if (positionAvgCost !== null && wheelSharesHeld) {
+        // Have live IBKR position - use actual average cost which already accounts
+        // for assignments, additional purchases, and cost averaging
+        const shares = liveShareQuantity || currentCycle.shareQuantity || 100;
         adjustedCostBasis = positionAvgCost - (currentCycle.totalPremium / shares);
+      } else if (hasAssignment) {
+        // No live position data - fall back to assignment strike adjusted by premiums
+        adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
       } else {
         // CSP phase - no shares yet, use put strike as potential cost basis
         adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / 100);
