@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,23 @@ import { GexMetrics } from "./GexMetrics";
 import { GexChart } from "./GexChart";
 import { OIChart } from "./OIChart";
 import { GexSpreadRecommendation } from "./GexSpreadRecommendation";
+import type { GexStrikeData, GexKeyLevels } from "@assup/shared";
+
+/** Filter strikes to ±15% of spot so charts show meaningful detail. */
+function ChartStrikes({ strikes, spot, levels }: { strikes: GexStrikeData[]; spot: number; levels: GexKeyLevels }) {
+  const filtered = useMemo(() => {
+    const min = spot * 0.85;
+    const max = spot * 1.15;
+    return strikes.filter(s => s.strike >= min && s.strike <= max);
+  }, [strikes, spot]);
+
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <GexChart strikes={filtered} spot={spot} levels={levels} />
+      <OIChart strikes={filtered} spot={spot} />
+    </div>
+  );
+}
 import { Loader2 } from "lucide-react";
 import type { IronCondorChainStrike, SpreadMode, SpreadSelectedLegs } from "@assup/shared";
 
@@ -118,10 +135,7 @@ export function GexModal({
             </div>
 
             <GexMetrics levels={data.levels} summary={data.summary} spot={data.spot} />
-            <div className="grid grid-cols-2 gap-4">
-              <GexChart strikes={data.strikes} spot={data.spot} levels={data.levels} />
-              <OIChart strikes={data.strikes} spot={data.spot} />
-            </div>
+            <ChartStrikes strikes={data.strikes} spot={data.spot} levels={data.levels} />
 
             <GexSpreadRecommendation
               gexData={data}
