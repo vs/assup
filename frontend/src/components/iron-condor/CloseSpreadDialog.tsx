@@ -88,19 +88,45 @@ export function CloseSpreadDialog({ open, onOpenChange, spread, onSuccess }: Clo
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Legs summary — show flipped actions */}
+          {/* Legs summary — show flipped actions with prices */}
           <div className="border rounded-lg p-3 space-y-1 text-sm">
             {spread.legs.map((leg) => {
               const closingSide = leg.side === "SELL" ? "BUY" : "SELL";
+              const isBuy = closingSide === "BUY";
               return (
-                <div key={leg.conId} className="flex justify-between">
-                  <span className={closingSide === "BUY" ? "font-semibold" : "text-muted-foreground"}>
-                    {closingSide} {leg.right === "P" ? "PUT" : "CALL"} {leg.strike}
-                  </span>
-                  <span className="text-muted-foreground">{"\u00D7"} {spread.quantity}</span>
+                <div key={leg.conId} className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                      isBuy ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"
+                    }`}>
+                      {closingSide}
+                    </span>
+                    <span className={isBuy ? "font-semibold" : "text-muted-foreground"}>
+                      {leg.right === "P" ? "PUT" : "CALL"} {leg.strike}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 tabular-nums">
+                    {leg.midPrice != null && leg.midPrice !== 0 ? (
+                      <span className={`text-xs ${isBuy ? "text-red-600" : "text-green-600"}`}>
+                        ${Math.abs(leg.midPrice).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">no price</span>
+                    )}
+                    <span className="text-muted-foreground">{"\u00D7"} {spread.quantity}</span>
+                  </div>
                 </div>
               );
             })}
+            {/* Net close price */}
+            <div className="border-t pt-2 mt-2 flex justify-between text-xs">
+              <span className="text-muted-foreground font-medium">Net Debit (from positions):</span>
+              <span className="font-semibold tabular-nums">
+                {spread.closeMidPrice != null && spread.closeMidPrice !== 0
+                  ? `$${spread.closeMidPrice.toFixed(2)}`
+                  : "unavailable"}
+              </span>
+            </div>
           </div>
 
           {/* Limit price */}
