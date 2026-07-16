@@ -3,7 +3,7 @@
  * Allows per-leg strike adjustment with live bid/ask/mid/delta display.
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -71,14 +71,17 @@ export function PlaceSpreadDialog({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Reset state when dialog opens or initial legs change
+  // Snapshot state only when the dialog first opens — don't reset on
+  // streaming price updates so the user's limit price stays stable.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setEditableLegs(legs);
       setLimitPrice(netCreditMid);
       setError(null);
       setSuccess(false);
     }
+    wasOpenRef.current = open;
   }, [open, legs, netCreditMid]);
 
   // Available strikes from chain, sorted
@@ -189,10 +192,10 @@ export function PlaceSpreadDialog({
                 </div>
               );
             })}
-            {/* Net credit summary */}
+            {/* Live market mid */}
             <div className="border-t pt-2 mt-1 flex justify-between items-center text-xs px-1">
-              <span className="text-muted-foreground font-medium">Net Credit (mid):</span>
-              <span className={`font-semibold ${currentNetCredit > 0 ? "text-green-600" : "text-red-600"}`}>
+              <span className="text-muted-foreground font-medium">Market Mid:</span>
+              <span className={`font-semibold tabular-nums ${currentNetCredit > 0 ? "text-green-600" : "text-red-600"}`}>
                 ${currentNetCredit.toFixed(2)}
               </span>
             </div>
@@ -200,23 +203,49 @@ export function PlaceSpreadDialog({
 
           {/* Limit price */}
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label>Limit Price</Label>
+            <div className="flex items-center justify-between">
+              <Label>Your Limit Price</Label>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-6 text-[10px] px-2"
                 onClick={() => setLimitPrice(currentNetCredit)}
               >
-                Use Mid
+                Snap to Mid
               </Button>
             </div>
-            <Input
-              type="number"
-              step="0.05"
-              value={limitPrice}
-              onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
-            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-9 px-0 text-lg"
+                onClick={() => setLimitPrice(prev => Math.round((prev - 0.05) * 100) / 100)}
+              >
+                &minus;
+              </Button>
+              <Input
+                type="number"
+                step="0.05"
+                value={limitPrice}
+                onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
+                className="text-center tabular-nums font-medium"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-9 px-0 text-lg"
+                onClick={() => setLimitPrice(prev => Math.round((prev + 0.05) * 100) / 100)}
+              >
+                +
+              </Button>
+            </div>
+            {limitPrice !== currentNetCredit && (
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {limitPrice > currentNetCredit
+                  ? `$${(limitPrice - currentNetCredit).toFixed(2)} above market mid — may not fill`
+                  : `$${(currentNetCredit - limitPrice).toFixed(2)} below market mid`}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Max profit: ${(limitPrice * 100 * quantity).toLocaleString()} · Max loss: -${maxLoss.toLocaleString()}
             </p>
