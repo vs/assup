@@ -94,7 +94,7 @@ export function GexModal({ open, onOpenChange, symbol, expiration }: GexModalPro
 
             <GexMetrics levels={data.levels} summary={data.summary} spot={data.spot} />
             <GexChart strikes={data.strikes} spot={data.spot} levels={data.levels} />
-            <OIChart strikes={data.strikes} spot={data.spot} levels={data.levels} />
+            <OIChart strikes={data.strikes} spot={data.spot} />
 
             <div className="flex items-center gap-6 text-xs text-muted-foreground border-t pt-3">
               <span>P/C Ratio: <span className="font-semibold text-foreground">{data.summary.putCallRatio.toFixed(2)}</span></span>

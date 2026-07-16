@@ -9,12 +9,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { GexStrikeData, GexKeyLevels } from "@assup/shared";
+import type { GexStrikeData } from "@assup/shared";
 
 interface OIChartProps {
   strikes: GexStrikeData[];
   spot: number;
-  levels: GexKeyLevels;
 }
 
 function formatOI(value: number): string {
@@ -39,7 +38,7 @@ function OITooltip({ active, payload }: any) {
   );
 }
 
-export function OIChart({ strikes, spot, levels }: OIChartProps) {
+export function OIChart({ strikes, spot }: OIChartProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
