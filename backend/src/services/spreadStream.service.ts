@@ -125,22 +125,37 @@ export class SpreadStreamSession {
     // delayed data, so the underlying price snapshot would return nothing.
     ibkrService.acquireLiveMarketData();
 
-    // 1. Fetch underlying price
+    // 1. Fetch underlying price (retry up to 3 times — the market data type
+    //    switch above may not take effect before the first snapshot request)
     const underlyingContract: Contract = {
       symbol: optionSymbol,
       secType: SecType.IND,
       exchange: "CBOE",
       currency: "USD",
     };
-    const underlyingData = await ibkrService.getMarketData(underlyingContract);
-    if (this.destroyed) return;
 
-    let underlyingPrice =
-      underlyingData?.last ?? underlyingData?.bid ?? underlyingData?.ask ?? 0;
-    if (underlyingPrice <= 0 && underlyingData?.close) {
-      underlyingPrice = underlyingData.close;
+    let underlyingPrice = 0;
+    const MAX_PRICE_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_PRICE_RETRIES; attempt++) {
+      if (this.destroyed) return;
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (this.destroyed) return;
+      }
+      const underlyingData = await ibkrService.getMarketData(underlyingContract);
+      if (this.destroyed) return;
+
+      underlyingPrice =
+        underlyingData?.last ?? underlyingData?.bid ?? underlyingData?.ask ?? 0;
+      if (underlyingPrice <= 0 && underlyingData?.close) {
+        underlyingPrice = underlyingData.close;
+      }
+      underlyingPrice = underlyingPrice / priceDivisor;
+      if (underlyingPrice > 0) break;
+      console.warn(
+        `[SpreadStream] Attempt ${attempt + 1}/${MAX_PRICE_RETRIES} — no price for ${this.symbol}`,
+      );
     }
-    underlyingPrice = underlyingPrice / priceDivisor;
     if (underlyingPrice <= 0) {
       throw new Error(`Could not get price for ${this.symbol}`);
     }
