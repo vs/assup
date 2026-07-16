@@ -915,7 +915,14 @@ class IBKRService {
       };
     } catch (err) {
       const error = err as { code?: number; message?: string };
+      // Silently ignore expected failures:
+      // - code 200/10089/10091: IBKR contract/subscription errors
+      // - "no elements in sequence": rxjs EmptyError when observable completes
+      //   without emitting (e.g. outside market hours, no subscription)
       if (error.code === 200 || error.code === 10089 || error.code === 10091) {
+        return null;
+      }
+      if (error.message === "no elements in sequence") {
         return null;
       }
       console.error(`Observable market data failed for ${mdContract.symbol}:`, err);
