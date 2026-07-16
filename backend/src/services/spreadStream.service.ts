@@ -133,6 +133,8 @@ export class SpreadStreamSession {
       currency: "USD",
     };
     const underlyingData = await ibkrService.getMarketData(underlyingContract);
+    if (this.destroyed) return;
+
     let underlyingPrice =
       underlyingData?.last ?? underlyingData?.bid ?? underlyingData?.ask ?? 0;
     if (underlyingPrice <= 0 && underlyingData?.close) {
@@ -150,6 +152,8 @@ export class SpreadStreamSession {
     }
 
     const contractDetails = await api.getContractDetails(underlyingContract);
+    if (this.destroyed) return;
+
     if (!contractDetails.length) {
       throw new Error(`No contract details for ${optionSymbol}`);
     }
@@ -161,6 +165,7 @@ export class SpreadStreamSession {
       SecType.IND,
       conId,
     );
+    if (this.destroyed) return;
 
     // Union expirations and strikes from ALL matching definitions
     const preferredDefs = secDefs.filter(
@@ -222,6 +227,7 @@ export class SpreadStreamSession {
       tradingClass,
       multiplier,
     );
+    if (this.destroyed) return;
 
     // 6. Build initial chain — include entries for ALL strikes even without conIds.
     // Strikes without conIds still get streaming data, just can't be used for orders.
@@ -510,7 +516,7 @@ export class SpreadStreamSession {
    * around target areas + wing offsets.
    */
   private transitionToFocus(): void {
-    if (this.phase !== "scout") return;
+    if (this.phase !== "scout" || this.destroyed) return;
     this.phase = "focused";
 
     if (this.focusCheckTimer) {
