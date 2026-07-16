@@ -242,14 +242,17 @@ interface YahooOptionsResponse {
 
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const FETCH_TIMEOUT_MS = 10_000;
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 2000;
 
 /**
  * Fetch options chain for a single expiration from Yahoo Finance.
- * If no expirationUnix is provided, returns the default (nearest) expiration.
+ * Retries with exponential backoff on 429 rate-limit responses.
  */
 async function fetchYahooOptionsChain(
   yahooSymbol: string,
   expirationUnix?: number,
+  attempt = 0,
 ): Promise<YahooOptionsResponse> {
   const url = new URL(`https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(yahooSymbol)}`);
   if (expirationUnix != null) {
@@ -264,6 +267,14 @@ async function fetchYahooOptionsChain(
       headers: { "User-Agent": USER_AGENT },
       signal: controller.signal,
     });
+
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      clearTimeout(timeoutId);
+      const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      console.warn(`Yahoo Finance 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise((r) => setTimeout(r, delay));
+      return fetchYahooOptionsChain(yahooSymbol, expirationUnix, attempt + 1);
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
