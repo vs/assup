@@ -18,6 +18,7 @@ const BROADCAST_INTERVAL_MS = 5_000;
 class MacroBroadcastService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastSnapshot: Record<string, unknown> | null = null;
+  private lastBroadcast: Record<string, unknown> | null = null;
 
   start() {
     if (this.timer) return;
@@ -41,6 +42,7 @@ class MacroBroadcastService {
     try {
       const macro = await this.buildLiveMacro();
       if (macro) {
+        this.lastBroadcast = macro;
         sseService.broadcast("macro", macro);
       }
     } catch {
@@ -103,6 +105,11 @@ class MacroBroadcastService {
   /** Called when daily macro snapshot is refreshed to update the baseline */
   invalidateBaseline() {
     this.lastSnapshot = null;
+  }
+
+  /** Returns the last broadcast result, or null if no broadcast has happened yet */
+  getLastBroadcast(): Record<string, unknown> | null {
+    return this.lastBroadcast;
   }
 }
 

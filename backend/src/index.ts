@@ -179,6 +179,12 @@ app.get("/api/updates/stream", (req: Request, res: Response) => {
     res.write(": keepalive\n\n");
   }, 30000);
 
+  // Send last known macro data immediately so the client doesn't show stale DB data
+  const lastMacro = macroBroadcastService.getLastBroadcast();
+  if (lastMacro) {
+    sseService.sendToClient(clientId, "macro", lastMacro);
+  }
+
   // Subscribe to IBKR connection status changes (subscribe() sends initial status immediately)
   const unsubscribe = ibkrService.subscribe((status) => {
     sseService.sendToClient(clientId, "connection", status);

@@ -26,6 +26,8 @@ import {
   fetchSAMetrics,
 } from "../services/research/collectors/sa-rapidapi.js";
 
+import { macroBroadcastService } from "../services/macroBroadcast.service.js";
+
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
 import { NotFoundError } from "../errors/AppError.js";
@@ -99,6 +101,11 @@ function testCli(prompt: string, oauthToken?: string): Promise<{ ok: boolean; er
 router.get(
   "/macro",
   asyncHandler(async (_req, res) => {
+    // Prefer the last live broadcast (has fresh IBKR prices) over the DB snapshot
+    const liveMacro = macroBroadcastService.getLastBroadcast();
+    if (liveMacro) {
+      return res.json(liveMacro);
+    }
     const snapshot = await prisma.macroSnapshot.findFirst({
       orderBy: { analyzedAt: "desc" },
     });
