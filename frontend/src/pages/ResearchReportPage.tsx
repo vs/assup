@@ -1220,9 +1220,9 @@ export function ResearchReportPage() {
   const [loading, setLoading] = useState(true);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (silent = false) => {
     if (!symbol) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [reportResult, analysisResult, collectionResult] =
         await Promise.allSettled([
@@ -1259,7 +1259,7 @@ export function ResearchReportPage() {
   useResearchJobFinished((finishedSymbol, status, error) => {
     if (finishedSymbol !== symbol) return;
     if (status === "completed") {
-      fetchData();
+      fetchData(true);
     } else {
       setGenerateError(error || `Report generation failed for ${symbol}`);
     }

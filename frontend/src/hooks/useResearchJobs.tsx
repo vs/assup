@@ -88,6 +88,9 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
         error: string | null;
       };
 
+      // Track whether we need to notify finished listeners (must happen outside state updater)
+      let shouldNotify = false;
+
       setJobs((prev) => {
         const existing = prev.get(event.symbol);
 
@@ -97,10 +100,7 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
             return prev; // Ignore stale event from older job
           }
 
-          // Notify finished listeners
-          finishedListeners.forEach((cb) =>
-            cb(event.symbol, event.status as "completed" | "failed", event.error)
-          );
+          shouldNotify = true;
 
           // Keep entry briefly for visual feedback, then remove
           const next = new Map(prev);
@@ -145,6 +145,13 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
         });
         return next;
       });
+
+      // Notify finished listeners AFTER the state updater (side effects must not live inside setState)
+      if (shouldNotify && (event.status === "completed" || event.status === "failed")) {
+        finishedListeners.forEach((cb) =>
+          cb(event.symbol, event.status as "completed" | "failed", event.error)
+        );
+      }
     });
 
     return () => {
