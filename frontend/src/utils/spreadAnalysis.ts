@@ -215,3 +215,102 @@ export function analyzeSpread(req: IronCondorAnalyzeRequest): IronCondorAnalyzeR
     payoffCurve,
   };
 }
+
+// --- Hedged payoff analysis ---
+
+export interface HedgedPayoffResult {
+  payoffCurve: Array<{ price: number; pnl: number }>;
+  maxProfit: number;
+  maxLoss: number;
+  hedgeCost: number;
+  breakEvenLow: number | null;
+  breakEvenHigh: number | null;
+}
+
+interface HedgePayoffInput {
+  /** Existing spread legs (from the active position) */
+  existingLegs: Array<{ strike: number; type: "PUT" | "CALL"; side: "BUY" | "SELL" }>;
+  /** New legs being added as the hedge */
+  newLegs: Array<{ strike: number; type: "PUT" | "CALL"; side: "BUY" | "SELL"; bid: number; ask: number }>;
+  /** Net credit originally received for the spread (positive = credit) */
+  originalCreditMid: number;
+  /** Debit limit price the user is willing to pay for the hedge */
+  hedgeDebitLimit: number;
+  quantity: number;
+  underlyingPrice: number;
+}
+
+/**
+ * Compute the payoff curve for a hedged position (original spread + new hedge legs).
+ * Works for both butterfly conversion and protective option hedges.
+ */
+export function computeHedgedPayoff(input: HedgePayoffInput): HedgedPayoffResult {
+  const { existingLegs, newLegs, originalCreditMid, hedgeDebitLimit, quantity, underlyingPrice } = input;
+  const multiplier = DEFAULT_MULTIPLIER;
+
+  const allLegs = [...existingLegs, ...newLegs.map(l => ({ strike: l.strike, type: l.type, side: l.side }))];
+
+  // Net credit after hedge cost
+  const netCreditAfterHedge = originalCreditMid - hedgeDebitLimit;
+
+  // Determine price range from all strikes
+  const allStrikes = allLegs.map(l => l.strike);
+  const minStrike = Math.min(...allStrikes);
+  const maxStrike = Math.max(...allStrikes);
+  const rangeMin = minStrike * 0.95;
+  const rangeMax = maxStrike * 1.05;
+
+  const numPoints = 100;
+  const step = (rangeMax - rangeMin) / numPoints;
+  const payoffCurve: Array<{ price: number; pnl: number }> = [];
+
+  let maxProfit = -Infinity;
+  let maxLoss = Infinity;
+
+  for (let i = 0; i <= numPoints; i++) {
+    const price = rangeMin + i * step;
+    let pnl = netCreditAfterHedge;
+
+    for (const leg of allLegs) {
+      const isSell = leg.side === "SELL";
+      const factor = isSell ? -1 : 1;
+
+      if (leg.type === "PUT" && price < leg.strike) {
+        pnl += factor * (leg.strike - price);
+      }
+      if (leg.type === "CALL" && price > leg.strike) {
+        pnl += factor * (price - leg.strike);
+      }
+    }
+
+    const pnlDollars = Math.round(pnl * multiplier * quantity * 100) / 100;
+    payoffCurve.push({ price: Math.round(price * 100) / 100, pnl: pnlDollars });
+    if (pnlDollars > maxProfit) maxProfit = pnlDollars;
+    if (pnlDollars < maxLoss) maxLoss = pnlDollars;
+  }
+
+  // Find breakevens (where payoff crosses zero)
+  let breakEvenLow: number | null = null;
+  let breakEvenHigh: number | null = null;
+  for (let i = 0; i < payoffCurve.length - 1; i++) {
+    const p1 = payoffCurve[i];
+    const p2 = payoffCurve[i + 1];
+    if ((p1.pnl <= 0 && p2.pnl > 0) || (p1.pnl >= 0 && p2.pnl < 0)) {
+      const crossPrice = p1.price + ((0 - p1.pnl) / (p2.pnl - p1.pnl)) * (p2.price - p1.price);
+      if (crossPrice < underlyingPrice) {
+        breakEvenLow = Math.round(crossPrice * 100) / 100;
+      } else {
+        breakEvenHigh = Math.round(crossPrice * 100) / 100;
+      }
+    }
+  }
+
+  return {
+    payoffCurve,
+    maxProfit: Math.round(maxProfit * 100) / 100,
+    maxLoss: Math.round(Math.abs(maxLoss) * 100) / 100,
+    hedgeCost: Math.round(hedgeDebitLimit * multiplier * quantity * 100) / 100,
+    breakEvenLow,
+    breakEvenHigh,
+  };
+}
