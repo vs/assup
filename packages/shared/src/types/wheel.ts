@@ -94,7 +94,7 @@ export interface WheelLivePosition {
   expiry?: string;
   dte?: number;
   quantity: number;
-  /** Per-share avg cost (shares) or total premium received per contract (options) */
+  /** Per-share avg cost */
   avgCost: number;
   /** Current market price per share */
   marketPrice: number | null;

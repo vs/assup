@@ -308,7 +308,7 @@ function buildLivePositions(
     }
 
     const qty = Math.abs(p.pos);
-    const costBasis = qty * p.avgCost; // total premium received
+    const costBasis = qty * p.avgCost; // total premium received (IBKR avgCost is per-contract)
     let pnl: number | null = null;
     let pnlPercent: number | null = null;
     let mktPrice: number | null = null;
@@ -332,7 +332,7 @@ function buildLivePositions(
       expiry,
       dte,
       quantity: qty,
-      avgCost: p.avgCost, // premium per share
+      avgCost: p.avgCost / 100, // IBKR reports per-contract; convert to per-share to match marketPrice
       marketPrice: mktPrice,
       pnl,
       pnlPercent,
