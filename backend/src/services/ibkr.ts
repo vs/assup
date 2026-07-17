@@ -654,8 +654,22 @@ class IBKRService {
     };
 
     try {
+      // IBApiNext uses lastValueFrom with no timeout — wrap both calls so
+      // a stuck TWS response doesn't hang the scan job indefinitely.
+      const CHAIN_TIMEOUT_MS = 30_000;
+      const withTimeout = <T>(p: Promise<T>, label: string): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`${label} timed out after ${CHAIN_TIMEOUT_MS}ms for ${symbol}`)), CHAIN_TIMEOUT_MS),
+          ),
+        ]);
+
       // Get contract details which includes option chain info
-      const details = await this.api.getContractDetails(underlyingContract);
+      const details = await withTimeout(
+        this.api.getContractDetails(underlyingContract),
+        "getContractDetails",
+      );
 
       if (!details || details.length === 0) {
         console.debug(`[getOptionChain] ${symbol}: no contract details found`);
@@ -663,11 +677,14 @@ class IBKRService {
       }
 
       // Get security definitions for options
-      const secDefs = await this.api.getSecDefOptParams(
-        symbol,
-        "",
-        SecType.STK,
-        details[0].contract.conId!
+      const secDefs = await withTimeout(
+        this.api.getSecDefOptParams(
+          symbol,
+          "",
+          SecType.STK,
+          details[0].contract.conId!
+        ),
+        "getSecDefOptParams",
       );
 
       if (!secDefs || secDefs.length === 0) {

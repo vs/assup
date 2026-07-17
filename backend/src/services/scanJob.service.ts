@@ -117,11 +117,16 @@ function startJobExecution(
       runningJobs.delete(jobId);
       releaseMarketDataType();
       const errorMessage = err instanceof Error ? err.message : String(err);
-      await prisma.scanJob.update({
-        where: { id: jobId },
-        data: { status: "failed", errorMessage, completedAt: new Date() },
-      });
-      sseService.broadcast("scanner_job", { type: "failed", jobId, error: errorMessage });
+      console.error(`[ScanJob] ${jobId} failed:`, errorMessage);
+      try {
+        await prisma.scanJob.update({
+          where: { id: jobId },
+          data: { status: "failed", errorMessage, completedAt: new Date() },
+        });
+        sseService.broadcast("scanner_job", { type: "failed", jobId, error: errorMessage });
+      } catch (updateErr) {
+        console.error(`[ScanJob] ${jobId} failed to update status after error:`, updateErr);
+      }
     });
 }
 

@@ -84,8 +84,10 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
         const underlyingPrice = (await getUnderlyingPrice(symbol)) ?? undefined;
 
         // Get options chain
+        console.log(`[Scanner] ${symbol}: fetching option chain…`);
         const chain = await ibkrService.getOptionChain(symbol);
         if (chain.length === 0) {
+          console.log(`[Scanner] ${symbol}: empty option chain, skipping`);
           await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
           continue;
         }
@@ -106,6 +108,7 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
         });
 
         if (expirationFilteredChain.length === 0) {
+          console.log(`[Scanner] ${symbol}: ${chain.length} chain entries, 0 after DTE filter (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry}d), skipping`);
           await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
           continue;
         }
@@ -119,6 +122,7 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
           : [];
 
         if (putFilteredChain.length === 0 && callFilteredChain.length === 0) {
+          console.log(`[Scanner] ${symbol}: ${expirationFilteredChain.length} after DTE filter, 0 after strike filter (ref $${referencePrice.toFixed(2)}), skipping`);
           await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
           continue;
         }
@@ -127,6 +131,8 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
         const contracts: OptionChainEntry["put"][] = [];
         if (scanPuts) contracts.push(...putFilteredChain.map((e) => e.put));
         if (scanCalls) contracts.push(...callFilteredChain.map((e) => e.call));
+
+        console.log(`[Scanner] ${symbol}: chain ${chain.length}, after filters ${contracts.length} contracts, fetching market data…`);
 
         // Notify caller about fetching phase
         if (callbacks.onFetching) {
@@ -159,8 +165,10 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
             if (opp) symbolOpportunities.push(opp);
           }
         }
+
+        console.log(`[Scanner] ${symbol}: done, ${symbolOpportunities.length} opportunities found`);
       } catch (err) {
-        console.error(`Error scanning ${symbol}:`, err instanceof Error ? err.message : String(err));
+        console.error(`[Scanner] ${symbol}: error —`, err instanceof Error ? err.message : String(err));
       }
 
       allOpportunities.push(...symbolOpportunities);
