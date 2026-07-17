@@ -74,16 +74,16 @@ class MacroBroadcastService {
 
     const baseline = this.lastSnapshot ?? {};
 
-    // Compute changes from previous close if available
-    const baselineVix = baseline.vix as number | null | undefined;
-    const baselineSp500 = baseline.sp500Index as number | null | undefined;
+    // Compute changes from IBKR previous-day close (not from stale snapshot)
+    const vixPrevClose = vixData?.close ?? null;
+    const spxPrevClose = spxData?.close ?? null;
 
-    const vixChange = vix != null && baselineVix != null
-      ? Math.round((vix - baselineVix) * 100) / 100
+    const vixChange = vix != null && vixPrevClose != null
+      ? Math.round((vix - vixPrevClose) * 100) / 100
       : (baseline.vixChange as number | null) ?? null;
 
-    const sp500Change = sp500Index != null && baselineSp500 != null && baselineSp500 > 0
-      ? Math.round(((sp500Index - baselineSp500) / baselineSp500) * 10000) / 100
+    const sp500Change = sp500Index != null && spxPrevClose != null && spxPrevClose > 0
+      ? Math.round(((sp500Index - spxPrevClose) / spxPrevClose) * 10000) / 100
       : (baseline.sp500Change as number | null) ?? null;
 
     return {
