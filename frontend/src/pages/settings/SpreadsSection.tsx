@@ -22,7 +22,12 @@ const UPDATE_INTERVAL_OPTIONS = [
 interface SpreadsSettings {
   symbols: string[];
   updateIntervalMs?: number;
+  hedgeWarningPct?: number;
+  hedgeDangerPct?: number;
 }
+
+const DEFAULT_HEDGE_WARNING_PCT = 100;
+const DEFAULT_HEDGE_DANGER_PCT = 200;
 
 export function SpreadsSection() {
   const [symbols, setSymbols] = useState<string[]>(DEFAULT_SYMBOLS);
@@ -30,18 +35,26 @@ export function SpreadsSection() {
   const [newSymbol, setNewSymbol] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [hedgeWarningPct, setHedgeWarningPct] = useState(DEFAULT_HEDGE_WARNING_PCT);
+  const [hedgeDangerPct, setHedgeDangerPct] = useState(DEFAULT_HEDGE_DANGER_PCT);
 
   // Refs to always have current values for the save function
   const symbolsRef = useRef(symbols);
   symbolsRef.current = symbols;
   const intervalRef = useRef(updateIntervalMs);
   intervalRef.current = updateIntervalMs;
+  const hedgeWarningPctRef = useRef(hedgeWarningPct);
+  hedgeWarningPctRef.current = hedgeWarningPct;
+  const hedgeDangerPctRef = useRef(hedgeDangerPct);
+  hedgeDangerPctRef.current = hedgeDangerPct;
 
-  const save = useCallback(async (syms: string[], interval: number) => {
+  const save = useCallback(async (syms: string[], interval: number, warningPct: number, dangerPct: number) => {
     try {
       await settingsApi.set<SpreadsSettings>("spreads", {
         symbols: syms,
         updateIntervalMs: interval,
+        hedgeWarningPct: warningPct,
+        hedgeDangerPct: dangerPct,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -56,6 +69,12 @@ export function SpreadsSection() {
       }
       if (result.value?.updateIntervalMs != null) {
         setUpdateIntervalMs(result.value.updateIntervalMs);
+      }
+      if (result.value?.hedgeWarningPct != null) {
+        setHedgeWarningPct(result.value.hedgeWarningPct);
+      }
+      if (result.value?.hedgeDangerPct != null) {
+        setHedgeDangerPct(result.value.hedgeDangerPct);
       }
     } catch {
       // Use defaults
@@ -83,7 +102,7 @@ export function SpreadsSection() {
     setSymbols(next);
     setNewSymbol("");
     setError(null);
-    save(next, intervalRef.current);
+    save(next, intervalRef.current, hedgeWarningPctRef.current, hedgeDangerPctRef.current);
   };
 
   const handleRemove = (sym: string) => {
@@ -93,12 +112,12 @@ export function SpreadsSection() {
       return;
     }
     setSymbols(next);
-    save(next, intervalRef.current);
+    save(next, intervalRef.current, hedgeWarningPctRef.current, hedgeDangerPctRef.current);
   };
 
   const handleIntervalChange = (value: number) => {
     setUpdateIntervalMs(value);
-    save(symbolsRef.current, value);
+    save(symbolsRef.current, value, hedgeWarningPctRef.current, hedgeDangerPctRef.current);
   };
 
   if (!loaded) return null;
@@ -186,6 +205,62 @@ export function SpreadsSection() {
                   {opt.label}
                 </button>
               ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Spread Risk Alerts</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Color-code spread cards based on how much hedge cost has grown relative to the original premium collected.
+            When hedge cost exceeds a threshold, the card changes color to signal elevated risk.
+          </p>
+
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-1.5">
+              <Label htmlFor="hedge-warning-pct">Warning Threshold</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="hedge-warning-pct"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={hedgeWarningPct}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setHedgeWarningPct(val);
+                    save(symbolsRef.current, intervalRef.current, val, hedgeDangerPctRef.current);
+                  }}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">% of premium</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Card turns yellow at this level</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="hedge-danger-pct">Danger Threshold</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="hedge-danger-pct"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={hedgeDangerPct}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setHedgeDangerPct(val);
+                    save(symbolsRef.current, intervalRef.current, hedgeWarningPctRef.current, val);
+                  }}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">% of premium</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Card turns red at this level</p>
             </div>
           </div>
         </CardContent>
