@@ -1615,11 +1615,15 @@ export const wheelService = {
       let openOptionPremium = 0; // Premium already counted in realized that should move to unrealized
 
       if (cachedData) {
-        // For held shares: (currentPrice - adjustedCostBasis) x shareQuantity
-        if (sharePosition > 0 && runningCostBasis > 0) {
+        // For held shares: use IBKR's avgCost (not runningCostBasis which double-counts premiums
+        // already tracked in cycleRealizedPnL)
+        if (sharePosition > 0 && cachedData.positions) {
+          const stockPos = cachedData.positions.find(
+            p => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
+          );
           const currentPrice = cachedData.marketPrices.get(symbol);
-          if (currentPrice != null) {
-            unrealizedPnL += (currentPrice - runningCostBasis) * sharePosition;
+          if (stockPos && currentPrice != null) {
+            unrealizedPnL += (currentPrice - stockPos.avgCost) * sharePosition;
           }
         }
 
