@@ -17,7 +17,7 @@ export const ironCondorOrderSchema = z.object({
   symbol: z.string().min(1).max(20).toUpperCase(),
   legs: z.array(orderLegSchema).min(2).max(4),
   quantity: z.number().int().positive("Quantity must be positive"),
-  limitPrice: z.number().positive("Limit price must be positive"),
+  limitPrice: z.number().refine(v => v !== 0, "Limit price must not be zero"),
 });
 
 export type IronCondorOrderInput = z.infer<typeof ironCondorOrderSchema>;
