@@ -3,16 +3,19 @@
  * Collapsible section with expandable per-leg breakdown.
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import type { ActiveSpread, ActiveSpreadLeg } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
+import type { RiskLevel, SpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 
 interface ActiveSpreadsListProps {
   spreads: ActiveSpread[];
   onClose: (spread: ActiveSpread) => void;
+  onHedge: (spread: ActiveSpread) => void;
+  riskMap: Map<string, SpreadRiskStatus>;
 }
 
 function formatExpiry(expiry: string): string {
@@ -72,11 +75,21 @@ function LegRow({ leg }: { leg: ActiveSpreadLeg }) {
   );
 }
 
-function SpreadCard({ spread, onClose }: { spread: ActiveSpread; onClose: () => void }) {
+function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; onClose: () => void; onHedge: () => void; risk: SpreadRiskStatus }) {
   const [expanded, setExpanded] = useState(false);
 
+  const isDanger = risk.level === "danger";
+  const isWarning = risk.level === "warning";
+  const isAtRisk = isDanger || isWarning;
+
+  const cardClass = isDanger
+    ? "border rounded-lg bg-red-50 border-red-200 border-l-[3px] border-l-red-500"
+    : isWarning
+    ? "border rounded-lg bg-amber-50 border-amber-200 border-l-[3px] border-l-yellow-500"
+    : "border rounded-lg bg-card";
+
   return (
-    <div className="border rounded-lg bg-card">
+    <div className={cardClass}>
       {/* Header row */}
       <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-3">
@@ -89,14 +102,39 @@ function SpreadCard({ spread, onClose }: { spread: ActiveSpread; onClose: () => 
           <span className="font-semibold">{strikeSummary(spread)}</span>
           <span className="text-sm text-muted-foreground">{formatExpiry(spread.expiry)}</span>
           <span className="text-sm text-muted-foreground">{"\u00D7"}{spread.quantity}</span>
+          {isDanger && (
+            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-semibold bg-red-100 text-red-800 border border-red-200">
+              <AlertTriangle className="h-3 w-3" /> DANGER
+            </span>
+          )}
+          {isWarning && (
+            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200">
+              <AlertTriangle className="h-3 w-3" /> WARNING
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right">
             <div className="text-xs text-muted-foreground">P&L</div>
             <div className={`font-bold ${pnlColor(spread.totalPnl)}`}>
               {formatCurrency(spread.totalPnl, { sign: true })}
+              {risk.premiumMultiple != null && risk.premiumMultiple > 0 && (
+                <span className="text-xs text-muted-foreground font-normal ml-1">({risk.premiumMultiple.toFixed(1)}{"\u00D7"} premium)</span>
+              )}
             </div>
           </div>
+          {isAtRisk && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onHedge}
+              className={isDanger
+                ? "bg-red-50 text-red-800 border-red-300 hover:bg-red-100"
+                : "bg-yellow-50 text-yellow-800 border-yellow-300 hover:bg-yellow-100"}
+            >
+              Hedge
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
@@ -125,16 +163,33 @@ function SpreadCard({ spread, onClose }: { spread: ActiveSpread; onClose: () => 
               </div>
             )}
           </div>
+
+          {!isAtRisk && (
+            <div className="pt-2">
+              <Button variant="ghost" size="sm" onClick={onHedge} className="text-muted-foreground w-full justify-start">
+                Hedge this spread...
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-export function ActiveSpreadsList({ spreads, onClose }: ActiveSpreadsListProps) {
+export function ActiveSpreadsList({ spreads, onClose, onHedge, riskMap }: ActiveSpreadsListProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const count = spreads.length;
+
+  const sortedSpreads = useMemo(() => {
+    const levelOrder: Record<RiskLevel, number> = { danger: 0, warning: 1, healthy: 2 };
+    return [...spreads].sort((a, b) => {
+      const aLevel = riskMap.get(a.id)?.level ?? "healthy";
+      const bLevel = riskMap.get(b.id)?.level ?? "healthy";
+      return levelOrder[aLevel] - levelOrder[bLevel];
+    });
+  }, [spreads, riskMap]);
 
   return (
     <div className="border rounded-lg p-3 bg-muted/20">
@@ -157,8 +212,14 @@ export function ActiveSpreadsList({ spreads, onClose }: ActiveSpreadsListProps) 
             <div className="text-sm text-muted-foreground py-2 px-1">No active spread positions</div>
           )}
 
-          {spreads.map(spread => (
-            <SpreadCard key={spread.id} spread={spread} onClose={() => onClose(spread)} />
+          {sortedSpreads.map(spread => (
+            <SpreadCard
+              key={spread.id}
+              spread={spread}
+              onClose={() => onClose(spread)}
+              onHedge={() => onHedge(spread)}
+              risk={riskMap.get(spread.id) ?? { level: "healthy", premiumMultiple: null }}
+            />
           ))}
         </div>
       )}
