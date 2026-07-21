@@ -131,9 +131,8 @@ export function HedgeStrikeConfig({
   const isPut = spread.legs.some((l) => l.right === "P");
   const right: "P" | "C" = isPut ? "P" : "C";
 
-  // Derive short and long legs
+  // Derive long leg
   const sortedLegs = [...spread.legs].sort((a, b) => a.strike - b.strike);
-  const shortLeg = sortedLegs.find((l) => l.side === "SELL") ?? sortedLegs[1];
   const longLeg = sortedLegs.find((l) => l.side === "BUY") ?? sortedLegs[0];
 
   // For butterfly: middle strike is always longLeg.strike (the existing long)

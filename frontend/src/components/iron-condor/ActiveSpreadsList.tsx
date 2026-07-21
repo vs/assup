@@ -81,6 +81,8 @@ function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; 
   const isDanger = risk.level === "danger";
   const isWarning = risk.level === "warning";
   const isAtRisk = isDanger || isWarning;
+  // Hedging only supported for vertical spreads; iron condors need side selection (future work)
+  const canHedge = spread.type !== "iron-condor";
 
   const cardClass = isDanger
     ? "border rounded-lg bg-red-50 border-red-200 border-l-[3px] border-l-red-500"
@@ -123,7 +125,7 @@ function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; 
               )}
             </div>
           </div>
-          {isAtRisk && (
+          {isAtRisk && canHedge && (
             <Button
               variant="outline"
               size="sm"
@@ -164,7 +166,7 @@ function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; 
             )}
           </div>
 
-          {!isAtRisk && (
+          {!isAtRisk && canHedge && (
             <div className="pt-2">
               <Button variant="ghost" size="sm" onClick={onHedge} className="text-muted-foreground w-full justify-start">
                 Hedge this spread...

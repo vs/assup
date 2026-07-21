@@ -12,7 +12,7 @@ import { HedgeStrikeConfig } from "./HedgeStrikeConfig";
 import { HedgePayoffComparison } from "./HedgePayoffComparison";
 import { HedgeOrderConfirm } from "./HedgeOrderConfirm";
 import { useHedgeStream } from "@/hooks/useHedgeStream";
-import { analyzeSpread, computeHedgedPayoff } from "@/utils/spreadAnalysis";
+import { computeHedgedPayoff } from "@/utils/spreadAnalysis";
 import type { SpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 
 interface HedgeWizardDialogProps {
@@ -30,18 +30,6 @@ function deriveWingWidth(spread: ActiveSpread): number {
   return strikes[1] - strikes[0];
 }
 
-/** Days to expiry from YYYYMMDD string. */
-function daysToExpiry(expiry: string): number {
-  if (expiry.length !== 8) return 30;
-  const d = new Date(
-    parseInt(expiry.slice(0, 4)),
-    parseInt(expiry.slice(4, 6)) - 1,
-    parseInt(expiry.slice(6, 8)),
-  );
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.max(1, Math.floor((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
-}
 
 export function HedgeWizardDialog({
   open,
@@ -160,43 +148,33 @@ export function HedgeWizardDialog({
     ? Math.abs(spread.netPremium) / (spread.quantity * 100)
     : 0;
 
-  const dte = spread ? daysToExpiry(spread.expiry) : 30;
-
-  // Before analysis (existing spread payoff)
-  const beforeAnalysis = useMemo(() => {
+  // Before analysis: payoff of the existing spread based on ENTRY credit, not live marks.
+  // Using computeHedgedPayoff with no new legs gives us a payoff curve anchored to the
+  // original credit received, which is the correct baseline for comparing hedge impact.
+  const beforeResult = useMemo(() => {
     if (!spread) return null;
     try {
-      const mode = isPut ? "put-spread" : "call-spread";
-      const legs = spread.legs.map((leg) => {
-        const quoteKey = `${leg.strike}:${leg.right}`;
-        const q = quotes.get(quoteKey);
-        // Fallback to reasonable defaults if quotes not yet loaded
-        const bid = q?.bid ?? Math.max(0, leg.midPrice ?? 1);
-        const ask = q?.ask ?? Math.max(0, (leg.midPrice ?? 1) * 1.05);
-        return {
-          strike: leg.strike,
-          type: (leg.right === "P" ? "PUT" : "CALL") as "PUT" | "CALL",
-          side: leg.side,
-          iv: 20, // default IV
-          bid,
-          ask,
-        };
-      });
-      return analyzeSpread({
-        underlyingPrice: underlyingPrice || spread.legs[0].strike,
-        legs,
-        daysToExpiry: dte,
+      const existingLegs = spread.legs.map((leg) => ({
+        strike: leg.strike,
+        type: (leg.right === "P" ? "PUT" : "CALL") as "PUT" | "CALL",
+        side: leg.side,
+      }));
+      return computeHedgedPayoff({
+        existingLegs,
+        newLegs: [],
+        originalCreditMid: originalCreditPerContract,
+        hedgeDebitLimit: 0,
         quantity: spread.quantity,
-        mode,
+        underlyingPrice: underlyingPrice || spread.legs[0].strike,
       });
     } catch {
       return null;
     }
-  }, [spread, quotes, isPut, underlyingPrice, dte]);
+  }, [spread, originalCreditPerContract, underlyingPrice]);
 
   // After analysis (hedged payoff)
   const afterResult = useMemo(() => {
-    if (!spread || !beforeAnalysis) return null;
+    if (!spread || !beforeResult) return null;
     try {
       const existingLegs = spread.legs.map((leg) => ({
         strike: leg.strike,
@@ -259,7 +237,7 @@ export function HedgeWizardDialog({
     }
   }, [
     spread,
-    beforeAnalysis,
+    beforeResult,
     strategy,
     quotes,
     longLegStrike,
@@ -272,14 +250,8 @@ export function HedgeWizardDialog({
   ]);
 
   // --- Before payoff metrics ---
-  const beforeMaxProfit = beforeAnalysis?.maxProfit ?? 0;
-  const beforeMaxLoss = useMemo(() => {
-    if (!beforeAnalysis) return 0;
-    const losses = [beforeAnalysis.maxLossPut, beforeAnalysis.maxLossCall].filter(
-      (v): v is number => v != null,
-    );
-    return losses.length > 0 ? Math.max(...losses) : 0;
-  }, [beforeAnalysis]);
+  const beforeMaxProfit = beforeResult?.maxProfit ?? 0;
+  const beforeMaxLoss = beforeResult?.maxLoss ?? 0;
 
   // --- Chart strikes ---
   const chartStrikes = useMemo(() => {
@@ -372,9 +344,9 @@ export function HedgeWizardDialog({
           />
         )}
 
-        {step === 3 && beforeAnalysis && afterResult && (
+        {step === 3 && beforeResult && afterResult && (
           <HedgePayoffComparison
-            beforeCurve={beforeAnalysis.payoffCurve}
+            beforeCurve={beforeResult.payoffCurve}
             afterResult={afterResult}
             beforeMaxProfit={beforeMaxProfit}
             beforeMaxLoss={beforeMaxLoss}
@@ -385,7 +357,7 @@ export function HedgeWizardDialog({
           />
         )}
 
-        {step === 4 && beforeAnalysis && afterResult && (
+        {step === 4 && beforeResult && afterResult && (
           <HedgeOrderConfirm
             spread={spread}
             strategy={strategy}
