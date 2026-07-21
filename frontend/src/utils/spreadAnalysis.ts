@@ -237,7 +237,6 @@ interface HedgePayoffInput {
   /** Debit limit price the user is willing to pay for the hedge */
   hedgeDebitLimit: number;
   quantity: number;
-  underlyingPrice: number;
 }
 
 /**
@@ -245,7 +244,7 @@ interface HedgePayoffInput {
  * Works for both butterfly conversion and protective option hedges.
  */
 export function computeHedgedPayoff(input: HedgePayoffInput): HedgedPayoffResult {
-  const { existingLegs, newLegs, originalCreditMid, hedgeDebitLimit, quantity, underlyingPrice } = input;
+  const { existingLegs, newLegs, originalCreditMid, hedgeDebitLimit, quantity } = input;
   const multiplier = DEFAULT_MULTIPLIER;
 
   const allLegs = [...existingLegs, ...newLegs.map(l => ({ strike: l.strike, type: l.type, side: l.side }))];

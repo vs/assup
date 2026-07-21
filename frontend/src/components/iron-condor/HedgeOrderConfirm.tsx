@@ -11,6 +11,16 @@ import { api } from "@/api";
 import type { ActiveSpread } from "@assup/shared";
 import type { HedgeStrategy } from "./HedgeStrategyPicker";
 
+/**
+ * Index option symbol mapping — XSP options are listed under SPX with
+ * tradingClass XSPW. The combo order endpoint handles this server-side,
+ * but the single-leg /api/orders/place path does not, so we map here.
+ */
+const OPTION_SYMBOL: Record<string, string> = { XSP: "SPX" };
+function resolveOptionSymbol(symbol: string): string {
+  return OPTION_SYMBOL[symbol] ?? symbol;
+}
+
 interface HedgeOrderLeg {
   side: "BUY" | "SELL";
   strike: number;
@@ -118,10 +128,11 @@ export function HedgeOrderConfirm({
           limitPrice,
         });
       } else {
-        // Protective put/call: single leg via orders.place
+        // Protective put/call: single leg via orders.place.
+        // Apply symbol mapping (XSP options are listed under SPX).
         const leg = orderLegs[0];
         await api.orders.place({
-          symbol: spread.symbol,
+          symbol: resolveOptionSymbol(spread.symbol),
           expiration: spread.expiry,
           strike: leg.strike,
           right: leg.right,

@@ -171,7 +171,6 @@ export function HedgeWizardDialog({
         originalCreditMid: currentMarkPerShare,
         hedgeDebitLimit: 0,
         quantity: spread.quantity,
-        underlyingPrice: underlyingPrice || spread.legs[0].strike,
       });
     } catch {
       return null;
@@ -234,7 +233,6 @@ export function HedgeWizardDialog({
         originalCreditMid: currentMarkPerShare,
         hedgeDebitLimit: limitPrice,
         quantity: spread.quantity,
-        underlyingPrice: underlyingPrice || spread.legs[0].strike,
       });
     } catch {
       return null;
@@ -248,7 +246,7 @@ export function HedgeWizardDialog({
     selectedStrike,
     right,
     isPut,
-    originalCreditPerContract,
+    currentMarkPerShare,
     limitPrice,
     underlyingPrice,
   ]);
