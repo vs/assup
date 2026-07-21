@@ -6,12 +6,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import type { ActiveSpread } from "@assup/shared";
+import type { ActiveSpread, IronCondorChainStrike } from "@assup/shared";
 import { HedgeStrategyPicker, type HedgeStrategy } from "./HedgeStrategyPicker";
 import { HedgeStrikeConfig } from "./HedgeStrikeConfig";
 import { HedgePayoffComparison } from "./HedgePayoffComparison";
 import { HedgeOrderConfirm } from "./HedgeOrderConfirm";
-import { useHedgeStream } from "@/hooks/useHedgeStream";
 import { computeHedgedPayoff } from "@/utils/spreadAnalysis";
 import type { SpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 
@@ -20,6 +19,9 @@ interface HedgeWizardDialogProps {
   onOpenChange: (open: boolean) => void;
   spread: ActiveSpread | null;
   risk: SpreadRiskStatus;
+  /** The live options chain already streaming on the page */
+  chain: IronCondorChainStrike[];
+  underlyingPrice: number;
   onSuccess: () => void;
 }
 
@@ -30,12 +32,36 @@ function deriveWingWidth(spread: ActiveSpread): number {
   return strikes[1] - strikes[0];
 }
 
+/** Build a quotes Map from the page's existing chain data, keyed by "strike:P" or "strike:C". */
+function buildQuotesFromChain(chain: IronCondorChainStrike[]) {
+  const quotes = new Map<string, {
+    strike: number; right: "P" | "C"; conId: number;
+    bid: number | null; ask: number | null; mid: number | null; delta: number | null;
+  }>();
+  for (const row of chain) {
+    if (row.put) {
+      quotes.set(`${row.strike}:P`, {
+        strike: row.strike, right: "P", conId: row.put.conId,
+        bid: row.put.bid, ask: row.put.ask, mid: row.put.mid, delta: row.put.delta,
+      });
+    }
+    if (row.call) {
+      quotes.set(`${row.strike}:C`, {
+        strike: row.strike, right: "C", conId: row.call.conId,
+        bid: row.call.bid, ask: row.call.ask, mid: row.call.mid, delta: row.call.delta,
+      });
+    }
+  }
+  return quotes;
+}
 
 export function HedgeWizardDialog({
   open,
   onOpenChange,
   spread,
   risk,
+  chain,
+  underlyingPrice,
   onSuccess,
 }: HedgeWizardDialogProps) {
   const [step, setStep] = useState(1);
@@ -69,48 +95,27 @@ export function HedgeWizardDialog({
     }
   }, [open, spread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- SSE stream setup ---
-  // Subscribe to strikes around spread (±3× wing width, at 5-point intervals)
-  const streamStrikes = useMemo(() => {
-    if (!spread) return [];
-    const strikes = new Set<number>();
-    const center = longLegStrike;
-    const range = Math.max(wingWidth * 3, 15);
-    const interval = 5;
-    for (let s = center - range; s <= center + range; s += interval) {
-      strikes.add(Math.round(s / interval) * interval);
-    }
-    // Also add all existing leg strikes
-    for (const leg of spread.legs) strikes.add(leg.strike);
-    return Array.from(strikes).sort((a, b) => a - b);
-  }, [spread?.id, longLegStrike, wingWidth]); // eslint-disable-line react-hooks/exhaustive-deps
+  // --- Derive quotes from the page's existing chain (no separate SSE stream) ---
+  const quotes = useMemo(() => buildQuotesFromChain(chain), [chain]);
+  const connected = chain.length > 0;
 
-  const { quotes, underlyingPrice, connected } = useHedgeStream(
-    spread?.symbol ?? "",
-    spread?.expiry ?? "",
-    streamStrikes,
-    open && step >= 2,
-  );
-
-  // --- Available strikes for dropdown ---
-  // For puts: strikes below long leg; for calls: strikes above long leg
+  // --- Available strikes for dropdown (from real chain, not synthetic intervals) ---
   const right: "P" | "C" = isPut ? "P" : "C";
   const availableStrikes = useMemo(() => {
     const result: number[] = [];
-    for (const [key] of quotes) {
-      if (!key.endsWith(`:${right}`)) continue;
-      const strike = parseFloat(key.split(":")[0]);
-      if (isPut && strike < longLegStrike) result.push(strike);
-      if (!isPut && strike > longLegStrike) result.push(strike);
+    for (const row of chain) {
+      const opt = isPut ? row.put : row.call;
+      if (!opt) continue;
+      if (isPut && row.strike < longLegStrike) result.push(row.strike);
+      if (!isPut && row.strike > longLegStrike) result.push(row.strike);
     }
     return result.sort((a, b) => (isPut ? b - a : a - b));
-  }, [quotes, right, isPut, longLegStrike]);
+  }, [chain, isPut, longLegStrike]);
 
   // Snap selectedStrike to nearest available if not in list
   useEffect(() => {
     if (availableStrikes.length === 0) return;
     if (availableStrikes.includes(selectedStrike)) return;
-    // Find nearest
     const nearest = availableStrikes.reduce((prev, curr) =>
       Math.abs(curr - selectedStrike) < Math.abs(prev - selectedStrike)
         ? curr
@@ -123,14 +128,12 @@ export function HedgeWizardDialog({
   const hedgeMidPrice = useMemo(() => {
     if (!spread) return 0;
     if (strategy === "butterfly") {
-      // Buy middle (longLeg.strike) ask - sell outer (selectedStrike) bid
       const middleQuote = quotes.get(`${longLegStrike}:${right}`);
       const outerQuote = quotes.get(`${selectedStrike}:${right}`);
       const middleAsk = middleQuote?.ask ?? 0;
       const outerBid = outerQuote?.bid ?? 0;
       return Math.max(0, middleAsk - outerBid);
     } else {
-      // Protective: ask of the protective strike
       const quote = quotes.get(`${selectedStrike}:${right}`);
       return quote?.ask ?? 0;
     }
@@ -149,8 +152,6 @@ export function HedgeWizardDialog({
     : 0;
 
   // Before analysis: payoff of the existing spread based on ENTRY credit, not live marks.
-  // Using computeHedgedPayoff with no new legs gives us a payoff curve anchored to the
-  // original credit received, which is the correct baseline for comparing hedge impact.
   const beforeResult = useMemo(() => {
     if (!spread) return null;
     try {
@@ -191,7 +192,6 @@ export function HedgeWizardDialog({
       }>;
 
       if (strategy === "butterfly") {
-        // Two new legs: buy at longLeg.strike (middle) and buy at selectedStrike (outer)
         const middleQuote = quotes.get(`${longLegStrike}:${right}`);
         const outerQuote = quotes.get(`${selectedStrike}:${right}`);
         newLegs = [
@@ -211,7 +211,6 @@ export function HedgeWizardDialog({
           },
         ];
       } else {
-        // Protective: single leg
         const q = quotes.get(`${selectedStrike}:${right}`);
         newLegs = [
           {
