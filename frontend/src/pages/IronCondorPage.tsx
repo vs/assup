@@ -398,9 +398,13 @@ export function IronCondorPage() {
   }, []);
 
   const handleHedgeSpread = useCallback((spread: ActiveSpread) => {
+    // Retune the page's stream to the spread's symbol/expiry so the wizard
+    // gets correct chain data — avoids using unrelated quotes or conIds.
+    if (spread.symbol !== symbol) setSymbol(spread.symbol);
+    if (spread.expiry !== expiration) setExpiration(spread.expiry);
     setHedgingSpread(spread);
     setHedgeDialogOpen(true);
-  }, []);
+  }, [symbol, expiration]);
 
   // --- Build order legs ---
   const orderLegs = useMemo((): IronCondorOrderLeg[] => {

@@ -147,11 +147,16 @@ export function HedgeWizardDialog({
   }, [step, limitPrice, hedgeMidPrice]);
 
   // --- Payoff analysis ---
-  const originalCreditPerContract = spread
-    ? Math.abs(spread.netPremium) / (spread.quantity * 100)
+  // Use the current close mark (closeMidPrice) as the baseline — this represents
+  // the remaining risk from today's perspective. If closeMidPrice is unavailable,
+  // fall back to entry credit as a last resort.
+  const currentMarkPerShare = spread
+    ? (spread.closeMidPrice ?? Math.abs(spread.netPremium) / (spread.quantity * 100))
     : 0;
 
-  // Before analysis: payoff of the existing spread based on ENTRY credit, not live marks.
+  // Before analysis: payoff of the existing spread from today's mark to expiry.
+  // closeMidPrice is what it costs to close NOW; if held to expiry and it expires
+  // OTM, the "profit from here" = closeMidPrice (you saved that closing cost).
   const beforeResult = useMemo(() => {
     if (!spread) return null;
     try {
@@ -163,7 +168,7 @@ export function HedgeWizardDialog({
       return computeHedgedPayoff({
         existingLegs,
         newLegs: [],
-        originalCreditMid: originalCreditPerContract,
+        originalCreditMid: currentMarkPerShare,
         hedgeDebitLimit: 0,
         quantity: spread.quantity,
         underlyingPrice: underlyingPrice || spread.legs[0].strike,
@@ -171,7 +176,7 @@ export function HedgeWizardDialog({
     } catch {
       return null;
     }
-  }, [spread, originalCreditPerContract, underlyingPrice]);
+  }, [spread, currentMarkPerShare, underlyingPrice]);
 
   // After analysis (hedged payoff)
   const afterResult = useMemo(() => {
@@ -226,7 +231,7 @@ export function HedgeWizardDialog({
       return computeHedgedPayoff({
         existingLegs,
         newLegs,
-        originalCreditMid: originalCreditPerContract,
+        originalCreditMid: currentMarkPerShare,
         hedgeDebitLimit: limitPrice,
         quantity: spread.quantity,
         underlyingPrice: underlyingPrice || spread.legs[0].strike,

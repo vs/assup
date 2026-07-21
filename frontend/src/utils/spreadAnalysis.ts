@@ -289,21 +289,22 @@ export function computeHedgedPayoff(input: HedgePayoffInput): HedgedPayoffResult
     if (pnlDollars < maxLoss) maxLoss = pnlDollars;
   }
 
-  // Find breakevens (where payoff crosses zero)
-  let breakEvenLow: number | null = null;
-  let breakEvenHigh: number | null = null;
+  // Find all breakevens (where payoff crosses zero).
+  // Collect all crossings in price order, then assign lowest and highest —
+  // this correctly handles butterflies and protective positions where both
+  // crossings can lie on the same side of the current spot.
+  const breakevens: number[] = [];
   for (let i = 0; i < payoffCurve.length - 1; i++) {
     const p1 = payoffCurve[i];
     const p2 = payoffCurve[i + 1];
     if ((p1.pnl <= 0 && p2.pnl > 0) || (p1.pnl >= 0 && p2.pnl < 0)) {
       const crossPrice = p1.price + ((0 - p1.pnl) / (p2.pnl - p1.pnl)) * (p2.price - p1.price);
-      if (crossPrice < underlyingPrice) {
-        breakEvenLow = Math.round(crossPrice * 100) / 100;
-      } else {
-        breakEvenHigh = Math.round(crossPrice * 100) / 100;
-      }
+      breakevens.push(Math.round(crossPrice * 100) / 100);
     }
   }
+  breakevens.sort((a, b) => a - b);
+  const breakEvenLow = breakevens[0] ?? null;
+  const breakEvenHigh = breakevens.length > 1 ? breakevens[breakevens.length - 1] : null;
 
   return {
     payoffCurve,

@@ -197,11 +197,24 @@ export function HedgeOrderConfirm({
           After this order fills:
         </p>
         <p>
-          {resultDescription} with max loss reduced from{" "}
-          <span className="font-semibold text-red-700">{fmtDollars(beforeMaxLoss)}</span>{" "}
-          to{" "}
-          <span className="font-semibold text-green-700">{fmtDollars(afterMaxLoss)}</span>{" "}
-          per contract.
+          {resultDescription}
+          {afterMaxLoss < beforeMaxLoss ? (
+            <> with max loss reduced from{" "}
+              <span className="font-semibold text-red-700">{fmtDollars(beforeMaxLoss)}</span>{" "}
+              to{" "}
+              <span className="font-semibold text-green-700">{fmtDollars(afterMaxLoss)}</span>{" "}
+              per contract.</>
+          ) : afterMaxLoss > beforeMaxLoss ? (
+            <>. Max loss from here increases from{" "}
+              <span className="font-semibold text-red-700">{fmtDollars(beforeMaxLoss)}</span>{" "}
+              to{" "}
+              <span className="font-semibold text-red-700">{fmtDollars(afterMaxLoss)}</span>{" "}
+              per contract, but provides tail-risk protection beyond the spread.</>
+          ) : (
+            <> with max loss unchanged at{" "}
+              <span className="font-semibold text-red-700">{fmtDollars(afterMaxLoss)}</span>{" "}
+              per contract.</>
+          )}
         </p>
       </div>
 
