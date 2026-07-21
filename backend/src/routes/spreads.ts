@@ -9,6 +9,7 @@ import { closeSpreadOrderSchema } from "@assup/shared";
 import * as ironCondorService from "../services/ironCondor.service.js";
 import { positionService } from "../services/position.service.js";
 import { groupIntoSpreads } from "../services/spreadDetection.service.js";
+import { getExpirations } from "../services/spreadExpirations.service.js";
 
 const router = Router();
 
@@ -35,6 +36,19 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await ironCondorService.placeComboOrder(req.body);
     res.status(201).json(result);
+  }),
+);
+
+/**
+ * GET /api/spreads/expirations?symbol=SPX
+ * Fetch available option expirations for a symbol (cached for 1 hour)
+ */
+router.get(
+  "/expirations",
+  asyncHandler(async (req, res) => {
+    const symbol = (req.query.symbol as string) ?? "SPX";
+    const expirations = await getExpirations(symbol);
+    res.json({ expirations });
   }),
 );
 

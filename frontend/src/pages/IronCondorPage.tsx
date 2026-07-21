@@ -145,11 +145,36 @@ export function IronCondorPage() {
     };
   }, [selectedLegs, wingWidth]);
 
+  // Pre-fetch expirations on page load (cached on backend)
+  const [prefetchedExpirations, setPrefetchedExpirations] = useState<string[]>([]);
+  useEffect(() => {
+    api.ironCondor.getExpirations(symbol)
+      .then(r => {
+        setPrefetchedExpirations(r.expirations);
+        // Auto-select nearest expiration with >= 1 DTE
+        if (!expiration) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const nearest = r.expirations.find(exp => {
+            if (exp.length !== 8) return false;
+            const expMs = new Date(
+              parseInt(exp.slice(0, 4)),
+              parseInt(exp.slice(4, 6)) - 1,
+              parseInt(exp.slice(6, 8)),
+            ).getTime();
+            return Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)) >= 1;
+          });
+          if (nearest) setExpiration(nearest);
+        }
+      })
+      .catch(() => {});
+  }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Streaming data (chain only, no positions)
   const {
     chain,
     underlyingPrice,
-    expirations,
+    expirations: streamExpirations,
     selectedExpiration: streamExpiration,
     status,
     error,
@@ -168,6 +193,9 @@ export function IronCondorPage() {
     updateIntervalMs,
     builderActive,
   );
+
+  // Merge expirations: prefer stream data when available, fall back to pre-fetched
+  const expirations = streamExpirations.length > 0 ? streamExpirations : prefetchedExpirations;
 
   // Load risk thresholds from settings
   useEffect(() => {
@@ -380,6 +408,7 @@ export function IronCondorPage() {
   const handleSymbolChange = useCallback((sym: string) => {
     setSymbol(sym);
     setExpiration(undefined);
+    setPrefetchedExpirations([]);
     setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
   }, []);
 
@@ -475,8 +504,16 @@ export function IronCondorPage() {
 
   return (
     <div className="space-y-4">
-      {/* Top bar — only shown when builder is active */}
-      {builderActive && <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-background/95 sticky top-[65px] md:top-[113px] z-30 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Active spreads — always on top */}
+      <ActiveSpreadsList
+        spreads={spreads}
+        onClose={handleCloseSpread}
+        onHedge={handleHedgeSpread}
+        riskMap={riskMap}
+      />
+
+      {/* Configuration bar — always visible */}
+      <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-background/95 sticky top-[65px] md:top-[113px] z-30 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         {/* Symbol picker */}
         <div className="flex items-center gap-2">
           <Label className="text-[10px] uppercase text-muted-foreground">Symbol</Label>
@@ -571,45 +608,51 @@ export function IronCondorPage() {
           />
         </div>
 
-        <button
-          onClick={() => setGexModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted transition-colors"
-          title="Open GEX analysis"
-        >
-          <BarChart3 className="h-4 w-4" />
-          GEX
-        </button>
+        {builderActive && (
+          <button
+            onClick={() => setGexModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted transition-colors"
+            title="Open GEX analysis"
+          >
+            <BarChart3 className="h-4 w-4" />
+            GEX
+          </button>
+        )}
 
         <div className="flex-1" />
 
-        <button
-          onClick={handleReload}
-          disabled={status === "connecting"}
-          className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
-          title="Reload chain & re-select legs"
-        >
-          <RefreshCw className={cn("h-4 w-4", status === "connecting" && "animate-spin")} />
-        </button>
+        {builderActive && (
+          <>
+            <button
+              onClick={handleReload}
+              disabled={status === "connecting"}
+              className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+              title="Reload chain & re-select legs"
+            >
+              <RefreshCw className={cn("h-4 w-4", status === "connecting" && "animate-spin")} />
+            </button>
 
-        {underlyingPrice > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold">{symbol} {underlyingPrice.toLocaleString()}</span>
-          </div>
+            {underlyingPrice > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold">{symbol} {underlyingPrice.toLocaleString()}</span>
+              </div>
+            )}
+
+            {/* Connection status indicator */}
+            <div className="flex items-center gap-1.5">
+              <div className={cn(
+                "h-2 w-2 rounded-full",
+                status === "connected" ? "bg-green-500" :
+                status === "reconnecting" || status === "connecting" ? "bg-yellow-500" :
+                "bg-red-500"
+              )} />
+              <span className="text-xs text-muted-foreground">
+                {status === "connected" ? "Live" : status === "connecting" ? "Connecting..." : status === "reconnecting" ? "Reconnecting..." : "Disconnected"}
+              </span>
+            </div>
+          </>
         )}
-
-        {/* Connection status indicator */}
-        <div className="flex items-center gap-1.5">
-          <div className={cn(
-            "h-2 w-2 rounded-full",
-            status === "connected" ? "bg-green-500" :
-            status === "reconnecting" || status === "connecting" ? "bg-yellow-500" :
-            "bg-red-500"
-          )} />
-          <span className="text-xs text-muted-foreground">
-            {status === "connected" ? "Live" : status === "connecting" ? "Connecting..." : status === "reconnecting" ? "Reconnecting..." : "Disconnected"}
-          </span>
-        </div>
-      </div>}
+      </div>
 
       {/* Error */}
       {builderActive && error && (
@@ -617,14 +660,6 @@ export function IronCondorPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-
-      {/* Active spreads */}
-      <ActiveSpreadsList
-        spreads={spreads}
-        onClose={handleCloseSpread}
-        onHedge={handleHedgeSpread}
-        riskMap={riskMap}
-      />
 
       {/* Start builder button — shown when builder is not yet active */}
       {!builderActive && (

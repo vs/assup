@@ -24,4 +24,7 @@ export const ironCondorApi = {
 
   getActiveSpreads: () =>
     request<{ spreads: ActiveSpread[] }>("/api/spreads/positions"),
+
+  getExpirations: (symbol: string) =>
+    request<{ expirations: string[] }>(`/api/spreads/expirations?symbol=${encodeURIComponent(symbol)}`),
 };
