@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { RefreshCw, BarChart3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { RefreshCw, BarChart3, Play } from "lucide-react";
 import { settingsApi } from "@/api/settings";
 import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
@@ -98,6 +99,7 @@ export function IronCondorPage() {
   });
 
   // UI state
+  const [builderActive, setBuilderActive] = useState(false);
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
   const [chainExpanded, setChainExpanded] = useState(false);
 
@@ -164,6 +166,7 @@ export function IronCondorPage() {
     wingWidth,
     mode,
     updateIntervalMs,
+    builderActive,
   );
 
   // Load risk thresholds from settings
@@ -402,15 +405,18 @@ export function IronCondorPage() {
     // Retune the page's stream to the spread's symbol/expiry so the wizard
     // gets correct chain data — avoids using unrelated quotes or conIds.
     setHedgingSpread(spread);
+    // Activate the builder stream if not already running (needed for quotes).
+    if (!builderActive) setBuilderActive(true);
     if (spread.symbol !== symbol || spread.expiry !== expiration) {
       if (spread.symbol !== symbol) setSymbol(spread.symbol);
       if (spread.expiry !== expiration) setExpiration(spread.expiry);
       // Don't open yet — wait for the stream to retune (see effect below).
-    } else {
-      // Already on the right chain — open immediately.
+    } else if (chain.length > 0) {
+      // Already on the right chain with data — open immediately.
       setHedgeDialogOpen(true);
     }
-  }, [symbol, expiration]);
+    // Otherwise: builderActive just turned on, wait for stream init via the effect below.
+  }, [symbol, expiration, builderActive, chain.length]);
 
   // Open the hedge wizard once the stream has retuned to the hedging spread's
   // symbol/expiry. This prevents the wizard from using stale chain/conIds from
@@ -469,8 +475,8 @@ export function IronCondorPage() {
 
   return (
     <div className="space-y-4">
-      {/* Top bar */}
-      <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-background/95 sticky top-[65px] md:top-[113px] z-30 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Top bar — only shown when builder is active */}
+      {builderActive && <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-background/95 sticky top-[65px] md:top-[113px] z-30 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         {/* Symbol picker */}
         <div className="flex items-center gap-2">
           <Label className="text-[10px] uppercase text-muted-foreground">Symbol</Label>
@@ -603,10 +609,10 @@ export function IronCondorPage() {
             {status === "connected" ? "Live" : status === "connecting" ? "Connecting..." : status === "reconnecting" ? "Reconnecting..." : "Disconnected"}
           </span>
         </div>
-      </div>
+      </div>}
 
       {/* Error */}
-      {error && (
+      {builderActive && error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -620,8 +626,20 @@ export function IronCondorPage() {
         riskMap={riskMap}
       />
 
+      {/* Start builder button — shown when builder is not yet active */}
+      {!builderActive && (
+        <Button
+          variant="outline"
+          className="w-full py-6 text-muted-foreground hover:text-foreground"
+          onClick={() => setBuilderActive(true)}
+        >
+          <Play className="h-4 w-4 mr-2" />
+          Open Spread Builder
+        </Button>
+      )}
+
       {/* Main content: stacked layout */}
-      {chain.length > 0 && (
+      {builderActive && chain.length > 0 && (
         <div className="space-y-4">
           {/* Options Chain */}
           <div className="border rounded-lg p-4">
@@ -654,7 +672,7 @@ export function IronCondorPage() {
       )}
 
       {/* Connecting state — show analysis skeleton */}
-      {status === "connecting" && chain.length === 0 && (
+      {builderActive && status === "connecting" && chain.length === 0 && (
         <div className="border rounded-lg p-4 bg-muted/20">
           <SpreadAnalysis
             analysis={null}

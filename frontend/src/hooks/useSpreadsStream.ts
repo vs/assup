@@ -33,6 +33,7 @@ export function useSpreadsStream(
   wingWidth?: number,
   mode?: string,
   updateIntervalMs = 2000,
+  enabled = true,
 ): UseSpreadsStreamResult {
   const [chainMap, setChainMap] = useState<Map<number, IronCondorChainStrike>>(new Map());
   const [underlyingPrice, setUnderlyingPrice] = useState(0);
@@ -69,6 +70,12 @@ export function useSpreadsStream(
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+
+    // Don't connect when disabled (e.g. builder not activated yet)
+    if (!enabled) {
+      setStatus("connecting");
+      return;
     }
 
     const params = new URLSearchParams({ symbol, clientId: clientIdRef.current });
@@ -185,7 +192,7 @@ export function useSpreadsStream(
   // for the backend's focus, focusRange is read from a ref to avoid reconnection
   // when auto-select updates selectedLegs. The backend handles focus via target
   // deltas and drift monitoring; focusRange is only sent on explicit reconnects.
-  }, [symbol, expiration, selectedStrikes, targetPutDelta, targetCallDelta, mode]);
+  }, [symbol, expiration, selectedStrikes, targetPutDelta, targetCallDelta, mode, enabled]);
 
   // Connect on mount and when params change
   useEffect(() => {

@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN npm run build -w @assup/shared && \
     npm run build -w backend && \
     cd backend && npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --module NodeNext --moduleResolution NodeNext --skipLibCheck
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production
