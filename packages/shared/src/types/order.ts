@@ -47,6 +47,8 @@ export interface PlaceOrderInput {
   quantity: number;
   limitPrice: number;
   tif?: "DAY" | "GTC";
+  /** Override trading class (e.g. "XSPW" for XSP options listed under SPX) */
+  tradingClass?: string;
 }
 
 /**

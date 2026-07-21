@@ -12,14 +12,13 @@ import type { ActiveSpread } from "@assup/shared";
 import type { HedgeStrategy } from "./HedgeStrategyPicker";
 
 /**
- * Index option symbol mapping — XSP options are listed under SPX with
- * tradingClass XSPW. The combo order endpoint handles this server-side,
- * but the single-leg /api/orders/place path does not, so we map here.
+ * Index option symbol/tradingClass mapping — XSP options are listed under
+ * SPX with tradingClass XSPW. The combo order endpoint handles this
+ * server-side, but the single-leg /api/orders/place path needs both.
  */
-const OPTION_SYMBOL: Record<string, string> = { XSP: "SPX" };
-function resolveOptionSymbol(symbol: string): string {
-  return OPTION_SYMBOL[symbol] ?? symbol;
-}
+const INDEX_OPTION_CONFIG: Record<string, { optionSymbol: string; tradingClass: string }> = {
+  XSP: { optionSymbol: "SPX", tradingClass: "XSPW" },
+};
 
 interface HedgeOrderLeg {
   side: "BUY" | "SELL";
@@ -129,16 +128,18 @@ export function HedgeOrderConfirm({
         });
       } else {
         // Protective put/call: single leg via orders.place.
-        // Apply symbol mapping (XSP options are listed under SPX).
+        // Apply symbol + tradingClass mapping (XSP options → SPX/XSPW).
         const leg = orderLegs[0];
+        const mapping = INDEX_OPTION_CONFIG[spread.symbol];
         await api.orders.place({
-          symbol: resolveOptionSymbol(spread.symbol),
+          symbol: mapping?.optionSymbol ?? spread.symbol,
           expiration: spread.expiry,
           strike: leg.strike,
           right: leg.right,
           action: "BUY",
           quantity,
           limitPrice,
+          ...(mapping?.tradingClass ? { tradingClass: mapping.tradingClass } : {}),
         });
       }
 
@@ -213,18 +214,16 @@ export function HedgeOrderConfirm({
             <> with max loss reduced from{" "}
               <span className="font-semibold text-red-700">{fmtDollars(beforeMaxLoss)}</span>{" "}
               to{" "}
-              <span className="font-semibold text-green-700">{fmtDollars(afterMaxLoss)}</span>{" "}
-              per contract.</>
+              <span className="font-semibold text-green-700">{fmtDollars(afterMaxLoss)}</span>.</>
           ) : afterMaxLoss > beforeMaxLoss ? (
             <>. Max loss from here increases from{" "}
               <span className="font-semibold text-red-700">{fmtDollars(beforeMaxLoss)}</span>{" "}
               to{" "}
-              <span className="font-semibold text-red-700">{fmtDollars(afterMaxLoss)}</span>{" "}
-              per contract, but provides tail-risk protection beyond the spread.</>
+              <span className="font-semibold text-red-700">{fmtDollars(afterMaxLoss)}</span>
+              , but provides tail-risk protection beyond the spread.</>
           ) : (
             <> with max loss unchanged at{" "}
-              <span className="font-semibold text-red-700">{fmtDollars(afterMaxLoss)}</span>{" "}
-              per contract.</>
+              <span className="font-semibold text-red-700">{fmtDollars(afterMaxLoss)}</span>.</>
           )}
         </p>
       </div>

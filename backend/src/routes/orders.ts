@@ -270,9 +270,10 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    const { symbol, expiration, strike, right, action, quantity, limitPrice, tif } = req.body;
+    const { symbol, expiration, strike, right, action, quantity, limitPrice, tif, tradingClass } = req.body;
 
-    // Build the option contract
+    // Build the option contract. Use explicit tradingClass when provided
+    // (e.g. XSPW for XSP options listed under SPX symbol).
     const contract: Contract = {
       symbol,
       secType: SecType.OPT,
@@ -282,7 +283,7 @@ router.post(
       strike,
       right: right === "C" ? OptionType.Call : OptionType.Put,
       multiplier: 100,
-      tradingClass: symbol,
+      tradingClass: tradingClass ?? symbol,
     };
 
     // Place the order

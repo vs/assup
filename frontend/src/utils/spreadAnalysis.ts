@@ -252,12 +252,25 @@ export function computeHedgedPayoff(input: HedgePayoffInput): HedgedPayoffResult
   // Net credit after hedge cost
   const netCreditAfterHedge = originalCreditMid - hedgeDebitLimit;
 
-  // Determine price range from all strikes
+  // Determine price range from all strikes.
+  // Check for unbounded tails (net long option beyond outermost strike) —
+  // protective hedges leave the position net long one option, so P&L keeps
+  // increasing outside the added strike. Widen the range to capture the
+  // tail and find breakevens that lie beyond the strike grid.
   const allStrikes = allLegs.map(l => l.strike);
   const minStrike = Math.min(...allStrikes);
   const maxStrike = Math.max(...allStrikes);
-  const rangeMin = minStrike * 0.95;
-  const rangeMax = maxStrike * 1.05;
+
+  // Count net long/short at each side: a net BUY put below all other puts
+  // creates a downside tail; a net BUY call above all other calls creates
+  // an upside tail.
+  const putLegs = allLegs.filter(l => l.type === "PUT");
+  const callLegs = allLegs.filter(l => l.type === "CALL");
+  const netPutBuys = putLegs.filter(l => l.side === "BUY").length - putLegs.filter(l => l.side === "SELL").length;
+  const netCallBuys = callLegs.filter(l => l.side === "BUY").length - callLegs.filter(l => l.side === "SELL").length;
+
+  const rangeMin = netPutBuys > 0 ? minStrike * 0.80 : minStrike * 0.95;
+  const rangeMax = netCallBuys > 0 ? maxStrike * 1.20 : maxStrike * 1.05;
 
   const numPoints = 100;
   const step = (rangeMax - rangeMin) / numPoints;

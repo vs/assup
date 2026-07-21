@@ -31,6 +31,7 @@ export const placeOrderSchema = z.object({
   quantity: z.number().int().positive("Quantity must be positive"),
   limitPrice: z.number().positive("Limit price must be positive"),
   tif: z.enum(["DAY", "GTC"]).optional().default("DAY"),
+  tradingClass: z.string().min(1).max(10).optional(),
 });
 
 export type PlaceOrderSchemaInput = z.infer<typeof placeOrderSchema>;

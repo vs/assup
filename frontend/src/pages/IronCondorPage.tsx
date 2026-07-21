@@ -401,11 +401,31 @@ export function IronCondorPage() {
   const handleHedgeSpread = useCallback((spread: ActiveSpread) => {
     // Retune the page's stream to the spread's symbol/expiry so the wizard
     // gets correct chain data — avoids using unrelated quotes or conIds.
-    if (spread.symbol !== symbol) setSymbol(spread.symbol);
-    if (spread.expiry !== expiration) setExpiration(spread.expiry);
     setHedgingSpread(spread);
-    setHedgeDialogOpen(true);
+    if (spread.symbol !== symbol || spread.expiry !== expiration) {
+      if (spread.symbol !== symbol) setSymbol(spread.symbol);
+      if (spread.expiry !== expiration) setExpiration(spread.expiry);
+      // Don't open yet — wait for the stream to retune (see effect below).
+    } else {
+      // Already on the right chain — open immediately.
+      setHedgeDialogOpen(true);
+    }
   }, [symbol, expiration]);
+
+  // Open the hedge wizard once the stream has retuned to the hedging spread's
+  // symbol/expiry. This prevents the wizard from using stale chain/conIds from
+  // the previous subscription.
+  useEffect(() => {
+    if (
+      hedgingSpread &&
+      !hedgeDialogOpen &&
+      symbol === hedgingSpread.symbol &&
+      streamExpiration === hedgingSpread.expiry &&
+      chain.length > 0
+    ) {
+      setHedgeDialogOpen(true);
+    }
+  }, [hedgingSpread, hedgeDialogOpen, symbol, streamExpiration, chain.length]);
 
   // --- Build order legs ---
   const orderLegs = useMemo((): IronCondorOrderLeg[] => {
