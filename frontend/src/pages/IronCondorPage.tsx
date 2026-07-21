@@ -30,6 +30,8 @@ import { PlaceSpreadDialog } from "@/components/iron-condor/PlaceSpreadDialog";
 import { ActiveSpreadsList } from "@/components/iron-condor/ActiveSpreadsList";
 import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
 import { GexModal } from "@/components/iron-condor/GexModal";
+import { HedgeWizardDialog } from "@/components/iron-condor/HedgeWizardDialog";
+import { useSpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 import type {
   SpreadMode,
   IronCondorChainStrike,
@@ -104,6 +106,12 @@ export function IronCondorPage() {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [gexModalOpen, setGexModalOpen] = useState(false);
 
+  // Hedge wizard
+  const [hedgeDialogOpen, setHedgeDialogOpen] = useState(false);
+  const [hedgingSpread, setHedgingSpread] = useState<ActiveSpread | null>(null);
+  const [hedgeWarningPct, setHedgeWarningPct] = useState(100);
+  const [hedgeDangerPct, setHedgeDangerPct] = useState(200);
+
   // When chain is collapsed, only stream selected strikes
   const streamStrikes = useMemo(() => {
     if (chainExpanded) return undefined; // full chain
@@ -157,6 +165,16 @@ export function IronCondorPage() {
     updateIntervalMs,
   );
 
+  // Load risk thresholds from settings
+  useEffect(() => {
+    settingsApi.get<{ hedgeWarningPct?: number; hedgeDangerPct?: number }>("spreads")
+      .then(result => {
+        if (result.value?.hedgeWarningPct != null) setHedgeWarningPct(result.value.hedgeWarningPct);
+        if (result.value?.hedgeDangerPct != null) setHedgeDangerPct(result.value.hedgeDangerPct);
+      })
+      .catch(() => {});
+  }, []);
+
   // Active spreads via REST endpoint (polled every 10s)
   const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
 
@@ -170,6 +188,8 @@ export function IronCondorPage() {
     const interval = setInterval(fetchSpreads, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const riskMap = useSpreadRiskStatus(spreads, hedgeWarningPct, hedgeDangerPct);
 
   // Sync expiration from stream init event (server-selected nearest expiration)
   useEffect(() => {
@@ -376,6 +396,11 @@ export function IronCondorPage() {
     setCloseDialogOpen(true);
   }, []);
 
+  const handleHedgeSpread = useCallback((spread: ActiveSpread) => {
+    setHedgingSpread(spread);
+    setHedgeDialogOpen(true);
+  }, []);
+
   // --- Build order legs ---
   const orderLegs = useMemo((): IronCondorOrderLeg[] => {
     if (chain.length === 0 || !expiration) return [];
@@ -565,6 +590,8 @@ export function IronCondorPage() {
       <ActiveSpreadsList
         spreads={spreads}
         onClose={handleCloseSpread}
+        onHedge={handleHedgeSpread}
+        riskMap={riskMap}
       />
 
       {/* Main content: stacked layout */}
@@ -637,6 +664,14 @@ export function IronCondorPage() {
         open={closeDialogOpen}
         onOpenChange={setCloseDialogOpen}
         spread={closingSpread}
+        onSuccess={() => {}}
+      />
+
+      <HedgeWizardDialog
+        open={hedgeDialogOpen}
+        onOpenChange={setHedgeDialogOpen}
+        spread={hedgingSpread}
+        risk={riskMap.get(hedgingSpread?.id ?? "") ?? { level: "healthy", premiumMultiple: null }}
         onSuccess={() => {}}
       />
 
