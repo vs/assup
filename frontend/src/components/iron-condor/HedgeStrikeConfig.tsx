@@ -237,7 +237,7 @@ export function HedgeStrikeConfig({
               />
               {/* Outer wing: user-selectable */}
               <LegRow
-                side="BUY"
+                side="SELL"
                 strike={selectedStrike}
                 right={right}
                 quote={quotes.get(`${selectedStrike}:${right}`)}
@@ -313,7 +313,7 @@ export function HedgeStrikeConfig({
             size="icon-sm"
             onClick={() =>
               onLimitPriceChange(
-                Math.round((limitPrice - 0.05) * 100) / 100
+                Math.max(0, Math.round((limitPrice - 0.05) * 100) / 100)
               )
             }
             aria-label="Decrease limit price"

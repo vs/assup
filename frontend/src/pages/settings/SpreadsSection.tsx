@@ -232,6 +232,7 @@ export function SpreadsSection() {
                   value={hedgeWarningPct}
                   onChange={(e) => {
                     const val = Number(e.target.value);
+                    if (val <= 0 || val >= hedgeDangerPctRef.current) return;
                     setHedgeWarningPct(val);
                     save(symbolsRef.current, intervalRef.current, val, hedgeDangerPctRef.current);
                   }}
@@ -253,6 +254,7 @@ export function SpreadsSection() {
                   value={hedgeDangerPct}
                   onChange={(e) => {
                     const val = Number(e.target.value);
+                    if (val <= 0 || val <= hedgeWarningPctRef.current) return;
                     setHedgeDangerPct(val);
                     save(symbolsRef.current, intervalRef.current, hedgeWarningPctRef.current, val);
                   }}

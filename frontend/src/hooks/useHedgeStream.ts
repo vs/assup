@@ -33,7 +33,7 @@ export function useHedgeStream(
   const esRef = useRef<EventSource | null>(null);
   const pendingRef = useRef<Map<string, Partial<StrikeQuote>>>(new Map());
 
-  const strikesKey = strikes.sort((a, b) => a - b).join(",");
+  const strikesKey = [...strikes].sort((a, b) => a - b).join(",");
 
   const connect = useCallback(() => {
     if (!enabled || !expiration || strikes.length === 0) return;

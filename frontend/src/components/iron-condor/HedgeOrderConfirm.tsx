@@ -90,6 +90,7 @@ export function HedgeOrderConfirm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const hasValidConIds = orderLegs.every(l => l.conId > 0);
   const totalCost = limitPrice * 100 * quantity;
   const expiryLabel = formatExpiryShort(spread.expiry);
   const resultDescription = buildResultDescription(spread, strategy, orderLegs);
@@ -229,15 +230,22 @@ export function HedgeOrderConfirm({
         >
           &larr; Back
         </Button>
-        <Button
-          size="lg"
-          onClick={handlePlaceOrder}
-          disabled={submitting || success}
-        >
-          {submitting
-            ? "Submitting..."
-            : `Place Hedge Order \u2014 Debit ${fmtDollars(totalCost)}`}
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          {!hasValidConIds && (
+            <span className="text-xs text-destructive">
+              Missing contract IDs -- quotes not yet loaded
+            </span>
+          )}
+          <Button
+            size="lg"
+            onClick={handlePlaceOrder}
+            disabled={submitting || success || !hasValidConIds}
+          >
+            {submitting
+              ? "Submitting..."
+              : `Place Hedge Order \u2014 Debit ${fmtDollars(totalCost)}`}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -227,7 +227,7 @@ export function HedgeWizardDialog({
           {
             strike: selectedStrike,
             type: isPut ? "PUT" : "CALL",
-            side: "BUY" as const,
+            side: "SELL" as const,
             bid: outerQuote?.bid ?? 0,
             ask: outerQuote?.ask ?? 0,
           },
@@ -306,7 +306,7 @@ export function HedgeWizardDialog({
           conId: middleQuote?.conId ?? 0,
         },
         {
-          side: "BUY" as const,
+          side: "SELL" as const,
           strike: selectedStrike,
           right,
           conId: outerQuote?.conId ?? 0,

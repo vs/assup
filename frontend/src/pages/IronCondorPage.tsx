@@ -178,16 +178,17 @@ export function IronCondorPage() {
   // Active spreads via REST endpoint (polled every 10s)
   const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
 
+  const fetchSpreads = useCallback(() => {
+    api.ironCondor.getActiveSpreads()
+      .then(r => setSpreads(r.spreads))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
-    const fetchSpreads = () => {
-      api.ironCondor.getActiveSpreads()
-        .then(r => setSpreads(r.spreads))
-        .catch(() => {});
-    };
     fetchSpreads();
     const interval = setInterval(fetchSpreads, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchSpreads]);
 
   const riskMap = useSpreadRiskStatus(spreads, hedgeWarningPct, hedgeDangerPct);
 
@@ -664,7 +665,7 @@ export function IronCondorPage() {
         open={closeDialogOpen}
         onOpenChange={setCloseDialogOpen}
         spread={closingSpread}
-        onSuccess={() => {}}
+        onSuccess={fetchSpreads}
       />
 
       <HedgeWizardDialog
@@ -672,7 +673,7 @@ export function IronCondorPage() {
         onOpenChange={setHedgeDialogOpen}
         spread={hedgingSpread}
         risk={riskMap.get(hedgingSpread?.id ?? "") ?? { level: "healthy", premiumMultiple: null }}
-        onSuccess={() => {}}
+        onSuccess={fetchSpreads}
       />
 
       <GexModal
