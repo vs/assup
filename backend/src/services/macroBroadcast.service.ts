@@ -9,6 +9,8 @@ import { Contract, SecType } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
 import { sseService } from "./sse.js";
 import { prisma } from "../db/index.js";
+import { getGexAnalysis } from "./gex.service.js";
+import type { MacroGexLevels } from "@assup/shared";
 
 const VIX_CONTRACT: Contract = { symbol: "VIX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
 const SPX_CONTRACT: Contract = { symbol: "SPX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
@@ -19,18 +21,43 @@ class MacroBroadcastService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastSnapshot: Record<string, unknown> | null = null;
   private lastBroadcast: Record<string, unknown> | null = null;
+  private gexLevels: MacroGexLevels | null = null;
+  private gexTimer: ReturnType<typeof setInterval> | null = null;
 
   start() {
     if (this.timer) return;
     console.log("[MacroBroadcast] Starting live macro broadcasts every 5s");
     // Don't broadcast immediately — wait for first interval so IBKR connection is stable
     this.timer = setInterval(() => this.tick(), BROADCAST_INTERVAL_MS);
+
+    // Initial GEX fetch + 10-minute refresh
+    this.refreshGexLevels();
+    this.gexTimer = setInterval(() => this.refreshGexLevels(), 10 * 60 * 1000);
   }
 
   stop() {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.gexTimer) {
+      clearInterval(this.gexTimer);
+      this.gexTimer = null;
+    }
+  }
+
+  private async refreshGexLevels() {
+    try {
+      const analysis = await getGexAnalysis("SPX", null, true, true);
+      this.gexLevels = {
+        gexFlip: analysis.levels.gexFlip,
+        putWall: analysis.levels.putWall.strike,
+        callWall: analysis.levels.callWall.strike,
+        netGEXRegime: analysis.summary.netGEXRegime,
+        fetchedAt: analysis.fetchedAt,
+      };
+    } catch {
+      // Keep previous cached value; if none exists, gexLevels stays null
     }
   }
 
@@ -98,6 +125,7 @@ class MacroBroadcastService {
         ...(vixChange != null ? { vixChange } : {}),
         ...(sp500Index != null ? { sp500Index } : {}),
         ...(sp500Change != null ? { sp500Change } : {}),
+        ...(this.gexLevels ? { gexLevels: this.gexLevels } : {}),
       },
     };
   }
