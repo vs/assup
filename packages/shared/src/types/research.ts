@@ -82,6 +82,14 @@ export interface ResearchJob {
 
 export type MarketRegime = "risk_on" | "risk_off" | "neutral";
 
+export interface MacroGexLevels {
+  gexFlip: number | null;
+  putWall: number;
+  callWall: number;
+  netGEXRegime: "positive" | "negative";
+  fetchedAt: string;
+}
+
 export interface MacroAnalysis {
   regime: MarketRegime;
   confidence: number;
@@ -102,6 +110,7 @@ export interface MacroAnalysis {
     safeHavenSpread: number | null;
     putCallRatio: number | null;
     regime: MarketRegime;
+    gexLevels?: MacroGexLevels | null;
   };
 }
 

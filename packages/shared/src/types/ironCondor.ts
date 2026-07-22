@@ -132,3 +132,6 @@ export type {
   RefocusedEvent,
   SpreadStreamEvent,
 } from "./spreadStream.js";
+
+/** Hedge strategies available in the hedge wizard */
+export type HedgeStrategy = "butterfly" | "protective" | "roll";
