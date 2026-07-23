@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/api";
 import type { ActiveSpread } from "@assup/shared";
-import type { HedgeStrategy } from "./HedgeStrategyPicker";
+import type { HedgeStrategy } from "@assup/shared";
 
 /**
  * Index option symbol/tradingClass mapping — XSP options are listed under
@@ -75,8 +75,11 @@ function buildResultDescription(
   if (strategy === "butterfly") {
     const strikesLabel = allStrikes.join("/");
     return `Your ${rightLabel} credit spread becomes a ${strikesLabel} ${rightLabel} butterfly`;
+  } else if (strategy === "roll") {
+    const closeLeg = orderLegs.find((l) => l.side === "BUY");
+    const newLeg = orderLegs.find((l) => l.side === "SELL");
+    return `Your short ${rightLabel} rolls from ${closeLeg?.strike ?? "?"} to ${newLeg?.strike ?? "?"}`;
   } else {
-    // protective: find the new protective leg strike
     const existingStrikes = new Set(spread.legs.map((l) => l.strike));
     const newLeg = orderLegs.find((l) => !existingStrikes.has(l.strike)) ?? orderLegs[0];
     const protectiveStrike = newLeg?.strike ?? 0;
@@ -109,8 +112,46 @@ export function HedgeOrderConfirm({
     setError(null);
 
     try {
-      if (strategy === "butterfly") {
-        // Combo order via ironCondor.placeOrder
+      if (strategy === "roll") {
+        // Roll: two sequential orders — close current short, then open new short.
+        const mapping = INDEX_OPTION_CONFIG[spread.symbol];
+        const baseProps = {
+          symbol: mapping?.optionSymbol ?? spread.symbol,
+          expiration: spread.expiry,
+          ...(mapping?.tradingClass ? { tradingClass: mapping.tradingClass } : {}),
+        };
+
+        const closeLeg = orderLegs.find((l) => l.side === "BUY");
+        const newLeg = orderLegs.find((l) => l.side === "SELL");
+
+        if (!closeLeg || !newLeg) throw new Error("Roll requires both close and open legs");
+
+        // Step 1: Close current short leg
+        await api.orders.place({
+          ...baseProps,
+          strike: closeLeg.strike,
+          right: closeLeg.right,
+          action: "BUY",
+          quantity,
+          limitPrice,
+        });
+
+        // Step 2: Open new short leg
+        try {
+          await api.orders.place({
+            ...baseProps,
+            strike: newLeg.strike,
+            right: newLeg.right,
+            action: "SELL",
+            quantity,
+            limitPrice: 0,
+          });
+        } catch (err) {
+          setError(`Close order submitted but new short leg failed: ${err instanceof Error ? err.message : "Unknown error"}. Check open orders.`);
+          setSubmitting(false);
+          return;
+        }
+      } else if (strategy === "butterfly") {
         const legs = orderLegs.map((leg) => ({
           conId: leg.conId,
           strike: leg.strike,
@@ -127,8 +168,6 @@ export function HedgeOrderConfirm({
           limitPrice,
         });
       } else {
-        // Protective put/call: single leg via orders.place.
-        // Apply symbol + tradingClass mapping (XSP options → SPX/XSPW).
         const leg = orderLegs[0];
         const mapping = INDEX_OPTION_CONFIG[spread.symbol];
         await api.orders.place({
@@ -194,7 +233,7 @@ export function HedgeOrderConfirm({
         {/* Footer row */}
         <div className="flex items-center justify-between px-3 py-2 border-t border-blue-200 bg-blue-100/50 text-sm">
           <span className="text-muted-foreground text-xs">
-            Combo debit limit:{" "}
+            {strategy === "roll" ? "Net roll debit limit:" : "Combo debit limit:"}{" "}
             <span className="font-mono font-medium">${limitPrice.toFixed(2)}</span>
           </span>
           <span className="font-semibold text-red-600">
