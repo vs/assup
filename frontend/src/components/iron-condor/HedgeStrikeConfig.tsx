@@ -3,7 +3,7 @@
  * Lets the user configure the hedge strike(s) with live-updating quotes from the SSE stream.
  */
 
-import { GitBranch, Shield } from "lucide-react";
+import { GitBranch, Shield, ArrowDownUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ActiveSpread } from "@assup/shared";
-import type { HedgeStrategy } from "./HedgeStrategyPicker";
+import type { HedgeStrategy } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 
 interface StrikeQuote {
@@ -141,8 +141,10 @@ export function HedgeStrikeConfig({
   const totalCost = limitPrice * 100 * spread.quantity;
 
   const strategyLabel =
-    strategy === "butterfly" ? "Convert to Butterfly" : "Buy Protective Option";
-  const StrategyIcon = strategy === "butterfly" ? GitBranch : Shield;
+    strategy === "butterfly" ? "Convert to Butterfly"
+    : strategy === "roll" ? (isPut ? "Roll Down" : "Roll Up")
+    : "Buy Protective Option";
+  const StrategyIcon = strategy === "butterfly" ? GitBranch : strategy === "roll" ? ArrowDownUp : Shield;
 
   return (
     <div className="space-y-4">
@@ -287,13 +289,56 @@ export function HedgeStrikeConfig({
               }
             />
           )}
+
+          {strategy === "roll" && (
+            <>
+              {/* Close current short leg */}
+              {spread.legs
+                .filter((l) => l.side === "SELL")
+                .map((leg) => (
+                  <LegRow
+                    key={`close-${leg.conId}`}
+                    side="BUY"
+                    strike={leg.strike}
+                    right={leg.right}
+                    quote={quotes.get(`${leg.strike}:${leg.right}`)}
+                  />
+                ))}
+              {/* New short leg: user-selectable */}
+              <LegRow
+                side="SELL"
+                strike={selectedStrike}
+                right={right}
+                quote={quotes.get(`${selectedStrike}:${right}`)}
+                strikeNode={
+                  <Select
+                    value={String(selectedStrike)}
+                    onValueChange={(v) => onSelectedStrikeChange(Number(v))}
+                  >
+                    <SelectTrigger size="sm" className="w-28 font-mono">
+                      <SelectValue placeholder="Strike" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableStrikes.map((s) => (
+                        <SelectItem key={s} value={String(s)}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                }
+              />
+            </>
+          )}
         </div>
       </div>
 
       {/* 5. Cost summary bar */}
       <div className="rounded-lg bg-muted/40 border px-4 py-3 flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Estimated debit:</span>
+          <span className="text-sm text-muted-foreground">
+            {strategy === "roll" ? "Net roll cost:" : "Estimated debit:"}
+          </span>
           <span className="font-semibold text-red-600">
             ${totalCost.toLocaleString(undefined, {
               minimumFractionDigits: 2,
