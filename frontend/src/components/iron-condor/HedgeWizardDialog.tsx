@@ -7,7 +7,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import type { ActiveSpread, IronCondorChainStrike } from "@assup/shared";
-import { HedgeStrategyPicker, type HedgeStrategy } from "./HedgeStrategyPicker";
+import { HedgeStrategyPicker } from "./HedgeStrategyPicker";
+import type { HedgeStrategy } from "@assup/shared";
 import { HedgeStrikeConfig } from "./HedgeStrikeConfig";
 import { HedgePayoffComparison } from "./HedgePayoffComparison";
 import { HedgeOrderConfirm } from "./HedgeOrderConfirm";
@@ -23,6 +24,7 @@ interface HedgeWizardDialogProps {
   chain: IronCondorChainStrike[];
   underlyingPrice: number;
   onSuccess: () => void;
+  initialStrategy?: HedgeStrategy;
 }
 
 /** Derive wing width from spread legs (smallest gap between adjacent strikes). */
@@ -63,6 +65,7 @@ export function HedgeWizardDialog({
   chain,
   underlyingPrice,
   onSuccess,
+  initialStrategy,
 }: HedgeWizardDialogProps) {
   const [step, setStep] = useState(1);
   const [strategy, setStrategy] = useState<HedgeStrategy>("butterfly");
@@ -89,9 +92,20 @@ export function HedgeWizardDialog({
   // Reset state when dialog opens with a new spread
   useEffect(() => {
     if (open && spread) {
-      setStep(1);
-      setSelectedStrike(defaultStrike);
+      const strat = initialStrategy ?? "butterfly";
+      setStrategy(strat);
+      setStep(initialStrategy ? 2 : 1);
       setLimitPrice(0);
+
+      if (strat === "roll") {
+        // Default roll target: one wing width further OTM from short leg
+        const shortLeg = spread.legs.find((l) => l.side === "SELL");
+        const shortStrike = shortLeg?.strike ?? 0;
+        const rollTarget = isPut ? shortStrike - wingWidth : shortStrike + wingWidth;
+        setSelectedStrike(rollTarget);
+      } else {
+        setSelectedStrike(defaultStrike);
+      }
     }
   }, [open, spread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -106,11 +120,21 @@ export function HedgeWizardDialog({
     for (const row of chain) {
       const opt = isPut ? row.put : row.call;
       if (!opt) continue;
-      if (isPut && row.strike < longLegStrike) result.push(row.strike);
-      if (!isPut && row.strike > longLegStrike) result.push(row.strike);
+
+      if (strategy === "roll") {
+        // Roll: strikes further OTM than the current short leg
+        const shortLeg = spread?.legs.find((l) => l.side === "SELL");
+        const shortStrike = shortLeg?.strike ?? 0;
+        if (isPut && row.strike < shortStrike) result.push(row.strike);
+        if (!isPut && row.strike > shortStrike) result.push(row.strike);
+      } else {
+        // Butterfly/protective: strikes beyond the long leg
+        if (isPut && row.strike < longLegStrike) result.push(row.strike);
+        if (!isPut && row.strike > longLegStrike) result.push(row.strike);
+      }
     }
     return result.sort((a, b) => (isPut ? b - a : a - b));
-  }, [chain, isPut, longLegStrike]);
+  }, [chain, isPut, longLegStrike, strategy, spread]);
 
   // Snap selectedStrike to nearest available if not in list
   useEffect(() => {
@@ -133,6 +157,14 @@ export function HedgeWizardDialog({
       const middleAsk = middleQuote?.ask ?? 0;
       const outerBid = outerQuote?.bid ?? 0;
       return Math.max(0, middleAsk - outerBid);
+    } else if (strategy === "roll") {
+      // Roll cost = buy back current short (ask) - sell new short (bid)
+      const shortLeg = spread.legs.find((l) => l.side === "SELL");
+      const closeQuote = quotes.get(`${shortLeg?.strike ?? 0}:${right}`);
+      const newQuote = quotes.get(`${selectedStrike}:${right}`);
+      const closeCost = closeQuote?.ask ?? 0;
+      const newPremium = newQuote?.bid ?? 0;
+      return Math.max(0, closeCost - newPremium);
     } else {
       const quote = quotes.get(`${selectedStrike}:${right}`);
       return quote?.ask ?? 0;
@@ -214,6 +246,29 @@ export function HedgeWizardDialog({
             ask: outerQuote?.ask ?? 0,
           },
         ];
+      } else if (strategy === "roll") {
+        // For roll: replace the short leg with a new one further OTM.
+        // Cancel out the old short by adding a BUY at the same strike,
+        // then add a new SELL at the selected strike
+        const shortLeg = spread.legs.find((l) => l.side === "SELL");
+        const closeQuote = quotes.get(`${shortLeg?.strike ?? 0}:${right}`);
+        const newQuote = quotes.get(`${selectedStrike}:${right}`);
+        newLegs = [
+          {
+            strike: shortLeg?.strike ?? 0,
+            type: isPut ? "PUT" : "CALL",
+            side: "BUY" as const,
+            bid: closeQuote?.bid ?? 0,
+            ask: closeQuote?.ask ?? 0,
+          },
+          {
+            strike: selectedStrike,
+            type: isPut ? "PUT" : "CALL",
+            side: "SELL" as const,
+            bid: newQuote?.bid ?? 0,
+            ask: newQuote?.ask ?? 0,
+          },
+        ];
       } else {
         const q = quotes.get(`${selectedStrike}:${right}`);
         newLegs = [
@@ -273,29 +328,20 @@ export function HedgeWizardDialog({
       const middleQuote = quotes.get(`${longLegStrike}:${right}`);
       const outerQuote = quotes.get(`${selectedStrike}:${right}`);
       return [
-        {
-          side: "BUY" as const,
-          strike: longLegStrike,
-          right,
-          conId: middleQuote?.conId ?? 0,
-        },
-        {
-          side: "SELL" as const,
-          strike: selectedStrike,
-          right,
-          conId: outerQuote?.conId ?? 0,
-        },
+        { side: "BUY" as const, strike: longLegStrike, right, conId: middleQuote?.conId ?? 0 },
+        { side: "SELL" as const, strike: selectedStrike, right, conId: outerQuote?.conId ?? 0 },
+      ];
+    } else if (strategy === "roll") {
+      const shortLeg = spread.legs.find((l) => l.side === "SELL");
+      const closeQuote = quotes.get(`${shortLeg?.strike ?? 0}:${right}`);
+      const newQuote = quotes.get(`${selectedStrike}:${right}`);
+      return [
+        { side: "BUY" as const, strike: shortLeg?.strike ?? 0, right, conId: closeQuote?.conId ?? 0 },
+        { side: "SELL" as const, strike: selectedStrike, right, conId: newQuote?.conId ?? 0 },
       ];
     } else {
       const q = quotes.get(`${selectedStrike}:${right}`);
-      return [
-        {
-          side: "BUY" as const,
-          strike: selectedStrike,
-          right,
-          conId: q?.conId ?? 0,
-        },
-      ];
+      return [{ side: "BUY" as const, strike: selectedStrike, right, conId: q?.conId ?? 0 }];
     }
   }, [spread, strategy, quotes, longLegStrike, selectedStrike, right]);
 
