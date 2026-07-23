@@ -33,6 +33,7 @@ import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
 import { GexModal } from "@/components/iron-condor/GexModal";
 import { HedgeWizardDialog } from "@/components/iron-condor/HedgeWizardDialog";
 import { useSpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
+import { useHedgeRecommendations } from "@/hooks/useHedgeRecommendations";
 import type {
   SpreadMode,
   IronCondorChainStrike,
@@ -40,6 +41,7 @@ import type {
   IronCondorOrderLeg,
   SpreadSelectedLegs,
   ActiveSpread,
+  HedgeStrategy,
 } from "@assup/shared";
 
 const DEFAULT_SYMBOLS = ["SPX", "XSP", "RUT"];
@@ -111,6 +113,7 @@ export function IronCondorPage() {
   // Hedge wizard
   const [hedgeDialogOpen, setHedgeDialogOpen] = useState(false);
   const [hedgingSpread, setHedgingSpread] = useState<ActiveSpread | null>(null);
+  const [hedgeInitialStrategy, setHedgeInitialStrategy] = useState<HedgeStrategy | undefined>(undefined);
   const [hedgeWarningPct, setHedgeWarningPct] = useState(100);
   const [hedgeDangerPct, setHedgeDangerPct] = useState(200);
 
@@ -223,6 +226,7 @@ export function IronCondorPage() {
   }, [fetchSpreads]);
 
   const riskMap = useSpreadRiskStatus(spreads, hedgeWarningPct, hedgeDangerPct);
+  const recommendations = useHedgeRecommendations(spreads, riskMap);
 
   // Sync expiration from stream init event (server-selected nearest expiration)
   useEffect(() => {
@@ -430,21 +434,16 @@ export function IronCondorPage() {
     setCloseDialogOpen(true);
   }, []);
 
-  const handleHedgeSpread = useCallback((spread: ActiveSpread) => {
-    // Retune the page's stream to the spread's symbol/expiry so the wizard
-    // gets correct chain data — avoids using unrelated quotes or conIds.
+  const handleHedgeSpread = useCallback((spread: ActiveSpread, initialStrategy?: HedgeStrategy) => {
     setHedgingSpread(spread);
-    // Activate the builder stream if not already running (needed for quotes).
+    setHedgeInitialStrategy(initialStrategy);
     if (!builderActive) setBuilderActive(true);
     if (spread.symbol !== symbol || spread.expiry !== expiration) {
       if (spread.symbol !== symbol) setSymbol(spread.symbol);
       if (spread.expiry !== expiration) setExpiration(spread.expiry);
-      // Don't open yet — wait for the stream to retune (see effect below).
     } else if (chain.length > 0) {
-      // Already on the right chain with data — open immediately.
       setHedgeDialogOpen(true);
     }
-    // Otherwise: builderActive just turned on, wait for stream init via the effect below.
   }, [symbol, expiration, builderActive, chain.length]);
 
   // Open the hedge wizard once the stream has retuned to the hedging spread's
@@ -510,6 +509,7 @@ export function IronCondorPage() {
         onClose={handleCloseSpread}
         onHedge={handleHedgeSpread}
         riskMap={riskMap}
+        recommendations={recommendations}
       />
 
       {/* Configuration bar — always visible */}
@@ -754,6 +754,7 @@ export function IronCondorPage() {
         chain={chain}
         underlyingPrice={underlyingPrice}
         onSuccess={fetchSpreads}
+        initialStrategy={hedgeInitialStrategy}
       />
 
       <GexModal
