@@ -137,6 +137,11 @@ export function HedgeOrderConfirm({
         });
 
         // Step 2: Open new short leg
+        // Derive a limit from the close leg's mid price minus the net roll debit,
+        // so the new short doesn't sell at an unfavorable market price.
+        const shortLegData = spread.legs.find((l) => l.side === "SELL");
+        const shortMid = shortLegData?.midPrice ?? 0;
+        const newShortLimit = Math.max(0.05, Math.round((shortMid - limitPrice) * 100) / 100);
         try {
           await api.orders.place({
             ...baseProps,
@@ -144,7 +149,7 @@ export function HedgeOrderConfirm({
             right: newLeg.right,
             action: "SELL",
             quantity,
-            limitPrice: 0,
+            limitPrice: newShortLimit,
           });
         } catch (err) {
           setError(`Close order submitted but new short leg failed: ${err instanceof Error ? err.message : "Unknown error"}. Check open orders.`);

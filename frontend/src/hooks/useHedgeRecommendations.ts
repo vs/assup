@@ -7,7 +7,7 @@
 import { useMemo } from "react";
 import { useMacro } from "@/components/common/MacroProvider";
 import { recommendHedge, type HedgeRecommendation } from "@/utils/hedgeRecommendation";
-import type { ActiveSpread, MacroGexLevels } from "@assup/shared";
+import type { ActiveSpread } from "@assup/shared";
 import type { SpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 
 export function useHedgeRecommendations(
@@ -21,7 +21,7 @@ export function useHedgeRecommendations(
     if (!macro) return map;
 
     const spxPrice = macro.details.sp500Index ?? null;
-    const gexLevels = (macro.details as { gexLevels?: MacroGexLevels | null }).gexLevels ?? null;
+    const gexLevels = macro.details.gexLevels ?? null;
     const vix = macro.details.vix ?? null;
     const regime = macro.regime;
 
