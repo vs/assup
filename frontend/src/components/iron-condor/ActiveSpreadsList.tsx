@@ -6,16 +6,20 @@
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, ArrowDownUp, GitBranch, Shield, X as XIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { ActiveSpread, ActiveSpreadLeg } from "@assup/shared";
+import type { HedgeStrategy } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 import type { RiskLevel, SpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
+import type { HedgeRecommendation } from "@/utils/hedgeRecommendation";
 
 interface ActiveSpreadsListProps {
   spreads: ActiveSpread[];
   onClose: (spread: ActiveSpread) => void;
-  onHedge: (spread: ActiveSpread) => void;
+  onHedge: (spread: ActiveSpread, initialStrategy?: HedgeStrategy) => void;
   riskMap: Map<string, SpreadRiskStatus>;
+  recommendations: Map<string, HedgeRecommendation>;
 }
 
 function formatExpiry(expiry: string): string {
@@ -75,8 +79,28 @@ function LegRow({ leg }: { leg: ActiveSpreadLeg }) {
   );
 }
 
-function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; onClose: () => void; onHedge: () => void; risk: SpreadRiskStatus }) {
+function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
+  spread: ActiveSpread;
+  onClose: () => void;
+  onHedge: (initialStrategy?: HedgeStrategy) => void;
+  risk: SpreadRiskStatus;
+  recommendation?: HedgeRecommendation;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [autoExpanded, setAutoExpanded] = useState(false);
+
+  // Auto-expand when recommendation urgency is warning or critical
+  const shouldAutoExpand = recommendation != null &&
+    recommendation.action !== "hold" &&
+    (recommendation.urgency === "warning" || recommendation.urgency === "critical");
+
+  if (shouldAutoExpand && !autoExpanded) {
+    setExpanded(true);
+    setAutoExpanded(true);
+  }
+  if (!shouldAutoExpand && autoExpanded) {
+    setAutoExpanded(false);
+  }
 
   const isDanger = risk.level === "danger";
   const isWarning = risk.level === "warning";
@@ -125,23 +149,29 @@ function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; 
               )}
             </div>
           </div>
-          {isAtRisk && canHedge && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onHedge}
-              className={isDanger
-                ? "bg-red-50 text-red-800 border-red-300 hover:bg-red-100"
-                : "bg-yellow-50 text-yellow-800 border-yellow-300 hover:bg-yellow-100"}
-            >
-              Hedge
-            </Button>
-          )}
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
         </div>
       </div>
+
+      {/* Recommendation banner */}
+      {recommendation && recommendation.action !== "hold" && (
+        <div
+          className={cn(
+            "px-3 py-2 text-sm border-t",
+            recommendation.urgency === "critical"
+              ? "bg-red-100 text-red-800 border-red-200 animate-pulse"
+              : recommendation.urgency === "warning"
+              ? "bg-amber-100 text-amber-800 border-amber-200"
+              : "bg-muted/50 text-muted-foreground",
+          )}
+          title={recommendation.details}
+        >
+          {recommendation.urgency === "critical" ? "!!!" : recommendation.urgency === "warning" ? "!" : "i"}{" "}
+          {recommendation.reason}
+        </div>
+      )}
 
       {/* Expanded details */}
       {expanded && (
@@ -166,10 +196,44 @@ function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; 
             )}
           </div>
 
-          {!isAtRisk && canHedge && (
-            <div className="pt-2">
-              <Button variant="ghost" size="sm" onClick={onHedge} className="text-muted-foreground w-full justify-start">
-                Hedge this spread...
+          {canHedge && (
+            <div className="flex items-center gap-2 pt-2 border-t mt-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onHedge("roll")}
+                className="gap-1.5"
+              >
+                <ArrowDownUp className="h-3.5 w-3.5" />
+                {spread.type === "put-spread" ? "Roll Down" : "Roll Up"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onHedge("butterfly")}
+                className="gap-1.5"
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+                Butterfly
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onHedge("protective")}
+                className="gap-1.5"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                {spread.type === "put-spread" ? "Protective Put" : "Protective Call"}
+              </Button>
+              <div className="flex-1" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onClose}
+                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+              >
+                <XIcon className="h-3.5 w-3.5" />
+                Close Spread
               </Button>
             </div>
           )}
@@ -179,7 +243,7 @@ function SpreadCard({ spread, onClose, onHedge, risk }: { spread: ActiveSpread; 
   );
 }
 
-export function ActiveSpreadsList({ spreads, onClose, onHedge, riskMap }: ActiveSpreadsListProps) {
+export function ActiveSpreadsList({ spreads, onClose, onHedge, riskMap, recommendations }: ActiveSpreadsListProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const count = spreads.length;
@@ -219,8 +283,9 @@ export function ActiveSpreadsList({ spreads, onClose, onHedge, riskMap }: Active
               key={spread.id}
               spread={spread}
               onClose={() => onClose(spread)}
-              onHedge={() => onHedge(spread)}
+              onHedge={(initialStrategy) => onHedge(spread, initialStrategy)}
               risk={riskMap.get(spread.id) ?? { level: "healthy", premiumMultiple: null }}
+              recommendation={recommendations.get(spread.id)}
             />
           ))}
         </div>
