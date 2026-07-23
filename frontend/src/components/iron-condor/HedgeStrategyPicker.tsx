@@ -4,12 +4,12 @@
  * for the user to choose between butterfly conversion and protective option.
  */
 
-import { GitBranch, Shield, Check, X } from "lucide-react";
+import { GitBranch, Shield, Check, X, ArrowDownUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { ActiveSpread } from "@assup/shared";
+import type { ActiveSpread, HedgeStrategy } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 
-export type HedgeStrategy = "butterfly" | "protective";
+export type { HedgeStrategy };
 
 interface HedgeStrategyPickerProps {
   spread: ActiveSpread;
@@ -208,6 +208,52 @@ New protective leg:
             <div className="flex items-center gap-1.5 text-xs text-red-600">
               <X className="h-3 w-3 shrink-0" />
               <span>Theta decay on standalone option</span>
+            </div>
+          </div>
+        </button>
+
+        {/* Roll card */}
+        <button
+          onClick={() => onSelect("roll")}
+          className="text-left border rounded-lg p-4 space-y-3 hover:border-blue-400 hover:bg-blue-50/50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 col-span-2"
+        >
+          <div className="flex items-center gap-2">
+            <ArrowDownUp className="h-5 w-5 text-blue-600" />
+            <span className="font-semibold text-sm">
+              {isPut ? "Roll Down" : "Roll Up"}
+            </span>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Move your short {optionRight} from {shortStrike} further {isPut ? "down" : "up"}.
+            Closes the current short leg and sells a new one at a safer strike,
+            reducing risk at the cost of some credit.
+          </p>
+
+          <pre className="text-[10px] font-mono bg-muted/60 rounded p-2 leading-relaxed whitespace-pre">
+{`Close (buy back):
+  BUY  ${optionRight} ${shortStrike}  ← close current short
+
+Open (new short):
+  SELL ${optionRight} ${isPut ? shortStrike - wingWidth : shortStrike + wingWidth}  ← new strike`}
+          </pre>
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-green-700">
+              <Check className="h-3 w-3 shrink-0" />
+              <span>Moves short leg away from danger zone</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-green-700">
+              <Check className="h-3 w-3 shrink-0" />
+              <span>Keeps spread structure intact</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-red-600">
+              <X className="h-3 w-3 shrink-0" />
+              <span>Costs debit to roll (reduces net credit)</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-red-600">
+              <X className="h-3 w-3 shrink-0" />
+              <span>Worse if crash continues through new strike</span>
             </div>
           </div>
         </button>
