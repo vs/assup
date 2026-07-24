@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { formatCurrency } from "@assup/shared";
 import type { ActiveSpread, SpreadMode, ActiveSpreadLeg } from "@assup/shared";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { useSpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 import { useHedgeRecommendations } from "@/hooks/useHedgeRecommendations";
+import { settingsApi } from "@/api/settings";
 import { AlertTriangle } from "lucide-react";
 
 function SpreadTypeBadge({ type }: { type: SpreadMode }) {
@@ -90,12 +92,21 @@ interface ActiveSpreadsListProps {
   spreads: ActiveSpread[] | undefined;
 }
 
-const DEFAULT_WARNING_PCT = 100;
-const DEFAULT_DANGER_PCT = 200;
-
 export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
   const navigate = useNavigate();
-  const riskMap = useSpreadRiskStatus(spreads ?? [], DEFAULT_WARNING_PCT, DEFAULT_DANGER_PCT);
+
+  const [warningPct, setWarningPct] = useState(100);
+  const [dangerPct, setDangerPct] = useState(200);
+  useEffect(() => {
+    settingsApi.get<{ hedgeWarningPct?: number; hedgeDangerPct?: number }>("spreads")
+      .then(result => {
+        if (result.value?.hedgeWarningPct != null) setWarningPct(result.value.hedgeWarningPct);
+        if (result.value?.hedgeDangerPct != null) setDangerPct(result.value.hedgeDangerPct);
+      })
+      .catch(() => {});
+  }, []);
+
+  const riskMap = useSpreadRiskStatus(spreads ?? [], warningPct, dangerPct);
   const recommendations = useHedgeRecommendations(spreads ?? [], riskMap);
 
   return (
