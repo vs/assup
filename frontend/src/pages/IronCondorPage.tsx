@@ -151,11 +151,16 @@ export function IronCondorPage() {
   // Pre-fetch expirations on page load (cached on backend)
   const [prefetchedExpirations, setPrefetchedExpirations] = useState<string[]>([]);
   useEffect(() => {
+    // Capture the current expiration at request time so the stale closure
+    // doesn't overwrite a selection the user (or hedge flow) made while
+    // the fetch was in flight.
+    const expirationAtStart = expiration;
     api.ironCondor.getExpirations(symbol)
       .then(r => {
         setPrefetchedExpirations(r.expirations);
-        // Auto-select nearest expiration with >= 1 DTE
-        if (!expiration) {
+        // Auto-select nearest expiration with >= 1 DTE only if nothing
+        // was set when the request started AND nothing was set since.
+        if (!expirationAtStart) {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const nearest = r.expirations.find(exp => {
@@ -167,7 +172,7 @@ export function IronCondorPage() {
             ).getTime();
             return Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)) >= 1;
           });
-          if (nearest) setExpiration(nearest);
+          if (nearest) setExpiration(prev => prev ?? nearest);
         }
       })
       .catch(() => {});
