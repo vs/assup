@@ -104,7 +104,6 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
 
   const isDanger = risk.level === "danger";
   const isWarning = risk.level === "warning";
-  const isAtRisk = isDanger || isWarning;
   // Hedging only supported for vertical spreads; iron condors need side selection (future work)
   const canHedge = spread.type !== "iron-condor";
 
