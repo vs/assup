@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
+import { useSpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
+import { useHedgeRecommendations } from "@/hooks/useHedgeRecommendations";
+import { AlertTriangle } from "lucide-react";
 
 function SpreadTypeBadge({ type }: { type: SpreadMode }) {
   const config: Record<SpreadMode, { label: string; variant: "danger" | "success" | "purple" }> = {
@@ -87,8 +90,13 @@ interface ActiveSpreadsListProps {
   spreads: ActiveSpread[] | undefined;
 }
 
+const DEFAULT_WARNING_PCT = 100;
+const DEFAULT_DANGER_PCT = 200;
+
 export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
   const navigate = useNavigate();
+  const riskMap = useSpreadRiskStatus(spreads ?? [], DEFAULT_WARNING_PCT, DEFAULT_DANGER_PCT);
+  const recommendations = useHedgeRecommendations(spreads ?? [], riskMap);
 
   return (
     <Card>
@@ -123,8 +131,17 @@ export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
             const dte = calcDte(spread.expiry);
             const legsDesc = buildLegsDescription(spread.legs, spread.type, spread.quantity);
 
+            const risk = riskMap.get(spread.id);
+            const isDanger = risk?.level === "danger";
+            const isWarning = risk?.level === "warning";
+            const cardClass = isDanger
+              ? "rounded-md border px-3 py-2 space-y-1 border-l-[3px] border-l-red-500 bg-red-50"
+              : isWarning
+              ? "rounded-md border px-3 py-2 space-y-1 border-l-[3px] border-l-yellow-500 bg-amber-50"
+              : "rounded-md border px-3 py-2 space-y-1";
+
             return (
-              <div key={spread.id} className="rounded-md border px-3 py-2 space-y-1">
+              <div key={spread.id} className={cardClass}>
                 <div className="flex items-center gap-2">
                   <TickerHoverCard symbol={spread.symbol}>
                     <Link to={`/tickers/${spread.symbol}`} className="font-semibold text-sm hover:underline">
@@ -159,6 +176,23 @@ export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
                     </span>
                   </span>
                 </div>
+                {(() => {
+                  const rec = recommendations.get(spread.id);
+                  if (!rec || rec.action === "hold") return null;
+                  const isCritical = rec.urgency === "critical";
+                  return (
+                    <div className={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded mt-1 ${
+                      isCritical
+                        ? "bg-red-100 text-red-800"
+                        : rec.urgency === "warning"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-muted text-muted-foreground"
+                    }`}>
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{rec.reason}</span>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })
