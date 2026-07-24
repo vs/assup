@@ -84,7 +84,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 4;
+const WHEEL_CACHE_VERSION = 5;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -443,10 +443,11 @@ const applyLiveDataToSummary = (
   // Per-position share P&L (vs avg cost from IBKR, not premium-adjusted)
   let sharePnL: number | null = null;
   let sharePnLPercent: number | null = null;
-  if (shareQuantity > 0 && currentPrice != null && adjustedCostBasis > 0) {
-    unrealizedPnL += (currentPrice - adjustedCostBasis) * shareQuantity;
-    // Share P&L uses IBKR avg cost for the % display
+  if (shareQuantity > 0 && currentPrice != null) {
+    // Use IBKR's avgCost (not adjustedCostBasis) to avoid double-counting premiums
+    // that are already included in realizedPnL. This matches the full rebuild (line 1626).
     const avgCost = positionAvgCost ?? adjustedCostBasis;
+    unrealizedPnL += (currentPrice - avgCost) * shareQuantity;
     sharePnL = (currentPrice - avgCost) * shareQuantity;
     sharePnLPercent = avgCost > 0 ? ((currentPrice - avgCost) / avgCost) * 100 : null;
   }
@@ -1493,10 +1494,13 @@ export const wheelService = {
               }
               break;
             case "SOLD_SHARES":
-              // Add (sell price - cost basis) x shares
-              if (runningCostBasis > 0) {
+              // Use entryStrike (original assignment/purchase price) as cost basis,
+              // not runningCostBasis which is reduced by option premiums already
+              // counted in cycleRealizedPnL. This avoids double-counting premiums.
+              // Same approach as CALLED_AWAY above.
+              if (currentCycle.entryStrike > 0) {
                 const sellPrice = trade.proceeds / Math.abs(trade.quantity);
-                const stockPnL = (sellPrice - runningCostBasis) * Math.abs(trade.quantity);
+                const stockPnL = (sellPrice - currentCycle.entryStrike) * Math.abs(trade.quantity);
                 cycleRealizedPnL += stockPnL;
               }
               break;
