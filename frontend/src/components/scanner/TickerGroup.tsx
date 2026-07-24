@@ -37,7 +37,8 @@ export const TickerGroup = memo(function TickerGroup({
           )}
         >
           {/* Row 1: Labels */}
-          <div className="flex items-center gap-6 text-[11px] text-muted-foreground/70 uppercase tracking-wider mb-1 pl-8">
+          <div className="flex items-center gap-6 text-[11px] text-muted-foreground/70 uppercase tracking-wider mb-1 pl-0.5">
+            <span className="w-4 shrink-0" />
             <span className="w-[80px]">Symbol</span>
             <span className="w-[80px]">Price</span>
             <span className="w-[120px]">Asset Class</span>
