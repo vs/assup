@@ -37,6 +37,8 @@ interface HedgeOrderConfirmProps {
   afterMaxLoss: number;
   onBack: () => void;
   onSuccess: () => void;
+  /** For rolls: the close leg's ask price (what it costs to buy back the short). */
+  rollCloseLimitPrice?: number;
 }
 
 /** Format YYYYMMDD expiry as MM/DD */
@@ -97,6 +99,7 @@ export function HedgeOrderConfirm({
   afterMaxLoss,
   onBack,
   onSuccess,
+  rollCloseLimitPrice,
 }: HedgeOrderConfirmProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +129,11 @@ export function HedgeOrderConfirm({
 
         if (!closeLeg || !newLeg) throw new Error("Roll requires both close and open legs");
 
+        // Per-leg limit prices: closeLimit is the ask of the short being bought
+        // back, newShortLimit is derived as closeLimit minus net roll debit.
+        const closeLimit = rollCloseLimitPrice ?? limitPrice;
+        const newShortLimit = Math.max(0.05, Math.round((closeLimit - limitPrice) * 100) / 100);
+
         // Step 1: Close current short leg
         await api.orders.place({
           ...baseProps,
@@ -133,15 +141,10 @@ export function HedgeOrderConfirm({
           right: closeLeg.right,
           action: "BUY",
           quantity,
-          limitPrice,
+          limitPrice: closeLimit,
         });
 
         // Step 2: Open new short leg
-        // Derive a limit from the close leg's mid price minus the net roll debit,
-        // so the new short doesn't sell at an unfavorable market price.
-        const shortLegData = spread.legs.find((l) => l.side === "SELL");
-        const shortMid = shortLegData?.midPrice ?? 0;
-        const newShortLimit = Math.max(0.05, Math.round((shortMid - limitPrice) * 100) / 100);
         try {
           await api.orders.place({
             ...baseProps,

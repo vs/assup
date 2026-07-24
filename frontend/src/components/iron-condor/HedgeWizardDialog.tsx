@@ -98,10 +98,10 @@ export function HedgeWizardDialog({
       setLimitPrice(0);
 
       if (strat === "roll") {
-        // Default roll target: one wing width further OTM from short leg
+        // Default roll target: midpoint between short and long legs
         const shortLeg = spread.legs.find((l) => l.side === "SELL");
         const shortStrike = shortLeg?.strike ?? 0;
-        const rollTarget = isPut ? shortStrike - wingWidth : shortStrike + wingWidth;
+        const rollTarget = Math.round((shortStrike + longLegStrike) / 2);
         setSelectedStrike(rollTarget);
       } else {
         setSelectedStrike(defaultStrike);
@@ -122,11 +122,13 @@ export function HedgeWizardDialog({
       if (!opt) continue;
 
       if (strategy === "roll") {
-        // Roll: strikes further OTM than the current short leg
+        // Roll: strikes strictly between the current short and long legs.
+        // For puts: below short strike but above long strike (no inversion).
+        // For calls: above short strike but below long strike.
         const shortLeg = spread?.legs.find((l) => l.side === "SELL");
         const shortStrike = shortLeg?.strike ?? 0;
-        if (isPut && row.strike < shortStrike) result.push(row.strike);
-        if (!isPut && row.strike > shortStrike) result.push(row.strike);
+        if (isPut && row.strike < shortStrike && row.strike > longLegStrike) result.push(row.strike);
+        if (!isPut && row.strike > shortStrike && row.strike < longLegStrike) result.push(row.strike);
       } else {
         // Butterfly/protective: strikes beyond the long leg
         if (isPut && row.strike < longLegStrike) result.push(row.strike);
@@ -170,6 +172,14 @@ export function HedgeWizardDialog({
       return quote?.ask ?? 0;
     }
   }, [quotes, strategy, longLegStrike, selectedStrike, right, spread]);
+
+  // For rolls: the close leg's ask price (what it costs to buy back the short)
+  const rollCloseLimitPrice = useMemo(() => {
+    if (!spread || strategy !== "roll") return undefined;
+    const shortLeg = spread.legs.find((l) => l.side === "SELL");
+    const closeQuote = quotes.get(`${shortLeg?.strike ?? 0}:${right}`);
+    return closeQuote?.ask ?? undefined;
+  }, [spread, strategy, quotes, right]);
 
   // Auto-set limitPrice to hedgeMidPrice when first available (step 2, limitPrice still 0)
   useEffect(() => {
@@ -416,6 +426,7 @@ export function HedgeWizardDialog({
             afterMaxLoss={afterResult.maxLoss}
             onBack={() => setStep(3)}
             onSuccess={handleSuccess}
+            rollCloseLimitPrice={rollCloseLimitPrice}
           />
         )}
       </DialogContent>
