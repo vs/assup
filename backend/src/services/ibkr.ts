@@ -1003,7 +1003,10 @@ class IBKRService {
 
     // Log summary only when there are failures
     if (failCount > 0) {
-      console.log(`Market data batch: ${successCount}/${contracts.length} succeeded (${failCount} failed)`);
+      const detail = firstFailure
+        ? ` First failure: ${firstFailure.contract.symbol} ${firstFailure.contract.lastTradeDateOrContractMonth} ${firstFailure.contract.strike} ${firstFailure.contract.right} — ${firstFailure.reason}`
+        : '';
+      console.log(`Market data batch: ${successCount}/${contracts.length} succeeded (${failCount} failed).${detail}`);
     }
 
     return results;
