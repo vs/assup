@@ -22,7 +22,8 @@ import { useTickerProfileContext } from "@/components/common/TickerProfileProvid
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks";
-import { Plus, X, ChevronDown, ChevronUp, Loader2, Check } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronUp, Loader2, Check, Vault, TrendingUp, TrendingUpDown, PercentCircle, CircleDot, RefreshCw } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { scannerApi } from "@/api/scanner";
 import type { ScannerCriteria } from "@assup/shared";
 import {
@@ -342,28 +343,34 @@ export function WheelPage() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <MetricCard
             label="Capital Deployed"
+            icon={Vault}
             value={formatCurrency(data.metrics.capitalDeployed)}
           />
           <MetricCard
             label="Realized P&L"
+            icon={TrendingUp}
             value={(data.metrics.totalRealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalRealizedPnL)}
             className={data.metrics.totalRealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
           />
           <MetricCard
             label="Unrealized P&L"
+            icon={TrendingUpDown}
             value={(data.metrics.totalUnrealizedPnL >= 0 ? "+" : "") + formatCurrency(data.metrics.totalUnrealizedPnL)}
             className={data.metrics.totalUnrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}
           />
           <MetricCard
             label="Yield"
+            icon={PercentCircle}
             value={`${data.metrics.premiumYieldAnnualized.toFixed(1)}%`}
           />
           <MetricCard
             label="Active Wheels"
+            icon={CircleDot}
             value={data.metrics.activeWheels.toString()}
           />
           <MetricCard
             label="Completed Cycles"
+            icon={RefreshCw}
             value={data.metrics.completedCycles.toString()}
           />
         </div>
@@ -412,16 +419,21 @@ export function WheelPage() {
 function MetricCard({
   label,
   value,
+  icon: Icon,
   className,
 }: {
   label: string;
   value: string;
+  icon: LucideIcon;
   className?: string;
 }) {
   return (
     <Card>
-      <CardContent className="pt-4">
-        <div className="text-sm text-muted-foreground">{label}</div>
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start justify-between mb-2">
+          <div className="text-xs text-muted-foreground font-medium">{label}</div>
+          <Icon className="h-4 w-4 text-muted-foreground/60" />
+        </div>
         <div className={`text-xl font-semibold ${className || ""}`}>{value}</div>
       </CardContent>
     </Card>

@@ -36,6 +36,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader, ErrorAlert, PageLoadingSkeleton, ExternalLinks, SortableHead } from "@/components/common";
+import { Layers, BarChart3, Coins, Percent, Receipt, Calculator } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { WarningAlert } from "@/components/common/WarningAlert";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
@@ -207,31 +209,37 @@ export function ProfitPage() {
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <SummaryCard
             label="Options"
+            icon={Layers}
             value={monthlyData.totals.optionsProfit + monthlyData.totals.spreadsProfit}
             className="text-blue-600"
           />
           <SummaryCard
             label="Stocks"
+            icon={BarChart3}
             value={monthlyData.totals.stocksProfit}
             className="text-orange-600"
           />
           <SummaryCard
             label="Dividends"
+            icon={Coins}
             value={monthlyData.totals.dividends}
             className="text-green-600"
           />
           <SummaryCard
             label="Interest"
+            icon={Percent}
             value={monthlyData.totals.interest}
             className="text-purple-600"
           />
           <SummaryCard
             label="Taxes"
+            icon={Receipt}
             value={monthlyData.totals.withholdingTax}
             className="text-red-600"
           />
           <SummaryCard
             label="Total"
+            icon={Calculator}
             value={monthlyData.totals.total}
             className={monthlyData.totals.total >= 0 ? "text-green-600" : "text-red-600"}
           />
@@ -346,16 +354,21 @@ export function ProfitPage() {
 function SummaryCard({
   label,
   value,
+  icon: Icon,
   className,
 }: {
   label: string;
   value: number;
+  icon: LucideIcon;
   className?: string;
 }) {
   return (
     <Card>
-      <CardContent className="pt-4">
-        <div className="text-sm text-muted-foreground">{label}</div>
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start justify-between mb-2">
+          <div className="text-xs text-muted-foreground font-medium">{label}</div>
+          <Icon className="h-4 w-4 text-muted-foreground/60" />
+        </div>
         <div className={`text-xl font-semibold ${className}`}>
           {formatCurrency(value)}
         </div>
