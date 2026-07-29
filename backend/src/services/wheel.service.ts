@@ -895,9 +895,11 @@ export const wheelService = {
       const hasAssignment = currentCycle.trades.some((t) => t.status === "assigned");
       if (positionAvgCost !== null && wheelSharesHeld) {
         // Have live IBKR position - use actual average cost which already accounts
-        // for assignments, additional purchases, and cost averaging
+        // for assignments, additional purchases, and cost averaging.
+        // IBKR's avgCost already nets out the assignment PUT premium, so we only
+        // subtract post-assignment (CC) premiums to avoid double-counting.
         const shares = liveShareQuantity || currentCycle.shareQuantity || 100;
-        adjustedCostBasis = positionAvgCost - (currentCycle.totalPremium / shares);
+        adjustedCostBasis = positionAvgCost - (currentCycle.postAssignmentPremium / shares);
       } else if (hasAssignment) {
         // No live position data - fall back to assignment strike adjusted by premiums
         adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
@@ -1432,6 +1434,7 @@ export const wheelService = {
           endDate: null,
           status: "in_progress",
           totalPremium: 0,
+          postAssignmentPremium: 0,
           shareQuantity: 0,
           entryStrike: trade.strike || Math.abs(trade.proceeds / Math.abs(trade.quantity)),
           exitPrice: null,
@@ -1535,6 +1538,12 @@ export const wheelService = {
 
         if (isWheelTrade) {
           currentCycle.totalPremium += premium;
+          // Track premiums collected after shares were assigned (CCs).
+          // IBKR's avgCost already incorporates the assignment PUT premium, so only
+          // these post-assignment premiums need to be subtracted when using live IBKR data.
+          if (sharePosition > 0) {
+            currentCycle.postAssignmentPremium += premium;
+          }
         }
       }
 

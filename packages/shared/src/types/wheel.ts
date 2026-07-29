@@ -68,6 +68,8 @@ export interface WheelCycle {
   endDate: string | null;
   status: "in_progress" | "called_away" | "sold_shares" | "expired_worthless" | "closed";
   totalPremium: number;
+  /** Net premiums from covered calls collected AFTER shares were assigned (not embedded in IBKR's avgCost) */
+  postAssignmentPremium: number;
   shareQuantity: number;
   entryStrike: number; // first CSP strike or buy price
   exitPrice: number | null; // price when called away or sold
