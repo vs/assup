@@ -84,7 +84,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 5;
+const WHEEL_CACHE_VERSION = 6;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
