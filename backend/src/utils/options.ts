@@ -25,17 +25,21 @@ export const SYMBOL_CONFIG: Record<
     priceDivisor?: number;
     /** Minimum price increment for combo/spread orders (default 0.01) */
     comboTickSize?: number;
+    /** Exchange for BAG combo order legs. Index options trade exclusively on CBOE,
+     *  so direct CBOE routing avoids the SMART NonGuaranteed requirement (error 10043). */
+    comboExchange?: string;
   }
 > = {
-  SPX: { tradingClass: "SPXW", multiplier: 100, comboTickSize: 0.05 },
+  SPX: { tradingClass: "SPXW", multiplier: 100, comboTickSize: 0.05, comboExchange: "CBOE" },
   XSP: {
     tradingClass: "XSPW",
     multiplier: 100,
     optionSymbol: "SPX",
     priceDivisor: 10,
     comboTickSize: 0.05,
+    comboExchange: "CBOE",
   },
-  RUT: { tradingClass: "RUTW", multiplier: 100, comboTickSize: 0.05 },
+  RUT: { tradingClass: "RUTW", multiplier: 100, comboTickSize: 0.05, comboExchange: "CBOE" },
 };
 
 /** Round a price to the nearest tick size increment. */

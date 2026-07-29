@@ -32,16 +32,21 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
   // Build BAG contract — use the IBKR option symbol (e.g. XSP options use SPX)
   const config = SYMBOL_CONFIG[req.symbol];
   const bagSymbol = config?.optionSymbol ?? req.symbol;
+  // Index options (SPX, XSP, RUT) trade exclusively on CBOE. Use direct CBOE routing
+  // to avoid TWS error 10043 ("Missing or invalid NonGuaranteed value") which occurs
+  // when SMART routing requires NonGuaranteed for mixed-action combo legs.
+  // For unknown symbols fall back to SMART with NonGuaranteed.
+  const comboExchange = config?.comboExchange ?? "SMART";
   const comboContract: Contract = {
     symbol: bagSymbol,
     secType: "BAG" as SecType,
-    exchange: "SMART",
+    exchange: comboExchange,
     currency: "USD",
     comboLegs: req.legs.map(leg => ({
       conId: leg.conId,
       ratio: 1,
       action: leg.side === "BUY" ? OrderAction.BUY : OrderAction.SELL,
-      exchange: leg.exchange,
+      exchange: comboExchange,
       openClose: 0,          // 0 = Same (retail default, required by TWS)
       shortSaleSlot: 0,      // 0 = not short sale
       designatedLocation: "", // empty when shortSaleSlot = 0
@@ -63,9 +68,13 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
     lmtPrice,
     tif: TimeInForce.DAY,
     transmit: true,
-    smartComboRoutingParams: [
-      { tag: "NonGuaranteed", value: "1" },
-    ],
+    // SmartComboRoutingParams only needed for SMART-routed combos (NonGuaranteed flag).
+    // For direct exchange routing (e.g. CBOE), omit to avoid error 10043.
+    ...(comboExchange === "SMART" && {
+      smartComboRoutingParams: [
+        { tag: "NonGuaranteed", value: "1" },
+      ],
+    }),
   };
 
   const orderId = await api.placeNewOrder(comboContract, order);
