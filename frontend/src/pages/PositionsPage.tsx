@@ -24,6 +24,7 @@ import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { PositionTable, GroupedPositionsTable } from "@/components/positions";
+import { RollOptionDialog } from "@/components/positions/RollOptionDialog";
 import type { AllocationData } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
 import { ChevronRight, ChevronDown, RefreshCw, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
@@ -55,6 +56,7 @@ export function PositionsPage() {
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>(DEFAULT_DASHBOARD_SETTINGS);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"all" | "asset-class" | "type">("all");
+  const [rollPosition, setRollPosition] = useState<Position | null>(null);
 
   const { filters, setFilters } = usePositionFilters();
 
@@ -311,6 +313,7 @@ export function PositionsPage() {
           onAssign={handleAssign}
           onSymbolClick={setChartSymbol}
           getSparkline={getPositionSparkline}
+          onRoll={setRollPosition}
         />
       ) : (
         <Card>
@@ -330,6 +333,7 @@ export function PositionsPage() {
                 onAssign={handleAssign}
                 onSymbolClick={setChartSymbol}
                 getSparkline={getPositionSparkline}
+                onRoll={setRollPosition}
               />
             )}
           </CardContent>
@@ -415,6 +419,12 @@ export function PositionsPage() {
         open={!!chartSymbol}
         onClose={() => setChartSymbol(null)}
       />
+      <RollOptionDialog
+        open={!!rollPosition}
+        onOpenChange={(open) => { if (!open) setRollPosition(null); }}
+        position={rollPosition}
+        onOrderPlaced={loadData}
+      />
     </div>
   );
 }
@@ -431,6 +441,7 @@ function ByTypeView({
   onAssign,
   onSymbolClick,
   getSparkline,
+  onRoll,
 }: {
   filteredPositions: Position[];
   spreadPositions: Position[];
@@ -440,6 +451,7 @@ function ByTypeView({
   onAssign: (position: Position, assetClassId: string) => void;
   onSymbolClick: (symbol: string) => void;
   getSparkline: (position: Position) => { data: import("@assup/shared").SparklinePoint[]; loading: boolean; error: boolean };
+  onRoll: (position: Position) => void;
 }) {
   const stockPositions = filteredPositions.filter(p => p.secType === "STK" || p.secType === "CASH");
   const optionPositions = filteredPositions.filter(p => p.secType === "OPT");
@@ -469,6 +481,7 @@ function ByTypeView({
               onAssign={onAssign}
               onSymbolClick={onSymbolClick}
               getSparkline={getSparkline}
+              onRoll={onRoll}
             />
           </CardContent>
         </Card>

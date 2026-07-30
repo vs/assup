@@ -5,6 +5,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { AssetClassSelect, ExternalLinks } from "@/components/common";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { Sparkline } from "@/components/Sparkline";
+import { RefreshCw } from "lucide-react";
 
 interface PositionRowProps {
   position: Position;
@@ -17,6 +18,7 @@ interface PositionRowProps {
   onSymbolClick: (symbol: string) => void;
   assetClasses: AssetClass[];
   showAssetClassColumn?: boolean;
+  onRoll?: (position: Position) => void;
 }
 
 function fmtCompact(value: number): string {
@@ -43,6 +45,7 @@ export function PositionRow({
   onSymbolClick,
   assetClasses,
   showAssetClassColumn = true,
+  onRoll,
 }: PositionRowProps) {
   const exposure = calculatePositionExposure(position);
   const pct = netLiquidation > 0 ? (exposure / netLiquidation) * 100 : null;
@@ -74,6 +77,15 @@ export function PositionRow({
                 </Link>
               </TickerHoverCard>
               <ExternalLinks symbol={position.underlying || position.symbol} />
+              {isOption && position.position < 0 && onRoll && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRoll(position); }}
+                  className="ml-1 p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                  title="Roll option"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              )}
             </>
           )}
         </div>

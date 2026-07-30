@@ -27,6 +27,7 @@ interface PositionTableProps {
   onSymbolClick: (symbol: string) => void;
   getSparkline: (position: Position) => SparklineState;
   showAssetClassColumn?: boolean;
+  onRoll?: (position: Position) => void;
 }
 
 export function PositionTable({
@@ -38,6 +39,7 @@ export function PositionTable({
   onSymbolClick,
   getSparkline,
   showAssetClassColumn = true,
+  onRoll,
 }: PositionTableProps) {
   const getColumnValue = useCallback((pos: Position, col: string): string | number => {
     const qty = Math.abs(pos.position);
@@ -111,6 +113,7 @@ export function PositionTable({
               onSymbolClick={onSymbolClick}
               assetClasses={assetClasses}
               showAssetClassColumn={showAssetClassColumn}
+              onRoll={onRoll}
             />
           );
         })}
