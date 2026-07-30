@@ -3,7 +3,7 @@
  */
 
 import { request } from "./client";
-import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderInput, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult, RollCandidatesRequest, RollCandidatesResponse, RollOrderRequest, IronCondorOrderResponse } from "@assup/shared";
 
 interface SimulateOrderInput {
   symbol: string;
@@ -52,5 +52,17 @@ export const ordersApi = {
   cancel: (orderId: number) =>
     request<void>(`/api/orders/${orderId}`, {
       method: "DELETE",
+    }),
+
+  rollCandidates: (input: RollCandidatesRequest) =>
+    request<RollCandidatesResponse>("/api/orders/roll-candidates", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  roll: (input: RollOrderRequest) =>
+    request<IronCondorOrderResponse>("/api/orders/roll", {
+      method: "POST",
+      body: JSON.stringify(input),
     }),
 };
