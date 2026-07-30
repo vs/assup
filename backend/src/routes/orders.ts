@@ -10,8 +10,10 @@ import { ibkrService, Position as IBPosition } from "../services/ibkr.js";
 import { assignmentService, getSecurityKey } from "../services/assignment.service.js";
 import { allocationService } from "../services/allocation.service.js";
 import { IBKRConnectionError } from "../errors/index.js";
-import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema, optionQuoteSchema, modifyOrderSchema } from "@assup/shared";
-import type { Order, OrderImpact, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult } from "@assup/shared";
+import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema, optionQuoteSchema, modifyOrderSchema, rollCandidatesRequestSchema, rollOrderRequestSchema } from "@assup/shared";
+import type { Order, OrderImpact, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult, RollCandidatesResponse } from "@assup/shared";
+import { findRollCandidates } from "../services/rollCandidates.service.js";
+import { placeComboOrder } from "../services/ironCondor.service.js";
 import { OpenOrder as IBOpenOrder, Contract, SecType, OptionType } from "@stoqey/ib";
 
 const router = Router();
@@ -412,6 +414,53 @@ router.delete(
 
     await ibkrService.cancelOrder(orderId);
     res.status(204).end();
+  })
+);
+
+/**
+ * POST /api/orders/roll-candidates
+ * Find roll candidates for a short option position.
+ * Returns close-leg prices and profitable roll candidates sorted by net credit.
+ */
+router.post(
+  "/roll-candidates",
+  validate({ body: rollCandidatesRequestSchema }),
+  asyncHandler(async (req, res) => {
+    if (!ibkrService.isConnected()) {
+      throw new IBKRConnectionError();
+    }
+
+    const result: RollCandidatesResponse = await findRollCandidates(req.body);
+    res.json(result);
+  })
+);
+
+/**
+ * POST /api/orders/roll
+ * Place a roll combo order: BUY-to-close current + SELL-to-open replacement.
+ * limitPrice is the net credit to receive (positive); negated for IBKR convention.
+ */
+router.post(
+  "/roll",
+  validate({ body: rollOrderRequestSchema }),
+  asyncHandler(async (req, res) => {
+    if (!ibkrService.isConnected()) {
+      throw new IBKRConnectionError();
+    }
+
+    const { symbol, closeConId, openConId, quantity, limitPrice } = req.body;
+
+    const result = await placeComboOrder({
+      symbol,
+      legs: [
+        { conId: closeConId, strike: 0, type: "CALL", side: "BUY", expiration: "", exchange: "SMART" },
+        { conId: openConId, strike: 0, type: "CALL", side: "SELL", expiration: "", exchange: "SMART" },
+      ],
+      quantity,
+      limitPrice: -limitPrice, // negate: IBKR convention negative = credit received
+    });
+
+    res.status(201).json(result);
   })
 );
 
