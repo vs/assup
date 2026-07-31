@@ -28,15 +28,16 @@ export function isApiError(error: unknown): error is ApiError & Error {
 /**
  * Make a typed API request with error handling
  */
-export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  // Abort after 30s to prevent the UI from hanging when backend is slow
+export async function request<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  // Abort after timeoutMs (default 30s) to prevent the UI from hanging when backend is slow
+  const { timeoutMs = 30_000, ...fetchOptions } = options ?? {};
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
     response = await fetch(`${getApiBase()}${path}`, {
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",

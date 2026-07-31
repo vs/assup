@@ -123,12 +123,20 @@ export async function findRollCandidates(
 
     if (filtered.length === 0) return;
 
+    // Limit to the nearest MAX_EXPIRATIONS expirations to keep the market-data
+    // batch manageable (a full chain can be 300+ contracts and would easily
+    // exceed the 30s client timeout).
+    const MAX_EXPIRATIONS = 5;
+    const uniqueExpiries = [...new Set(filtered.map((e) => e.expiration))].sort();
+    const nearestExpiries = new Set(uniqueExpiries.slice(0, MAX_EXPIRATIONS));
+    const capped = filtered.filter((e) => nearestExpiries.has(e.expiration));
+
     // Extract the correct leg contract (call or put) from each chain entry
-    const contracts = filtered.map((e) => (right === "C" ? e.call : e.put));
+    const contracts = capped.map((e) => (right === "C" ? e.call : e.put));
     const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
 
     const today = new Date();
-    for (const entry of filtered) {
+    for (const entry of capped) {
       const contract = right === "C" ? entry.call : entry.put;
       const data = marketDataMap.get(marketDataKey(contract));
       if (!data || !data.bid || !data.ask || data.bid <= 0) continue;

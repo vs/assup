@@ -58,6 +58,7 @@ export const ordersApi = {
     request<RollCandidatesResponse>("/api/orders/roll-candidates", {
       method: "POST",
       body: JSON.stringify(input),
+      timeoutMs: 90_000,
     }),
 
   roll: (input: RollOrderRequest) =>
