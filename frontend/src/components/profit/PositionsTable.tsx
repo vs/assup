@@ -44,6 +44,7 @@ interface PositionsTableProps {
   onSymbolClick: (symbol: string) => void;
   onClosePosition: (pos: CurrentOptionPosition, existingOrder: Order | null) => void;
   onSpreadClosed?: () => void;
+  onRoll?: (pos: CurrentOptionPosition) => void;
 }
 
 export function PositionsTable({
@@ -52,6 +53,7 @@ export function PositionsTable({
   onSymbolClick,
   onClosePosition,
   onSpreadClosed,
+  onRoll,
 }: PositionsTableProps) {
   // Match a position to its existing BUY order
   const findMatchingOrder = useCallback((pos: CurrentOptionPosition): Order | undefined => {
@@ -118,6 +120,7 @@ export function PositionsTable({
           <SortableHead column="qty" className="text-right" {...expSort}>Qty</SortableHead>
           <SortableHead column="unrealizedPnl" className="text-right" {...expSort}>Unrealized P&L</SortableHead>
           <SortableHead column="projected" className="text-right" {...expSort}>Projected</SortableHead>
+          <TableHead className="w-16" />
           <TableHead className="text-right">Order</TableHead>
         </TableRow>
       </TableHeader>
@@ -201,6 +204,13 @@ export function PositionsTable({
               </TableCell>
               <TableCell className="text-right font-mono text-blue-600">
                 {formatCurrency(pos.projectedProfit)}
+              </TableCell>
+              <TableCell>
+                {pos.quantity < 0 && pos.conId && onRoll && (
+                  <Button variant="ghost" size="sm" onClick={() => onRoll(pos)}>
+                    Roll
+                  </Button>
+                )}
               </TableCell>
               <TableCell className="text-right font-mono">
                 {matchingOrder ? (
@@ -350,6 +360,7 @@ function OpenSpreadRow({
         <TableCell className="text-right font-mono text-blue-600">
           {formatCurrency(spread.maxProfit)}
         </TableCell>
+        <TableCell />
         <TableCell className="text-right font-mono">
           <Button
             variant="ghost"
@@ -400,6 +411,7 @@ function OpenSpreadRow({
             <TableCell className="text-right font-mono text-xs text-blue-600">
               {formatCurrency(leg.projectedProfit)}
             </TableCell>
+            <TableCell />
             <TableCell />
           </TableRow>
         );

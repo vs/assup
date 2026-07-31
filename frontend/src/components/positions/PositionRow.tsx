@@ -6,6 +6,7 @@ import { AssetClassSelect, ExternalLinks } from "@/components/common";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { Sparkline } from "@/components/Sparkline";
 import { RefreshCw } from "lucide-react";
+import type { RollablePosition } from "./RollOptionDialog";
 
 interface PositionRowProps {
   position: Position;
@@ -18,7 +19,7 @@ interface PositionRowProps {
   onSymbolClick: (symbol: string) => void;
   assetClasses: AssetClass[];
   showAssetClassColumn?: boolean;
-  onRoll?: (position: Position) => void;
+  onRoll?: (position: RollablePosition) => void;
 }
 
 function fmtCompact(value: number): string {

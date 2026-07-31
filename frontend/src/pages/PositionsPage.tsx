@@ -25,7 +25,7 @@ import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { PositionTable, GroupedPositionsTable } from "@/components/positions";
 import { RollOptionDialog } from "@/components/positions/RollOptionDialog";
-import type { AllocationData } from "@/components/positions";
+import type { AllocationData, RollablePosition } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
 import { ChevronRight, ChevronDown, RefreshCw, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import {
@@ -56,7 +56,7 @@ export function PositionsPage() {
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>(DEFAULT_DASHBOARD_SETTINGS);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"all" | "asset-class" | "type">("all");
-  const [rollPosition, setRollPosition] = useState<Position | null>(null);
+  const [rollPosition, setRollPosition] = useState<RollablePosition | null>(null);
 
   const { filters, setFilters } = usePositionFilters();
 
@@ -451,7 +451,7 @@ function ByTypeView({
   onAssign: (position: Position, assetClassId: string) => void;
   onSymbolClick: (symbol: string) => void;
   getSparkline: (position: Position) => { data: import("@assup/shared").SparklinePoint[]; loading: boolean; error: boolean };
-  onRoll: (position: Position) => void;
+  onRoll: (position: RollablePosition) => void;
 }) {
   const stockPositions = filteredPositions.filter(p => p.secType === "STK" || p.secType === "CASH");
   const optionPositions = filteredPositions.filter(p => p.secType === "OPT");

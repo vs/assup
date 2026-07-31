@@ -7,3 +7,4 @@ export { PositionTable } from "./PositionTable";
 export { GroupedPositionsTable } from "./GroupedPositionsTable";
 export type { AllocationData } from "./GroupedPositionsTable";
 export { RollOptionDialog } from "./RollOptionDialog";
+export type { RollablePosition } from "./RollOptionDialog";

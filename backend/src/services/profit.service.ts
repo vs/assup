@@ -958,6 +958,7 @@ class ProfitService {
             assetClassId: assignment?.assetClassId,
             assetClassName: assignment?.assetClass.name,
             assetClassColor: assignment?.assetClass.color,
+            conId: pos.contract.conId,
           });
         }
       } catch {
@@ -1124,6 +1125,7 @@ class ProfitService {
             assetClassId: assignment?.assetClassId,
             assetClassName: assignment?.assetClass.name,
             assetClassColor: assignment?.assetClass.color,
+            conId: pos.contract.conId,
           };
 
           unrealizedPositions.push(optionPos);

@@ -202,6 +202,8 @@ export interface CurrentOptionPosition {
   expiry: string;
   right: "C" | "P";
   quantity: number;
+  /** IBKR contract ID — populated when available; needed for roll orders */
+  conId?: number;
   avgCost: number;
   marketPrice: number;
   marketValue: number;

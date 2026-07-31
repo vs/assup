@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { Position, AssetClass, SparklinePoint } from "@assup/shared";
 import { calculatePositionExposure } from "@assup/shared";
+import type { RollablePosition } from "./RollOptionDialog";
 import {
   Table,
   TableBody,
@@ -27,7 +28,7 @@ interface PositionTableProps {
   onSymbolClick: (symbol: string) => void;
   getSparkline: (position: Position) => SparklineState;
   showAssetClassColumn?: boolean;
-  onRoll?: (position: Position) => void;
+  onRoll?: (position: RollablePosition) => void;
 }
 
 export function PositionTable({

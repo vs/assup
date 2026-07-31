@@ -42,6 +42,8 @@ import { WarningAlert } from "@/components/common/WarningAlert";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import { PositionsTable } from "@/components/profit/PositionsTable";
+import { RollOptionDialog } from "@/components/positions/RollOptionDialog";
+import type { RollablePosition } from "@/components/positions";
 import { ChartModal } from "@/components/ChartModal";
 import { useTableSort } from "@/hooks/useTableSort";
 import { spreadTypeBadgeProps } from "@/utils/spreadGrouping";
@@ -109,6 +111,7 @@ export function ProfitPage() {
   const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
   const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
   const [openOrders, setOpenOrders] = useState<Order[]>([]);
+  const [rollPosition, setRollPosition] = useState<RollablePosition | null>(null);
 
   const loadOrders = useCallback(() => {
     api.orders.list()
@@ -290,6 +293,15 @@ export function ProfitPage() {
                       setClosePosition(pos);
                     }}
                     onSpreadClosed={() => { loadOrders(); loadData(selectedYear); }}
+                    onRoll={(pos) => pos.conId && setRollPosition({
+                      symbol: pos.symbol,
+                      underlying: pos.underlying,
+                      strike: pos.strike,
+                      right: pos.right,
+                      expiry: pos.expiry.replace(/-/g, ""),
+                      conId: pos.conId,
+                      position: pos.quantity,
+                    })}
                   />
                 </CardContent>
               </Card>
@@ -339,6 +351,13 @@ export function ProfitPage() {
         position={closePosition}
         existingOrder={existingOrderForDialog}
         onOrderPlaced={() => { loadOrders(); loadData(selectedYear); }}
+      />
+
+      <RollOptionDialog
+        open={!!rollPosition}
+        onOpenChange={(open) => { if (!open) setRollPosition(null); }}
+        position={rollPosition}
+        onOrderPlaced={() => loadOrders()}
       />
 
       <ChartModal
@@ -452,6 +471,7 @@ function MonthProfitCard({
   const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
   const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
   const [openOrders, setOpenOrders] = useState<Order[]>([]);
+  const [rollPosition, setRollPosition] = useState<RollablePosition | null>(null);
 
   // Fetch open orders to match against expiring positions
   const loadOrders = useCallback(() => {
@@ -938,6 +958,15 @@ function MonthProfitCard({
                 setClosePosition(pos);
               }}
               onSpreadClosed={() => { loadOrders(); onDataRefresh?.(); }}
+              onRoll={(pos) => pos.conId && setRollPosition({
+                symbol: pos.symbol,
+                underlying: pos.underlying,
+                strike: pos.strike,
+                right: pos.right,
+                expiry: pos.expiry.replace(/-/g, ""),
+                conId: pos.conId,
+                position: pos.quantity,
+              })}
             />
           </CardContent>
         </Card>
@@ -949,6 +978,13 @@ function MonthProfitCard({
         position={closePosition}
         existingOrder={existingOrderForDialog}
         onOrderPlaced={() => { loadOrders(); onDataRefresh?.(); }}
+      />
+
+      <RollOptionDialog
+        open={!!rollPosition}
+        onOpenChange={(open) => { if (!open) setRollPosition(null); }}
+        position={rollPosition}
+        onOrderPlaced={() => loadOrders()}
       />
     </div>
   );

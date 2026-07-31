@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ordersApi } from "@/api/orders";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
-import type { Position, RollCandidate, RollCandidatesResponse } from "@assup/shared";
+import type { RollCandidate, RollCandidatesResponse } from "@assup/shared";
 import {
   Dialog,
   DialogContent,
@@ -21,10 +21,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+/** Minimal position shape required by the Roll dialog; both Position and CurrentOptionPosition satisfy this. */
+export interface RollablePosition {
+  symbol: string;
+  underlying?: string;
+  strike?: number;
+  right?: "C" | "P";
+  /** Expiry in YYYYMMDD format */
+  expiry?: string;
+  conId: number;
+  /** Negative for short positions */
+  position: number;
+}
+
 interface RollOptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  position: Position | null;
+  position: RollablePosition | null;
   onOrderPlaced?: () => void;
 }
 
