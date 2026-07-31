@@ -172,16 +172,24 @@ class ProfitService {
       allClosing.map(t => t.conId).filter((id): id is number => id !== null && id !== 0)
     )];
     const closingConIdSet = new Set(closingConIds);
-    const relaxedContractKeys = new Set(
-      allClosing.map(
-        (t) => `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
-      )
-    );
-
     const allOPTTrades = await prisma.importedTrade.findMany({
       where: { secType: "OPT" },
       orderBy: { tradeDate: "asc" },
     });
+    // Only generate relaxed (no-strike) keys for live executions with NEW conIds
+    // (not already in any FLEX-imported trade). This prevents unrelated same-expiry
+    // options (different strike) from being incorrectly pulled in.
+    const allFlexConIds = new Set(
+      allOPTTrades.map(t => t.conId).filter((id): id is number => id !== null && id !== 0)
+    );
+    const adjustedLiveOptExecutions = todayOptExecutions.filter(
+      t => t.conId && !allFlexConIds.has(t.conId)
+    );
+    const relaxedContractKeys = new Set(
+      adjustedLiveOptExecutions.map(
+        (t) => `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
+      )
+    );
     let optionTrades = allOPTTrades.filter((t) => {
       if (t.conId && closingConIdSet.has(t.conId)) return true;
       const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
@@ -425,19 +433,9 @@ class ProfitService {
     // Include ALL today's executions (both BUY and SELL) since either could be a close:
     // - BUY closes a short position (sell-to-open earlier)
     // - SELL closes a long position (buy-to-open earlier)
-    //
-    // We use two key types:
-    // 1. Exact keys (with strike) for normal matching
-    // 2. Relaxed keys (without strike) to handle strike adjustments from corporate actions
-    //    (e.g., special dividends can adjust a $55 strike to $54.70)
     const exactContractKeys = new Set(
       [...closingTrades, ...todayExecutions].map(
         (t) => `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
-      )
-    );
-    const relaxedContractKeys = new Set(
-      [...closingTrades, ...todayExecutions].map(
-        (t) => `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
       )
     );
 
@@ -456,6 +454,24 @@ class ProfitService {
       where: { secType: "OPT" },
       orderBy: { tradeDate: "asc" },
     });
+
+    // Relaxed (no-strike) keys are ONLY generated for live executions whose conId is
+    // not present in any FLEX-imported trade.  These are genuinely adjusted contracts
+    // (e.g., special dividend changed the conId) and need loose strike matching to find
+    // their original open trade.  Using relaxed keys for normal executions would pull in
+    // unrelated trades sharing the same underlying/expiry/right (different strike).
+    const allFlexConIds = new Set(
+      allOptTrades.map(t => t.conId).filter((id): id is number => id !== null && id !== 0)
+    );
+    const adjustedLiveExecutions = todayExecutions.filter(
+      t => t.conId && !allFlexConIds.has(t.conId)
+    );
+    const relaxedContractKeys = new Set(
+      adjustedLiveExecutions.map(
+        (t) => `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
+      )
+    );
+
     let relevantTrades = allOptTrades.filter((t) => {
       if (t.conId && closingConIdSet.has(t.conId)) return true;
       const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;

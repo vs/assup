@@ -469,6 +469,14 @@ export function groupOptionTrades(
       profit = 0;
     }
 
+    // Skip groups where we have close trades but no matching open and no IBKR P&L.
+    // Without an open trade or IBKR's realizedPnl, the P&L calculation is meaningless
+    // (it would use sellPrice - 0 = positive, a false profit). These arise from
+    // partial FLEX imports or roll trades that haven't been reconciled yet.
+    if (missingOpenTrade && !hasIbkrPnl && !expiredWorthless && !wasAssigned) {
+      continue;
+    }
+
     const first = sorted[0];
     const underlying = first.underlying || first.symbol.split(" ")[0];
     const assetClass = assignmentMap?.get(underlying);
