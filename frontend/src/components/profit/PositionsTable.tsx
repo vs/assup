@@ -205,7 +205,7 @@ export function PositionsTable({
               <TableCell className="text-right font-mono text-blue-600">
                 {formatCurrency(pos.projectedProfit)}
               </TableCell>
-              <TableCell>
+              <TableCell className="font-mono">
                 {pos.quantity < 0 && pos.conId && onRoll && (
                   <Button variant="ghost" size="sm" onClick={() => onRoll(pos)}>
                     Roll
