@@ -1214,6 +1214,9 @@ class IBKRService {
       let totalShares = 0;
       let totalValue = 0;
       let totalCommission = 0;
+      // realizedPNL from commission report: IBKR sets this for closing trades.
+      // Opening trades receive the sentinel value ~1.797e308 (Double.MAX_VALUE).
+      let totalRealizedPnl: number | null = null;
 
       for (const e of orderExecs) {
         const shares = e.execution.shares || 0;
@@ -1223,6 +1226,12 @@ class IBKRService {
         const execId = e.execution.execId || "";
         const commissionReport = commissions.get(execId);
         totalCommission += commissionReport?.commission || 0;
+        // Extract realizedPNL — ignore sentinel value (> 1e15) used for opening trades
+        const pnl = commissionReport?.realizedPNL;
+        if (pnl != null && Math.abs(pnl) < 1e15) {
+          if (totalRealizedPnl === null) totalRealizedPnl = 0;
+          totalRealizedPnl += pnl;
+        }
       }
 
       const avgPrice = totalShares > 0 ? totalValue / totalShares : 0;
@@ -1287,9 +1296,10 @@ class IBKRService {
         proceeds,
         commission: -Math.abs(totalCommission),
         buySell: isBuy ? "BUY" : "SELL",
-        openClose: null,
+        // If IBKR provided a valid realizedPNL, this is a closing trade
+        openClose: totalRealizedPnl !== null ? "C" : null,
         costBasis: null,
-        realizedPnl: null,
+        realizedPnl: totalRealizedPnl,
         wasAssigned: false,
         assignmentDate: null,
         currency: contract.currency || "USD",

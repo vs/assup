@@ -164,29 +164,30 @@ class ProfitService {
       )
     );
 
-    // Fetch option trades scoped to contracts that closed in this period
+    // Fetch option trades scoped to contracts that closed in this period.
+    // Use both conId matching AND composite key matching: a conId-only query would miss
+    // adjusted contracts (e.g., after a special dividend the adjusted contract has a
+    // different conId than the original open trade stored in the DB).
     const closingConIds = [...new Set(
       allClosing.map(t => t.conId).filter((id): id is number => id !== null && id !== 0)
     )];
+    const closingConIdSet = new Set(closingConIds);
+    const relaxedContractKeys = new Set(
+      allClosing.map(
+        (t) => `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`
+      )
+    );
 
-    let optionTrades: typeof closingTrades;
-    if (closingConIds.length > 0 && closingConIds.length >= contractKeys.size) {
-      // All closing trades have conIds — use precise query
-      optionTrades = await prisma.importedTrade.findMany({
-        where: { secType: "OPT", conId: { in: closingConIds } },
-        orderBy: { tradeDate: "asc" },
-      });
-    } else {
-      // Fallback: fetch all OPT trades and filter in-memory
-      const allOptionTrades = await prisma.importedTrade.findMany({
-        where: { secType: "OPT" },
-        orderBy: { tradeDate: "asc" },
-      });
-      optionTrades = allOptionTrades.filter((t) => {
-        const key = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
-        return contractKeys.has(key);
-      });
-    }
+    const allOPTTrades = await prisma.importedTrade.findMany({
+      where: { secType: "OPT" },
+      orderBy: { tradeDate: "asc" },
+    });
+    let optionTrades = allOPTTrades.filter((t) => {
+      if (t.conId && closingConIdSet.has(t.conId)) return true;
+      const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      const relaxedKey = `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      return contractKeys.has(exactKey) || relaxedContractKeys.has(relaxedKey);
+    });
 
     // Merge today's OPT executions into the trade list (deduplicate by tradeId)
     if (todayOptExecutions.length > 0) {
@@ -440,32 +441,27 @@ class ProfitService {
       )
     );
 
-    // Fetch option trades scoped to contracts that closed in this month
+    // Fetch option trades scoped to contracts that closed in this month.
+    // Use both conId matching AND composite key matching: a conId-only query would miss
+    // adjusted contracts (e.g., after a special dividend the adjusted contract has a
+    // different conId than the original open trade stored in the DB).
     const closingConIds = [...new Set(
       [...closingTrades, ...todayExecutions]
         .map(t => t.conId)
         .filter((id): id is number => id !== null && id !== 0)
     )];
+    const closingConIdSet = new Set(closingConIds);
 
-    let relevantTrades: typeof closingTrades;
-    if (closingConIds.length > 0 && closingConIds.length >= exactContractKeys.size) {
-      // All closing trades have conIds — use precise query
-      relevantTrades = await prisma.importedTrade.findMany({
-        where: { secType: "OPT", conId: { in: closingConIds } },
-        orderBy: { tradeDate: "asc" },
-      });
-    } else {
-      // Fallback: fetch all OPT trades and filter in-memory with relaxed matching
-      const allTrades = await prisma.importedTrade.findMany({
-        where: { secType: "OPT" },
-        orderBy: { tradeDate: "asc" },
-      });
-      relevantTrades = allTrades.filter((t) => {
-        const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
-        const relaxedKey = `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
-        return exactContractKeys.has(exactKey) || relaxedContractKeys.has(relaxedKey);
-      });
-    }
+    const allOptTrades = await prisma.importedTrade.findMany({
+      where: { secType: "OPT" },
+      orderBy: { tradeDate: "asc" },
+    });
+    let relevantTrades = allOptTrades.filter((t) => {
+      if (t.conId && closingConIdSet.has(t.conId)) return true;
+      const exactKey = `${t.underlying || t.symbol}-${t.strike}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      const relaxedKey = `${t.underlying || t.symbol}-${t.expiry?.toISOString().split("T")[0]}-${t.right}`;
+      return exactContractKeys.has(exactKey) || relaxedContractKeys.has(relaxedKey);
+    });
 
     // Merge today's executions with imported trades (avoid duplicates by tradeId)
     if (todayExecutions.length > 0) {

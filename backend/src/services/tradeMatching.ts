@@ -149,7 +149,9 @@ export function groupOptionTrades(
           matchedCloseGroups.add(closeGroup.key);
           break;
         }
-        continue; // Different conIds, definitely not the same contract
+        // Different conIds: could be an adjusted contract (e.g., special dividend changed the
+        // strike, creating a new non-standard contract with a different conId). Fall through
+        // to composite key matching with strike tolerance to handle this case.
       }
 
       // Fall back to relaxed matching: same underlying/expiry/right with strike tolerance
