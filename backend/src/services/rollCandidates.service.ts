@@ -8,6 +8,7 @@ import { SecType, OptionType } from "@stoqey/ib";
 import type { Contract } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
 import type { OptionChainEntry } from "./ibkr.js";
+import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
 import {
   withLiveMarketData,
   getDaysToExpiry,
@@ -109,6 +110,8 @@ export async function findRollCandidates(
   const candidates: RollCandidate[] = [];
   let closeLeg: RollCandidatesResponse["closeLeg"] = { conId, bid: 0, ask: 0, mid: 0 };
 
+  const sessionId = `roll-${symbol}-${Date.now()}`;
+
   await withLiveMarketData(async () => {
     // Fetch close-leg prices
     const closeData = await ibkrService.getMarketData(closeContract);
@@ -131,9 +134,19 @@ export async function findRollCandidates(
     const nearestExpiries = new Set(uniqueExpiries.slice(0, MAX_EXPIRATIONS));
     const capped = filtered.filter((e) => nearestExpiries.has(e.expiration));
 
+    // Reserve market data lines so roll batch doesn't silently compete with
+    // the spread stream's persistent subscriptions (Observable fallback path).
+    const granted = marketDataLineRegistry.reserve(sessionId, capped.length);
+    console.log(`[RollCandidates] ${symbol}: fetching ${capped.length} contracts across ${nearestExpiries.size} expiries (lines granted: ${granted}/${capped.length})`);
+
     // Extract the correct leg contract (call or put) from each chain entry
     const contracts = capped.map((e) => (right === "C" ? e.call : e.put));
-    const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
+    let marketDataMap: Awaited<ReturnType<typeof ibkrService.getMarketDataBatch>>;
+    try {
+      marketDataMap = await ibkrService.getMarketDataBatch(contracts);
+    } finally {
+      marketDataLineRegistry.release(sessionId);
+    }
 
     const today = new Date();
     for (const entry of capped) {
