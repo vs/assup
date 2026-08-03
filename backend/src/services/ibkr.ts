@@ -790,8 +790,10 @@ class IBKRService {
     }
   }
 
-  // Get market data for a contract (bid, ask, last)
-  async getMarketData(contract: Contract): Promise<TickerData | null> {
+  // Get market data for a contract (bid, ask, last).
+  // snapshotOnly=true skips the Observable fallback — use for batch calls where
+  // the Observable path would hang on frozen/unavailable contracts.
+  async getMarketData(contract: Contract, snapshotOnly = false): Promise<TickerData | null> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
     }
@@ -807,12 +809,15 @@ class IBKRService {
 
     // Try snapshot first (fast), then fall back to Observable-based streaming.
     // Wrap in a 5s timeout — when TWS is unresponsive, snapshot can hang 11s+.
+    // snapshotOnly skips the Observable fallback to avoid per-contract 5s hangs in batch mode.
     const MD_TIMEOUT_MS = 5000;
     let result: Omit<TickerData, "contract"> | null = null;
     try {
-      const mdPromise = (async () =>
-        await this.trySnapshotMarketData(mdContract, validPrice)
-          ?? await this.tryObservableMarketData(mdContract, validPrice))();
+      const mdPromise = snapshotOnly
+        ? this.trySnapshotMarketData(mdContract, validPrice)
+        : (async () =>
+            await this.trySnapshotMarketData(mdContract, validPrice)
+              ?? await this.tryObservableMarketData(mdContract, validPrice))();
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`getMarketData timed out after ${MD_TIMEOUT_MS}ms for ${contract.symbol}`)), MD_TIMEOUT_MS),
       );
@@ -968,7 +973,7 @@ class IBKRService {
 
       const promises = batch.map(async (contract) => {
         try {
-          const data = await this.getMarketData(contract);
+          const data = await this.getMarketData(contract, true);
           if (data && data.bid !== undefined && data.ask !== undefined) {
             const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
             results.set(key, data);
