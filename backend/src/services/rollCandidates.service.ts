@@ -134,6 +134,20 @@ export async function findRollCandidates(
     const nearestExpiries = new Set(uniqueExpiries.slice(0, MAX_EXPIRATIONS));
     const capped = filtered.filter((e) => nearestExpiries.has(e.expiration));
 
+    // Resolve conIds BEFORE the market data batch so getContractDetails runs
+    // while TWS is still idle (240 snapshot requests would throttle it if done after).
+    const tradingClass = (capped[0].call.tradingClass as string | undefined) ?? symbol;
+    const multiplier = Number((capped[0].call.multiplier as number | string | undefined) ?? 100);
+    const conIdMap = new Map<string, number>();
+    await Promise.all(
+      [...nearestExpiries].map(async (expiry) => {
+        const resolved = await ibkrService.resolveOptionConIds(symbol, expiry, tradingClass, multiplier);
+        for (const [key, conId] of resolved) {
+          conIdMap.set(`${expiry}_${key}`, conId);
+        }
+      }),
+    );
+
     // Reserve market data lines so roll batch doesn't silently compete with
     // the spread stream's persistent subscriptions (Observable fallback path).
     const granted = marketDataLineRegistry.reserve(sessionId, capped.length);
@@ -147,21 +161,6 @@ export async function findRollCandidates(
     } finally {
       marketDataLineRegistry.release(sessionId);
     }
-
-    // Resolve conIds per expiration. getOptionChain builds contracts from
-    // getSecDefOptParams which doesn't include conIds, so a separate lookup
-    // is required before we can place combo orders.
-    const tradingClass = (capped[0].call.tradingClass as string | undefined) ?? symbol;
-    const multiplier = Number((capped[0].call.multiplier as number | string | undefined) ?? 100);
-    const conIdMap = new Map<string, number>();
-    await Promise.all(
-      [...nearestExpiries].map(async (expiry) => {
-        const resolved = await ibkrService.resolveOptionConIds(symbol, expiry, tradingClass, multiplier);
-        for (const [key, conId] of resolved) {
-          conIdMap.set(`${expiry}_${key}`, conId);
-        }
-      }),
-    );
 
     const today = new Date();
     for (const entry of capped) {

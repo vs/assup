@@ -793,7 +793,8 @@ class IBKRService {
   // Get market data for a contract (bid, ask, last).
   // snapshotOnly=true skips the Observable fallback — use for batch calls where
   // the Observable path would hang on frozen/unavailable contracts.
-  async getMarketData(contract: Contract, snapshotOnly = false): Promise<TickerData | null> {
+  // timeoutMs controls the per-contract deadline (default 5s; use shorter in batch mode).
+  async getMarketData(contract: Contract, snapshotOnly = false, timeoutMs = 5000): Promise<TickerData | null> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
     }
@@ -808,9 +809,9 @@ class IBKRService {
     const validPrice = (v: number | undefined) => v != null && v >= 0 ? v : undefined;
 
     // Try snapshot first (fast), then fall back to Observable-based streaming.
-    // Wrap in a 5s timeout — when TWS is unresponsive, snapshot can hang 11s+.
-    // snapshotOnly skips the Observable fallback to avoid per-contract 5s hangs in batch mode.
-    const MD_TIMEOUT_MS = 5000;
+    // Wrap in a timeout — when TWS is unresponsive, snapshot can hang 11s+.
+    // snapshotOnly skips the Observable fallback to avoid per-contract hangs in batch mode.
+    const MD_TIMEOUT_MS = timeoutMs;
     let result: Omit<TickerData, "contract"> | null = null;
     try {
       const mdPromise = snapshotOnly
@@ -973,7 +974,7 @@ class IBKRService {
 
       const promises = batch.map(async (contract) => {
         try {
-          const data = await this.getMarketData(contract, true);
+          const data = await this.getMarketData(contract, true, 2000);
           if (data && data.bid !== undefined && data.ask !== undefined) {
             const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
             results.set(key, data);
@@ -1618,7 +1619,7 @@ class IBKRService {
     }
     const conIdMap = new Map<string, number>();
     try {
-      const details = await this.api.getContractDetails({
+      const detailsPromise = this.api.getContractDetails({
         symbol,
         secType: SecType.OPT,
         exchange: "SMART",
@@ -1627,6 +1628,12 @@ class IBKRService {
         tradingClass,
         multiplier,
       });
+      const details = await Promise.race([
+        detailsPromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`resolveOptionConIds timed out for ${symbol} ${expiration}`)), 10_000),
+        ),
+      ]);
       for (const d of details) {
         const c = d.contract;
         if (c.conId && c.strike != null && c.right) {
