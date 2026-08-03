@@ -114,6 +114,9 @@ export function RollOptionDialog({
         symbol: position.underlying ?? position.symbol,
         closeConId: data.closeLeg.conId,
         openConId: selected.conId,
+        openExpiration: selected.expiration,
+        openStrike: selected.strike,
+        openRight: position.right!,
         quantity: Math.abs(position.position),
         limitPrice,
       });

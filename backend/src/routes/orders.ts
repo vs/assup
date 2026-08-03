@@ -448,7 +448,18 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    const { symbol, closeConId, openConId, quantity, limitPrice } = req.body;
+    const { symbol, closeConId, openExpiration, openStrike, openRight, quantity, limitPrice } = req.body;
+    let { openConId } = req.body;
+
+    // conId may be 0 when pre-resolution failed during roll-candidates fetch.
+    // Resolve it now using the contract spec — single targeted lookup, not a full chain scan.
+    if (openConId === 0) {
+      const conIdMap = await ibkrService.resolveOptionConIds(symbol, openExpiration, symbol, 100);
+      openConId = conIdMap.get(`${openStrike}:${openRight}`) ?? 0;
+      if (openConId === 0) {
+        throw new Error(`Could not resolve contract ID for ${symbol} ${openExpiration} ${openStrike} ${openRight}`);
+      }
+    }
 
     const result = await placeComboOrder({
       symbol,

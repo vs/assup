@@ -40,7 +40,12 @@ export interface RollCandidatesResponse {
 export interface RollOrderRequest {
   symbol: string;
   closeConId: number;
+  /** IBKR conId for the new leg; 0 if not yet resolved (server resolves using open* fields) */
   openConId: number;
+  /** Required when openConId is 0 so the server can resolve the contract */
+  openExpiration: string;
+  openStrike: number;
+  openRight: "C" | "P";
   quantity: number;
   /** Positive net credit from user's perspective; backend negates for IBKR convention */
   limitPrice: number;

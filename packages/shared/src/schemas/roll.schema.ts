@@ -16,7 +16,10 @@ export const rollCandidatesRequestSchema = z.object({
 export const rollOrderRequestSchema = z.object({
   symbol: z.string().min(1).max(20).toUpperCase(),
   closeConId: z.number().int().positive(),
-  openConId: z.number().int().positive(),
+  openConId: z.number().int().min(0),
+  openExpiration: z.string().length(8, "Expiration must be YYYYMMDD format"),
+  openStrike: z.number().positive(),
+  openRight: z.enum(["C", "P"]),
   quantity: z.number().int().positive(),
   limitPrice: z.number().positive("Limit price (net credit) must be positive"),
 });
