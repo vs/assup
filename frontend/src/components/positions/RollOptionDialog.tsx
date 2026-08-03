@@ -22,6 +22,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+function formatExpiry(yyyymmdd: string, dte?: number): string {
+  if (yyyymmdd.length !== 8) return yyyymmdd;
+  const d = new Date(
+    parseInt(yyyymmdd.slice(0, 4)),
+    parseInt(yyyymmdd.slice(4, 6)) - 1,
+    parseInt(yyyymmdd.slice(6, 8)),
+  );
+  const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return dte !== undefined ? `${label} (${dte}d)` : label;
+}
+
 /** Minimal position shape required by the Roll dialog; both Position and CurrentOptionPosition satisfy this. */
 export interface RollablePosition {
   symbol: string;
@@ -196,7 +207,7 @@ export function RollOptionDialog({
             {[
               { label: "Symbol", value: position.underlying ?? position.symbol },
               { label: "Strike", value: position.strike ? formatCurrency(position.strike) : "—" },
-              { label: "Expiry", value: position.expiry ?? "—" },
+              { label: "Expiry", value: position.expiry ? formatExpiry(position.expiry) : "—" },
               { label: "Qty", value: String(position.position) },
               { label: "Close Ask", value: data ? formatCurrency(data.closeLeg.ask, { maximumFractionDigits: 2 }) : "—" },
               { label: "Close Mid", value: data ? formatCurrency(data.closeLeg.mid, { maximumFractionDigits: 2 }) : "—" },
@@ -273,7 +284,7 @@ export function RollOptionDialog({
           {!loading && data && (
             data.candidates.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                No profitable roll candidates found. Try reducing Min DTE beyond.
+                No profitable roll candidates found. Try reducing the "days further out" value.
               </div>
             ) : (
               <div className="rounded-md border overflow-hidden">
@@ -282,7 +293,6 @@ export function RollOptionDialog({
                     <TableRow>
                       <TableHead>Strike</TableHead>
                       <TableHead>Expiry</TableHead>
-                      <TableHead className="text-right">DTE</TableHead>
                       <TableHead className="text-right">New Mid</TableHead>
                       <TableHead className="text-right">Net Credit</TableHead>
                       <TableHead className="text-right">Ann. Return</TableHead>
@@ -305,8 +315,7 @@ export function RollOptionDialog({
                           onClick={() => handleSelectCandidate(c)}
                         >
                           <TableCell className="font-semibold">{formatCurrency(c.strike)}</TableCell>
-                          <TableCell className="text-muted-foreground">{c.expiration}</TableCell>
-                          <TableCell className="text-right tabular-nums">{c.daysToExpiry}</TableCell>
+                          <TableCell className="text-muted-foreground">{formatExpiry(c.expiration, c.daysToExpiry)}</TableCell>
                           <TableCell className="text-right tabular-nums font-mono">
                             {formatCurrency(c.mid, { maximumFractionDigits: 2 })}
                           </TableCell>
