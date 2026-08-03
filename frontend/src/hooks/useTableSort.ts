@@ -3,9 +3,11 @@ import { useState, useCallback, useMemo } from "react";
 export function useTableSort<T>(
   items: T[],
   getColumnValue: (item: T, column: string) => string | number,
+  initialColumn: string | null = null,
+  initialDir: "asc" | "desc" = "asc",
 ) {
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sortColumn, setSortColumn] = useState<string | null>(initialColumn);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(initialDir);
 
   const toggleSort = useCallback((column: string) => {
     if (sortColumn !== column) {

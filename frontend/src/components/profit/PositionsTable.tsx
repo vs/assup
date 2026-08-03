@@ -95,7 +95,7 @@ export function PositionsTable({
       default: return 0;
     }
   }, []);
-  const expSort = useTableSort(ungrouped, getExpiringValue);
+  const expSort = useTableSort(ungrouped, getExpiringValue, "dte", "asc");
 
   if (positions.length === 0) {
     return (
