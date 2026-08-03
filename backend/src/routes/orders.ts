@@ -430,9 +430,16 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    // Abort IBKR processing when the client disconnects (e.g. dialog closed, page navigated)
+    // Abort IBKR processing when the client disconnects before we finish.
+    // Use res.on('close') rather than req.on('close'): the request stream can
+    // emit 'close' as soon as body-parser consumes the body (before our async
+    // work starts), which would abort the controller prematurely.
+    // res.on('close') fires only when the connection is destroyed without a
+    // completed response — i.e. the client genuinely disconnected mid-scan.
     const cancelController = new AbortController();
-    req.on("close", () => cancelController.abort());
+    res.on("close", () => {
+      if (!res.writableEnded) cancelController.abort();
+    });
 
     const result: RollCandidatesResponse = await findRollCandidates(req.body, cancelController.signal);
     res.json(result);

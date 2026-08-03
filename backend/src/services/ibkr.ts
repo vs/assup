@@ -971,7 +971,10 @@ class IBKRService {
 
     for (let i = 0; i < contracts.length; i += batchSize) {
       // Stop processing if the client disconnected
-      if (signal?.aborted) break;
+      if (signal?.aborted) {
+        console.log(`Market data batch: aborted by client after ${successCount} successes (${i}/${contracts.length} processed)`);
+        break;
+      }
 
       const batch = contracts.slice(i, i + batchSize);
 
