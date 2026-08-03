@@ -957,7 +957,7 @@ class IBKRService {
   // Snapshots are short-lived (TWS auto-cancels after responding) so they
   // don't need to be tracked in the line registry. We just cap concurrency
   // to avoid flooding TWS with too many simultaneous requests.
-  async getMarketDataBatch(contracts: Contract[]): Promise<Map<string, TickerData>> {
+  async getMarketDataBatch(contracts: Contract[], signal?: AbortSignal): Promise<Map<string, TickerData>> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
     }
@@ -970,6 +970,9 @@ class IBKRService {
     const batchSize = 10;
 
     for (let i = 0; i < contracts.length; i += batchSize) {
+      // Stop processing if the client disconnected
+      if (signal?.aborted) break;
+
       const batch = contracts.slice(i, i + batchSize);
 
       const promises = batch.map(async (contract) => {

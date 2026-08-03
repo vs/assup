@@ -54,11 +54,12 @@ export const ordersApi = {
       method: "DELETE",
     }),
 
-  rollCandidates: (input: RollCandidatesRequest) =>
+  rollCandidates: (input: RollCandidatesRequest, signal?: AbortSignal) =>
     request<RollCandidatesResponse>("/api/orders/roll-candidates", {
       method: "POST",
       body: JSON.stringify(input),
       timeoutMs: 90_000,
+      signal,
     }),
 
   roll: (input: RollOrderRequest) =>

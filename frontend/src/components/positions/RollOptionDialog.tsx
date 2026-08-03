@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ordersApi } from "@/api/orders";
 import { formatCurrency, formatDisplayName } from "@assup/shared";
 import type { RollCandidate, RollCandidatesResponse } from "@assup/shared";
@@ -57,39 +57,66 @@ export function RollOptionDialog({
   const [placing, setPlacing] = useState(false);
   const [success, setSuccess] = useState<{ orderId: number } | null>(null);
 
-  const fetchCandidates = useCallback(async () => {
+  // Tracks the in-flight scan request so it can be cancelled
+  const abortRef = useRef<AbortController | null>(null);
+
+  const cancelScan = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setLoading(false);
+  }, []);
+
+  const startScan = useCallback(async () => {
     if (!position || !position.expiry || !position.strike || !position.right || !position.conId) return;
+
+    // Cancel any previous in-flight scan before starting a new one
+    cancelScan();
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError(null);
     setSelected(null);
     setSuccess(null);
+    setData(null);
+
     try {
-      const result = await ordersApi.rollCandidates({
-        symbol: position.underlying ?? position.symbol,
-        expiration: position.expiry,
-        strike: position.strike,
-        right: position.right,
-        conId: position.conId,
-        minDTEBeyond,
-      });
+      const result = await ordersApi.rollCandidates(
+        {
+          symbol: position.underlying ?? position.symbol,
+          expiration: position.expiry,
+          strike: position.strike,
+          right: position.right,
+          conId: position.conId,
+          minDTEBeyond,
+        },
+        controller.signal,
+      );
       setData(result);
     } catch (err) {
+      // Ignore errors from a cancelled scan (user clicked Cancel or closed dialog)
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : "Failed to fetch candidates");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        abortRef.current = null;
+      }
     }
-  }, [position, minDTEBeyond]);
+  }, [position, minDTEBeyond, cancelScan]);
 
-  // Fetch on open
+  // Cancel any in-flight scan when the component unmounts
   useEffect(() => {
-    if (open && position) {
-      fetchCandidates();
-    }
-  }, [open, position, fetchCandidates]);
+    return () => { abortRef.current?.abort(); };
+  }, []);
 
-  // Reset when closed
-  useEffect(() => {
-    if (!open) {
+  // Reset state when dialog closes
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      cancelScan();
       setData(null);
       setSelected(null);
       setError(null);
@@ -97,7 +124,8 @@ export function RollOptionDialog({
       setMinDTEBeyond(30);
       setMinNetCredit(0.10);
     }
-  }, [open]);
+    onOpenChange(nextOpen);
+  }, [cancelScan, onOpenChange]);
 
   const handleSelectCandidate = (candidate: RollCandidate) => {
     setSelected(candidate);
@@ -122,7 +150,7 @@ export function RollOptionDialog({
       });
       setSuccess({ orderId: result.orderId });
       onOrderPlaced?.();
-      setTimeout(() => onOpenChange(false), 1500);
+      setTimeout(() => handleOpenChange(false), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place roll order");
     } finally {
@@ -152,7 +180,7 @@ export function RollOptionDialog({
     : null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Roll Option</DialogTitle>
@@ -179,7 +207,7 @@ export function RollOptionDialog({
             ))}
           </div>
 
-          {/* Filters */}
+          {/* Filters + Scan controls */}
           <div className="flex gap-4 items-end flex-wrap">
             <div className="space-y-1">
               <Label className="text-xs">Min DTE beyond current expiry</Label>
@@ -211,73 +239,82 @@ export function RollOptionDialog({
                 />
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchCandidates} disabled={loading}>
-              {loading ? "Loading…" : "Refresh"}
-            </Button>
+            {loading ? (
+              <Button variant="outline" size="sm" onClick={cancelScan}>
+                Cancel
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={startScan}>
+                {data ? "Re-scan" : "Scan"}
+              </Button>
+            )}
           </div>
 
-          {/* Error */}
+          {/* Status / Error */}
+          {loading && (
+            <div className="text-center py-4 text-muted-foreground text-sm">Scanning option chain…</div>
+          )}
           {error && (
             <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">{error}</div>
           )}
 
-          {/* Candidates table */}
-          {loading ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">Scanning option chain…</div>
-          ) : data && data.candidates.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              No profitable roll candidates found. Try reducing Min DTE beyond.
-            </div>
-          ) : data ? (
-            <div className="rounded-md border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Strike</TableHead>
-                    <TableHead>Expiry</TableHead>
-                    <TableHead className="text-right">DTE</TableHead>
-                    <TableHead className="text-right">New Mid</TableHead>
-                    <TableHead className="text-right">Net Credit</TableHead>
-                    <TableHead className="text-right">Ann. Return</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.candidates.map((c) => {
-                    const aboveThreshold = c.netCreditMid >= minNetCredit;
-                    const isSelected = selected?.conId === c.conId;
-                    return (
-                      <TableRow
-                        key={`${c.strike}-${c.expiration}`}
-                        className={`cursor-pointer ${
-                          isSelected
-                            ? "bg-primary/10 outline outline-1 outline-primary"
-                            : aboveThreshold
-                            ? "border-l-2 border-l-green-500 bg-green-500/5 hover:bg-green-500/10"
-                            : "hover:bg-muted/50"
-                        }`}
-                        onClick={() => handleSelectCandidate(c)}
-                      >
-                        <TableCell className="font-semibold">{formatCurrency(c.strike)}</TableCell>
-                        <TableCell className="text-muted-foreground">{c.expiration}</TableCell>
-                        <TableCell className="text-right tabular-nums">{c.daysToExpiry}</TableCell>
-                        <TableCell className="text-right tabular-nums font-mono">
-                          {formatCurrency(c.mid, { maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className={`text-right tabular-nums font-mono font-semibold ${
-                          c.netCreditMid >= minNetCredit ? "text-green-600" : "text-green-500"
-                        }`}>
-                          +{formatCurrency(c.netCreditMid, { maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums font-mono">
-                          {c.annualizedReturn.toFixed(1)}%
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          ) : null}
+          {/* Candidates table (only shown after a completed scan) */}
+          {!loading && data && (
+            data.candidates.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No profitable roll candidates found. Try reducing Min DTE beyond.
+              </div>
+            ) : (
+              <div className="rounded-md border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Strike</TableHead>
+                      <TableHead>Expiry</TableHead>
+                      <TableHead className="text-right">DTE</TableHead>
+                      <TableHead className="text-right">New Mid</TableHead>
+                      <TableHead className="text-right">Net Credit</TableHead>
+                      <TableHead className="text-right">Ann. Return</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.candidates.map((c) => {
+                      const aboveThreshold = c.netCreditMid >= minNetCredit;
+                      const isSelected = selected?.conId === c.conId;
+                      return (
+                        <TableRow
+                          key={`${c.strike}-${c.expiration}`}
+                          className={`cursor-pointer ${
+                            isSelected
+                              ? "bg-primary/10 outline outline-1 outline-primary"
+                              : aboveThreshold
+                              ? "border-l-2 border-l-green-500 bg-green-500/5 hover:bg-green-500/10"
+                              : "hover:bg-muted/50"
+                          }`}
+                          onClick={() => handleSelectCandidate(c)}
+                        >
+                          <TableCell className="font-semibold">{formatCurrency(c.strike)}</TableCell>
+                          <TableCell className="text-muted-foreground">{c.expiration}</TableCell>
+                          <TableCell className="text-right tabular-nums">{c.daysToExpiry}</TableCell>
+                          <TableCell className="text-right tabular-nums font-mono">
+                            {formatCurrency(c.mid, { maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className={`text-right tabular-nums font-mono font-semibold ${
+                            c.netCreditMid >= minNetCredit ? "text-green-600" : "text-green-500"
+                          }`}>
+                            +{formatCurrency(c.netCreditMid, { maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums font-mono">
+                            {c.annualizedReturn.toFixed(1)}%
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )
+          )}
 
           {/* Order preview */}
           {selected && data && (
@@ -333,7 +370,7 @@ export function RollOptionDialog({
               )}
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={placing}>
+                <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={placing}>
                   Cancel
                 </Button>
                 <Button

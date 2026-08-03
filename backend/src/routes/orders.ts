@@ -430,7 +430,11 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    const result: RollCandidatesResponse = await findRollCandidates(req.body);
+    // Abort IBKR processing when the client disconnects (e.g. dialog closed, page navigated)
+    const cancelController = new AbortController();
+    req.on("close", () => cancelController.abort());
+
+    const result: RollCandidatesResponse = await findRollCandidates(req.body, cancelController.signal);
     res.json(result);
   })
 );

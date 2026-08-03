@@ -92,6 +92,7 @@ export function computeRollAnnualizedReturn(
  */
 export async function findRollCandidates(
   input: RollCandidatesRequest,
+  signal?: AbortSignal,
 ): Promise<RollCandidatesResponse> {
   const { symbol, expiration, strike, right, conId, minDTEBeyond } = input;
 
@@ -157,7 +158,7 @@ export async function findRollCandidates(
     const contracts = capped.map((e) => (right === "C" ? e.call : e.put));
     let marketDataMap: Awaited<ReturnType<typeof ibkrService.getMarketDataBatch>>;
     try {
-      marketDataMap = await ibkrService.getMarketDataBatch(contracts);
+      marketDataMap = await ibkrService.getMarketDataBatch(contracts, signal);
     } finally {
       marketDataLineRegistry.release(sessionId);
     }
