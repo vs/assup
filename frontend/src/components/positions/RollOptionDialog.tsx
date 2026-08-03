@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -210,7 +211,17 @@ export function RollOptionDialog({
           {/* Filters + Scan controls */}
           <div className="flex gap-4 items-end flex-wrap">
             <div className="space-y-1">
-              <Label className="text-xs">Min DTE beyond current expiry</Label>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs">Roll at least</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-xs text-muted-foreground cursor-help underline decoration-dotted">(?)</span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-56">
+                    The replacement option must expire at least this many days after the current position's expiry date.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
@@ -221,7 +232,7 @@ export function RollOptionDialog({
                   className="w-20 text-center"
                   disabled={loading}
                 />
-                <span className="text-sm text-muted-foreground">days</span>
+                <span className="text-sm text-muted-foreground">days further out</span>
               </div>
             </div>
             <div className="space-y-1">
