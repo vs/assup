@@ -1602,6 +1602,45 @@ class IBKRService {
   }
 
   /**
+   * Resolve conIds for option contracts at a given expiration.
+   * getOptionChain builds contracts from getSecDefOptParams which doesn't include
+   * conIds — this lookup is needed before placing combo orders.
+   * Returns a map keyed by "${strike}:${right}" (e.g. "62:C").
+   */
+  async resolveOptionConIds(
+    symbol: string,
+    expiration: string,
+    tradingClass: string,
+    multiplier: number,
+  ): Promise<Map<string, number>> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+    const conIdMap = new Map<string, number>();
+    try {
+      const details = await this.api.getContractDetails({
+        symbol,
+        secType: SecType.OPT,
+        exchange: "SMART",
+        currency: "USD",
+        lastTradeDateOrContractMonth: expiration,
+        tradingClass,
+        multiplier,
+      });
+      for (const d of details) {
+        const c = d.contract;
+        if (c.conId && c.strike != null && c.right) {
+          const rightKey = c.right === OptionType.Put ? "P" : "C";
+          conIdMap.set(`${c.strike}:${rightKey}`, c.conId);
+        }
+      }
+    } catch (err) {
+      console.error(`[resolveOptionConIds] ${symbol} ${expiration}:`, err);
+    }
+    return conIdMap;
+  }
+
+  /**
    * Run a TWS market scanner to discover symbols matching criteria.
    * Uses the IBKR scanner subscription API to find stocks by various metrics
    * (most active, high option volume, top gainers, etc.)

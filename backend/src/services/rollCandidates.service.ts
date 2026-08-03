@@ -148,6 +148,21 @@ export async function findRollCandidates(
       marketDataLineRegistry.release(sessionId);
     }
 
+    // Resolve conIds per expiration. getOptionChain builds contracts from
+    // getSecDefOptParams which doesn't include conIds, so a separate lookup
+    // is required before we can place combo orders.
+    const tradingClass = (capped[0].call.tradingClass as string | undefined) ?? symbol;
+    const multiplier = Number((capped[0].call.multiplier as number | string | undefined) ?? 100);
+    const conIdMap = new Map<string, number>();
+    await Promise.all(
+      [...nearestExpiries].map(async (expiry) => {
+        const resolved = await ibkrService.resolveOptionConIds(symbol, expiry, tradingClass, multiplier);
+        for (const [key, conId] of resolved) {
+          conIdMap.set(`${expiry}_${key}`, conId);
+        }
+      }),
+    );
+
     const today = new Date();
     for (const entry of capped) {
       const contract = right === "C" ? entry.call : entry.put;
@@ -165,7 +180,7 @@ export async function findRollCandidates(
       if (netCreditMid <= 0) continue;
 
       const daysToExpiry = getDaysToExpiry(entry.expiration, today);
-      const candidateConId = contract.conId ?? 0;
+      const candidateConId = conIdMap.get(`${entry.expiration}_${entry.strike}:${right}`) ?? 0;
 
       candidates.push({
         conId: candidateConId,
