@@ -247,7 +247,17 @@ export function RollOptionDialog({
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Highlight threshold (net credit)</Label>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs">Green-highlight rows above</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-xs text-muted-foreground cursor-help underline decoration-dotted">(?)</span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-56">
+                    Rows where the mid-price net credit meets or exceeds this amount are highlighted in green.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">$</span>
                 <Input
@@ -259,6 +269,7 @@ export function RollOptionDialog({
                   className="w-24 text-center"
                   disabled={loading}
                 />
+                <span className="text-sm text-muted-foreground">net credit</span>
               </div>
             </div>
             {loading ? (
