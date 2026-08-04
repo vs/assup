@@ -3,6 +3,7 @@ import { prisma } from "../db/index.js";
 import { PolygonProvider } from "./research/providers/polygon.provider.js";
 import { getMacroEvents } from "./macroCalendar.provider.js";
 import { ibkrService } from "./ibkr.js";
+import { fetchFinnhubEarnings, isFinnhubConfigured } from "./finnhub.client.js";
 import type { CalendarEvent, CalendarEventType, CalendarSettings } from "@assup/shared";
 
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -88,6 +89,12 @@ export class CalendarService {
     const symbols = await this.getTrackedSymbols();
     console.log(`[CalendarSync] Syncing ${symbols.length} symbols`);
 
+    if (!isFinnhubConfigured()) {
+      console.warn(
+        "[CalendarSync] FINNHUB_API_KEY not set — earnings events will not be synced"
+      );
+    }
+
     // Sync each source independently — one failure shouldn't block others
     try {
       await this.syncMacroEvents();
@@ -118,26 +125,50 @@ export class CalendarService {
     }
 
     try {
-      // Fetch earnings
-      const earnings = await polygon.getEarningsCalendar(symbol);
-      for (const e of earnings) {
-        if (!e.date) continue;
-        await prisma.calendarEvent.upsert({
-          where: { source_sourceId: { source: "polygon", sourceId: `earnings:${symbol}:${e.date}` } },
-          create: {
-            eventType: "EARNINGS",
-            symbol,
-            date: new Date(e.date),
-            title: `${symbol} ${e.quarter} Earnings`,
-            details: { estimateEps: e.estimateEps, actualEps: e.actualEps, quarter: e.quarter },
-            source: "polygon",
-            sourceId: `earnings:${symbol}:${e.date}`,
-          },
-          update: {
-            title: `${symbol} ${e.quarter} Earnings`,
-            details: { estimateEps: e.estimateEps, actualEps: e.actualEps, quarter: e.quarter },
-          },
-        });
+      // Fetch earnings from Finnhub — Polygon's financials endpoint returns
+      // historical SEC filings, not upcoming earnings announcement dates.
+      if (isFinnhubConfigured()) {
+        try {
+          const fromDate = new Date();
+          fromDate.setDate(fromDate.getDate() - 30);
+          const toDate = new Date();
+          toDate.setDate(toDate.getDate() + 180);
+          const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+          const earnings = await fetchFinnhubEarnings(symbol, fmt(fromDate), fmt(toDate));
+          for (const e of earnings) {
+            if (!e.date) continue;
+            const hourLabel =
+              e.hour === "bmo" ? "Before Open" :
+              e.hour === "amc" ? "After Close" :
+              e.hour === "dmh" ? "During Market" : null;
+            const quarter = `Q${e.quarter} ${e.year}`;
+            const title = `${symbol} ${quarter} Earnings${hourLabel ? ` (${hourLabel})` : ""}`;
+            const details = {
+              estimateEps: e.epsEstimate,
+              actualEps: e.epsActual,
+              quarter,
+              hour: e.hour || null,
+              revenueEstimate: e.revenueEstimate,
+              revenueActual: e.revenueActual,
+            };
+            await prisma.calendarEvent.upsert({
+              where: { source_sourceId: { source: "finnhub", sourceId: `earnings:${symbol}:${e.date}` } },
+              create: {
+                eventType: "EARNINGS",
+                symbol,
+                date: new Date(e.date),
+                title,
+                details,
+                source: "finnhub",
+                sourceId: `earnings:${symbol}:${e.date}`,
+              },
+              update: { title, details },
+            });
+          }
+        } catch (err) {
+          console.error(`[CalendarSync] Finnhub earnings sync failed for ${symbol}:`, err);
+        }
       }
 
       // Fetch dividends
