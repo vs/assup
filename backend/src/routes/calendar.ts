@@ -1,5 +1,11 @@
 import { Router } from "express";
 import { calendarService } from "../services/calendar.service.js";
+import {
+  getFinnhubApiKeyStatus,
+  setFinnhubApiKey,
+  deleteFinnhubApiKey,
+  testFinnhubConnection,
+} from "../services/finnhub.client.js";
 import type { CalendarEventType } from "@assup/shared";
 
 const router = Router();
@@ -80,6 +86,49 @@ router.put("/settings", async (req, res, next) => {
   try {
     await calendarService.updateSettings(req.body);
     res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Finnhub API Key Management ───────────────────────────────────────
+// GET /api/calendar/finnhub-auth/status
+router.get("/finnhub-auth/status", async (_req, res, next) => {
+  try {
+    res.json(await getFinnhubApiKeyStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/calendar/finnhub-auth/credentials
+router.put("/finnhub-auth/credentials", async (req, res, next) => {
+  try {
+    const { apiKey } = req.body ?? {};
+    if (!apiKey || typeof apiKey !== "string") {
+      return res.status(400).json({ error: "apiKey is required" });
+    }
+    await setFinnhubApiKey(apiKey.trim());
+    res.json(await getFinnhubApiKeyStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/calendar/finnhub-auth/credentials
+router.delete("/finnhub-auth/credentials", async (_req, res, next) => {
+  try {
+    await deleteFinnhubApiKey();
+    res.json(await getFinnhubApiKeyStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/calendar/finnhub-auth/test
+router.post("/finnhub-auth/test", async (_req, res, next) => {
+  try {
+    res.json(await testFinnhubConnection());
   } catch (error) {
     next(error);
   }

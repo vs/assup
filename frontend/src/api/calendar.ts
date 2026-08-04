@@ -8,6 +8,17 @@ interface CalendarQueryParams {
   symbol?: string;
 }
 
+export interface FinnhubAuthStatus {
+  configured: boolean;
+  source: "database" | "environment" | "none";
+  maskedKey?: string;
+}
+
+export interface FinnhubTestResult {
+  ok: boolean;
+  message?: string;
+}
+
 export const calendarApi = {
   getEvents(params: CalendarQueryParams): Promise<CalendarEvent[]> {
     const query = buildQuery({ ...params });
@@ -40,6 +51,29 @@ export const calendarApi = {
     return request<{ success: boolean }>("/api/calendar/settings", {
       method: "PUT",
       body: JSON.stringify(settings),
+    });
+  },
+
+  getFinnhubAuthStatus(): Promise<FinnhubAuthStatus> {
+    return request<FinnhubAuthStatus>("/api/calendar/finnhub-auth/status");
+  },
+
+  setFinnhubApiKey(apiKey: string): Promise<FinnhubAuthStatus> {
+    return request<FinnhubAuthStatus>("/api/calendar/finnhub-auth/credentials", {
+      method: "PUT",
+      body: JSON.stringify({ apiKey }),
+    });
+  },
+
+  deleteFinnhubApiKey(): Promise<FinnhubAuthStatus> {
+    return request<FinnhubAuthStatus>("/api/calendar/finnhub-auth/credentials", {
+      method: "DELETE",
+    });
+  },
+
+  testFinnhub(): Promise<FinnhubTestResult> {
+    return request<FinnhubTestResult>("/api/calendar/finnhub-auth/test", {
+      method: "POST",
     });
   },
 };

@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  CheckCircle,
+  XCircle,
+  Key,
+  RefreshCw,
+  Save,
+  X,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { calendarApi } from "@/api/calendar";
 import type { CalendarEventType, WeekStartDay } from "@assup/shared";
 
@@ -82,6 +92,46 @@ export function CalendarSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar"] });
     },
+  });
+
+  // Finnhub API key management
+  const { data: finnhubStatus } = useQuery({
+    queryKey: ["calendar", "finnhub-auth"],
+    queryFn: () => calendarApi.getFinnhubAuthStatus(),
+  });
+  const [finnhubKeyInput, setFinnhubKeyInput] = useState("");
+  const [finnhubSaveSuccess, setFinnhubSaveSuccess] = useState(false);
+  const [finnhubTestResult, setFinnhubTestResult] = useState<
+    { ok: boolean; message?: string } | null
+  >(null);
+
+  const finnhubSaveMutation = useMutation({
+    mutationFn: (key: string) => calendarApi.setFinnhubApiKey(key),
+    onSuccess: () => {
+      setFinnhubKeyInput("");
+      setFinnhubSaveSuccess(true);
+      setFinnhubTestResult(null);
+      setTimeout(() => setFinnhubSaveSuccess(false), 3000);
+      queryClient.invalidateQueries({ queryKey: ["calendar", "finnhub-auth"] });
+    },
+  });
+
+  const finnhubDeleteMutation = useMutation({
+    mutationFn: () => calendarApi.deleteFinnhubApiKey(),
+    onSuccess: () => {
+      setFinnhubTestResult(null);
+      queryClient.invalidateQueries({ queryKey: ["calendar", "finnhub-auth"] });
+    },
+  });
+
+  const finnhubTestMutation = useMutation({
+    mutationFn: () => calendarApi.testFinnhub(),
+    onSuccess: (result) => setFinnhubTestResult(result),
+    onError: (err) =>
+      setFinnhubTestResult({
+        ok: false,
+        message: err instanceof Error ? err.message : "test failed",
+      }),
   });
 
   return (
@@ -168,6 +218,137 @@ export function CalendarSection() {
             </div>
           </div>
         ))}
+
+        <div className="border-t pt-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Key className="h-3.5 w-3.5" />
+            Finnhub API Key
+          </div>
+          <p className="text-xs text-muted-foreground mb-3 px-2">
+            Used to fetch earnings announcement dates. Get a free key at{" "}
+            <a
+              href="https://finnhub.io/"
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-foreground"
+            >
+              finnhub.io
+            </a>{" "}
+            (60 calls/minute on the free tier).
+          </p>
+
+          <div className="space-y-3 px-2">
+            {finnhubStatus && (
+              <div className="flex items-center gap-2">
+                {finnhubStatus.configured ? (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                    <div className="text-sm">
+                      Configured
+                      <span className="text-muted-foreground ml-1">
+                        ({finnhubStatus.source === "database"
+                          ? "saved in database"
+                          : "from environment"})
+                      </span>
+                      {finnhubStatus.maskedKey && (
+                        <span className="ml-2 text-xs text-muted-foreground font-mono">
+                          {finnhubStatus.maskedKey}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+                    <span className="text-sm">Not configured — earnings will not sync</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            {finnhubTestResult && (
+              <div className="flex items-center gap-2">
+                {finnhubTestResult.ok ? (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm">Key is valid — Finnhub responded OK</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-sm">
+                      Test failed
+                      {finnhubTestResult.message ? ` — ${finnhubTestResult.message}` : ""}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="finnhub-api-key" className="text-xs">API Key</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="finnhub-api-key"
+                  type="password"
+                  placeholder="Enter your Finnhub API key"
+                  value={finnhubKeyInput}
+                  onChange={(e) => setFinnhubKeyInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && finnhubKeyInput.trim()) {
+                      finnhubSaveMutation.mutate(finnhubKeyInput.trim());
+                    }
+                  }}
+                  className="max-w-sm"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => finnhubSaveMutation.mutate(finnhubKeyInput.trim())}
+                  disabled={finnhubSaveMutation.isPending || !finnhubKeyInput.trim()}
+                >
+                  {finnhubSaveMutation.isPending ? (
+                    <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-1.5" />
+                  )}
+                  Save
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => finnhubTestMutation.mutate()}
+                  disabled={finnhubTestMutation.isPending || !finnhubStatus?.configured}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 mr-1.5 ${finnhubTestMutation.isPending ? "animate-spin" : ""}`}
+                  />
+                  Test
+                </Button>
+                {finnhubStatus?.source === "database" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => finnhubDeleteMutation.mutate()}
+                    disabled={finnhubDeleteMutation.isPending}
+                  >
+                    <X className="h-4 w-4 mr-1.5" />
+                    Remove
+                  </Button>
+                )}
+              </div>
+              {finnhubSaveSuccess && (
+                <p className="text-xs text-green-600">API key saved</p>
+              )}
+              {finnhubSaveMutation.isError && (
+                <p className="text-xs text-red-500">
+                  {finnhubSaveMutation.error instanceof Error
+                    ? finnhubSaveMutation.error.message
+                    : "Failed to save"}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         <div className="border-t pt-4">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">

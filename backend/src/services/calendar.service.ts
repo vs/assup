@@ -89,9 +89,9 @@ export class CalendarService {
     const symbols = await this.getTrackedSymbols();
     console.log(`[CalendarSync] Syncing ${symbols.length} symbols`);
 
-    if (!isFinnhubConfigured()) {
+    if (!(await isFinnhubConfigured())) {
       console.warn(
-        "[CalendarSync] FINNHUB_API_KEY not set — earnings events will not be synced"
+        "[CalendarSync] Finnhub API key not configured — earnings events will not be synced"
       );
     }
 
@@ -127,7 +127,7 @@ export class CalendarService {
     try {
       // Fetch earnings from Finnhub — Polygon's financials endpoint returns
       // historical SEC filings, not upcoming earnings announcement dates.
-      if (isFinnhubConfigured()) {
+      if (await isFinnhubConfigured()) {
         try {
           const fromDate = new Date();
           fromDate.setDate(fromDate.getDate() - 30);
