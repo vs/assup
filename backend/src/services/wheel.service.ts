@@ -569,6 +569,13 @@ export const wheelService = {
         }
       }
 
+      // Also request prices for tracked symbols that have no positions at all
+      for (const symbol of trackedSymbols) {
+        if (!result.marketPrices.has(symbol)) {
+          symbolsNeedingPrice.add(symbol);
+        }
+      }
+
       // Fetch market prices only for active tracked symbols missing price data
       const priceSymbols = Array.from(symbolsNeedingPrice).filter(
         (symbol) => !result.marketPrices.has(symbol)
