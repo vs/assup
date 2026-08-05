@@ -1047,6 +1047,65 @@ class IBKRService {
     return results;
   }
 
+  /**
+   * Fetch option delta for multiple contracts using the Observable API.
+   * Returns a Map from conId to delta value.
+   * The Observable API (unlike getMarketDataSnapshot) returns model greeks.
+   */
+  async getOptionDeltas(
+    contracts: Contract[],
+    timeoutMs = 5000
+  ): Promise<Map<number, number>> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+
+    const results = new Map<number, number>();
+    const BATCH_SIZE = 10;
+
+    for (let i = 0; i < contracts.length; i += BATCH_SIZE) {
+      const batch = contracts.slice(i, i + BATCH_SIZE);
+
+      await Promise.allSettled(
+        batch.map(async (contract) => {
+          try {
+            const mdContract = contract.secType === SecType.OPT
+              ? { ...contract, exchange: "SMART" }
+              : contract;
+
+            const mdPromise = lastValueFrom(
+              this.api!.getMarketData(mdContract, "", true, false)
+            );
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("timeout")), timeoutMs)
+            );
+            const update = await Promise.race([mdPromise, timeoutPromise]);
+            const all = update.all;
+            if (!all) return;
+
+            const delta =
+              all.get(10041)?.value ??  // MODEL_OPTION_DELTA
+              all.get(10047)?.value ??  // DELAYED_MODEL_OPTION_DELTA
+              all.get(10005)?.value ??  // BID_OPTION_DELTA
+              all.get(10011)?.value;    // DELAYED_BID_OPTION_DELTA
+
+            if (delta != null && contract.conId) {
+              results.set(contract.conId, delta);
+            }
+          } catch {
+            // Timeout or error — skip this contract
+          }
+        })
+      );
+
+      if (i + BATCH_SIZE < contracts.length) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    return results;
+  }
+
   // Get today's executions (trades) with commission reports
   async getExecutions(filter?: Partial<ExecutionFilter>): Promise<{
     executions: ExecutionDetail[];

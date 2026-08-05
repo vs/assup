@@ -230,44 +230,45 @@ class PositionService {
     positions: Position[],
     rawPositions: IBPosition[]
   ): Promise<void> {
-    const optionPositions: { index: number; contract: Contract }[] = [];
+    // Collect option contracts that need delta
+    const optionContracts: Contract[] = [];
+    const indexByConId = new Map<number, number[]>();
+
     for (let i = 0; i < positions.length; i++) {
-      if (positions[i].secType === "OPT" && positions[i].notionalValue) {
-        const raw = rawPositions.find(
-          (r) => r.pos !== 0 && r.contract.conId === positions[i].conId
-        );
-        if (raw) {
-          optionPositions.push({ index: i, contract: raw.contract });
-        }
+      const pos = positions[i];
+      if (pos.secType !== "OPT" || !pos.notionalValue || !pos.conId) continue;
+
+      const raw = rawPositions.find(
+        (r) => r.pos !== 0 && r.contract.conId === pos.conId
+      );
+      if (!raw) continue;
+
+      if (!indexByConId.has(pos.conId)) {
+        indexByConId.set(pos.conId, []);
+        optionContracts.push(raw.contract);
       }
+      indexByConId.get(pos.conId)!.push(i);
     }
 
-    if (optionPositions.length === 0) return;
+    if (optionContracts.length === 0) return;
 
-    const BATCH_SIZE = 10;
-    const TIMEOUT_MS = 3000;
+    // Fetch deltas via Observable API (which returns model greeks unlike snapshots)
+    const deltas = await ibkrService.getOptionDeltas(optionContracts);
 
-    for (let i = 0; i < optionPositions.length; i += BATCH_SIZE) {
-      const batch = optionPositions.slice(i, i + BATCH_SIZE);
+    // Apply real deltas to positions
+    for (const [conId, delta] of deltas) {
+      const indices = indexByConId.get(conId);
+      if (!indices) continue;
 
-      await Promise.allSettled(
-        batch.map(async ({ index, contract }) => {
-          const data = await ibkrService.getMarketData(contract, true, TIMEOUT_MS);
-          if (data?.delta != null) {
-            const pos = positions[index];
-            // IBKR delta is per-contract, signed by option type (+ for calls, - for puts).
-            // Multiply by sign(position) to get portfolio delta direction:
-            //   short put: (-0.3) * (-1) = +0.3 (bullish)
-            //   long call: (+0.5) * (+1) = +0.5 (bullish)
-            //   short call: (+0.5) * (-1) = -0.5 (bearish)
-            const sign = pos.position >= 0 ? 1 : -1;
-            pos.deltaExposure = data.delta * sign * pos.notionalValue!;
-          }
-        })
-      );
-
-      if (i + BATCH_SIZE < optionPositions.length) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      for (const idx of indices) {
+        const pos = positions[idx];
+        // IBKR delta is per-contract, signed by option type (+ for calls, - for puts).
+        // Multiply by sign(position) to get portfolio delta direction:
+        //   short put: (-0.3) * (-1) = +0.3 (bullish)
+        //   long call: (+0.5) * (+1) = +0.5 (bullish)
+        //   short call: (+0.5) * (-1) = -0.5 (bearish)
+        const sign = pos.position >= 0 ? 1 : -1;
+        pos.deltaExposure = delta * sign * pos.notionalValue!;
       }
     }
   }
