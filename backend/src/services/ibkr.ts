@@ -1048,62 +1048,76 @@ class IBKRService {
   }
 
   /**
-   * Fetch option delta for multiple contracts using the Observable API.
-   * Returns a Map from conId to delta value.
-   * The Observable API (unlike getMarketDataSnapshot) returns model greeks.
+   * Fetch option delta for multiple contracts.
+   * Uses streaming subscriptions with generic tick 13 (model option computation)
+   * and resolves as soon as delta arrives (or timeout). All contracts are
+   * subscribed at once, then unsubscribed after collection.
    */
   async getOptionDeltas(
     contracts: Contract[],
-    timeoutMs = 5000
+    timeoutMs = 3000
   ): Promise<Map<number, number>> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
     }
 
     const results = new Map<number, number>();
-    const BATCH_SIZE = 10;
+    if (contracts.length === 0) return results;
 
-    for (let i = 0; i < contracts.length; i += BATCH_SIZE) {
-      const batch = contracts.slice(i, i + BATCH_SIZE);
+    const pending = new Set<number>();
+    const subscriptions: Subscription[] = [];
 
-      await Promise.allSettled(
-        batch.map(async (contract) => {
-          try {
-            const mdContract = contract.secType === SecType.OPT
-              ? { ...contract, exchange: "SMART" }
-              : contract;
-
-            const mdPromise = lastValueFrom(
-              this.api!.getMarketData(mdContract, "", true, false)
-            );
-            const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("timeout")), timeoutMs)
-            );
-            const update = await Promise.race([mdPromise, timeoutPromise]);
-            const all = update.all;
-            if (!all) return;
-
-            const delta =
-              all.get(10041)?.value ??  // MODEL_OPTION_DELTA
-              all.get(10047)?.value ??  // DELAYED_MODEL_OPTION_DELTA
-              all.get(10005)?.value ??  // BID_OPTION_DELTA
-              all.get(10011)?.value;    // DELAYED_BID_OPTION_DELTA
-
-            if (delta != null && contract.conId) {
-              results.set(contract.conId, delta);
-            }
-          } catch {
-            // Timeout or error — skip this contract
-          }
-        })
-      );
-
-      if (i + BATCH_SIZE < contracts.length) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
+    for (const contract of contracts) {
+      if (!contract.conId) continue;
+      pending.add(contract.conId);
     }
 
-    return results;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => cleanup(), timeoutMs);
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        for (const sub of subscriptions) sub.unsubscribe();
+        resolve(results);
+      };
+
+      for (const contract of contracts) {
+        if (!contract.conId) continue;
+        const conId = contract.conId;
+
+        const mdContract = contract.secType === SecType.OPT
+          ? { ...contract, exchange: "SMART" }
+          : contract;
+
+        // Generic tick 13 = model option computation (triggers 10039-10053 ticks)
+        const sub = this.api!
+          .getMarketData(mdContract, "13", false, false)
+          .subscribe({
+            next: (update) => {
+              const all = update.all;
+              if (!all) return;
+
+              const delta =
+                all.get(10041)?.value ??  // MODEL_OPTION_DELTA
+                all.get(10047)?.value ??  // DELAYED_MODEL_OPTION_DELTA
+                all.get(10005)?.value ??  // BID_OPTION_DELTA
+                all.get(10011)?.value;    // DELAYED_BID_OPTION_DELTA
+
+              if (delta != null) {
+                results.set(conId, delta);
+                pending.delete(conId);
+                if (pending.size === 0) cleanup();
+              }
+            },
+            error: () => {
+              pending.delete(conId);
+              if (pending.size === 0) cleanup();
+            },
+          });
+
+        subscriptions.push(sub);
+      }
+    });
   }
 
   // Get today's executions (trades) with commission reports
