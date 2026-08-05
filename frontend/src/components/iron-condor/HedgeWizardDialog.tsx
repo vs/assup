@@ -129,10 +129,13 @@ export function HedgeWizardDialog({
         const shortStrike = shortLeg?.strike ?? 0;
         if (isPut && row.strike < shortStrike && row.strike > longLegStrike) result.push(row.strike);
         if (!isPut && row.strike > shortStrike && row.strike < longLegStrike) result.push(row.strike);
-      } else {
-        // Butterfly/protective: strikes beyond the long leg
+      } else if (strategy === "butterfly") {
+        // Butterfly: outer wing must be beyond the long leg
         if (isPut && row.strike < longLegStrike) result.push(row.strike);
         if (!isPut && row.strike > longLegStrike) result.push(row.strike);
+      } else {
+        // Protective: any strike is valid
+        result.push(row.strike);
       }
     }
     return result.sort((a, b) => (isPut ? b - a : a - b));
