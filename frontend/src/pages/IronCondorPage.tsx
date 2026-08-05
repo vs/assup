@@ -436,29 +436,16 @@ export function IronCondorPage() {
   const handleHedgeSpread = useCallback((spread: ActiveSpread, initialStrategy?: HedgeStrategy) => {
     setHedgingSpread(spread);
     setHedgeInitialStrategy(initialStrategy);
+    setHedgeDialogOpen(true);
     if (!builderActive) setBuilderActive(true);
-    if (spread.symbol !== symbol || spread.expiry !== expiration) {
-      if (spread.symbol !== symbol) setSymbol(spread.symbol);
-      if (spread.expiry !== expiration) setExpiration(spread.expiry);
-    } else if (chain.length > 0) {
-      setHedgeDialogOpen(true);
-    }
-  }, [symbol, expiration, builderActive, chain.length]);
+    if (spread.symbol !== symbol) setSymbol(spread.symbol);
+    if (spread.expiry !== expiration) setExpiration(spread.expiry);
+  }, [symbol, expiration, builderActive]);
 
-  // Open the hedge wizard once the stream has retuned to the hedging spread's
-  // symbol/expiry. This prevents the wizard from using stale chain/conIds from
-  // the previous subscription.
-  useEffect(() => {
-    if (
-      hedgingSpread &&
-      !hedgeDialogOpen &&
-      symbol === hedgingSpread.symbol &&
-      streamExpiration === hedgingSpread.expiry &&
-      chain.length > 0
-    ) {
-      setHedgeDialogOpen(true);
-    }
-  }, [hedgingSpread, hedgeDialogOpen, symbol, streamExpiration, chain.length]);
+  const handleHedgeDialogClose = useCallback((open: boolean) => {
+    setHedgeDialogOpen(open);
+    if (!open) setHedgingSpread(null);
+  }, []);
 
   // --- Build order legs ---
   const orderLegs = useMemo((): IronCondorOrderLeg[] => {
@@ -747,7 +734,7 @@ export function IronCondorPage() {
 
       <HedgeWizardDialog
         open={hedgeDialogOpen}
-        onOpenChange={setHedgeDialogOpen}
+        onOpenChange={handleHedgeDialogClose}
         spread={hedgingSpread}
         risk={riskMap.get(hedgingSpread?.id ?? "") ?? { level: "healthy", premiumMultiple: null }}
         chain={chain}
