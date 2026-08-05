@@ -2,6 +2,7 @@
  * Service for fetching and enriching position data
  */
 
+import type { Contract } from "@stoqey/ib";
 import { ibkrService, Position as IBPosition } from "./ibkr.js";
 import { prisma } from "../db/index.js";
 import { assignmentService, AssignmentMap } from "./assignment.service.js";
@@ -38,6 +39,9 @@ class PositionService {
     ]);
 
     const positions = this.enrichPositions(rawPositions, assignmentMap);
+
+    // Fetch real greeks for option positions
+    await this.applyRealDeltas(positions, rawPositions);
 
     // Add cash position if we have cash value
     const cashValue = accountData.totalCashValue || 0;
@@ -76,6 +80,9 @@ class PositionService {
 
     // Enrich positions
     const positions = this.enrichPositions(rawPositions, assignmentMap);
+
+    // Fetch real greeks for option positions
+    await this.applyRealDeltas(positions, rawPositions);
 
     // Add cash position
     if (cashValue > 0) {
@@ -213,6 +220,56 @@ class PositionService {
       assetClassName: assignment?.assetClass.name || null,
       assetClassColor: assignment?.assetClass.color || null,
     };
+  }
+
+  /**
+   * Fetch real delta from IBKR market data for option positions and update deltaExposure.
+   * Falls back to the estimated delta (0.5) if market data is unavailable.
+   */
+  private async applyRealDeltas(
+    positions: Position[],
+    rawPositions: IBPosition[]
+  ): Promise<void> {
+    const optionPositions: { index: number; contract: Contract }[] = [];
+    for (let i = 0; i < positions.length; i++) {
+      if (positions[i].secType === "OPT" && positions[i].notionalValue) {
+        const raw = rawPositions.find(
+          (r) => r.pos !== 0 && r.contract.conId === positions[i].conId
+        );
+        if (raw) {
+          optionPositions.push({ index: i, contract: raw.contract });
+        }
+      }
+    }
+
+    if (optionPositions.length === 0) return;
+
+    const BATCH_SIZE = 10;
+    const TIMEOUT_MS = 3000;
+
+    for (let i = 0; i < optionPositions.length; i += BATCH_SIZE) {
+      const batch = optionPositions.slice(i, i + BATCH_SIZE);
+
+      await Promise.allSettled(
+        batch.map(async ({ index, contract }) => {
+          const data = await ibkrService.getMarketData(contract, true, TIMEOUT_MS);
+          if (data?.delta != null) {
+            const pos = positions[index];
+            // IBKR delta is per-contract, signed by option type (+ for calls, - for puts).
+            // Multiply by sign(position) to get portfolio delta direction:
+            //   short put: (-0.3) * (-1) = +0.3 (bullish)
+            //   long call: (+0.5) * (+1) = +0.5 (bullish)
+            //   short call: (+0.5) * (-1) = -0.5 (bearish)
+            const sign = pos.position >= 0 ? 1 : -1;
+            pos.deltaExposure = data.delta * sign * pos.notionalValue!;
+          }
+        })
+      );
+
+      if (i + BATCH_SIZE < optionPositions.length) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
   }
 
   /**
