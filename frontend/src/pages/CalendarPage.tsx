@@ -40,6 +40,20 @@ export function CalendarPage() {
     queryFn: () => calendarApi.getEvents({ start, end }),
   });
 
+  // Upcoming events for the agenda panel — extends 30 days beyond today
+  // so the "Upcoming" section shows events past the current view range
+  // (e.g. next FOMC when viewing the prior month).
+  const todayStr = formatDate(now);
+  const upcomingEnd = (() => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 30);
+    return formatDate(d);
+  })();
+  const { data: upcomingEvents = [] } = useQuery({
+    queryKey: ["calendar", "upcoming", todayStr, upcomingEnd],
+    queryFn: () => calendarApi.getEvents({ start: todayStr, end: upcomingEnd }),
+  });
+
   const handlePrev = () => {
     if (viewMode === "week") {
       const prev = new Date(weekStart);
@@ -156,7 +170,7 @@ export function CalendarPage() {
           <AgendaPanel
             selectedDate={selectedDate}
             events={events}
-            allEvents={events}
+            allEvents={upcomingEvents}
           />
         </div>
       ) : (
