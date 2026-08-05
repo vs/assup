@@ -138,6 +138,24 @@ export function PayoffComparisonChart({
   }
 
   const spotX = priceToX(underlyingPrice);
+
+  // Filter strike labels that overlap with each other or the underlying price label.
+  // Underlying price has priority — skip any strike label within MIN_GAP pixels of it.
+  const MIN_GAP = 45;
+  const visibleStrikes = useMemo(() => {
+    const sorted = [...strikes].sort((a, b) => a.strike - b.strike);
+    const result: StrikeLabel[] = [];
+    for (const s of sorted) {
+      const sx = priceToX(s.strike);
+      // Too close to underlying price label?
+      if (Math.abs(sx - spotX) < MIN_GAP) continue;
+      // Too close to previously accepted strike label?
+      if (result.length > 0 && Math.abs(sx - priceToX(result[result.length - 1].strike)) < MIN_GAP) continue;
+      result.push(s);
+    }
+    return result;
+  }, [strikes, priceToX, spotX]);
+
   const cursorBeforeY = cursor ? pnlToY(cursor.beforePnl) : 0;
   const cursorAfterY = cursor ? pnlToY(cursor.afterPnl) : 0;
 
@@ -189,8 +207,8 @@ export function PayoffComparisonChart({
           {underlyingPrice.toLocaleString()}
         </text>
 
-        {/* Strike labels */}
-        {strikes.map(s => (
+        {/* Strike labels (filtered to avoid overlap) */}
+        {visibleStrikes.map(s => (
           <text key={s.strike} x={priceToX(s.strike)} y={H - pad.bottom + 28} fontSize="10" textAnchor="middle" className="fill-muted-foreground">
             {s.label}
           </text>
