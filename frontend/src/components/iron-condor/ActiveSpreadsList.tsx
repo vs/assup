@@ -79,10 +79,33 @@ function LegRow({ leg }: { leg: ActiveSpreadLeg }) {
   );
 }
 
+/** Extract a single-side spread from an iron condor for hedging */
+function extractSideSpread(spread: ActiveSpread, side: "put" | "call"): ActiveSpread {
+  const right = side === "put" ? "P" : "C";
+  const legs = spread.legs.filter(l => l.right === right);
+  const totalPnl = legs.every(l => l.unrealizedPnl != null)
+    ? legs.reduce((sum, l) => sum + (l.unrealizedPnl ?? 0), 0)
+    : null;
+  const netPremium = legs.reduce((sum, l) => sum + l.avgCost * l.position, 0);
+  const closeMidPrice = legs.every(l => l.midPrice != null)
+    ? legs.reduce((sum, l) => sum + (l.midPrice ?? 0), 0)
+    : null;
+  return {
+    ...spread,
+    id: `${spread.id}-${side}`,
+    type: side === "put" ? "put-spread" : "call-spread",
+    legs,
+    totalPnl: totalPnl != null ? Math.round(totalPnl * 100) / 100 : null,
+    netPremium: Math.round(netPremium * 100) / 100,
+    closeMidPrice,
+    orphanLegs: [],
+  };
+}
+
 function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
   spread: ActiveSpread;
   onClose: () => void;
-  onHedge: (initialStrategy?: HedgeStrategy) => void;
+  onHedge: (spread: ActiveSpread, initialStrategy?: HedgeStrategy) => void;
   risk: SpreadRiskStatus;
   recommendation?: HedgeRecommendation;
 }) {
@@ -104,8 +127,7 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
 
   const isDanger = risk.level === "danger";
   const isWarning = risk.level === "warning";
-  // Hedging only supported for vertical spreads; iron condors need side selection (future work)
-  const canHedge = spread.type !== "iron-condor";
+  const isIronCondor = spread.type === "iron-condor";
 
   const cardClass = isDanger
     ? "border rounded-lg bg-red-50 border-red-200 border-l-[3px] border-l-red-500"
@@ -195,12 +217,44 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
             )}
           </div>
 
-          {canHedge && (
+          {isIronCondor ? (
+            <div className="space-y-2 pt-2 border-t mt-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-red-600 w-14">PUT</span>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "roll")} className="gap-1.5">
+                  <ArrowDownUp className="h-3.5 w-3.5" /> Roll Down
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "butterfly")} className="gap-1.5">
+                  <GitBranch className="h-3.5 w-3.5" /> Butterfly
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "protective")} className="gap-1.5">
+                  <Shield className="h-3.5 w-3.5" /> Protective Put
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-green-600 w-14">CALL</span>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "roll")} className="gap-1.5">
+                  <ArrowDownUp className="h-3.5 w-3.5" /> Roll Up
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "butterfly")} className="gap-1.5">
+                  <GitBranch className="h-3.5 w-3.5" /> Butterfly
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "protective")} className="gap-1.5">
+                  <Shield className="h-3.5 w-3.5" /> Protective Call
+                </Button>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={onClose} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
+                  <XIcon className="h-3.5 w-3.5" /> Close Spread
+                </Button>
+              </div>
+            </div>
+          ) : (
             <div className="flex items-center gap-2 pt-2 border-t mt-2 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onHedge("roll")}
+                onClick={() => onHedge(spread, "roll")}
                 className="gap-1.5"
               >
                 <ArrowDownUp className="h-3.5 w-3.5" />
@@ -209,7 +263,7 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onHedge("butterfly")}
+                onClick={() => onHedge(spread, "butterfly")}
                 className="gap-1.5"
               >
                 <GitBranch className="h-3.5 w-3.5" />
@@ -218,7 +272,7 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onHedge("protective")}
+                onClick={() => onHedge(spread, "protective")}
                 className="gap-1.5"
               >
                 <Shield className="h-3.5 w-3.5" />
@@ -282,7 +336,7 @@ export function ActiveSpreadsList({ spreads, onClose, onHedge, riskMap, recommen
               key={spread.id}
               spread={spread}
               onClose={() => onClose(spread)}
-              onHedge={(initialStrategy) => onHedge(spread, initialStrategy)}
+              onHedge={onHedge}
               risk={riskMap.get(spread.id) ?? { level: "healthy", premiumMultiple: null }}
               recommendation={recommendations.get(spread.id)}
             />
