@@ -123,7 +123,7 @@ export class SpreadStreamSession {
 
     // Acquire live market data early — some indices (e.g. RUT) don't have
     // delayed data, so the underlying price snapshot would return nothing.
-    ibkrService.acquireLiveMarketData();
+    await ibkrService.acquireLiveMarketData();
 
     // 1. Fetch underlying price (retry up to 3 times — the market data type
     //    switch above may not take effect before the first snapshot request)

@@ -49,11 +49,9 @@ export function useSpreadsStream(
   const reconnectAttemptRef = useRef(0);
   // Stable client ID so the backend can destroy the previous session on reconnect
   const clientIdRef = useRef(`c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
-  // Use ref for focusRange to avoid triggering reconnects when auto-select
-  // updates selectedLegs → focusRange. The backend handles focus via target deltas
-  // and drift monitoring. focusRange is only read on explicit reconnects.
-  const focusRangeRef = useRef(focusRange);
-  focusRangeRef.current = focusRange;
+  // Serialize focusRange for stable dependency comparison — triggers reconnect
+  // when the user selects legs so the backend subscribes densely around them.
+  const focusRangeKey = focusRange ? `${focusRange.min}:${focusRange.max}` : "";
 
   // Throttle: accumulate chain-update events and flush at updateIntervalMs
   const pendingUpdatesRef = useRef<
@@ -83,11 +81,9 @@ export function useSpreadsStream(
     if (selectedStrikes && selectedStrikes.length > 0) {
       params.set("strikes", selectedStrikes.join(","));
     }
-    // Read focusRange from ref (not closure) — avoids reconnect on auto-select changes
-    const currentFocusRange = focusRangeRef.current;
-    if (currentFocusRange) {
-      params.set("focusMin", String(currentFocusRange.min));
-      params.set("focusMax", String(currentFocusRange.max));
+    if (focusRange) {
+      params.set("focusMin", String(focusRange.min));
+      params.set("focusMax", String(focusRange.max));
     }
     if (targetPutDelta != null) params.set("targetPutDelta", String(targetPutDelta));
     if (targetCallDelta != null) params.set("targetCallDelta", String(targetCallDelta));
@@ -188,11 +184,12 @@ export function useSpreadsStream(
 
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
-  // Note: wingWidth and focusRange intentionally excluded — wingWidth is a hint
-  // for the backend's focus, focusRange is read from a ref to avoid reconnection
-  // when auto-select updates selectedLegs. The backend handles focus via target
-  // deltas and drift monitoring; focusRange is only sent on explicit reconnects.
-  }, [symbol, expiration, selectedStrikes, targetPutDelta, targetCallDelta, mode, enabled]);
+  // Note: wingWidth intentionally excluded — it's a hint for the backend's focus.
+  // focusRangeKey triggers reconnect when user selects legs so the backend
+  // subscribes densely around the chosen strikes. focusRange is read in the
+  // closure but keyed by focusRangeKey to avoid reconnects from object identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, expiration, selectedStrikes, focusRangeKey, targetPutDelta, targetCallDelta, mode, enabled]);
 
   // Connect on mount and when params change
   useEffect(() => {

@@ -117,17 +117,11 @@ export function IronCondorPage() {
   const [hedgeWarningPct, setHedgeWarningPct] = useState(100);
   const [hedgeDangerPct, setHedgeDangerPct] = useState(200);
 
-  // When chain is collapsed, only stream selected strikes — unless the hedge
-  // wizard is open, which needs the full chain for candidate strike quotes.
-  const streamStrikes = useMemo(() => {
-    if (chainExpanded || hedgeDialogOpen) return undefined; // full chain
-    const strikes: number[] = [];
-    if (selectedLegs.buyPut) strikes.push(selectedLegs.buyPut);
-    if (selectedLegs.sellPut) strikes.push(selectedLegs.sellPut);
-    if (selectedLegs.sellCall) strikes.push(selectedLegs.sellCall);
-    if (selectedLegs.buyCall) strikes.push(selectedLegs.buyCall);
-    return strikes.length > 0 ? strikes : undefined;
-  }, [chainExpanded, selectedLegs, hedgeDialogOpen]);
+  // Don't restrict to onlyStrikes — focusRange handles dense subscription
+  // around selected legs, and scout→focus handles initial discovery.
+  // Passing exact leg strikes as onlyStrikes prevented loading market data
+  // for surrounding strikes.
+  const streamStrikes = undefined;
 
   const hasPutSide = mode === "put-spread" || mode === "iron-condor";
   const hasCallSide = mode === "call-spread" || mode === "iron-condor";
