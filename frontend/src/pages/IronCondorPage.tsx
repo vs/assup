@@ -444,7 +444,6 @@ export function IronCondorPage() {
 
   const handleHedgeDialogClose = useCallback((open: boolean) => {
     setHedgeDialogOpen(open);
-    if (!open) setHedgingSpread(null);
   }, []);
 
   // --- Build order legs ---
