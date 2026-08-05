@@ -137,12 +137,12 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
 
   return (
     <div className={cardClass}>
-      {/* Header row */}
-      <div className="flex items-center justify-between p-3">
+      {/* Header row — click anywhere to expand/collapse */}
+      <div className="flex items-center justify-between p-3 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-3">
-          <button onClick={() => setExpanded(!expanded)} className="text-muted-foreground hover:text-foreground">
+          <span className="text-muted-foreground">
             {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
+          </span>
           <Badge variant={spread.type === "put-spread" ? "danger" : spread.type === "call-spread" ? "success" : "purple"}>
             {spreadModeLabel(spread.type)}
           </Badge>
@@ -170,7 +170,7 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
               )}
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); onClose(); }}>
             Close
           </Button>
         </div>
@@ -218,75 +218,51 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
           </div>
 
           {isIronCondor ? (
-            <div className="space-y-2 pt-2 border-t mt-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-red-600 w-14">PUT</span>
-                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "roll")} className="gap-1.5">
-                  <ArrowDownUp className="h-3.5 w-3.5" /> Roll Down
+            <div className="flex justify-end pt-2 border-t mt-2">
+              <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-1.5 gap-y-1 items-center">
+                <span className="text-[10px] font-semibold text-red-600 pr-1">PUT</span>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "roll")} className="gap-1 text-xs h-7 px-2">
+                  <ArrowDownUp className="h-3 w-3" /> Roll Down
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "butterfly")} className="gap-1.5">
-                  <GitBranch className="h-3.5 w-3.5" /> Butterfly
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "butterfly")} className="gap-1 text-xs h-7 px-2">
+                  <GitBranch className="h-3 w-3" /> Butterfly
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "protective")} className="gap-1.5">
-                  <Shield className="h-3.5 w-3.5" /> Protective Put
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "protective")} className="gap-1 text-xs h-7 px-2">
+                  <Shield className="h-3 w-3" /> Protective
                 </Button>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-green-600 w-14">CALL</span>
-                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "roll")} className="gap-1.5">
-                  <ArrowDownUp className="h-3.5 w-3.5" /> Roll Up
+                <span className="text-[10px] font-semibold text-green-600 pr-1">CALL</span>
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "roll")} className="gap-1 text-xs h-7 px-2">
+                  <ArrowDownUp className="h-3 w-3" /> Roll Up
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "butterfly")} className="gap-1.5">
-                  <GitBranch className="h-3.5 w-3.5" /> Butterfly
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "butterfly")} className="gap-1 text-xs h-7 px-2">
+                  <GitBranch className="h-3 w-3" /> Butterfly
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "protective")} className="gap-1.5">
-                  <Shield className="h-3.5 w-3.5" /> Protective Call
+                <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "protective")} className="gap-1 text-xs h-7 px-2">
+                  <Shield className="h-3 w-3" /> Protective
                 </Button>
-              </div>
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={onClose} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
-                  <XIcon className="h-3.5 w-3.5" /> Close Spread
+                <div />
+                <div />
+                <div />
+                <Button variant="outline" size="sm" onClick={onClose} className="gap-1 text-xs h-7 px-2 text-red-600 border-red-200 hover:bg-red-50">
+                  <XIcon className="h-3 w-3" /> Close
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 pt-2 border-t mt-2 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onHedge(spread, "roll")}
-                className="gap-1.5"
-              >
-                <ArrowDownUp className="h-3.5 w-3.5" />
+            <div className="flex items-center justify-end gap-1.5 pt-2 border-t mt-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={() => onHedge(spread, "roll")} className="gap-1 text-xs h-7 px-2">
+                <ArrowDownUp className="h-3 w-3" />
                 {spread.type === "put-spread" ? "Roll Down" : "Roll Up"}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onHedge(spread, "butterfly")}
-                className="gap-1.5"
-              >
-                <GitBranch className="h-3.5 w-3.5" />
-                Butterfly
+              <Button variant="outline" size="sm" onClick={() => onHedge(spread, "butterfly")} className="gap-1 text-xs h-7 px-2">
+                <GitBranch className="h-3 w-3" /> Butterfly
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onHedge(spread, "protective")}
-                className="gap-1.5"
-              >
-                <Shield className="h-3.5 w-3.5" />
+              <Button variant="outline" size="sm" onClick={() => onHedge(spread, "protective")} className="gap-1 text-xs h-7 px-2">
+                <Shield className="h-3 w-3" />
                 {spread.type === "put-spread" ? "Protective Put" : "Protective Call"}
               </Button>
-              <div className="flex-1" />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onClose}
-                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
-              >
-                <XIcon className="h-3.5 w-3.5" />
-                Close Spread
+              <Button variant="outline" size="sm" onClick={onClose} className="gap-1 text-xs h-7 px-2 text-red-600 border-red-200 hover:bg-red-50">
+                <XIcon className="h-3 w-3" /> Close
               </Button>
             </div>
           )}
