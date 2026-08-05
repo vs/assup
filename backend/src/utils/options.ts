@@ -54,7 +54,7 @@ export function roundToTickSize(price: number, tickSize: number): number {
  * reverting to Delayed when done. Used by scanner routes, scan jobs, and research collector.
  */
 export async function withLiveMarketData<T>(fn: () => Promise<T>): Promise<T> {
-  ibkrService.acquireLiveMarketData();
+  await ibkrService.acquireLiveMarketData();
   try {
     return await fn();
   } finally {

@@ -767,12 +767,16 @@ class IBKRService {
 
   private liveMarketDataRefCount = 0;
 
-  acquireLiveMarketData(): void {
+  async acquireLiveMarketData(): Promise<void> {
     this.liveMarketDataRefCount++;
     if (this.liveMarketDataRefCount === 1) {
       const type = isMarketOpen() ? 1 : 2;
       try {
         this.setMarketDataType(type as 1 | 2);
+        // TWS processes setMarketDataType asynchronously — snapshots that
+        // fire before the switch completes will fail with error 10091
+        // ("subscription required"). A short settle lets TWS finish.
+        await new Promise((r) => setTimeout(r, 500));
       } catch {
         // continue with whatever type is active
       }
@@ -963,16 +967,14 @@ class IBKRService {
     }
 
     const results = new Map<string, TickerData>();
-    let successCount = 0;
-    let failCount = 0;
-    let firstFailure: { contract: Contract; reason: string } | undefined;
+    const failedContracts: Contract[] = [];
 
     const batchSize = 10;
+    const initialTimeoutMs = 2000;
 
     for (let i = 0; i < contracts.length; i += batchSize) {
-      // Stop processing if the client disconnected
       if (signal?.aborted) {
-        console.log(`Market data batch: aborted by client after ${successCount} successes (${i}/${contracts.length} processed)`);
+        console.log(`Market data batch: aborted by client (${i}/${contracts.length} processed)`);
         break;
       }
 
@@ -980,45 +982,66 @@ class IBKRService {
 
       const promises = batch.map(async (contract) => {
         try {
-          const data = await this.getMarketData(contract, true, 2000);
+          const data = await this.getMarketData(contract, true, initialTimeoutMs);
           if (data && data.bid !== undefined && data.ask !== undefined) {
             const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
             results.set(key, data);
-            successCount++;
           } else {
-            failCount++;
-            if (!firstFailure) {
-              firstFailure = {
-                contract,
-                reason: data ? 'missing bid/ask' : 'no data returned (likely error 200/10091)'
-              };
-            }
+            failedContracts.push(contract);
           }
-        } catch (err) {
-          failCount++;
-          if (!firstFailure) {
-            firstFailure = {
-              contract,
-              reason: err instanceof Error ? err.message : String(err)
-            };
-          }
+        } catch {
+          failedContracts.push(contract);
         }
       });
 
       await Promise.allSettled(promises);
 
-      // Delay between batches to avoid overwhelming TWS
       if (i + batchSize < contracts.length) {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
-    // Log summary only when there are failures
-    if (failCount > 0) {
-      const detail = firstFailure
-        ? ` First failure: ${firstFailure.contract.symbol} ${firstFailure.contract.lastTradeDateOrContractMonth} ${firstFailure.contract.strike} ${firstFailure.contract.right} — ${firstFailure.reason}`
-        : '';
-      console.log(`Market data batch: ${successCount}/${contracts.length} succeeded (${failCount} failed).${detail}`);
+    // Retry failed contracts once with a longer timeout — TWS often needs
+    // extra time to resolve option contracts on first request (contract
+    // definition lookup + exchange data subscription).
+    if (failedContracts.length > 0 && !signal?.aborted) {
+      const retryTimeoutMs = 5000;
+      console.log(`Market data batch: ${results.size}/${contracts.length} on first pass, retrying ${failedContracts.length} failed contracts (${retryTimeoutMs}ms timeout)…`);
+
+      // Small pause before retry so TWS can finish resolving contracts
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      let retrySuccess = 0;
+      for (let i = 0; i < failedContracts.length; i += batchSize) {
+        if (signal?.aborted) break;
+        const batch = failedContracts.slice(i, i + batchSize);
+
+        const promises = batch.map(async (contract) => {
+          try {
+            const data = await this.getMarketData(contract, true, retryTimeoutMs);
+            if (data && data.bid !== undefined && data.ask !== undefined) {
+              const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
+              results.set(key, data);
+              retrySuccess++;
+            }
+          } catch {
+            // Give up on this contract
+          }
+        });
+
+        await Promise.allSettled(promises);
+
+        if (i + batchSize < failedContracts.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+
+      const finalFail = failedContracts.length - retrySuccess;
+      if (finalFail > 0) {
+        console.log(`Market data batch: ${results.size}/${contracts.length} total (${retrySuccess} recovered on retry, ${finalFail} still failed)`);
+      } else {
+        console.log(`Market data batch: ${results.size}/${contracts.length} total (all ${retrySuccess} failures recovered on retry)`);
+      }
     }
 
     return results;

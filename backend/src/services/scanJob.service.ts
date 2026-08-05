@@ -72,9 +72,9 @@ async function createJob(
  * Uses the shared refcount in ibkrService so that scan jobs don't
  * stomp on other consumers (e.g. spread stream) that also need live data.
  */
-function acquireMarketDataType(): void {
+async function acquireMarketDataType(): Promise<void> {
   if (runningJobs.size === 1) {
-    ibkrService.acquireLiveMarketData();
+    await ibkrService.acquireLiveMarketData();
   }
 }
 
@@ -93,10 +93,11 @@ function startJobExecution(
 ): void {
   const abortController = new AbortController();
   runningJobs.set(jobId, abortController);
-  acquireMarketDataType();
 
-  // Execute asynchronously
-  executeFn(abortController.signal, createProgressUpdater(jobId))
+  // Execute asynchronously — acquireMarketDataType is async (waits for TWS
+  // to settle after setMarketDataType) so it's chained before executeFn.
+  acquireMarketDataType()
+    .then(() => executeFn(abortController.signal, createProgressUpdater(jobId)))
     .then(async () => {
       runningJobs.delete(jobId);
       releaseMarketDataType();
