@@ -1404,8 +1404,9 @@ class IBKRService {
         proceeds,
         commission: -Math.abs(totalCommission),
         buySell: isBuy ? "BUY" : "SELL",
-        // If IBKR provided a valid realizedPNL, this is a closing trade
-        openClose: totalRealizedPnl !== null ? "C" : null,
+        // IBKR uses a large sentinel value for opening trades' realizedPNL;
+        // a valid (non-sentinel) value means this is a closing trade.
+        openClose: totalRealizedPnl !== null ? "C" : "O",
         costBasis: null,
         realizedPnl: totalRealizedPnl,
         wasAssigned: false,
