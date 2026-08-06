@@ -272,8 +272,23 @@ export function groupSpreads(
     result.push(buildSpread("call-spread", [cs.shortLeg, cs.longLeg]));
   }
 
-  // Step 4: Everything else goes to remaining
-  const remaining = [...nonEligible, ...leftoverGroups];
+  // Step 4: Everything else goes to remaining.
+  // Defensive dedup: if groupOptionTrades produced duplicate groups for the same
+  // contract (e.g. overlapping FLEX + TWS execution data), one copy may have been
+  // matched into a spread while the duplicate landed in leftover.  Remove any
+  // leftover whose (underlying, strike, expiry, right) matches a spread leg.
+  const spreadLegKeys = new Set<string>();
+  for (const spread of result) {
+    for (const leg of spread.legs) {
+      spreadLegKeys.add(`${leg.underlying}|${leg.strike}|${leg.expiry}|${leg.right}`);
+    }
+  }
+  const remaining = [
+    ...nonEligible,
+    ...leftoverGroups.filter(
+      (g) => !spreadLegKeys.has(`${g.underlying}|${g.strike}|${g.expiry}|${g.right}`),
+    ),
+  ];
 
   return { spreads: result, remaining };
 }
