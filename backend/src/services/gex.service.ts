@@ -260,7 +260,10 @@ interface OptionsChainResult {
   }>;
 }
 
-const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
+const yf = new YahooFinance({
+  suppressNotices: ["yahooSurvey"],
+  validation: { logErrors: false },
+});
 
 /**
  * Fetch options chain for a single expiration via yahoo-finance2.
