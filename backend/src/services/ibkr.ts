@@ -130,6 +130,48 @@ export interface ScannerResult {
   subcategory?: string;
 }
 
+/** Standard normal CDF using Abramowitz & Stegun approximation */
+function normcdf(x: number): number {
+  const a = 0.2316419;
+  const b1 = 0.319381530, b2 = -0.356563782, b3 = 1.781477937;
+  const b4 = -1.821255978, b5 = 1.330274429;
+  const ax = Math.abs(x);
+  const t = 1 / (1 + a * ax);
+  const pdf = Math.exp(-0.5 * ax * ax) / Math.sqrt(2 * Math.PI);
+  const cdf = 1 - pdf * t * (b1 + t * (b2 + t * (b3 + t * (b4 + t * b5))));
+  return x >= 0 ? cdf : 1 - cdf;
+}
+
+/**
+ * Black-Scholes daily theta (per-share).
+ * Returns negative value (time decay erodes option value).
+ */
+function bsTheta(
+  S: number, K: number, T: number,
+  sigma: number, isPut: boolean, r = 0.05,
+): number {
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+  const d2 = d1 - sigma * sqrtT;
+  const pdf_d1 = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2 * Math.PI);
+  const timeDecay = -(S * pdf_d1 * sigma) / (2 * sqrtT);
+  const annualTheta = isPut
+    ? timeDecay + r * K * Math.exp(-r * T) * normcdf(-d2)
+    : timeDecay - r * K * Math.exp(-r * T) * normcdf(d2);
+  return annualTheta / 365;
+}
+
+/** Days from today to YYYYMMDD expiry string */
+function daysToExpiry(expiry: string): number {
+  const y = parseInt(expiry.slice(0, 4));
+  const m = parseInt(expiry.slice(4, 6)) - 1;
+  const d = parseInt(expiry.slice(6, 8));
+  const exp = new Date(y, m, d);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.ceil((exp.getTime() - now.getTime()) / 86400000));
+}
+
 class IBKRService {
   private api: IBApiNext | null = null;
   private connectionStatus: ConnectionStatus = {
@@ -1048,28 +1090,35 @@ class IBKRService {
   }
 
   /**
-   * Fetch option delta for multiple contracts.
-   * Uses streaming subscriptions with generic tick 13 (model option computation)
-   * and resolves as soon as delta arrives (or timeout). All contracts are
-   * subscribed at once, then unsubscribed after collection.
+   * Fetch option greeks (delta + theta) for multiple contracts.
+   * Uses streaming subscriptions and resolves once all deltas arrive (or timeout).
+   * When TWS doesn't provide theta (common for equity options where BID computation
+   * sends theta=-2 "not yet computed"), computes it from IV via Black-Scholes.
    */
-  async getOptionDeltas(
+  async getOptionGreeks(
     contracts: Contract[],
-    timeoutMs = 3000
-  ): Promise<Map<number, number>> {
+    timeoutMs = 4000
+  ): Promise<Map<number, { delta: number; theta: number | null }>> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
     }
 
-    const results = new Map<number, number>();
+    const results = new Map<number, { delta: number; theta: number | null }>();
     if (contracts.length === 0) return results;
 
+    const contractMap = new Map<number, Contract>();
     const pending = new Set<number>();
+    const partials = new Map<number, {
+      delta?: number; theta?: number;
+      iv?: number; undPrice?: number;
+    }>();
     const subscriptions: Subscription[] = [];
 
     for (const contract of contracts) {
       if (!contract.conId) continue;
       pending.add(contract.conId);
+      partials.set(contract.conId, {});
+      contractMap.set(contract.conId, contract);
     }
 
     return new Promise((resolve) => {
@@ -1078,6 +1127,22 @@ class IBKRService {
       const cleanup = () => {
         clearTimeout(timer);
         for (const sub of subscriptions) sub.unsubscribe();
+        // Flush partials: use TWS theta when available, else compute from IV
+        for (const [conId, p] of partials) {
+          if (p.delta != null && !results.has(conId)) {
+            let theta = p.theta ?? null;
+            if (theta == null && p.iv != null && p.iv > 0 && p.undPrice != null) {
+              const c = contractMap.get(conId);
+              if (c?.strike && c.lastTradeDateOrContractMonth) {
+                const T = daysToExpiry(c.lastTradeDateOrContractMonth) / 365;
+                if (T > 0) {
+                  theta = bsTheta(p.undPrice, c.strike, T, p.iv, c.right === "P");
+                }
+              }
+            }
+            results.set(conId, { delta: p.delta, theta });
+          }
+        }
         resolve(results);
       };
 
@@ -1089,13 +1154,15 @@ class IBKRService {
           ? { ...contract, exchange: "SMART" }
           : contract;
 
-        // Generic tick 13 = model option computation (triggers 10039-10053 ticks)
+        const genericTick = mdContract.secType === SecType.OPT ? "106" : "13";
         const sub = this.api!
-          .getMarketData(mdContract, "13", false, false)
+          .getMarketData(mdContract, genericTick, false, false)
           .subscribe({
             next: (update) => {
               const all = update.all;
               if (!all) return;
+
+              const partial = partials.get(conId) ?? {};
 
               const delta =
                 all.get(10041)?.value ??  // MODEL_OPTION_DELTA
@@ -1103,8 +1170,28 @@ class IBKRService {
                 all.get(10005)?.value ??  // BID_OPTION_DELTA
                 all.get(10011)?.value;    // DELAYED_BID_OPTION_DELTA
 
-              if (delta != null) {
-                results.set(conId, delta);
+              const theta =
+                all.get(10044)?.value ??  // MODEL_OPTION_THETA
+                all.get(10050)?.value ??  // DELAYED_MODEL_OPTION_THETA
+                all.get(10008)?.value ??  // BID_OPTION_THETA
+                all.get(10014)?.value;    // DELAYED_BID_OPTION_THETA
+
+              const iv =
+                all.get(10039)?.value ??  // MODEL_OPTION_IV
+                all.get(10045)?.value ??  // DELAYED_MODEL_OPTION_IV
+                all.get(10003)?.value ??  // BID_OPTION_IV
+                all.get(10009)?.value;    // DELAYED_BID_OPTION_IV
+
+              const undPrice = all.get(10002)?.value;  // OPTION_UNDERLYING
+
+              if (delta != null) partial.delta = delta;
+              if (theta != null) partial.theta = theta;
+              if (iv != null) partial.iv = iv;
+              if (undPrice != null) partial.undPrice = undPrice;
+              partials.set(conId, partial);
+
+              if (partial.delta != null && partial.theta != null) {
+                results.set(conId, { delta: partial.delta, theta: partial.theta });
                 pending.delete(conId);
                 if (pending.size === 0) cleanup();
               }
