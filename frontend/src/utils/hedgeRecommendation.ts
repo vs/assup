@@ -35,6 +35,9 @@ interface RecommendationInput {
 /** Threshold: "approaching" GEX flip = within 0.5% of spot */
 const GEX_APPROACH_PCT = 0.005;
 
+/** Only apply GEX-based rules when short strike is within this % of SPX */
+const STRIKE_RELEVANCE_PCT = 0.05;
+
 /** VIX threshold for tail-risk regime */
 const VIX_TAIL_RISK = 30;
 
@@ -123,6 +126,11 @@ export function recommendHedge(input: RecommendationInput): HedgeRecommendation 
     return { action: "hold", urgency: "info", reason: "" };
   }
 
+  // Only apply GEX flip rules when the short strike is close enough to SPX
+  // to be actionable. A GEX flip breach 1000+ points from the short strike is noise.
+  const strikeDistancePct = Math.abs(shortStrike - spxPrice) / spxPrice;
+  const strikeRelevant = strikeDistancePct <= STRIKE_RELEVANCE_PCT;
+
   // Direction logic: for put spreads, danger is price dropping below flip.
   // For call spreads, danger is price rising above flip.
   const priceBreachedFlip = isPut
@@ -136,7 +144,7 @@ export function recommendHedge(input: RecommendationInput): HedgeRecommendation 
   const flipLabel = gexFlip.toFixed(0);
 
   // --- Rule 2: Price below/above GEX flip (breached) ---
-  if (priceBreachedFlip) {
+  if (priceBreachedFlip && strikeRelevant) {
     if (riskStatus.level === "danger") {
       return {
         action: "butterfly",
@@ -154,7 +162,7 @@ export function recommendHedge(input: RecommendationInput): HedgeRecommendation 
   }
 
   // --- Rule 3: Price approaching GEX flip ---
-  if (priceApproachingFlip) {
+  if (priceApproachingFlip && strikeRelevant) {
     return {
       action: "roll-down",
       urgency: "warning",
