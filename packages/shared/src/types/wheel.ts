@@ -104,6 +104,8 @@ export interface WheelLivePosition {
   pnl: number | null;
   /** % return on shares, or % of premium captured for options */
   pnlPercent: number | null;
+  /** Daily theta decay in $ (positive = earning from decay) */
+  theta?: number;
 }
 
 // Summary view of a ticker in the wheel tracker list

@@ -114,6 +114,7 @@ class PositionService {
         totalCallNotional: allocation.totalCallNotional,
         totalPutDelta: allocation.totalPutDelta,
         totalCallDelta: allocation.totalCallDelta,
+        totalTheta: positions.reduce((sum, p) => sum + (p.theta ?? 0), 0),
         unassignedValue: allocation.unassignedValue,
         unassignedPercentage: allocation.unassignedPercentage,
         includeOptions,
@@ -252,11 +253,11 @@ class PositionService {
 
     if (optionContracts.length === 0) return;
 
-    // Fetch deltas via Observable API (which returns model greeks unlike snapshots)
-    const deltas = await ibkrService.getOptionDeltas(optionContracts);
+    // Fetch greeks via Observable API (which returns model greeks unlike snapshots)
+    const greeks = await ibkrService.getOptionGreeks(optionContracts);
 
-    // Apply real deltas to positions
-    for (const [conId, delta] of deltas) {
+    // Apply real deltas and theta to positions
+    for (const [conId, { delta, theta }] of greeks) {
       const indices = indexByConId.get(conId);
       if (!indices) continue;
 
@@ -269,6 +270,14 @@ class PositionService {
         //   short call: (+0.5) * (-1) = -0.5 (bearish)
         const sign = pos.position >= 0 ? 1 : -1;
         pos.deltaExposure = delta * sign * pos.notionalValue!;
+
+        // Theta: IBKR reports per-share daily theta (negative = decay).
+        // Multiply by position * 100 (multiplier) so the sign naturally flips:
+        //   short option: negative theta * negative position = positive $ (earning)
+        //   long option: negative theta * positive position = negative $ (losing)
+        if (theta != null) {
+          pos.theta = theta * pos.position * 100;
+        }
       }
     }
   }

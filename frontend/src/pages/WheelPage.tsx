@@ -940,6 +940,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
             <th className="text-left font-normal px-4 py-2">Position</th>
             <th className="text-right font-normal px-4 py-2">Avg Cost</th>
             <th className="text-right font-normal px-4 py-2">Mkt Price</th>
+            <th className="text-right font-normal px-4 py-2">Theta</th>
             <th className="text-right font-normal px-4 py-2">P&L</th>
           </tr>
         </thead>
@@ -953,6 +954,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               <td className="px-4 py-1.5 text-right tabular-nums">
                 {shares.marketPrice != null ? `$${shares.marketPrice.toFixed(2)}` : "—"}
               </td>
+              <td className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">—</td>
               <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(shares.pnl)}`}>
                 {fmtPnL(shares.pnl)}{fmtPct(shares.pnlPercent)}
               </td>
@@ -969,6 +971,9 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               <td className="px-4 py-1.5 text-right tabular-nums">
                 {c.marketPrice != null ? `$${c.marketPrice.toFixed(2)}` : "—"}
               </td>
+              <td className={`px-4 py-1.5 text-right tabular-nums ${c.theta != null ? (c.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"}`}>
+                {c.theta != null ? formatCurrency(c.theta) : "—"}
+              </td>
               <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(c.pnl)}`}>
                 {fmtPnL(c.pnl)}{fmtPct(c.pnlPercent)}
               </td>
@@ -984,6 +989,9 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               <td className="px-4 py-1.5 text-right tabular-nums">${p.avgCost.toFixed(2)}</td>
               <td className="px-4 py-1.5 text-right tabular-nums">
                 {p.marketPrice != null ? `$${p.marketPrice.toFixed(2)}` : "—"}
+              </td>
+              <td className={`px-4 py-1.5 text-right tabular-nums ${p.theta != null ? (p.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"}`}>
+                {p.theta != null ? formatCurrency(p.theta) : "—"}
               </td>
               <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(p.pnl)}`}>
                 {fmtPnL(p.pnl)}{fmtPct(p.pnlPercent)}

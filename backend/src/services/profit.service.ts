@@ -973,6 +973,25 @@ class ProfitService {
             conId: pos.contract.conId,
           });
         }
+        // Fetch theta for all option positions
+        const optContracts = ibkrPositions
+          .filter((p) => p.contract.secType === "OPT" && p.pos !== 0 && p.contract.conId)
+          .map((p) => p.contract);
+        if (optContracts.length > 0) {
+          try {
+            const greeks = await ibkrService.getOptionGreeks(optContracts as any);
+            for (const pos of positions) {
+              if (!pos.conId) continue;
+              const g = greeks.get(pos.conId);
+              if (g?.theta != null) {
+                // theta per-share * position * 100 multiplier
+                pos.theta = g.theta * pos.quantity * 100;
+              }
+            }
+          } catch {
+            // Greeks unavailable — positions still usable without theta
+          }
+        }
       } catch {
         // IBKR not connected, return empty
       }

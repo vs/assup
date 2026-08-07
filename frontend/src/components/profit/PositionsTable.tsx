@@ -92,6 +92,7 @@ export function PositionsTable({
       case "qty": return pos.quantity;
       case "unrealizedPnl": return pos.unrealizedPnl;
       case "projected": return pos.projectedProfit;
+      case "theta": return pos.theta ?? 0;
       default: return 0;
     }
   }, []);
@@ -119,6 +120,7 @@ export function PositionsTable({
           <SortableHead column="dte" className="text-right" {...expSort}>DTE</SortableHead>
           <SortableHead column="qty" className="text-right" {...expSort}>Qty</SortableHead>
           <SortableHead column="unrealizedPnl" className="text-right" {...expSort}>Unrealized P&L</SortableHead>
+          <SortableHead column="theta" className="text-right" {...expSort}>Theta</SortableHead>
           <SortableHead column="projected" className="text-right" {...expSort}>Projected</SortableHead>
           <TableHead className="w-16" />
           <TableHead className="text-right">Order</TableHead>
@@ -201,6 +203,11 @@ export function PositionsTable({
                 }`}
               >
                 {formatCurrency(pos.unrealizedPnl)}
+              </TableCell>
+              <TableCell className={`text-right font-mono ${
+                pos.theta != null ? (pos.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"
+              }`}>
+                {pos.theta != null ? formatCurrency(pos.theta) : "—"}
               </TableCell>
               <TableCell className="text-right font-mono text-blue-600">
                 {formatCurrency(pos.projectedProfit)}
@@ -357,6 +364,13 @@ function OpenSpreadRow({
         >
           {formatCurrency(spread.totalUnrealizedPnl)}
         </TableCell>
+        <TableCell className={`text-right font-mono ${
+          (() => { const t = spread.legs.reduce((s, l) => s + (l.theta ?? 0), 0); return t >= 0 ? "text-green-600" : "text-red-600"; })()
+        }`}>
+          {spread.legs.some(l => l.theta != null)
+            ? formatCurrency(spread.legs.reduce((s, l) => s + (l.theta ?? 0), 0))
+            : "—"}
+        </TableCell>
         <TableCell className="text-right font-mono text-blue-600">
           {formatCurrency(spread.maxProfit)}
         </TableCell>
@@ -407,6 +421,11 @@ function OpenSpreadRow({
               leg.unrealizedPnl >= 0 ? "text-green-600" : "text-red-600"
             }`}>
               {formatCurrency(leg.unrealizedPnl)}
+            </TableCell>
+            <TableCell className={`text-right font-mono text-xs ${
+              leg.theta != null ? (leg.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"
+            }`}>
+              {leg.theta != null ? formatCurrency(leg.theta) : "—"}
             </TableCell>
             <TableCell className="text-right font-mono text-xs text-blue-600">
               {formatCurrency(leg.projectedProfit)}

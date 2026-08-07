@@ -24,6 +24,8 @@ export interface Position {
   underlying?: string;
   notionalValue?: number;
   deltaExposure?: number;
+  /** Daily theta decay in $ (positive = earning from decay) */
+  theta?: number;
   // Enriched data
   assetClassId: string | null;
   assetClassName: string | null;
@@ -69,6 +71,8 @@ export interface PositionSummaryData {
   totalCallNotional: number;
   totalPutDelta: number;
   totalCallDelta: number;
+  /** Portfolio-wide daily theta in $ (sum across all option positions) */
+  totalTheta: number;
   unassignedValue: number;
   unassignedPercentage: number;
   includeOptions: boolean;

@@ -3,7 +3,7 @@ import { formatCurrency } from "@assup/shared";
 import type { PositionSummary, DashboardSummary } from "@assup/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { dashboardApi } from "@/api/dashboard";
-import { Landmark, ShieldAlert, ShieldCheck, TrendingUpDown, CalendarClock, Clock } from "lucide-react";
+import { Landmark, ShieldAlert, ShieldCheck, TrendingUpDown, CalendarClock, Clock, Timer } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface MetricCardProps {
@@ -42,6 +42,7 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
   const callNotional = positionSummary?.summary.totalCallNotional ?? 0;
   const putDelta = positionSummary?.summary.totalPutDelta ?? 0;
   const callDelta = positionSummary?.summary.totalCallDelta ?? 0;
+  const totalTheta = positionSummary?.summary.totalTheta ?? 0;
 
   // Total unrealized P&L across all positions
   const totalUnrealized = positionSummary?.positions.reduce(
@@ -66,7 +67,7 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
   const todayRealized = dailyPnl?.realizedPnL ?? 0;
 
   return (
-    <div className="grid grid-cols-6 gap-3">
+    <div className="grid grid-cols-7 gap-3">
       <MetricCard
         label="Net Liquidation"
         icon={Landmark}
@@ -84,6 +85,13 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         icon={ShieldCheck}
         value={formatCurrency(callNotional)}
         detail={`Delta ${formatCurrency(callDelta)}`}
+      />
+      <MetricCard
+        label="Daily Theta"
+        icon={Timer}
+        value={formatCurrency(totalTheta)}
+        detail={`${formatCurrency(totalTheta * 30)}/mo projected`}
+        valueClassName={totalTheta >= 0 ? "text-green-600" : "text-red-600"}
       />
       <MetricCard
         label="Unrealized P&L"

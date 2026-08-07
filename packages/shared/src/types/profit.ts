@@ -210,6 +210,8 @@ export interface CurrentOptionPosition {
   unrealizedPnl: number;
   projectedProfit: number;
   underlyingPrice?: number;
+  /** Daily theta decay in $ (positive = earning from decay) */
+  theta?: number;
   assetClassId?: string;
   assetClassName?: string;
   assetClassColor?: string;

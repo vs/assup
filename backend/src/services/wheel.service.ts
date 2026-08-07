@@ -174,7 +174,7 @@ const buildTradeWhereClause = (symbol: string, startDate: Date | null) => {
 interface CachedIBKRData {
   positions: Array<{
     account: string;
-    contract: { secType?: string; symbol?: string; right?: string; strike?: number; lastTradeDateOrContractMonth?: string };
+    contract: { secType?: string; symbol?: string; right?: string; strike?: number; lastTradeDateOrContractMonth?: string; conId?: number };
     pos: number;
     avgCost: number;
     marketPrice?: number;
@@ -184,6 +184,8 @@ interface CachedIBKRData {
   todayTrades: RawTrade[];
   marketPrices: Map<string, number>;
   optionPrices: Map<string, number>;  // key: "SYMBOL-STRIKE-EXPIRY-RIGHT" -> price per share
+  /** conId → daily theta per-share (from IBKR model greeks) */
+  optionThetas: Map<number, number>;
 }
 
 function buildActiveOptions(
@@ -278,6 +280,7 @@ function buildLivePositions(
   stockPos: CachedIBKRData["positions"][0] | undefined,
   shortOptionPositions: CachedIBKRData["positions"],
   currentPrice: number | null,
+  optionThetas?: Map<number, number>,
 ): WheelLivePosition[] {
   const positions: WheelLivePosition[] = [];
 
@@ -326,6 +329,16 @@ function buildLivePositions(
       mktPrice = Math.abs(p.marketValue) / (qty * 100);
     }
 
+    // Theta: per-share * (-pos) * 100 multiplier. Short options (pos < 0)
+    // have negative IBKR theta → positive daily $ income.
+    let theta: number | undefined;
+    if (optionThetas && p.contract.conId) {
+      const thetaPerShare = optionThetas.get(p.contract.conId);
+      if (thetaPerShare != null) {
+        theta = thetaPerShare * p.pos * 100;
+      }
+    }
+
     positions.push({
       type: p.contract.right === "C" ? "call" : "put",
       strike: p.contract.strike,
@@ -336,6 +349,7 @@ function buildLivePositions(
       marketPrice: mktPrice,
       pnl,
       pnlPercent,
+      theta,
     });
   }
 
@@ -501,7 +515,7 @@ const applyLiveDataToSummary = (
     sharePnLPercent,
     currentPosition,
     activeOptions: buildActiveOptions(shortOptionPositions),
-    livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice),
+    livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice, cachedData.optionThetas),
     currentPrice,
     breakEven,
     percentBelowMarket,
@@ -524,6 +538,7 @@ export const wheelService = {
       todayTrades: [],
       marketPrices: new Map(),
       optionPrices: new Map(),
+      optionThetas: new Map(),
     };
 
     if (!ibkrService.isConnected()) {
@@ -602,6 +617,21 @@ export const wheelService = {
       }
     } catch (err) {
       console.error("Failed to fetch IBKR data:", err);
+    }
+
+    // Fetch theta for option positions
+    try {
+      const optContracts = result.positions
+        .filter((p) => p.contract.secType === "OPT" && p.pos !== 0 && p.contract.conId)
+        .map((p) => p.contract as any);
+      if (optContracts.length > 0) {
+        const greeks = await ibkrService.getOptionGreeks(optContracts);
+        for (const [conId, { theta }] of greeks) {
+          if (theta != null) result.optionThetas.set(conId, theta);
+        }
+      }
+    } catch {
+      // Greeks unavailable
     }
 
     return result;
@@ -986,7 +1016,7 @@ export const wheelService = {
       completedCycles: completedCycles.length,
       currentPosition,
       activeOptions: buildActiveOptions(shortOptionPositions),
-      livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice),
+      livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice, cachedData?.optionThetas),
       realizedPnL: tickerRealizedPnL,
       unrealizedPnL: tickerUnrealizedPnL,
       totalPnL,
