@@ -17,7 +17,7 @@ import { Response } from "express";
 import { Contract, SecType, OptionType } from "@stoqey/ib";
 import { ibkrService, StreamTickData } from "./ibkr.js";
 import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
-import { SYMBOL_CONFIG } from "../utils/options.js";
+import { SYMBOL_CONFIG, getSymbolContractType } from "../utils/options.js";
 import type {
   IronCondorChainStrike,
   SpreadStreamInitEvent,
@@ -127,10 +127,12 @@ export class SpreadStreamSession {
 
     // 1. Fetch underlying price (retry up to 3 times — the market data type
     //    switch above may not take effect before the first snapshot request)
+    const { secType: underlyingSecType, exchange: underlyingExchange } =
+      getSymbolContractType(optionSymbol);
     const underlyingContract: Contract = {
       symbol: optionSymbol,
-      secType: SecType.IND,
-      exchange: "CBOE",
+      secType: underlyingSecType,
+      exchange: underlyingExchange,
       currency: "USD",
     };
 
@@ -177,7 +179,7 @@ export class SpreadStreamSession {
     const secDefs = await api.getSecDefOptParams(
       optionSymbol,
       "",
-      SecType.IND,
+      underlyingSecType,
       conId,
     );
     if (this.destroyed) return;
