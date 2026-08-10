@@ -12,10 +12,12 @@ import {
 } from "@stoqey/ib";
 import type { Order } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
-import { SYMBOL_CONFIG, roundToTickSize } from "../utils/options.js";
+import { SYMBOL_CONFIG, roundToTickSize, isIndexSymbol } from "../utils/options.js";
 import type {
   IronCondorOrderRequest,
   IronCondorOrderResponse,
+  SingleOrderRequest,
+  SingleOrderResponse,
 } from "@assup/shared";
 
 // --- Combo Order ---
@@ -82,6 +84,80 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
   // Wait for order confirmation — poll status AND watch for order-level TWS errors.
   // TWS sends error events (e.g. 10043, 201) with reqId = orderId for rejected orders.
   // Rejected orders don't appear in getAllOpenOrders(), so we must capture errors directly.
+  const maxWaitMs = 3000;
+  const pollIntervalMs = 500;
+  const startTime = Date.now();
+  let twsError: string | null = null;
+
+  const errorSub = api.error.subscribe((err) => {
+    if (err.reqId === orderId && err.error?.message) {
+      twsError = `TWS rejected order: ${err.error.message}`;
+    }
+  });
+
+  try {
+    while (Date.now() - startTime < maxWaitMs) {
+      if (twsError) throw new Error(twsError);
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      if (twsError) throw new Error(twsError);
+      try {
+        const orders = await ibkrService.getAllOpenOrders();
+        const found = orders.find((o) => o.orderId === orderId);
+        if (found) {
+          const status = found.orderStatus?.status || found.orderState?.status;
+          if (status === "Cancelled" || status === "Inactive") {
+            throw new Error(`Order was ${status.toLowerCase()} by TWS`);
+          }
+          if (status === "PreSubmitted" || status === "Submitted" || status === "Filled") {
+            return { orderId, status };
+          }
+        }
+      } catch (err) {
+        if (err instanceof Error && (err.message.includes("Order was") || err.message.includes("TWS rejected"))) throw err;
+      }
+    }
+  } finally {
+    errorSub.unsubscribe();
+  }
+
+  if (twsError) throw new Error(twsError);
+  return { orderId, status: "Submitted" };
+}
+
+/**
+ * Place a single-leg option order via IBKR.
+ */
+export async function placeSingleOrder(req: SingleOrderRequest): Promise<SingleOrderResponse> {
+  const api = ibkrService.getApi();
+  if (!api || !api.isConnected) {
+    throw new Error("Not connected to TWS");
+  }
+
+  const exchange = isIndexSymbol(req.symbol) ? "CBOE" : "SMART";
+  const contract: Contract = {
+    conId: req.conId,
+    symbol: req.symbol,
+    secType: SecType.OPT,
+    exchange,
+    currency: "USD",
+    lastTradeDateOrContractMonth: req.expiration,
+    strike: req.strike,
+    right: req.right,
+  };
+
+  const lmtPrice = roundToTickSize(req.limitPrice, 0.01);
+  const order: Order = {
+    action: req.action === "BUY" ? OrderAction.BUY : OrderAction.SELL,
+    totalQuantity: req.quantity,
+    orderType: OrderType.LMT,
+    lmtPrice,
+    tif: TimeInForce.DAY,
+    transmit: true,
+  };
+
+  const orderId = await api.placeNewOrder(contract, order);
+
+  // Wait for confirmation (same pattern as placeComboOrder)
   const maxWaitMs = 3000;
   const pollIntervalMs = 500;
   const startTime = Date.now();

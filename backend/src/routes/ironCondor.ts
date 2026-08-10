@@ -25,4 +25,13 @@ router.post(
   }),
 );
 
+router.post("/single-order", async (req, res, next) => {
+  try {
+    const result = await ironCondorService.placeSingleOrder(req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

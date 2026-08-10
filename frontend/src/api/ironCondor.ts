@@ -7,6 +7,8 @@ import type {
   IronCondorOrderRequest,
   IronCondorOrderResponse,
   ActiveSpread,
+  SingleOrderRequest,
+  SingleOrderResponse,
 } from "@assup/shared";
 
 export const ironCondorApi = {
@@ -27,4 +29,11 @@ export const ironCondorApi = {
 
   getExpirations: (symbol: string) =>
     request<{ expirations: string[] }>(`/api/spreads/expirations?symbol=${encodeURIComponent(symbol)}`),
+
+  placeSingleOrder: (data: SingleOrderRequest): Promise<SingleOrderResponse> =>
+    request("/api/iron-condor/single-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
 };
