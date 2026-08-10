@@ -61,6 +61,18 @@ export interface WheelMatchedTrade {
   } | null;
 }
 
+/** A spread (2-leg structure) detected within a wheel cycle */
+export interface WheelSpreadGroup {
+  type: "call-credit" | "call-debit" | "put-credit" | "put-debit";
+  shortLeg: WheelMatchedTrade;
+  longLeg: WheelMatchedTrade;
+  netPremium: number;
+  maxLoss: number;
+  currentPnl: number | null;
+  expiry: string;
+  dte: number;
+}
+
 // A complete wheel cycle (any period with non-zero position)
 export interface WheelCycle {
   cycleNumber: number;
@@ -77,6 +89,8 @@ export interface WheelCycle {
   annualizedRoc: number;
   durationDays: number;
   trades: WheelMatchedTrade[];
+  /** Spread groups detected from paired option legs */
+  spreadGroups: WheelSpreadGroup[];
   // New fields for clarity
   entryType: "sold_put" | "bought_shares" | "assigned" | "sold_call";
   entryDescription: string; // "Sold PUT $145" or "Bought 100 @ $148"

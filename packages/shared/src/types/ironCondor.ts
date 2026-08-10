@@ -4,6 +4,9 @@
 
 export type SpreadMode = "put-spread" | "call-spread" | "iron-condor";
 
+/** Strategy modes for the unified options builder */
+export type StrategyMode = "single" | "vertical" | "iron-condor";
+
 export interface IronCondorChainOption {
   conId: number;
   bid: number;
@@ -132,6 +135,23 @@ export type {
   RefocusedEvent,
   SpreadStreamEvent,
 } from "./spreadStream.js";
+
+/** Request to place a single-leg option order */
+export interface SingleOrderRequest {
+  symbol: string;
+  conId: number;
+  expiration: string;
+  strike: number;
+  right: "C" | "P";
+  action: "BUY" | "SELL";
+  quantity: number;
+  limitPrice: number;
+}
+
+export interface SingleOrderResponse {
+  orderId: number;
+  status: string;
+}
 
 /** Hedge strategies available in the hedge wizard */
 export type HedgeStrategy = "butterfly" | "protective" | "roll";
