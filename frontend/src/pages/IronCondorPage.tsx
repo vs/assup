@@ -1,217 +1,68 @@
 /**
- * Spreads builder page.
- * Supports put spreads, call spreads, and iron condors on SPX/RUT.
- * Two-column layout: options chain on the left, analysis on the right.
+ * Spreads builder page — thin wrapper around OptionsBuilder.
  *
- * Uses streaming market data via useSpreadsStream for live chain updates
- * and client-side analysis via analyzeSpread for instant computation.
+ * Owns:
+ * - Symbol picker (loaded from settings)
+ * - Active spreads list with close/hedge handlers
+ * - GEX modal and Hedge Wizard dialog
+ * - Risk/hedge state
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { RefreshCw, BarChart3, Play } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { BarChart3 } from "lucide-react";
 import { settingsApi } from "@/api/settings";
 import { api } from "@/api";
-import { useSpreadsStream } from "@/hooks/useSpreadsStream";
-import { analyzeSpread } from "@/utils/spreadAnalysis";
-import { OptionsChainTable } from "@/components/iron-condor/OptionsChainTable";
-import { SpreadAnalysis } from "@/components/iron-condor/SpreadAnalysis";
-import { PlaceSpreadDialog } from "@/components/iron-condor/PlaceSpreadDialog";
 import { ActiveSpreadsList } from "@/components/iron-condor/ActiveSpreadsList";
 import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
 import { GexModal } from "@/components/iron-condor/GexModal";
 import { HedgeWizardDialog } from "@/components/iron-condor/HedgeWizardDialog";
+import { OptionsBuilder } from "@/components/options-builder/OptionsBuilder";
 import { useSpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 import { useHedgeRecommendations } from "@/hooks/useHedgeRecommendations";
-import type {
-  SpreadMode,
-  IronCondorChainStrike,
-  IronCondorLeg,
-  IronCondorOrderLeg,
-  SpreadSelectedLegs,
-  ActiveSpread,
-  HedgeStrategy,
-} from "@assup/shared";
+import { Label } from "@/components/ui/label";
+import type { ActiveSpread, HedgeStrategy } from "@assup/shared";
 
 const DEFAULT_SYMBOLS = ["SPX", "XSP", "RUT"];
-const SPREAD_MODES: { value: SpreadMode; label: string }[] = [
-  { value: "put-spread", label: "Put Spread" },
-  { value: "call-spread", label: "Call Spread" },
-  { value: "iron-condor", label: "Iron Condor" },
-];
-
-function findClosestDelta(chain: IronCondorChainStrike[], targetDelta: number, type: "PUT" | "CALL"): number | null {
-  let best: number | null = null;
-  let bestDiff = Infinity;
-
-  for (const entry of chain) {
-    const option = type === "PUT" ? entry.put : entry.call;
-    if (!option || option.delta === 0) continue;
-    const diff = Math.abs(option.delta * 100 - targetDelta);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = entry.strike;
-    }
-  }
-  return best;
-}
-
-function parseDte(expiration: string): number {
-  if (expiration.length !== 8) return 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expMs = new Date(
-    parseInt(expiration.slice(0, 4)),
-    parseInt(expiration.slice(4, 6)) - 1,
-    parseInt(expiration.slice(6, 8)),
-  ).getTime();
-  return Math.max(0, Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)));
-}
-
-const DEFAULT_UPDATE_INTERVAL_MS = 2000;
 
 export function IronCondorPage() {
-  // Configurable symbols from settings
+  // Symbol picker
   const [symbols, setSymbols] = useState<string[]>(DEFAULT_SYMBOLS);
-  const [updateIntervalMs, setUpdateIntervalMs] = useState(DEFAULT_UPDATE_INTERVAL_MS);
-
-  // Parameters
   const [symbol, setSymbol] = useState<string>("SPX");
-  const [mode, setMode] = useState<SpreadMode>("put-spread");
-  const [expiration, setExpiration] = useState<string | undefined>(undefined);
-  const [quantity, setQuantity] = useState(1);
-  const [putDelta, setPutDelta] = useState(4.5);
-  const [callDelta, setCallDelta] = useState(4.5);
-  const [wingWidth, setWingWidth] = useState(30);
 
-  // Selected legs
-  const [selectedLegs, setSelectedLegs] = useState<SpreadSelectedLegs>({
-    buyPut: null, sellPut: null, sellCall: null, buyCall: null,
-  });
+  // Risk thresholds from settings
+  const [hedgeWarningPct, setHedgeWarningPct] = useState(100);
+  const [hedgeDangerPct, setHedgeDangerPct] = useState(200);
 
-  // UI state
-  const [builderActive, setBuilderActive] = useState(false);
-  const [orderDialogOpen, setOrderDialogOpen] = useState(false);
-  const [chainExpanded, setChainExpanded] = useState(false);
+  // Active spreads
+  const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
 
-  // Active spread close
+  // Close dialog
   const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+
+  // GEX modal
   const [gexModalOpen, setGexModalOpen] = useState(false);
 
   // Hedge wizard
   const [hedgeDialogOpen, setHedgeDialogOpen] = useState(false);
   const [hedgingSpread, setHedgingSpread] = useState<ActiveSpread | null>(null);
   const [hedgeInitialStrategy, setHedgeInitialStrategy] = useState<HedgeStrategy | undefined>(undefined);
-  const [hedgeWarningPct, setHedgeWarningPct] = useState(100);
-  const [hedgeDangerPct, setHedgeDangerPct] = useState(200);
 
-  // Don't restrict to onlyStrikes — focusRange handles dense subscription
-  // around selected legs, and scout→focus handles initial discovery.
-  // Passing exact leg strikes as onlyStrikes prevented loading market data
-  // for surrounding strikes.
-  const streamStrikes = undefined;
-
-  const hasPutSide = mode === "put-spread" || mode === "iron-condor";
-  const hasCallSide = mode === "call-spread" || mode === "iron-condor";
-
-  // Phase 2: once legs are selected, focus dense subscription around them
-  // Use a margin of wingWidth + 50 points around the outermost legs
-  const focusRange = useMemo(() => {
-    const strikes: number[] = [];
-    if (selectedLegs.buyPut) strikes.push(selectedLegs.buyPut);
-    if (selectedLegs.sellPut) strikes.push(selectedLegs.sellPut);
-    if (selectedLegs.sellCall) strikes.push(selectedLegs.sellCall);
-    if (selectedLegs.buyCall) strikes.push(selectedLegs.buyCall);
-    if (strikes.length === 0) return undefined;
-    const margin = wingWidth + 50;
-    return {
-      min: Math.min(...strikes) - margin,
-      max: Math.max(...strikes) + margin,
-    };
-  }, [selectedLegs, wingWidth]);
-
-  // Pre-fetch expirations on page load (cached on backend)
-  const [prefetchedExpirations, setPrefetchedExpirations] = useState<string[]>([]);
+  // Load symbols and risk thresholds from settings
   useEffect(() => {
-    // Capture the current expiration at request time so the stale closure
-    // doesn't overwrite a selection the user (or hedge flow) made while
-    // the fetch was in flight.
-    const expirationAtStart = expiration;
-    api.ironCondor.getExpirations(symbol)
+    settingsApi.get<{ symbols?: string[]; updateIntervalMs?: number; hedgeWarningPct?: number; hedgeDangerPct?: number }>("spreads")
       .then(r => {
-        setPrefetchedExpirations(r.expirations);
-        // Auto-select nearest expiration with >= 1 DTE only if nothing
-        // was set when the request started AND nothing was set since.
-        if (!expirationAtStart) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const nearest = r.expirations.find(exp => {
-            if (exp.length !== 8) return false;
-            const expMs = new Date(
-              parseInt(exp.slice(0, 4)),
-              parseInt(exp.slice(4, 6)) - 1,
-              parseInt(exp.slice(6, 8)),
-            ).getTime();
-            return Math.floor((expMs - today.getTime()) / (1000 * 60 * 60 * 24)) >= 1;
-          });
-          if (nearest) setExpiration(prev => prev ?? nearest);
+        if (r.value?.symbols?.length) {
+          setSymbols(r.value.symbols);
+          setSymbol(r.value.symbols[0]);
         }
-      })
-      .catch(() => {});
-  }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Streaming data (chain only, no positions)
-  const {
-    chain,
-    underlyingPrice,
-    expirations: streamExpirations,
-    selectedExpiration: streamExpiration,
-    status,
-    error,
-    refocusedCount,
-    scouting,
-    reconnect,
-  } = useSpreadsStream(
-    symbol,
-    expiration,
-    streamStrikes,
-    focusRange,
-    hasPutSide ? putDelta : undefined,
-    hasCallSide ? callDelta : undefined,
-    wingWidth,
-    mode,
-    updateIntervalMs,
-    builderActive,
-  );
-
-  // Merge expirations: prefer stream data when available, fall back to pre-fetched
-  const expirations = streamExpirations.length > 0 ? streamExpirations : prefetchedExpirations;
-
-  // Load risk thresholds from settings
-  useEffect(() => {
-    settingsApi.get<{ hedgeWarningPct?: number; hedgeDangerPct?: number }>("spreads")
-      .then(result => {
-        if (result.value?.hedgeWarningPct != null) setHedgeWarningPct(result.value.hedgeWarningPct);
-        if (result.value?.hedgeDangerPct != null) setHedgeDangerPct(result.value.hedgeDangerPct);
+        if (r.value?.hedgeWarningPct != null) setHedgeWarningPct(r.value.hedgeWarningPct);
+        if (r.value?.hedgeDangerPct != null) setHedgeDangerPct(r.value.hedgeDangerPct);
       })
       .catch(() => {});
   }, []);
 
-  // Active spreads via REST endpoint (polled every 10s)
-  const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
-
+  // Poll active spreads every 10s
   const fetchSpreads = useCallback(() => {
     api.ironCondor.getActiveSpreads()
       .then(r => setSpreads(r.spreads))
@@ -227,206 +78,10 @@ export function IronCondorPage() {
   const riskMap = useSpreadRiskStatus(spreads, hedgeWarningPct, hedgeDangerPct);
   const recommendations = useHedgeRecommendations(spreads, riskMap);
 
-  // Sync expiration from stream init event (server-selected nearest expiration)
-  useEffect(() => {
-    if (streamExpiration && !expiration) {
-      setExpiration(streamExpiration);
-    }
-  }, [streamExpiration, expiration]);
-
-  // Load symbols and update interval from settings
-  useEffect(() => {
-    settingsApi.get<{ symbols: string[]; updateIntervalMs?: number }>("spreads")
-      .then(r => {
-        if (r.value?.symbols?.length > 0) {
-          setSymbols(r.value.symbols);
-          setSymbol(r.value.symbols[0]);
-        }
-        if (r.value?.updateIntervalMs != null) {
-          setUpdateIntervalMs(r.value.updateIntervalMs);
-        }
-      })
-      .catch(() => {}); // Use defaults
-  }, []);
-
-  // --- Auto-select legs based on deltas and mode ---
-  // Track whether we've successfully auto-selected legs for the current expiration.
-  // Retry when chain data gets populated (non-zero deltas arrive from stream).
-  const autoSelectDoneRef = useRef(false);
-  const prevExpirationRef = useRef<string | undefined>(undefined);
-
-  // Count options with non-zero delta to detect when real data arrives
-  const chainHasDeltas = useMemo(() => {
-    return chain.some(e =>
-      (e.put && e.put.delta > 0) || (e.call && e.call.delta > 0)
-    );
-  }, [chain]);
-
-  useEffect(() => {
-    // Reset auto-select flag when expiration or mode changes
-    if (expiration !== prevExpirationRef.current) {
-      autoSelectDoneRef.current = false;
-      prevExpirationRef.current = expiration;
-    }
-  }, [expiration, mode]);
-
-  // Re-run auto-select when backend transitions to focused subscription
-  // (more accurate delta data is now available)
-  useEffect(() => {
-    if (refocusedCount > 0) {
-      autoSelectDoneRef.current = false;
-    }
-  }, [refocusedCount]);
-
-  useEffect(() => {
-    // Skip if already auto-selected for this expiration or no chain data
-    if (autoSelectDoneRef.current) return;
-    if (chain.length === 0 || !chainHasDeltas) return;
-    // Don't auto-select during scout phase — sparse data leads to wrong picks.
-    // Wait for the backend to transition to focused mode (refocused event).
-    if (scouting) return;
-
-    const newLegs: SpreadSelectedLegs = { buyPut: null, sellPut: null, sellCall: null, buyCall: null };
-
-    if (hasPutSide) {
-      const sellPutStrike = findClosestDelta(chain, putDelta, "PUT");
-      if (sellPutStrike) {
-        const buyPutTarget = sellPutStrike - wingWidth;
-        const snappedBuyPut = chain.reduce((closest, entry) =>
-          Math.abs(entry.strike - buyPutTarget) < Math.abs(closest - buyPutTarget) ? entry.strike : closest,
-          chain[0]?.strike ?? buyPutTarget,
-        );
-        newLegs.sellPut = sellPutStrike;
-        newLegs.buyPut = snappedBuyPut;
-      }
-    }
-
-    if (hasCallSide) {
-      const sellCallStrike = findClosestDelta(chain, callDelta, "CALL");
-      if (sellCallStrike) {
-        const buyCallTarget = sellCallStrike + wingWidth;
-        const snappedBuyCall = chain.reduce((closest, entry) =>
-          Math.abs(entry.strike - buyCallTarget) < Math.abs(closest - buyCallTarget) ? entry.strike : closest,
-          chain[chain.length - 1]?.strike ?? buyCallTarget,
-        );
-        newLegs.sellCall = sellCallStrike;
-        newLegs.buyCall = snappedBuyCall;
-      }
-    }
-
-    // Only mark done if we actually found legs
-    const foundLegs = (hasPutSide ? newLegs.sellPut !== null : true)
-      && (hasCallSide ? newLegs.sellCall !== null : true);
-
-    if (foundLegs) {
-      autoSelectDoneRef.current = true;
-      setSelectedLegs(newLegs);
-    }
-  }, [chain, chainHasDeltas, scouting, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide]);
-
-  // Re-run auto-select when user changes delta/wingWidth parameters.
-  // Just reset the flag — the auto-select effect will re-run immediately
-  // on the existing chain data with the new parameter values.
-  const handleParameterChange = useCallback(() => {
-    autoSelectDoneRef.current = false;
-  }, []);
-
-  // --- Client-side analysis (instant, via useMemo) ---
-  const analysis = useMemo(() => {
-    if (!selectedLegs.sellPut && !selectedLegs.sellCall) return null;
-    if (!underlyingPrice || chain.length === 0) return null;
-    if (!expiration) return null;
-
-    // Guard: require mode-relevant legs
-    if (hasPutSide && (!selectedLegs.buyPut || !selectedLegs.sellPut)) return null;
-    if (hasCallSide && (!selectedLegs.sellCall || !selectedLegs.buyCall)) return null;
-
-    const getLeg = (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL"): IronCondorLeg => {
-      const entry = chain.find((c: IronCondorChainStrike) => c.strike === strike);
-      const option = type === "PUT" ? entry?.put : entry?.call;
-      return { strike, type, side, iv: option?.iv ?? 0, bid: option?.bid ?? 0, ask: option?.ask ?? 0 };
-    };
-
-    const daysToExpiry = parseDte(expiration);
-
-    const legs: IronCondorLeg[] = [];
-    if (hasPutSide) {
-      legs.push(getLeg(selectedLegs.buyPut!, "PUT", "BUY"));
-      legs.push(getLeg(selectedLegs.sellPut!, "PUT", "SELL"));
-    }
-    if (hasCallSide) {
-      legs.push(getLeg(selectedLegs.sellCall!, "CALL", "SELL"));
-      legs.push(getLeg(selectedLegs.buyCall!, "CALL", "BUY"));
-    }
-
-    if (legs.length === 0) return null;
-
-    try {
-      return analyzeSpread({
-        underlyingPrice,
-        legs,
-        daysToExpiry,
-        quantity,
-        mode,
-      });
-    } catch {
-      return null;
-    }
-  }, [chain, selectedLegs, underlyingPrice, quantity, mode, expiration, hasPutSide, hasCallSide]);
-
-  // --- Leg selection handler ---
-  const handleSelectLeg = useCallback((strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {
-    setSelectedLegs(prev => {
-      if (type === "PUT" && side === "SELL") {
-        // Auto-select wing: buy put = sell put - wingWidth (snapped to nearest chain strike)
-        const buyTarget = strike - wingWidth;
-        const buyPut = chain.reduce(
-          (closest, entry) => Math.abs(entry.strike - buyTarget) < Math.abs(closest - buyTarget) ? entry.strike : closest,
-          chain[0]?.strike ?? buyTarget,
-        );
-        return { ...prev, sellPut: strike, buyPut };
-      }
-      if (type === "CALL" && side === "SELL") {
-        // Auto-select wing: buy call = sell call + wingWidth (snapped to nearest chain strike)
-        const buyTarget = strike + wingWidth;
-        const buyCall = chain.reduce(
-          (closest, entry) => Math.abs(entry.strike - buyTarget) < Math.abs(closest - buyTarget) ? entry.strike : closest,
-          chain[chain.length - 1]?.strike ?? buyTarget,
-        );
-        return { ...prev, sellCall: strike, buyCall };
-      }
-      if (type === "PUT" && side === "BUY") return { ...prev, buyPut: strike };
-      if (type === "CALL" && side === "BUY") return { ...prev, buyCall: strike };
-      return prev;
-    });
-  }, [chain, wingWidth]);
-
-  // --- Expiration change ---
-  const handleExpirationChange = useCallback((exp: string) => {
-    setExpiration(exp);
-    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
-  }, []);
-
-  // --- Symbol change ---
+  // Handlers
   const handleSymbolChange = useCallback((sym: string) => {
     setSymbol(sym);
-    setExpiration(undefined);
-    setPrefetchedExpirations([]);
-    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
   }, []);
-
-  // --- Mode change ---
-  const handleModeChange = useCallback((newMode: SpreadMode) => {
-    setMode(newMode);
-    autoSelectDoneRef.current = false;
-    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
-  }, []);
-
-  const handleReload = useCallback(() => {
-    autoSelectDoneRef.current = false;
-    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
-    reconnect();
-  }, [reconnect]);
 
   const handleCloseSpread = useCallback((spread: ActiveSpread) => {
     setClosingSpread(spread);
@@ -437,54 +92,17 @@ export function IronCondorPage() {
     setHedgingSpread(spread);
     setHedgeInitialStrategy(initialStrategy);
     setHedgeDialogOpen(true);
-    if (!builderActive) setBuilderActive(true);
-    if (spread.symbol !== symbol) setSymbol(spread.symbol);
-    if (spread.expiry !== expiration) setExpiration(spread.expiry);
-  }, [symbol, expiration, builderActive]);
-
-  const handleHedgeDialogClose = useCallback((open: boolean) => {
-    setHedgeDialogOpen(open);
   }, []);
 
-  // --- Build order legs ---
-  const orderLegs = useMemo((): IronCondorOrderLeg[] => {
-    if (chain.length === 0 || !expiration) return [];
-
-    if (hasPutSide && (!selectedLegs.buyPut || !selectedLegs.sellPut)) return [];
-    if (hasCallSide && (!selectedLegs.sellCall || !selectedLegs.buyCall)) return [];
-
-    const makeLeg = (strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL"): IronCondorOrderLeg => {
-      const entry = chain.find(c => c.strike === strike);
-      const option = type === "PUT" ? entry?.put : entry?.call;
-      return { conId: option?.conId ?? 0, strike, type, side, expiration: expiration!, exchange: "SMART" };
-    };
-
-    const legs: IronCondorOrderLeg[] = [];
-    if (hasPutSide) {
-      legs.push(makeLeg(selectedLegs.buyPut!, "PUT", "BUY"));
-      legs.push(makeLeg(selectedLegs.sellPut!, "PUT", "SELL"));
+  const handleHedgeDialogClose = useCallback((open: boolean) => {
+    if (!open) {
+      setHedgeDialogOpen(false);
+      setHedgingSpread(null);
+      setHedgeInitialStrategy(undefined);
+    } else {
+      setHedgeDialogOpen(true);
     }
-    if (hasCallSide) {
-      legs.push(makeLeg(selectedLegs.sellCall!, "CALL", "SELL"));
-      legs.push(makeLeg(selectedLegs.buyCall!, "CALL", "BUY"));
-    }
-    return legs;
-  }, [chain, selectedLegs, hasPutSide, hasCallSide, expiration]);
-
-  // Format expiration for display
-  const formatExpiration = (exp: string) => {
-    if (exp.length !== 8) return exp;
-    const d = new Date(parseInt(exp.slice(0, 4)), parseInt(exp.slice(4, 6)) - 1, parseInt(exp.slice(6, 8)));
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dte = Math.floor((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} (${dte} DTE)`;
-  };
-
-  // Max loss for order dialog
-  const maxLoss = analysis
-    ? Math.max(...[analysis.maxLossPut, analysis.maxLossCall].filter((v): v is number => v != null))
-    : 0;
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -497,9 +115,8 @@ export function IronCondorPage() {
         recommendations={recommendations}
       />
 
-      {/* Configuration bar — always visible */}
-      <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-background/95 sticky top-[65px] md:top-[113px] z-30 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        {/* Symbol picker */}
+      {/* Symbol picker — sticky bar */}
+      <div className="flex items-center gap-4 flex-wrap border rounded-lg p-3 bg-background/95 sticky top-[65px] md:top-[113px] z-40 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-2">
           <Label className="text-[10px] uppercase text-muted-foreground">Symbol</Label>
           <div className="flex rounded-md border overflow-hidden">
@@ -517,211 +134,24 @@ export function IronCondorPage() {
           </div>
         </div>
 
-        {/* Mode picker */}
-        <div className="flex items-center gap-2">
-          <Label className="text-[10px] uppercase text-muted-foreground">Type</Label>
-          <div className="flex rounded-md border overflow-hidden">
-            {SPREAD_MODES.map(m => (
-              <button
-                key={m.value}
-                onClick={() => handleModeChange(m.value)}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                  mode === m.value ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Label className="text-[10px] uppercase text-muted-foreground">Expiration</Label>
-          <Select value={expiration ?? ""} onValueChange={handleExpirationChange}>
-            <SelectTrigger className="w-[180px] h-8 text-sm">
-              <SelectValue placeholder="Select expiration" />
-            </SelectTrigger>
-            <SelectContent>
-              {expirations.map((exp: string) => (
-                <SelectItem key={exp} value={exp}>{formatExpiration(exp)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Label className="text-[10px] uppercase text-muted-foreground">Qty</Label>
-          <Input
-            type="number"
-            min={1}
-            value={quantity}
-            onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-            className="w-14 h-8 text-sm text-center"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Label className="text-[10px] uppercase text-muted-foreground">Target Deltas</Label>
-          {hasPutSide && (
-            <Input
-              type="number"
-              step={0.5}
-              value={putDelta}
-              onChange={(e) => { setPutDelta(parseFloat(e.target.value) || 7); handleParameterChange(); }}
-              className="w-16 h-8 text-sm text-center border-red-300 text-red-600"
-            />
-          )}
-          {hasCallSide && (
-            <Input
-              type="number"
-              step={0.5}
-              value={callDelta}
-              onChange={(e) => { setCallDelta(parseFloat(e.target.value) || 3.5); handleParameterChange(); }}
-              className="w-16 h-8 text-sm text-center border-green-300 text-green-600"
-            />
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Label className="text-[10px] uppercase text-muted-foreground">Wing Width</Label>
-          <Input
-            type="number"
-            step={5}
-            value={wingWidth}
-            onChange={(e) => { setWingWidth(parseInt(e.target.value) || 100); handleParameterChange(); }}
-            className="w-16 h-8 text-sm text-center"
-          />
-        </div>
-
-        {builderActive && (
-          <button
-            onClick={() => setGexModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted transition-colors"
-            title="Open GEX analysis"
-          >
-            <BarChart3 className="h-4 w-4" />
-            GEX
-          </button>
-        )}
-
-        <div className="flex-1" />
-
-        {builderActive && (
-          <>
-            <button
-              onClick={handleReload}
-              disabled={status === "connecting"}
-              className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
-              title="Reload chain & re-select legs"
-            >
-              <RefreshCw className={cn("h-4 w-4", status === "connecting" && "animate-spin")} />
-            </button>
-
-            {underlyingPrice > 0 && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-semibold">{symbol} {underlyingPrice.toLocaleString()}</span>
-              </div>
-            )}
-
-            {/* Connection status indicator */}
-            <div className="flex items-center gap-1.5">
-              <div className={cn(
-                "h-2 w-2 rounded-full",
-                status === "connected" ? "bg-green-500" :
-                status === "reconnecting" || status === "connecting" ? "bg-yellow-500" :
-                "bg-red-500"
-              )} />
-              <span className="text-xs text-muted-foreground">
-                {status === "connected" ? "Live" : status === "connecting" ? "Connecting..." : status === "reconnecting" ? "Reconnecting..." : "Disconnected"}
-              </span>
-            </div>
-          </>
-        )}
+        <button
+          onClick={() => setGexModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted transition-colors"
+          title="Open GEX analysis"
+        >
+          <BarChart3 className="h-4 w-4" />
+          GEX
+        </button>
       </div>
 
-      {/* Error */}
-      {builderActive && error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Start builder button — shown when builder is not yet active */}
-      {!builderActive && (
-        <Button
-          variant="outline"
-          className="w-full py-6 text-muted-foreground hover:text-foreground"
-          onClick={() => setBuilderActive(true)}
-        >
-          <Play className="h-4 w-4 mr-2" />
-          Open Spread Builder
-        </Button>
-      )}
-
-      {/* Main content: stacked layout */}
-      {builderActive && chain.length > 0 && (
-        <div className="space-y-4">
-          {/* Options Chain */}
-          <div className="border rounded-lg p-4">
-            <OptionsChainTable
-              chain={chain}
-              selectedLegs={selectedLegs}
-              underlyingPrice={underlyingPrice}
-              onSelectLeg={handleSelectLeg}
-              mode={mode}
-              expanded={chainExpanded}
-              onExpandedChange={setChainExpanded}
-            />
-          </div>
-
-          {/* Analysis */}
-          <div className="border rounded-lg p-4 bg-muted/20">
-            <SpreadAnalysis
-              analysis={analysis}
-              selectedLegs={selectedLegs}
-              chain={chain}
-              underlyingPrice={underlyingPrice}
-              quantity={quantity}
-              onPlaceOrder={() => setOrderDialogOpen(true)}
-              mode={mode}
-              symbol={symbol}
-              loading={chain.length > 0 && !chainHasDeltas}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Connecting state — show analysis skeleton */}
-      {builderActive && status === "connecting" && chain.length === 0 && (
-        <div className="border rounded-lg p-4 bg-muted/20">
-          <SpreadAnalysis
-            analysis={null}
-            selectedLegs={selectedLegs}
-            chain={[]}
-            underlyingPrice={0}
-            quantity={quantity}
-            onPlaceOrder={() => {}}
-            mode={mode}
-            symbol={symbol}
-            loading
-          />
-        </div>
-      )}
-
-      {/* Order dialog */}
-      {analysis && expiration && (
-        <PlaceSpreadDialog
-          open={orderDialogOpen}
-          onOpenChange={setOrderDialogOpen}
-          symbol={symbol}
-          legs={orderLegs}
-          quantity={quantity}
-          netCreditMid={analysis.netCredit.mid}
-          maxLoss={maxLoss}
-          mode={mode}
-          chain={chain}
-        />
-      )}
+      {/* Options builder — re-mounts on symbol change to reset all internal state */}
+      <OptionsBuilder
+        key={symbol}
+        symbol={symbol}
+        allowedModes={["vertical", "iron-condor"]}
+        defaultMode="vertical"
+        onOrderPlaced={fetchSpreads}
+      />
 
       {/* Close spread dialog */}
       <CloseSpreadDialog
@@ -731,28 +161,30 @@ export function IronCondorPage() {
         onSuccess={fetchSpreads}
       />
 
+      {/* Hedge wizard */}
       <HedgeWizardDialog
         open={hedgeDialogOpen}
         onOpenChange={handleHedgeDialogClose}
         spread={hedgingSpread}
         risk={riskMap.get(hedgingSpread?.id ?? "") ?? { level: "healthy", premiumMultiple: null }}
-        chain={chain}
-        underlyingPrice={underlyingPrice}
+        chain={[]}
+        underlyingPrice={0}
         onSuccess={fetchSpreads}
         initialStrategy={hedgeInitialStrategy}
       />
 
+      {/* GEX modal */}
       <GexModal
         open={gexModalOpen}
         onOpenChange={setGexModalOpen}
         symbol={symbol}
-        expiration={expiration}
-        chain={chain}
-        mode={mode}
-        putDelta={putDelta}
-        callDelta={callDelta}
-        wingWidth={wingWidth}
-        onApplyLegs={setSelectedLegs}
+        expiration={undefined}
+        chain={[]}
+        mode="put-spread"
+        putDelta={4.5}
+        callDelta={4.5}
+        wingWidth={30}
+        onApplyLegs={() => {}}
       />
     </div>
   );
