@@ -42,6 +42,22 @@ export const SYMBOL_CONFIG: Record<
   RUT: { tradingClass: "RUTW", multiplier: 100, comboTickSize: 0.05, comboExchange: "CBOE" },
 };
 
+/** Well-known index symbols that use SecType.IND and CBOE exchange */
+const INDEX_SYMBOLS = new Set(["SPX", "XSP", "RUT", "VIX", "DJX", "NDX"]);
+
+/** Check if a symbol is an index (uses IND secType and CBOE exchange) */
+export function isIndexSymbol(symbol: string): boolean {
+  return INDEX_SYMBOLS.has(symbol);
+}
+
+/** Get the appropriate IBKR contract type and exchange for a symbol's underlying */
+export function getSymbolContractType(symbol: string): { secType: SecType; exchange: string } {
+  if (isIndexSymbol(symbol)) {
+    return { secType: SecType.IND, exchange: "CBOE" };
+  }
+  return { secType: SecType.STK, exchange: "SMART" };
+}
+
 /** Round a price to the nearest tick size increment. */
 export function roundToTickSize(price: number, tickSize: number): number {
   return Math.round(price / tickSize) * tickSize;
