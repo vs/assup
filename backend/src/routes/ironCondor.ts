@@ -7,6 +7,7 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import {
   ironCondorOrderSchema,
+  singleOrderSchema,
 } from "@assup/shared";
 import * as ironCondorService from "../services/ironCondor.service.js";
 
@@ -25,13 +26,17 @@ router.post(
   }),
 );
 
-router.post("/single-order", async (req, res, next) => {
-  try {
+/**
+ * POST /api/iron-condor/single-order
+ * Place a single-leg option order via IBKR
+ */
+router.post(
+  "/single-order",
+  validate({ body: singleOrderSchema }),
+  asyncHandler(async (req, res) => {
     const result = await ironCondorService.placeSingleOrder(req.body);
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
+    res.status(201).json(result);
+  }),
+);
 
 export default router;

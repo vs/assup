@@ -36,6 +36,7 @@ interface PlaceSpreadDialogProps {
   maxLoss: number;
   mode: SpreadMode;
   chain: IronCondorChainStrike[];
+  onSuccess?: () => void;
 }
 
 function getOption(chain: IronCondorChainStrike[], strike: number, type: "PUT" | "CALL") {
@@ -64,6 +65,7 @@ export function PlaceSpreadDialog({
   maxLoss,
   mode,
   chain,
+  onSuccess,
 }: PlaceSpreadDialogProps) {
   const [editableLegs, setEditableLegs] = useState<IronCondorOrderLeg[]>(legs);
   const [limitPrice, setLimitPrice] = useState(netCreditMid);
@@ -113,7 +115,7 @@ export function PlaceSpreadDialog({
       // needs negative price to enforce minimum credit received.
       await api.ironCondor.placeOrder({ symbol, legs: editableLegs, quantity, limitPrice: -limitPrice });
       setSuccess(true);
-      setTimeout(() => { onOpenChange(false); setSuccess(false); }, 1500);
+      setTimeout(() => { onOpenChange(false); setSuccess(false); onSuccess?.(); }, 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Order failed");
     } finally {

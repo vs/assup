@@ -482,7 +482,7 @@ export function OptionsBuilder({
     : 0;
 
   // Determine the SpreadMode to pass to sub-components for spread modes
-  const displayMode: SpreadMode = strategyMode === "iron-condor" ? "iron-condor" : verticalSide;
+  const displayMode: SpreadMode = strategyMode === "single" || strategyMode === "iron-condor" ? "iron-condor" : verticalSide;
 
   // Filter allowed strategy modes
   const availableModes = allowedModes
@@ -778,6 +778,7 @@ export function OptionsBuilder({
           maxLoss={maxLoss}
           mode={displayMode}
           chain={chain}
+          onSuccess={onOrderPlaced}
         />
       )}
     </div>

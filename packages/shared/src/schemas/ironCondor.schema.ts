@@ -30,3 +30,16 @@ export const closeSpreadOrderSchema = z.object({
 });
 
 export type CloseSpreadOrderInput = z.infer<typeof closeSpreadOrderSchema>;
+
+export const singleOrderSchema = z.object({
+  symbol: z.string().min(1).max(20).toUpperCase(),
+  conId: z.number().int().positive("conId is required"),
+  expiration: z.string().length(8, "Expiration must be YYYYMMDD format"),
+  strike: z.number().positive("Strike must be positive"),
+  right: z.enum(["C", "P"]),
+  action: z.enum(["BUY", "SELL"]),
+  quantity: z.number().int().positive("Quantity must be positive"),
+  limitPrice: z.number().positive("Limit price must be positive"),
+});
+
+export type SingleOrderInput = z.infer<typeof singleOrderSchema>;

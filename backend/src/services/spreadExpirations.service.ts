@@ -4,9 +4,9 @@
  * repeated IBKR API calls when the page loads.
  */
 
-import { Contract, SecType } from "@stoqey/ib";
+import { Contract } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
-import { SYMBOL_CONFIG } from "../utils/options.js";
+import { SYMBOL_CONFIG, getSymbolContractType } from "../utils/options.js";
 
 interface CacheEntry {
   expirations: string[];
@@ -33,10 +33,12 @@ export async function getExpirations(symbol: string): Promise<string[]> {
     throw new Error("Not connected to TWS");
   }
 
+  const { secType, exchange } = getSymbolContractType(optionSymbol);
+
   const underlyingContract: Contract = {
     symbol: optionSymbol,
-    secType: SecType.IND,
-    exchange: "CBOE",
+    secType,
+    exchange,
     currency: "USD",
   };
 
@@ -49,7 +51,7 @@ export async function getExpirations(symbol: string): Promise<string[]> {
   const secDefs = await api.getSecDefOptParams(
     optionSymbol,
     "",
-    SecType.IND,
+    secType,
     conId,
   );
 
