@@ -16,6 +16,7 @@ import type {
   WheelSuggestion,
   WheelAggregateMetrics,
   WheelLivePosition,
+  WheelSpreadGroup,
 } from "@assup/shared";
 import {
   groupOptionTrades,
@@ -528,6 +529,148 @@ const applyLiveDataToSummary = (
   };
 };
 
+/** Parse option displayName like "TLT Jan30'26 89 PUT" → { right, strike, expiry } */
+function parseOptionDisplayName(name: string): { right: string; strike: number; expiry: string } | null {
+  // Format: "SYMBOL ExpiryStr Strike RIGHT"
+  // e.g. "TLT Jan30'26 89 PUT", "AAPL Feb21'25 195 CALL"
+  const parts = name.split(" ");
+  if (parts.length < 4) return null;
+  const right = parts[parts.length - 1]; // last element: PUT or CALL
+  const strike = parseFloat(parts[parts.length - 2]); // second to last: strike
+  const expiry = parts[parts.length - 3]; // third to last: expiry string like "Jan30'26"
+  if (!right || !["PUT", "CALL"].includes(right)) return null;
+  if (isNaN(strike)) return null;
+  if (!expiry) return null;
+  return { right, strike, expiry };
+}
+
+/** Month abbreviation mapping for expiry parsing */
+const MONTH_MAP: Record<string, number> = {
+  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+};
+
+/** Parse expiry string like "Jan30'26" → Date */
+function parseExpiryString(expiry: string): Date | null {
+  // Format: "MonDD'YY" e.g. "Jan30'26"
+  const match = expiry.match(/^([A-Z][a-z]{2})(\d{1,2})'(\d{2})$/);
+  if (!match) return null;
+  const month = MONTH_MAP[match[1]];
+  if (month === undefined) return null;
+  const day = parseInt(match[2], 10);
+  const year = 2000 + parseInt(match[3], 10);
+  return new Date(year, month, day);
+}
+
+/**
+ * Detect spread groups (paired option legs) from matched trades.
+ * A spread pair: two OPTION trades, same right, same expiry,
+ * opposing sides (Sold vs Bought), opened within 1 calendar day.
+ */
+function detectSpreadGroups(trades: WheelMatchedTrade[]): WheelSpreadGroup[] {
+  // Filter to open OPTION trades with open legs
+  const optionTrades = trades.filter(
+    t => t.type === "OPTION" && t.openLeg != null
+  );
+
+  const used = new Set<string>();
+  const groups: WheelSpreadGroup[] = [];
+
+  for (let i = 0; i < optionTrades.length; i++) {
+    const tradeA = optionTrades[i];
+    if (used.has(tradeA.id)) continue;
+
+    const parsedA = parseOptionDisplayName(tradeA.displayName);
+    if (!parsedA) continue;
+
+    const expiryDateA = parseExpiryString(parsedA.expiry);
+    if (!expiryDateA) continue;
+
+    const openDateA = new Date(tradeA.openLeg!.date);
+    const isSoldA = tradeA.openLeg!.action.startsWith("Sold");
+
+    for (let j = i + 1; j < optionTrades.length; j++) {
+      const tradeB = optionTrades[j];
+      if (used.has(tradeB.id)) continue;
+
+      const parsedB = parseOptionDisplayName(tradeB.displayName);
+      if (!parsedB) continue;
+
+      // Same right (both PUT or both CALL)
+      if (parsedA.right !== parsedB.right) continue;
+
+      // Same expiry
+      if (parsedA.expiry !== parsedB.expiry) continue;
+
+      // Opposing sides
+      const isSoldB = tradeB.openLeg!.action.startsWith("Sold");
+      if (isSoldA === isSoldB) continue;
+
+      // Opened within 1 calendar day
+      const openDateB = new Date(tradeB.openLeg!.date);
+      const dayDiff = Math.abs(openDateA.getTime() - openDateB.getTime()) / (1000 * 60 * 60 * 24);
+      if (dayDiff > 1) continue;
+
+      // We have a match - determine short and long legs
+      const shortLeg = isSoldA ? tradeA : tradeB;
+      const longLeg = isSoldA ? tradeB : tradeA;
+
+      // Net premium = short leg total + long leg total (short is positive, long is negative)
+      const shortPremium = shortLeg.openLeg!.total;
+      const longPremium = longLeg.openLeg!.total;
+      const netPremium = shortPremium + longPremium;
+
+      // Determine spread type
+      const right = parsedA.right.toLowerCase() as "put" | "call";
+      const isCredit = netPremium > 0;
+      const type: WheelSpreadGroup["type"] = `${right}-${isCredit ? "credit" : "debit"}`;
+
+      // Max loss: difference in strikes * 100 - net premium (for credit spreads)
+      // For debit spreads: net premium paid
+      const shortParsed = isSoldA ? parsedA : parsedB;
+      const longParsed = isSoldA ? parsedB : parsedA;
+      const strikeDiff = Math.abs(shortParsed.strike - longParsed.strike);
+      const maxLoss = isCredit
+        ? strikeDiff * (shortLeg.openLeg!.quantity) * 100 - netPremium
+        : Math.abs(netPremium);
+
+      // Current P&L: net premium + close leg totals (if any)
+      let currentPnl: number | null = netPremium;
+      if (shortLeg.closeLeg) {
+        currentPnl += shortLeg.closeLeg.total;
+      }
+      if (longLeg.closeLeg) {
+        currentPnl += longLeg.closeLeg.total;
+      }
+      // If both legs are still open, P&L is null (unrealized)
+      if (!shortLeg.closeLeg && !longLeg.closeLeg && shortLeg.status === "open" && longLeg.status === "open") {
+        currentPnl = null;
+      }
+
+      // DTE from today
+      const now = nowInET();
+      const dte = Math.max(0, Math.ceil((expiryDateA.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+
+      groups.push({
+        type,
+        shortLeg,
+        longLeg,
+        netPremium,
+        maxLoss,
+        currentPnl,
+        expiry: expiryDateA.toISOString().split("T")[0],
+        dte,
+      });
+
+      used.add(tradeA.id);
+      used.add(tradeB.id);
+      break; // tradeA is matched, move to next
+    }
+  }
+
+  return groups;
+}
+
 export const wheelService = {
   /**
    * Fetch all IBKR data needed for wheel calculations in one batch
@@ -1039,7 +1182,7 @@ export const wheelService = {
   /**
    * Match trades within a cycle into WheelMatchedTrade format
    */
-  matchTradesForCycle(trades: RawTrade[], symbol: string): WheelMatchedTrade[] {
+  matchTradesForCycle(trades: RawTrade[], symbol: string): { trades: WheelMatchedTrade[]; spreadGroups: WheelSpreadGroup[] } {
     // Separate options and stocks
     const optionTrades = trades.filter(t => t.secType === "OPT") as unknown as OptionTradeInput[];
     const stockTrades = trades.filter(t => t.secType === "STK") as unknown as StockTradeInput[];
@@ -1055,11 +1198,14 @@ export const wheelService = {
     ];
 
     // Sort by date (open leg date)
-    return result.sort((a, b) => {
+    const sorted = result.sort((a, b) => {
       const dateA = a.openLeg?.date || a.closeLeg?.date || "";
       const dateB = b.openLeg?.date || b.closeLeg?.date || "";
       return dateA.localeCompare(dateB);
     });
+
+    const spreadGroups = detectSpreadGroups(sorted);
+    return { trades: sorted, spreadGroups };
   },
 
   /**
@@ -1479,6 +1625,7 @@ export const wheelService = {
           annualizedRoc: 0,
           durationDays: 0,
           trades: [],
+          spreadGroups: [],
           entryType,
           entryDescription,
           exitType: "in_progress",
@@ -1639,7 +1786,9 @@ export const wheelService = {
         if (hasOptionTrades) {
           // Convert raw trades to matched trades using tracked indices (not date range)
           const rawTrades = cycleTradeIndices.map(i => filteredTrades[i]);
-          currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
+          const matched = this.matchTradesForCycle(rawTrades, symbol);
+          currentCycle.trades = matched.trades as any;
+          currentCycle.spreadGroups = matched.spreadGroups;
           cycles.push(currentCycle);
         }
         currentCycle = null;
@@ -1707,7 +1856,9 @@ export const wheelService = {
 
       // Convert raw trades to matched trades using tracked indices (not date range)
       const rawTrades = cycleTradeIndices.map(i => filteredTrades[i]);
-      currentCycle.trades = this.matchTradesForCycle(rawTrades, symbol) as any;
+      const matched = this.matchTradesForCycle(rawTrades, symbol);
+      currentCycle.trades = matched.trades as any;
+      currentCycle.spreadGroups = matched.spreadGroups;
       cycles.push(currentCycle);
     }
 
