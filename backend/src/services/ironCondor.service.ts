@@ -6,6 +6,7 @@
 import {
   Contract,
   SecType,
+  OptionType,
   OrderAction,
   OrderType,
   TimeInForce,
@@ -142,7 +143,7 @@ export async function placeSingleOrder(req: SingleOrderRequest): Promise<SingleO
     currency: "USD",
     lastTradeDateOrContractMonth: req.expiration,
     strike: req.strike,
-    right: req.right,
+    right: req.right === "C" ? OptionType.Call : OptionType.Put,
   };
 
   const lmtPrice = roundToTickSize(req.limitPrice, 0.01);
