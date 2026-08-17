@@ -1083,6 +1083,33 @@ function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle 
           {cycle.trades.length} trade{cycle.trades.length !== 1 ? "s" : ""}
         </span>
       </div>
+      {/* Spread groups */}
+      {cycle.spreadGroups && cycle.spreadGroups.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {cycle.spreadGroups.map((sg, idx) => {
+            const label = sg.type.replace("-", " ").replace(/\b\w/g, c => c.toUpperCase());
+            return (
+              <div key={idx} className="flex items-center gap-3 text-xs border rounded px-3 py-2 bg-muted/30">
+                <span className="font-medium text-muted-foreground">{label}</span>
+                <span className="text-red-600">{sg.shortLeg.displayName}</span>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-green-600">{sg.longLeg.displayName}</span>
+                <span className="text-muted-foreground ml-auto">
+                  {sg.dte > 0 ? `${sg.dte} DTE` : "Expired"}
+                </span>
+                <span className="font-medium tabular-nums">
+                  Net: {sg.netPremium >= 0 ? "+" : ""}{formatCurrency(sg.netPremium)}
+                </span>
+                {sg.currentPnl != null && (
+                  <span className={`font-medium tabular-nums ${sg.currentPnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    P&L: {sg.currentPnl >= 0 ? "+" : ""}{formatCurrency(sg.currentPnl)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       <table className="text-xs w-full">
         <tbody>
           {cycle.trades.map((trade) => {
