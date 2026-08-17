@@ -22,10 +22,11 @@ import { useTickerProfileContext } from "@/components/common/TickerProfileProvid
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
 import { useSparklines } from "@/hooks";
-import { Plus, X, ChevronDown, ChevronUp, Loader2, Check, Vault, TrendingUp, TrendingUpDown, PercentCircle, CircleDot, RefreshCw } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronUp, Loader2, Check, Vault, TrendingUp, TrendingUpDown, PercentCircle, CircleDot, RefreshCw, ShoppingCart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { scannerApi } from "@/api/scanner";
 import type { ScannerCriteria } from "@assup/shared";
+import { OptionsBuilderDialog } from "@/components/options-builder/OptionsBuilderDialog";
 import {
   Dialog,
   DialogContent,
@@ -460,6 +461,7 @@ function WheelTickerCard({
   onChartClick: () => void;
 }) {
   const [scanState, setScanState] = useState<Record<string, "loading" | "done">>({});
+  const [builderOpen, setBuilderOpen] = useState(false);
 
   const startScanJob = async (symbol: string, optionType: "PUT" | "CALL") => {
     const key = `${symbol}:${optionType}`;
@@ -663,6 +665,19 @@ function WheelTickerCard({
             <Button
               variant="ghost"
               size="sm"
+              title="Open options builder"
+              className="text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                setBuilderOpen(true);
+              }}
+            >
+              <ShoppingCart className="h-3 w-3 mr-1" />
+              Order
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               title="Scan puts"
               className="text-xs w-8 px-0"
               disabled={scanState[`${ticker.symbol}:PUT`] === "loading"}
@@ -713,6 +728,14 @@ function WheelTickerCard({
           <WheelTickerDetail symbol={ticker.symbol} />
         </CardContent>
       )}
+      <OptionsBuilderDialog
+        open={builderOpen}
+        onOpenChange={setBuilderOpen}
+        symbol={ticker.symbol}
+        onOrderPlaced={() => {
+          setBuilderOpen(false);
+        }}
+      />
     </Card>
   );
 }
