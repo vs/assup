@@ -18,6 +18,7 @@ interface OptionsChainTableProps {
   mode: SpreadMode;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  maxHeight?: string;
 }
 
 function getLegLabel(strike: number, legs: SpreadSelectedLegs): { text: string; color: string } | null {
@@ -386,7 +387,7 @@ function ChainMinimap({
   );
 }
 
-export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSelectLeg, mode, expanded: controlledExpanded, onExpandedChange }: OptionsChainTableProps) {
+export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSelectLeg, mode, expanded: controlledExpanded, onExpandedChange, maxHeight }: OptionsChainTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sellRowRef = useRef<HTMLDivElement>(null);
   const atmRowRef = useRef<HTMLDivElement>(null);
@@ -535,7 +536,7 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
           {/* Chain + Minimap side by side */}
           <div className="flex gap-1">
             {/* Scrollable chain */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto max-h-[560px]">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ maxHeight: maxHeight ?? "560px" }}>
               {fullView ? (
                 // Full view: all strikes, scrollable
                 chain.map((entry: IronCondorChainStrike) => (

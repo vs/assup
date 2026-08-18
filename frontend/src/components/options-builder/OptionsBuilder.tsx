@@ -682,6 +682,7 @@ export function OptionsBuilder({
               mode={displayMode}
               expanded={chainExpanded}
               onExpandedChange={setChainExpanded}
+              maxHeight={onClose ? "calc(92vh - 280px)" : undefined}
             />
           </div>
 
