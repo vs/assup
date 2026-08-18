@@ -149,15 +149,15 @@ export function recommendHedge(input: RecommendationInput): HedgeRecommendation 
       return {
         action: "butterfly",
         urgency: "critical",
-        reason: `SPX broke ${isPut ? "below" : "above"} GEX flip (${flipLabel}) — convert to butterfly`,
-        details: "Price in amplified-move zone. Butterfly caps loss and profits if crash continues through.",
+        reason: `SPX ${isPut ? "below" : "above"} GEX flip (${flipLabel}) — consider butterfly conversion`,
+        details: "Price in amplified-move zone. Butterfly caps loss and profits if move continues.",
       };
     }
     return {
       action: "close-early",
-      urgency: "critical",
-      reason: `SPX broke ${isPut ? "below" : "above"} GEX flip (${flipLabel}) — close immediately`,
-      details: "Price in amplified-move zone. Close to limit further losses.",
+      urgency: "warning",
+      reason: `SPX crossed GEX flip (${flipLabel}) — consider closing`,
+      details: "Price in amplified-move zone. Moves may accelerate without dealer hedging support.",
     };
   }
 
@@ -165,9 +165,9 @@ export function recommendHedge(input: RecommendationInput): HedgeRecommendation 
   if (priceApproachingFlip && strikeRelevant) {
     return {
       action: "roll-down",
-      urgency: "warning",
-      reason: `SPX approaching GEX flip (${flipLabel}) — roll ${isPut ? "down" : "up"} or close`,
-      details: `Price is within ${(GEX_APPROACH_PCT * 100).toFixed(1)}% of the GEX flip level. Rolling moves your short strike further from danger.`,
+      urgency: "info",
+      reason: `SPX nearing GEX flip (${flipLabel}) — watch for roll or close`,
+      details: `Price is within ${(GEX_APPROACH_PCT * 100).toFixed(1)}% of the GEX flip level. Rolling moves your short strike further away.`,
     };
   }
 

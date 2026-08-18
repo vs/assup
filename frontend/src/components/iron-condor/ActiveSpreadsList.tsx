@@ -182,14 +182,13 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
           className={cn(
             "px-3 py-2 text-sm border-t",
             recommendation.urgency === "critical"
-              ? "bg-red-100 text-red-800 border-red-200 animate-pulse"
+              ? "bg-red-100 text-red-800 border-red-200"
               : recommendation.urgency === "warning"
               ? "bg-amber-100 text-amber-800 border-amber-200"
               : "bg-muted/50 text-muted-foreground",
           )}
           title={recommendation.details}
         >
-          {recommendation.urgency === "critical" ? "!!!" : recommendation.urgency === "warning" ? "!" : "i"}{" "}
           {recommendation.reason}
         </div>
       )}

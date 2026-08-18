@@ -198,10 +198,10 @@ export function recommendGexStrikes(params: {
         }
       }
 
-      // Warning: short put near or below GEX flip
+      // Note: short put near or below GEX flip
       if (gexLevels.gexFlip != null && shortPut <= gexLevels.gexFlip) {
         warnings.push(
-          `Short put ${shortPut} is below GEX flip (${gexLevels.gexFlip.toFixed(0)}) \u2014 in amplified-move zone`,
+          `Short put ${shortPut} is below GEX flip (${gexLevels.gexFlip.toFixed(0)}) — amplified-move zone`,
         );
       } else if (
         gexLevels.gexFlip != null &&
@@ -209,7 +209,7 @@ export function recommendGexStrikes(params: {
         (shortPut - gexLevels.gexFlip) / spot < 0.005
       ) {
         warnings.push(
-          `Short put ${shortPut} is only ${formatPct(spot, gexLevels.gexFlip)}% above GEX flip (${gexLevels.gexFlip.toFixed(0)}) \u2014 close to amplified-move zone`,
+          `Short put ${shortPut} near GEX flip (${gexLevels.gexFlip.toFixed(0)}) — ${formatPct(spot, gexLevels.gexFlip)}% above`,
         );
       }
 
