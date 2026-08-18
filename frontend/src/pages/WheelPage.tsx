@@ -672,8 +672,7 @@ function WheelTickerCard({
                 setBuilderOpen(true);
               }}
             >
-              <ShoppingCart className="h-3 w-3 mr-1" />
-              Order
+              <ShoppingCart className="h-3 w-3" />
             </Button>
             <Button
               variant="ghost"
