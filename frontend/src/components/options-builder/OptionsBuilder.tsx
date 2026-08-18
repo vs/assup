@@ -719,7 +719,7 @@ export function OptionsBuilder({
                   </div>
                   {expiration && (
                     <div className="text-xs text-muted-foreground">
-                      Exp: {formatExpiration(expiration)} | Qty: {quantity}
+                      Exp: {parseExpiration(expiration).label} ({parseExpiration(expiration).dte} DTE) | Qty: {quantity}
                     </div>
                   )}
                 </div>
