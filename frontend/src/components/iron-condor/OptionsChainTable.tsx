@@ -518,25 +518,24 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
 
       {expanded && (
         <>
-          {/* Header */}
-          <div className="grid gap-0.5 px-3 text-xs text-muted-foreground uppercase font-medium pb-2 border-b" style={{ gridTemplateColumns: GRID_COLS }}>
-            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Bid</div>
-            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Ask</div>
-            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Mid</div>
-            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>{putActive ? <span className="text-red-600" title="Click delta to sell put at this strike">Delta <span className="normal-case">(click to sell)</span></span> : "Delta"}</div>
-            <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>IV</div>
-            <div className="text-center font-semibold text-foreground">Strike</div>
-            <div className={!callActive ? "opacity-30" : ""}>IV</div>
-            <div className={!callActive ? "opacity-30" : ""}>{callActive ? <span className="text-green-600" title="Click delta to sell call at this strike">Delta <span className="normal-case">(click to sell)</span></span> : "Delta"}</div>
-            <div className={!callActive ? "opacity-30" : ""}>Mid</div>
-            <div className={!callActive ? "opacity-30" : ""}>Bid</div>
-            <div className={!callActive ? "opacity-30" : ""}>Ask</div>
-          </div>
-
           {/* Chain + Minimap side by side */}
           <div className="flex gap-1">
-            {/* Scrollable chain */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ maxHeight: maxHeight ?? "560px" }}>
+            {/* Header + Scrollable chain */}
+            <div className="flex-1 min-w-0">
+              <div className="grid gap-0.5 px-3 text-xs text-muted-foreground uppercase font-medium pb-2 border-b" style={{ gridTemplateColumns: GRID_COLS }}>
+                <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Bid</div>
+                <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Ask</div>
+                <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>Mid</div>
+                <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>{putActive ? <span className="text-red-600" title="Click delta to sell put at this strike">Delta <span className="normal-case">(click to sell)</span></span> : "Delta"}</div>
+                <div className={`text-right ${!putActive ? "opacity-30" : ""}`}>IV</div>
+                <div className="text-center font-semibold text-foreground">Strike</div>
+                <div className={!callActive ? "opacity-30" : ""}>IV</div>
+                <div className={!callActive ? "opacity-30" : ""}>{callActive ? <span className="text-green-600" title="Click delta to sell call at this strike">Delta <span className="normal-case">(click to sell)</span></span> : "Delta"}</div>
+                <div className={!callActive ? "opacity-30" : ""}>Mid</div>
+                <div className={!callActive ? "opacity-30" : ""}>Bid</div>
+                <div className={!callActive ? "opacity-30" : ""}>Ask</div>
+              </div>
+              <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: maxHeight ?? "560px" }}>
               {fullView ? (
                 // Full view: all strikes, scrollable
                 chain.map((entry: IronCondorChainStrike) => (
@@ -570,6 +569,7 @@ export function OptionsChainTable({ chain, selectedLegs, underlyingPrice, onSele
                   )
                 )
               )}
+              </div>
             </div>
 
             {/* Minimap */}
