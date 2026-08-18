@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Play } from "lucide-react";
+import { RefreshCw, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
 import { analyzeSpread } from "@/utils/spreadAnalysis";
@@ -219,6 +219,7 @@ export function OptionsBuilder({
 
   // --- Auto-select legs based on deltas (only in spread modes) ---
   const autoSelectDoneRef = useRef(false);
+  const expScrollRef = useRef<HTMLDivElement>(null);
   const prevExpirationRef = useRef<string | undefined>(undefined);
 
   const chainHasDeltas = useMemo(() => {
@@ -466,7 +467,7 @@ export function OptionsBuilder({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dte = Math.floor((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const label = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     return { label, dte };
   };
 
@@ -621,29 +622,45 @@ export function OptionsBuilder({
       </div>
 
       {/* Expiration selector */}
-      {expirations.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {expirations.map((exp: string) => {
-            const { label, dte } = parseExpiration(exp);
-            const selected = exp === expiration;
-            return (
-              <button
-                key={exp}
-                onClick={() => handleExpirationChange(exp)}
-                className={cn(
-                  "flex flex-col items-center px-3 py-1.5 rounded-md border text-sm transition-colors",
-                  selected
-                    ? "border-primary bg-primary/10 text-primary font-medium"
-                    : "border-border hover:border-primary/50 hover:bg-muted text-muted-foreground"
-                )}
-              >
-                <span className={cn("text-xs", selected ? "font-medium" : "")}>{label}</span>
-                <span className={cn("text-[10px]", selected ? "text-primary" : "text-muted-foreground")}>{dte} DTE</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {expirations.length > 0 && (() => {
+        const scrollRef = expScrollRef;
+        return (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => scrollRef.current?.scrollBy({ left: -200, behavior: "smooth" })}
+              className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div ref={scrollRef} className="flex gap-1.5 overflow-x-auto scrollbar-none">
+              {expirations.map((exp: string) => {
+                const { label, dte } = parseExpiration(exp);
+                const selected = exp === expiration;
+                return (
+                  <button
+                    key={exp}
+                    onClick={() => handleExpirationChange(exp)}
+                    className={cn(
+                      "shrink-0 px-2 py-1 rounded-md border text-xs transition-colors whitespace-nowrap",
+                      selected
+                        ? "border-primary bg-primary/10 text-primary font-medium"
+                        : "border-border hover:border-primary/50 hover:bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {label} · {dte}d
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => scrollRef.current?.scrollBy({ left: 200, behavior: "smooth" })}
+              className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Error */}
       {builderActive && error && (
