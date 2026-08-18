@@ -11,13 +11,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -466,14 +459,15 @@ export function OptionsBuilder({
     return legs;
   }, [chain, selectedLegs, hasPutSide, hasCallSide, expiration, isSpreadMode]);
 
-  // Format expiration for display
-  const formatExpiration = (exp: string) => {
-    if (exp.length !== 8) return exp;
+  // Parse expiration for display
+  const parseExpiration = (exp: string) => {
+    if (exp.length !== 8) return { label: exp, dte: 0 };
     const d = new Date(parseInt(exp.slice(0, 4)), parseInt(exp.slice(4, 6)) - 1, parseInt(exp.slice(6, 8)));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dte = Math.floor((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} (${dte} DTE)`;
+    const label = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    return { label, dte };
   };
 
   // Max loss for order dialog
@@ -532,21 +526,6 @@ export function OptionsBuilder({
             </div>
           </div>
         )}
-
-        {/* Expiration selector */}
-        <div className="flex items-center gap-2">
-          <Label className="text-[10px] uppercase text-muted-foreground">Expiration</Label>
-          <Select value={expiration ?? ""} onValueChange={handleExpirationChange}>
-            <SelectTrigger className="w-[180px] h-8 text-sm">
-              <SelectValue placeholder="Select expiration" />
-            </SelectTrigger>
-            <SelectContent>
-              {expirations.map((exp: string) => (
-                <SelectItem key={exp} value={exp}>{formatExpiration(exp)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
 
         {/* Quantity */}
         <div className="flex items-center gap-2">
@@ -640,6 +619,31 @@ export function OptionsBuilder({
           </>
         )}
       </div>
+
+      {/* Expiration selector */}
+      {expirations.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {expirations.map((exp: string) => {
+            const { label, dte } = parseExpiration(exp);
+            const selected = exp === expiration;
+            return (
+              <button
+                key={exp}
+                onClick={() => handleExpirationChange(exp)}
+                className={cn(
+                  "flex flex-col items-center px-3 py-1.5 rounded-md border text-sm transition-colors",
+                  selected
+                    ? "border-primary bg-primary/10 text-primary font-medium"
+                    : "border-border hover:border-primary/50 hover:bg-muted text-muted-foreground"
+                )}
+              >
+                <span className={cn("text-xs", selected ? "font-medium" : "")}>{label}</span>
+                <span className={cn("text-[10px]", selected ? "text-primary" : "text-muted-foreground")}>{dte} DTE</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Error */}
       {builderActive && error && (
