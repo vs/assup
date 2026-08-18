@@ -30,7 +30,7 @@ export function OptionsBuilderDialog({
 }: OptionsBuilderDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[95vw] !max-w-[95vw] h-[92vh] max-h-[92vh] overflow-y-auto items-start">
+      <DialogContent className="!w-[95vw] !max-w-[95vw] h-[92vh] max-h-[92vh] overflow-y-auto !top-[4vh] !translate-y-0 content-start">
         <DialogHeader>
           <DialogTitle>New Order — {symbol}</DialogTitle>
         </DialogHeader>
