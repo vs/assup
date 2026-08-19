@@ -223,10 +223,15 @@ export class SpreadStreamSession {
         }) ?? expirations[expirations.length - 1];
     }
 
-    // 4. Filter strikes within ±15% of underlying price
+    // 4. Filter strikes around underlying price.
+    // Index options (SPX/XSP/RUT) have dense chains — use ±15%.
+    // Equity options need a wider range (±30%) since strikes are sparser
+    // and call spreads require visibility above the current price.
+    const isIndex = !!SYMBOL_CONFIG[this.symbol];
+    const rangePct = isIndex ? 0.15 : 0.30;
     const strikes = [...allStrikes]
       .filter(
-        (s) => s >= underlyingPrice * 0.85 && s <= underlyingPrice * 1.15,
+        (s) => s >= underlyingPrice * (1 - rangePct) && s <= underlyingPrice * (1 + rangePct),
       )
       .sort((a, b) => a - b);
 
