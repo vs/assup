@@ -32,12 +32,22 @@ import type {
 
 // --- Props ---
 
+/** Externally-supplied strike/sizing recommendation (from strategy advisor) */
+export interface StrategyRecommendation {
+  shortStrike: number;
+  longStrike: number;
+  wingWidth: number;
+  quantity: number;
+}
+
 export interface OptionsBuilderProps {
   symbol: string;
   allowedModes?: StrategyMode[];
   defaultMode?: StrategyMode;
   onOrderPlaced?: () => void;
   onClose?: () => void;
+  /** When set, overrides delta-based auto-selection with specific strikes */
+  strategyRecommendation?: StrategyRecommendation | null;
 }
 
 // --- Helpers ---
@@ -99,6 +109,7 @@ export function OptionsBuilder({
   defaultMode = "iron-condor",
   onOrderPlaced,
   onClose,
+  strategyRecommendation,
 }: OptionsBuilderProps) {
   // Strategy mode (single, vertical, iron-condor)
   const [strategyMode, setStrategyMode] = useState<StrategyMode>(defaultMode);
@@ -285,6 +296,33 @@ export function OptionsBuilder({
       setSelectedLegs(newLegs);
     }
   }, [chain, chainHasDeltas, scouting, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide, isSpreadMode]);
+
+  // --- Apply strategy recommendation (overrides delta-based auto-select) ---
+  useEffect(() => {
+    if (!strategyRecommendation) return;
+    if (chain.length === 0) return;
+
+    const { shortStrike, longStrike, wingWidth: recWingWidth, quantity: recQuantity } = strategyRecommendation;
+
+    // Snap to nearest available strikes in the chain
+    const snapToChain = (target: number) =>
+      chain.reduce((closest, entry) =>
+        Math.abs(entry.strike - target) < Math.abs(closest - target) ? entry.strike : closest,
+        chain[0]?.strike ?? target,
+      );
+
+    const sellPut = snapToChain(shortStrike);
+    const buyPut = snapToChain(longStrike);
+
+    setSelectedLegs(prev => ({ ...prev, sellPut, buyPut }));
+    setWingWidth(recWingWidth);
+    setQuantity(recQuantity);
+    autoSelectDoneRef.current = true;
+
+    // Ensure vertical put-spread mode
+    if (strategyMode !== "vertical") setStrategyMode("vertical");
+    if (verticalSide !== "put-spread") setVerticalSide("put-spread");
+  }, [strategyRecommendation, chain]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleParameterChange = useCallback(() => {
     autoSelectDoneRef.current = false;

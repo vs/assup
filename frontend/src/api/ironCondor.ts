@@ -9,6 +9,7 @@ import type {
   ActiveSpread,
   SingleOrderRequest,
   SingleOrderResponse,
+  SpreadStrategyMetrics,
 } from "@assup/shared";
 
 export const ironCondorApi = {
@@ -35,5 +36,20 @@ export const ironCondorApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    }),
+
+  getSpreadStrategyMetrics: (symbol: string) =>
+    request<SpreadStrategyMetrics>(`/api/spreads/strategy?symbol=${encodeURIComponent(symbol)}`),
+
+  recordStrategyLoss: (symbol: string, date?: string) =>
+    request<void>("/api/spreads/strategy/record-loss", {
+      method: "POST",
+      body: JSON.stringify({ symbol, date }),
+    }),
+
+  clearStrategyCooloff: (symbol: string) =>
+    request<void>("/api/spreads/strategy/clear-cooloff", {
+      method: "POST",
+      body: JSON.stringify({ symbol }),
     }),
 };

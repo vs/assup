@@ -155,3 +155,46 @@ export interface SingleOrderResponse {
 
 /** Hedge strategies available in the hedge wizard */
 export type HedgeStrategy = "butterfly" | "protective" | "roll";
+
+// --- Spread Strategy Advisor types ---
+
+export interface StrategyFilter {
+  name: string;
+  passed: boolean;
+  reason: string;
+  value: number | null;
+  threshold: number | null;
+}
+
+export interface SpreadStrategyMetrics {
+  symbol: string;
+
+  // Market data
+  underlyingPrice: number | null;
+  spotVix: number | null;
+  vix3m: number | null;
+  hv10: number | null;
+  ivHvRatio: number | null;
+
+  // Filters
+  filters: StrategyFilter[];
+  allFiltersPassed: boolean;
+
+  // Recommendations
+  dailyMovePct: number | null;
+  recommendedShortStrike: number | null;
+  recommendedLongStrike: number | null;
+  wingWidth: number;
+  positionMultiplier: number | null;
+
+  // Cooloff state
+  cooloffActive: boolean;
+  cooloffUntil: string | null;
+  lastLossDate: string | null;
+
+  // Expiry guidance
+  recommendedExpiry: "0DTE" | "1DTE" | null;
+
+  // Timestamps
+  computedAt: string;
+}

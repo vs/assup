@@ -3,6 +3,7 @@
  *
  * Owns:
  * - Symbol picker (loaded from settings)
+ * - Strategy Advisor (VIX-based strike/sizing recommendations)
  * - Active spreads list with close/hedge handlers
  * - GEX modal and Hedge Wizard dialog
  * - Risk/hedge state
@@ -16,7 +17,10 @@ import { ActiveSpreadsList } from "@/components/iron-condor/ActiveSpreadsList";
 import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
 import { GexModal } from "@/components/iron-condor/GexModal";
 import { HedgeWizardDialog } from "@/components/iron-condor/HedgeWizardDialog";
+import { StrategyAdvisor } from "@/components/iron-condor/StrategyAdvisor";
 import { OptionsBuilder } from "@/components/options-builder/OptionsBuilder";
+import type { StrategyRecommendation } from "@/components/options-builder/OptionsBuilder";
+import type { StrategyApplyParams } from "@/components/iron-condor/StrategyAdvisor";
 import { useSpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 import { useHedgeRecommendations } from "@/hooks/useHedgeRecommendations";
 import { Label } from "@/components/ui/label";
@@ -35,6 +39,9 @@ export function IronCondorPage() {
 
   // Active spreads
   const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
+
+  // Strategy recommendation from advisor
+  const [strategyRec, setStrategyRec] = useState<StrategyRecommendation | null>(null);
 
   // Close dialog
   const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
@@ -81,6 +88,7 @@ export function IronCondorPage() {
   // Handlers
   const handleSymbolChange = useCallback((sym: string) => {
     setSymbol(sym);
+    setStrategyRec(null);
   }, []);
 
   const handleCloseSpread = useCallback((spread: ActiveSpread) => {
@@ -102,6 +110,15 @@ export function IronCondorPage() {
     } else {
       setHedgeDialogOpen(true);
     }
+  }, []);
+
+  const handleStrategyApply = useCallback((params: StrategyApplyParams) => {
+    setStrategyRec({
+      shortStrike: params.shortStrike,
+      longStrike: params.longStrike,
+      wingWidth: params.wingWidth,
+      quantity: params.quantity,
+    });
   }, []);
 
   return (
@@ -144,6 +161,14 @@ export function IronCondorPage() {
         </button>
       </div>
 
+      {/* Strategy Advisor — VIX-based strike/sizing recommendations */}
+      <StrategyAdvisor
+        key={symbol}
+        symbol={symbol}
+        baseQuantity={1}
+        onApply={handleStrategyApply}
+      />
+
       {/* Options builder — re-mounts on symbol change to reset all internal state */}
       <OptionsBuilder
         key={symbol}
@@ -151,6 +176,7 @@ export function IronCondorPage() {
         allowedModes={["vertical", "iron-condor"]}
         defaultMode="vertical"
         onOrderPlaced={fetchSpreads}
+        strategyRecommendation={strategyRec}
       />
 
       {/* Close spread dialog */}
