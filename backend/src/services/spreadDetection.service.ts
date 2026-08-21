@@ -1,7 +1,7 @@
 /**
  * Spread detection service.
  * Reconstructs spread/condor structures from individual IBKR option positions.
- * Only considers positions on spread-eligible underlyings (SPX, XSP, RUT).
+ * Considers option positions on any underlying.
  * Only returns fully matched spreads (2-leg credit spreads or 4-leg iron condors).
  */
 
@@ -9,17 +9,8 @@ import type { Position } from "@assup/shared";
 import type { ActiveSpread, ActiveSpreadLeg, SpreadMode } from "@assup/shared";
 import { SYMBOL_CONFIG as SHARED_SYMBOL_CONFIG, roundToTickSize } from "../utils/options.js";
 
-/** Underlyings eligible for spread detection */
-const SPREAD_UNDERLYINGS = new Set(["SPX", "XSP", "RUT"]);
-
-const SYMBOL_CONFIG: Record<string, { multiplier: number }> = {
-  SPX: { multiplier: 100 },
-  XSP: { multiplier: 100 },
-  RUT: { multiplier: 100 },
-};
-
 function positionToLeg(p: Position): ActiveSpreadLeg {
-  const multiplier = SYMBOL_CONFIG[p.underlying ?? ""]?.multiplier ?? 100;
+  const multiplier = SHARED_SYMBOL_CONFIG[p.underlying ?? ""]?.multiplier ?? 100;
   const absPos = Math.abs(p.position);
 
   // midPrice: per-contract price. marketValue is always positive (absolute) from position service.
@@ -137,15 +128,14 @@ function buildSpread(
 
 /**
  * Group IBKR positions into recognized spread structures.
- * Only considers spread-eligible underlyings (SPX, XSP, RUT).
+ * Considers option positions on any underlying.
  * Only returns fully matched spreads — unmatched legs are silently ignored.
  */
 export function groupIntoSpreads(positions: Position[]): ActiveSpread[] {
-  // 1. Filter to options on spread-eligible underlyings with required fields
+  // 1. Filter to option positions with required fields
   const optionPositions = positions.filter(
     p => p.secType === "OPT"
       && p.underlying
-      && SPREAD_UNDERLYINGS.has(p.underlying)
       && p.expiry
       && p.strike != null
       && p.right
