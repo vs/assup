@@ -105,7 +105,7 @@ export interface WheelCycle {
 
 /** Individual live IBKR position for the wheel detail view */
 export interface WheelLivePosition {
-  type: "shares" | "put" | "call";
+  type: "shares" | "put" | "call" | "put-spread" | "call-spread";
   strike?: number;
   expiry?: string;
   dte?: number;
@@ -120,6 +120,10 @@ export interface WheelLivePosition {
   pnlPercent: number | null;
   /** Daily theta decay in $ (positive = earning from decay) */
   theta?: number;
+  /** Short strike of a spread (the sold leg) */
+  shortStrike?: number;
+  /** Long strike of a spread (the bought leg) */
+  longStrike?: number;
 }
 
 // Summary view of a ticker in the wheel tracker list

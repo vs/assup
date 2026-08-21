@@ -279,7 +279,7 @@ function buildActiveOptions(
 
 function buildLivePositions(
   stockPos: CachedIBKRData["positions"][0] | undefined,
-  shortOptionPositions: CachedIBKRData["positions"],
+  allOptionPositions: CachedIBKRData["positions"],
   currentPrice: number | null,
   optionThetas?: Map<number, number>,
 ): WheelLivePosition[] {
@@ -301,7 +301,110 @@ function buildLivePositions(
     });
   }
 
-  for (const p of shortOptionPositions) {
+  // Group option positions by right + expiry to detect spreads
+  const groupKey = (p: CachedIBKRData["positions"][0]) => {
+    const right = p.contract.right;
+    const expiry = p.contract.lastTradeDateOrContractMonth ?? "";
+    return `${right}:${expiry}`;
+  };
+
+  const groups = new Map<string, CachedIBKRData["positions"]>();
+  for (const p of allOptionPositions) {
+    const key = groupKey(p);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
+  }
+
+  const used = new Set<number>(); // track conIds already paired into spreads
+
+  for (const [, group] of groups) {
+    const shorts = group.filter(p => p.pos < 0);
+    const longs = group.filter(p => p.pos > 0);
+
+    // Try to pair short + long legs into spreads
+    for (const shortLeg of shorts) {
+      // Find a matching long leg with same quantity
+      const longIdx = longs.findIndex(l =>
+        l.contract.conId != null && !used.has(l.contract.conId) && Math.abs(l.pos) === Math.abs(shortLeg.pos)
+      );
+      if (longIdx >= 0) {
+        const longLeg = longs[longIdx];
+        if (shortLeg.contract.conId != null) used.add(shortLeg.contract.conId);
+        if (longLeg.contract.conId != null) used.add(longLeg.contract.conId);
+
+        const raw = shortLeg.contract.lastTradeDateOrContractMonth;
+        let expiry: string | undefined;
+        let dte: number | undefined;
+        if (raw) {
+          const d = new Date(raw.slice(0, 4) + "-" + raw.slice(4, 6) + "-" + raw.slice(6, 8));
+          expiry = d.toISOString().split("T")[0];
+          dte = Math.ceil((d.getTime() - nowInET().getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        const qty = Math.abs(shortLeg.pos);
+        // Combine P&L from both legs
+        let pnl: number | null = null;
+        if (shortLeg.unrealizedPnl != null && longLeg.unrealizedPnl != null) {
+          pnl = shortLeg.unrealizedPnl + longLeg.unrealizedPnl;
+        } else if (shortLeg.marketValue !== undefined && longLeg.marketValue !== undefined) {
+          const shortCost = Math.abs(shortLeg.pos) * shortLeg.avgCost;
+          const longCost = Math.abs(longLeg.pos) * longLeg.avgCost;
+          const netCost = shortCost - longCost; // credit received (positive = credit spread)
+          const netMktValue = Math.abs(shortLeg.marketValue) - Math.abs(longLeg.marketValue);
+          pnl = netCost - netMktValue;
+        }
+
+        // Net premium: short premium received minus long premium paid
+        const shortAvgCost = shortLeg.avgCost / 100;
+        const longAvgCost = longLeg.avgCost / 100;
+        const netAvgCost = shortAvgCost - longAvgCost;
+
+        // Net market price
+        let netMktPrice: number | null = null;
+        const shortMkt = shortLeg.marketPrice ?? (shortLeg.marketValue !== undefined ? Math.abs(shortLeg.marketValue) / (qty * 100) : null);
+        const longMkt = longLeg.marketPrice ?? (longLeg.marketValue !== undefined ? Math.abs(longLeg.marketValue) / (qty * 100) : null);
+        if (shortMkt != null && longMkt != null) {
+          netMktPrice = shortMkt - longMkt;
+        }
+
+        const totalCost = Math.abs(netAvgCost * qty * 100);
+        const pnlPercent = pnl != null && totalCost > 0 ? (pnl / totalCost) * 100 : null;
+
+        // Combined theta
+        let theta: number | undefined;
+        if (optionThetas) {
+          const shortTheta = shortLeg.contract.conId ? optionThetas.get(shortLeg.contract.conId) : undefined;
+          const longTheta = longLeg.contract.conId ? optionThetas.get(longLeg.contract.conId) : undefined;
+          if (shortTheta != null || longTheta != null) {
+            theta = ((shortTheta ?? 0) * shortLeg.pos * 100) + ((longTheta ?? 0) * longLeg.pos * 100);
+          }
+        }
+
+        const isCall = shortLeg.contract.right === "C";
+        positions.push({
+          type: isCall ? "call-spread" : "put-spread",
+          shortStrike: shortLeg.contract.strike,
+          longStrike: longLeg.contract.strike,
+          strike: shortLeg.contract.strike,
+          expiry,
+          dte,
+          quantity: qty,
+          avgCost: netAvgCost,
+          marketPrice: netMktPrice,
+          pnl,
+          pnlPercent,
+          theta,
+        });
+      }
+    }
+  }
+
+  // Add unpaired option positions as individual legs
+  for (const p of allOptionPositions) {
+    if (p.contract.conId != null && used.has(p.contract.conId)) continue;
+    // Only show short legs as standalone positions (long legs without a short pair are unusual in wheel)
+    if (p.pos >= 0) continue;
+
     const raw = p.contract.lastTradeDateOrContractMonth;
     let expiry: string | undefined;
     let dte: number | undefined;
@@ -312,7 +415,7 @@ function buildLivePositions(
     }
 
     const qty = Math.abs(p.pos);
-    const costBasis = qty * p.avgCost; // total premium received (IBKR avgCost is per-contract)
+    const costBasis = qty * p.avgCost;
     let pnl: number | null = null;
     let pnlPercent: number | null = null;
     let mktPrice: number | null = null;
@@ -330,8 +433,6 @@ function buildLivePositions(
       mktPrice = Math.abs(p.marketValue) / (qty * 100);
     }
 
-    // Theta: per-share * (-pos) * 100 multiplier. Short options (pos < 0)
-    // have negative IBKR theta → positive daily $ income.
     let theta: number | undefined;
     if (optionThetas && p.contract.conId) {
       const thetaPerShare = optionThetas.get(p.contract.conId);
@@ -346,7 +447,7 @@ function buildLivePositions(
       expiry,
       dte,
       quantity: qty,
-      avgCost: p.avgCost / 100, // IBKR reports per-contract; convert to per-share to match marketPrice
+      avgCost: p.avgCost / 100,
       marketPrice: mktPrice,
       pnl,
       pnlPercent,
@@ -354,10 +455,10 @@ function buildLivePositions(
     });
   }
 
-  // Sort: shares first, then calls, then puts, then by expiry
+  // Sort: shares first, then call-side (CC + CS), then put-side (CSP + PS), then by expiry
   positions.sort((a, b) => {
-    const typeOrder = { shares: 0, call: 1, put: 2 };
-    const diff = typeOrder[a.type] - typeOrder[b.type];
+    const typeOrder: Record<string, number> = { shares: 0, call: 1, "call-spread": 1, put: 2, "put-spread": 2 };
+    const diff = (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3);
     if (diff !== 0) return diff;
     return (a.expiry ?? "").localeCompare(b.expiry ?? "");
   });
@@ -374,10 +475,11 @@ const applyLiveDataToSummary = (
   const positions = cachedData.positions ?? [];
   const symbol = summary.symbol;
 
-  // Find ALL short option positions for this symbol (not just the first)
-  const shortOptionPositions = positions.filter(
-    (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos < 0
+  // Find ALL option positions for this symbol
+  const allOptionPositions = positions.filter(
+    (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol
   );
+  const shortOptionPositions = allOptionPositions.filter((p) => p.pos < 0);
   const hasShortPut = shortOptionPositions.some((p) => p.contract.right === "P");
   const hasShortCall = shortOptionPositions.some((p) => p.contract.right === "C");
   const stockPos = positions.find(
@@ -470,7 +572,6 @@ const applyLiveDataToSummary = (
   for (const pos of positions) {
     if (pos.contract.secType === "OPT" &&
         pos.contract.symbol === symbol &&
-        pos.pos < 0 &&
         pos.unrealizedPnl != null) {
       unrealizedPnL += pos.unrealizedPnl;
     }
@@ -516,7 +617,7 @@ const applyLiveDataToSummary = (
     sharePnLPercent,
     currentPosition,
     activeOptions: buildActiveOptions(shortOptionPositions),
-    livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice, cachedData.optionThetas),
+    livePositions: buildLivePositions(stockPos, allOptionPositions, currentPrice, cachedData.optionThetas),
     currentPrice,
     breakEven,
     percentBelowMarket,
@@ -1040,10 +1141,11 @@ export const wheelService = {
     // Use cached positions or empty array
     const positions = cachedData?.positions ?? [];
 
-    // Find ALL short option positions for this symbol
-    const shortOptionPositions = positions.filter(
-      (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol && p.pos < 0
+    // Find ALL option positions for this symbol (short + long for spread detection)
+    const allOptionPositions = positions.filter(
+      (p) => p.contract.secType === "OPT" && p.contract.symbol === symbol
     );
+    const shortOptionPositions = allOptionPositions.filter((p) => p.pos < 0);
     const hasShortPut = shortOptionPositions.some((p) => p.contract.right === "P");
     const hasShortCall = shortOptionPositions.some((p) => p.contract.right === "C");
     const stockPos = positions.find(
@@ -1200,7 +1302,7 @@ export const wheelService = {
       completedCycles: completedCycles.length,
       currentPosition,
       activeOptions: buildActiveOptions(shortOptionPositions),
-      livePositions: buildLivePositions(stockPos, shortOptionPositions, currentPrice, cachedData?.optionThetas),
+      livePositions: buildLivePositions(stockPos, allOptionPositions, currentPrice, cachedData?.optionThetas),
       realizedPnL: tickerRealizedPnL,
       unrealizedPnL: tickerUnrealizedPnL,
       totalPnL,

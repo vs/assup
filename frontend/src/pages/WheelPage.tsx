@@ -942,8 +942,14 @@ function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCy
 
 function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
   const shares = positions.find((p) => p.type === "shares");
-  const calls = positions.filter((p) => p.type === "call");
-  const puts = positions.filter((p) => p.type === "put");
+  // CC and Call Spreads together, sorted by expiry
+  const callSide = positions
+    .filter((p) => p.type === "call" || p.type === "call-spread")
+    .sort((a, b) => (a.expiry ?? "").localeCompare(b.expiry ?? ""));
+  // CSP and Put Spreads together, sorted by expiry
+  const putSide = positions
+    .filter((p) => p.type === "put" || p.type === "put-spread")
+    .sort((a, b) => (a.expiry ?? "").localeCompare(b.expiry ?? ""));
 
   const pnlColor = (v: number | null) =>
     v == null ? "text-muted-foreground" : v >= 0 ? "text-green-600" : "text-red-600";
@@ -982,10 +988,14 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               </td>
             </tr>
           )}
-          {calls.map((c, i) => (
+          {callSide.map((c, i) => (
             <tr key={`c-${i}`} className="border-b border-border/50">
               <td className="px-4 py-1.5 font-medium whitespace-nowrap">
-                CC {c.expiry ? formatShortExpiry(c.expiry) : ""} ${c.strike}
+                {c.type === "call-spread" ? (
+                  <>CS {c.expiry ? formatShortExpiry(c.expiry) : ""} ${c.shortStrike}/{c.longStrike}</>
+                ) : (
+                  <>CC {c.expiry ? formatShortExpiry(c.expiry) : ""} ${c.strike}</>
+                )}
                 {c.quantity > 1 && <span className="opacity-75"> x{c.quantity}</span>}
                 {c.dte != null && <span className="text-xs text-muted-foreground ml-1">({c.dte}d)</span>}
               </td>
@@ -1001,10 +1011,14 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               </td>
             </tr>
           ))}
-          {puts.map((p, i) => (
-            <tr key={`p-${i}`} className={i < puts.length - 1 ? "border-b border-border/50" : ""}>
+          {putSide.map((p, i) => (
+            <tr key={`p-${i}`} className={i < putSide.length - 1 ? "border-b border-border/50" : ""}>
               <td className="px-4 py-1.5 font-medium whitespace-nowrap">
-                CSP {p.expiry ? formatShortExpiry(p.expiry) : ""} ${p.strike}
+                {p.type === "put-spread" ? (
+                  <>PS {p.expiry ? formatShortExpiry(p.expiry) : ""} ${p.shortStrike}/{p.longStrike}</>
+                ) : (
+                  <>CSP {p.expiry ? formatShortExpiry(p.expiry) : ""} ${p.strike}</>
+                )}
                 {p.quantity > 1 && <span className="opacity-75"> x{p.quantity}</span>}
                 {p.dte != null && <span className="text-xs text-muted-foreground ml-1">({p.dte}d)</span>}
               </td>
