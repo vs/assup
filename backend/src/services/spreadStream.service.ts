@@ -47,6 +47,7 @@ export class SpreadStreamSession {
   private targetCallDelta: number | undefined;
   private targetWingWidth: number;
   private mode: string | undefined;
+  private strikeRangePct: number | undefined;
   private unsubscribers: Array<() => void> = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
@@ -87,6 +88,7 @@ export class SpreadStreamSession {
     targetCallDelta?: number,
     targetWingWidth?: number,
     mode?: string,
+    strikeRangePct?: number,
   ) {
     this.res = res;
     this.sessionId = `spread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -98,6 +100,7 @@ export class SpreadStreamSession {
     this.targetCallDelta = targetCallDelta;
     this.targetWingWidth = targetWingWidth ?? 100;
     this.mode = mode;
+    this.strikeRangePct = strikeRangePct;
   }
 
   async start(): Promise<void> {
@@ -227,8 +230,10 @@ export class SpreadStreamSession {
     // Index options (SPX/XSP/RUT) have dense chains — use ±15%.
     // Equity options need a wider range (±30%) since strikes are sparser
     // and call spreads require visibility above the current price.
+    // The client can override with a custom range percentage.
     const isIndex = !!SYMBOL_CONFIG[this.symbol];
-    const rangePct = isIndex ? 0.15 : 0.30;
+    const defaultRangePct = isIndex ? 0.15 : 0.30;
+    const rangePct = this.strikeRangePct != null ? this.strikeRangePct / 100 : defaultRangePct;
     const strikes = [...allStrikes]
       .filter(
         (s) => s >= underlyingPrice * (1 - rangePct) && s <= underlyingPrice * (1 + rangePct),

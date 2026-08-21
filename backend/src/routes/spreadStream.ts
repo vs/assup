@@ -27,6 +27,7 @@ router.get("/stream", (req: Request, res: Response) => {
   const targetCallDelta = req.query.targetCallDelta ? Number(req.query.targetCallDelta) : undefined;
   const wingWidth = req.query.wingWidth ? Number(req.query.wingWidth) : undefined;
   const mode = req.query.mode as string | undefined;
+  const strikeRangePct = req.query.strikeRangePct ? Number(req.query.strikeRangePct) : undefined;
 
   // Destroy ALL previous sessions before starting a new one.
   // Market data lines are a shared limited resource (100 total) — only one
@@ -47,7 +48,7 @@ router.get("/stream", (req: Request, res: Response) => {
 
   const session = new SpreadStreamSession(res, symbol, expiration, onlyStrikes,
     focusMin != null && focusMax != null ? { min: focusMin, max: focusMax } : undefined,
-    targetPutDelta, targetCallDelta, wingWidth, mode);
+    targetPutDelta, targetCallDelta, wingWidth, mode, strikeRangePct);
   activeSessions.set(clientId, session);
   session.start();
 

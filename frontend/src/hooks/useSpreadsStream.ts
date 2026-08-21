@@ -34,6 +34,7 @@ export function useSpreadsStream(
   mode?: string,
   updateIntervalMs = 2000,
   enabled = true,
+  strikeRangePct?: number,
 ): UseSpreadsStreamResult {
   const [chainMap, setChainMap] = useState<Map<number, IronCondorChainStrike>>(new Map());
   const [underlyingPrice, setUnderlyingPrice] = useState(0);
@@ -89,6 +90,7 @@ export function useSpreadsStream(
     if (targetCallDelta != null) params.set("targetCallDelta", String(targetCallDelta));
     if (wingWidth != null) params.set("wingWidth", String(wingWidth));
     if (mode) params.set("mode", mode);
+    if (strikeRangePct != null) params.set("strikeRangePct", String(strikeRangePct));
     const url = `${getApiBase()}/api/spreads/stream?${params}`;
 
     setStatus("connecting");
@@ -189,7 +191,7 @@ export function useSpreadsStream(
   // subscribes densely around the chosen strikes. focusRange is read in the
   // closure but keyed by focusRangeKey to avoid reconnects from object identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, expiration, selectedStrikes, focusRangeKey, targetPutDelta, targetCallDelta, mode, enabled]);
+  }, [symbol, expiration, selectedStrikes, focusRangeKey, targetPutDelta, targetCallDelta, mode, enabled, strikeRangePct]);
 
   // Connect on mount and when params change
   useEffect(() => {

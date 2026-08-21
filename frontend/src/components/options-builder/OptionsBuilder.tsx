@@ -121,6 +121,7 @@ export function OptionsBuilder({
   const [putDelta, setPutDelta] = useState(4.5);
   const [callDelta, setCallDelta] = useState(4.5);
   const [wingWidth, setWingWidth] = useState(30);
+  const [strikeRange, setStrikeRange] = useState(30);
 
   // Selected legs (for vertical/iron-condor)
   const [selectedLegs, setSelectedLegs] = useState<SpreadSelectedLegs>({
@@ -216,6 +217,7 @@ export function OptionsBuilder({
     spreadMode,
     DEFAULT_UPDATE_INTERVAL_MS,
     builderActive,
+    strikeRange,
   );
 
   // Merge expirations: prefer stream data when available, fall back to pre-fetched
@@ -616,6 +618,20 @@ export function OptionsBuilder({
             />
           </div>
         )}
+
+        {/* Strike range (percentage around underlying price) */}
+        <div className="flex items-center gap-2">
+          <Label className="text-[10px] uppercase text-muted-foreground">Range %</Label>
+          <Input
+            type="number"
+            step={5}
+            min={5}
+            max={100}
+            value={strikeRange}
+            onChange={(e) => setStrikeRange(parseInt(e.target.value) || 30)}
+            className="w-16 h-8 text-sm text-center"
+          />
+        </div>
 
         <div className="flex-1" />
 
