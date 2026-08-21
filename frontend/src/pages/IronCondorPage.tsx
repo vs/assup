@@ -173,8 +173,8 @@ export function IronCondorPage() {
       <OptionsBuilder
         key={symbol}
         symbol={symbol}
-        allowedModes={["vertical", "iron-condor"]}
-        defaultMode="vertical"
+        allowedModes={["put-spread", "call-spread", "iron-condor"]}
+        defaultMode="put-spread"
         onOrderPlaced={fetchSpreads}
         strategyRecommendation={strategyRec}
       />

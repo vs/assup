@@ -5,7 +5,7 @@
 export type SpreadMode = "put-spread" | "call-spread" | "iron-condor";
 
 /** Strategy modes for the unified options builder */
-export type StrategyMode = "single" | "vertical" | "iron-condor";
+export type StrategyMode = "single" | "put-spread" | "call-spread" | "iron-condor";
 
 export interface IronCondorChainOption {
   conId: number;

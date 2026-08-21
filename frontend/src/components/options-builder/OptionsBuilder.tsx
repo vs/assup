@@ -1,8 +1,9 @@
 /**
  * Reusable options builder component extracted from IronCondorPage.
- * Supports three strategy modes:
+ * Supports four strategy modes:
  * - "single": select individual option contracts for ordering
- * - "vertical": build put or call vertical spreads
+ * - "put-spread": build put vertical spreads
+ * - "call-spread": build call vertical spreads
  * - "iron-condor": build iron condors (put + call spreads)
  *
  * Handles streaming, auto-selection, chain display, analysis, and order placement.
@@ -54,13 +55,9 @@ export interface OptionsBuilderProps {
 
 const STRATEGY_MODES: { value: StrategyMode; label: string }[] = [
   { value: "single", label: "Single" },
-  { value: "vertical", label: "Vertical" },
-  { value: "iron-condor", label: "Iron Condor" },
-];
-
-const VERTICAL_SIDES: { value: "put-spread" | "call-spread"; label: string }[] = [
   { value: "put-spread", label: "Put Spread" },
   { value: "call-spread", label: "Call Spread" },
+  { value: "iron-condor", label: "Iron Condor" },
 ];
 
 function findClosestDelta(chain: IronCondorChainStrike[], targetDelta: number, type: "PUT" | "CALL"): number | null {
@@ -93,11 +90,11 @@ function parseDte(expiration: string): number {
 
 const DEFAULT_UPDATE_INTERVAL_MS = 2000;
 
-/** Derive the SpreadMode for streaming based on strategy mode and vertical side */
-function deriveSpreadMode(strategyMode: StrategyMode, verticalSide: "put-spread" | "call-spread"): SpreadMode {
-  if (strategyMode === "iron-condor") return "iron-condor";
-  if (strategyMode === "vertical") return verticalSide;
-  // "single" mode: subscribe to both sides for full chain visibility
+/** Derive the SpreadMode for streaming based on strategy mode */
+function deriveSpreadMode(strategyMode: StrategyMode): SpreadMode {
+  if (strategyMode === "put-spread") return "put-spread";
+  if (strategyMode === "call-spread") return "call-spread";
+  // "single" and "iron-condor": subscribe to both sides
   return "iron-condor";
 }
 
@@ -111,9 +108,8 @@ export function OptionsBuilder({
   onClose,
   strategyRecommendation,
 }: OptionsBuilderProps) {
-  // Strategy mode (single, vertical, iron-condor)
+  // Strategy mode
   const [strategyMode, setStrategyMode] = useState<StrategyMode>(defaultMode);
-  const [verticalSide, setVerticalSide] = useState<"put-spread" | "call-spread">("put-spread");
 
   // Parameters
   const [expiration, setExpiration] = useState<string | undefined>(undefined);
@@ -147,11 +143,11 @@ export function OptionsBuilder({
   const [singleOrderError, setSingleOrderError] = useState<string | null>(null);
 
   // Derived spread mode for streaming
-  const spreadMode = deriveSpreadMode(strategyMode, verticalSide);
+  const spreadMode = deriveSpreadMode(strategyMode);
 
   // For spread modes, which sides are active
-  const hasPutSide = strategyMode === "iron-condor" || (strategyMode === "vertical" && verticalSide === "put-spread");
-  const hasCallSide = strategyMode === "iron-condor" || (strategyMode === "vertical" && verticalSide === "call-spread");
+  const hasPutSide = strategyMode === "iron-condor" || strategyMode === "put-spread";
+  const hasCallSide = strategyMode === "iron-condor" || strategyMode === "call-spread";
   const isSpreadMode = strategyMode !== "single";
 
   // Phase 2: once legs are selected, focus dense subscription around them
@@ -321,9 +317,8 @@ export function OptionsBuilder({
     setQuantity(recQuantity);
     autoSelectDoneRef.current = true;
 
-    // Ensure vertical put-spread mode
-    if (strategyMode !== "vertical") setStrategyMode("vertical");
-    if (verticalSide !== "put-spread") setVerticalSide("put-spread");
+    // Ensure put-spread mode
+    if (strategyMode !== "put-spread") setStrategyMode("put-spread");
   }, [strategyRecommendation, chain]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleParameterChange = useCallback(() => {
@@ -361,7 +356,7 @@ export function OptionsBuilder({
     if (legs.length === 0) return null;
 
     // Determine spread mode for analysis
-    const analysisMode: SpreadMode = strategyMode === "iron-condor" ? "iron-condor" : verticalSide;
+    const analysisMode: SpreadMode = deriveSpreadMode(strategyMode);
 
     try {
       return analyzeSpread({
@@ -374,7 +369,7 @@ export function OptionsBuilder({
     } catch {
       return null;
     }
-  }, [chain, selectedLegs, underlyingPrice, quantity, strategyMode, verticalSide, expiration, hasPutSide, hasCallSide, isSpreadMode]);
+  }, [chain, selectedLegs, underlyingPrice, quantity, strategyMode, expiration, hasPutSide, hasCallSide, isSpreadMode]);
 
   // --- Leg selection handler ---
   const handleSelectLeg = useCallback((strike: number, type: "PUT" | "CALL", side: "BUY" | "SELL") => {
@@ -433,13 +428,6 @@ export function OptionsBuilder({
     autoSelectDoneRef.current = false;
     setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
     setSelectedSingleLeg(null);
-  }, []);
-
-  // --- Vertical side change ---
-  const handleVerticalSideChange = useCallback((side: "put-spread" | "call-spread") => {
-    setVerticalSide(side);
-    autoSelectDoneRef.current = false;
-    setSelectedLegs({ buyPut: null, sellPut: null, sellCall: null, buyCall: null });
   }, []);
 
   const handleReload = useCallback(() => {
@@ -517,7 +505,7 @@ export function OptionsBuilder({
     : 0;
 
   // Determine the SpreadMode to pass to sub-components for spread modes
-  const displayMode: SpreadMode = strategyMode === "single" || strategyMode === "iron-condor" ? "iron-condor" : verticalSide;
+  const displayMode: SpreadMode = deriveSpreadMode(strategyMode);
 
   // Filter allowed strategy modes
   const availableModes = allowedModes
@@ -542,26 +530,6 @@ export function OptionsBuilder({
                   }`}
                 >
                   {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Vertical side picker (only in vertical mode) */}
-        {strategyMode === "vertical" && (
-          <div className="flex items-center gap-2">
-            <Label className="text-[10px] uppercase text-muted-foreground">Side</Label>
-            <div className="flex rounded-md border overflow-hidden">
-              {VERTICAL_SIDES.map(s => (
-                <button
-                  key={s.value}
-                  onClick={() => handleVerticalSideChange(s.value)}
-                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                    verticalSide === s.value ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
-                  }`}
-                >
-                  {s.label}
                 </button>
               ))}
             </div>
