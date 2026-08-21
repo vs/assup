@@ -734,29 +734,70 @@ export const wheelService = {
         }
       }
 
-      // Fetch market prices only for active tracked symbols missing price data
+      // Fetch market prices for tracked symbols missing price data.
+      // Batch requests to avoid overwhelming TWS with concurrent market data calls,
+      // and retry failed symbols with a longer timeout.
       const priceSymbols = Array.from(symbolsNeedingPrice).filter(
         (symbol) => !result.marketPrices.has(symbol)
       );
       if (priceSymbols.length > 0) {
-        const pricePromises = priceSymbols.map(async (symbol) => {
-          try {
-            const contract = {
-              symbol,
-              secType: SecType.STK,
-              exchange: "SMART",
-              currency: "USD",
-            };
-            const data = await ibkrService.getMarketData(contract);
-            const price = data?.last ?? data?.close;
-            if (price != null) {
-              result.marketPrices.set(symbol, price);
+        const BATCH_SIZE = 5;
+        const failedSymbols: string[] = [];
+
+        for (let i = 0; i < priceSymbols.length; i += BATCH_SIZE) {
+          const batch = priceSymbols.slice(i, i + BATCH_SIZE);
+          const batchPromises = batch.map(async (symbol) => {
+            try {
+              const contract = {
+                symbol,
+                secType: SecType.STK,
+                exchange: "SMART",
+                currency: "USD",
+              };
+              const data = await ibkrService.getMarketData(contract, true, 3000);
+              const price = data?.last ?? data?.close ?? data?.bid;
+              if (price != null) {
+                result.marketPrices.set(symbol, price);
+              } else {
+                failedSymbols.push(symbol);
+              }
+            } catch {
+              failedSymbols.push(symbol);
             }
-          } catch {
-            // Skip symbols that fail to fetch
+          });
+          await Promise.all(batchPromises);
+          if (i + BATCH_SIZE < priceSymbols.length) {
+            await new Promise(resolve => setTimeout(resolve, 150));
           }
-        });
-        await Promise.all(pricePromises);
+        }
+
+        // Retry failed symbols with full snapshot+observable fallback and longer timeout
+        if (failedSymbols.length > 0) {
+          for (let i = 0; i < failedSymbols.length; i += BATCH_SIZE) {
+            const batch = failedSymbols.slice(i, i + BATCH_SIZE);
+            const retryPromises = batch.map(async (symbol) => {
+              try {
+                const contract = {
+                  symbol,
+                  secType: SecType.STK,
+                  exchange: "SMART",
+                  currency: "USD",
+                };
+                const data = await ibkrService.getMarketData(contract, false, 8000);
+                const price = data?.last ?? data?.close ?? data?.bid;
+                if (price != null) {
+                  result.marketPrices.set(symbol, price);
+                }
+              } catch {
+                // Give up on this symbol
+              }
+            });
+            await Promise.all(retryPromises);
+            if (i + BATCH_SIZE < failedSymbols.length) {
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to fetch IBKR data:", err);
