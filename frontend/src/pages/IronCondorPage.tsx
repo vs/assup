@@ -193,8 +193,6 @@ export function IronCondorPage() {
         onOpenChange={handleHedgeDialogClose}
         spread={hedgingSpread}
         risk={riskMap.get(hedgingSpread?.id ?? "") ?? { level: "healthy", premiumMultiple: null }}
-        chain={[]}
-        underlyingPrice={0}
         onSuccess={fetchSpreads}
         initialStrategy={hedgeInitialStrategy}
       />

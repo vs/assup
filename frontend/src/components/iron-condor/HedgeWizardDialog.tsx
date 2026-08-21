@@ -14,15 +14,16 @@ import { HedgePayoffComparison } from "./HedgePayoffComparison";
 import { HedgeOrderConfirm } from "./HedgeOrderConfirm";
 import { computeHedgedPayoff } from "@/utils/spreadAnalysis";
 import type { SpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
+import { useSpreadsStream } from "@/hooks/useSpreadsStream";
 
 interface HedgeWizardDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   spread: ActiveSpread | null;
   risk: SpreadRiskStatus;
-  /** The live options chain already streaming on the page */
-  chain: IronCondorChainStrike[];
-  underlyingPrice: number;
+  /** Optional external chain — if empty/missing, the wizard streams its own */
+  chain?: IronCondorChainStrike[];
+  underlyingPrice?: number;
   onSuccess: () => void;
   initialStrategy?: HedgeStrategy;
 }
@@ -62,8 +63,8 @@ export function HedgeWizardDialog({
   onOpenChange,
   spread,
   risk,
-  chain,
-  underlyingPrice,
+  chain: externalChain,
+  underlyingPrice: externalUnderlyingPrice,
   onSuccess,
   initialStrategy,
 }: HedgeWizardDialogProps) {
@@ -73,6 +74,23 @@ export function HedgeWizardDialog({
   const [limitPrice, setLimitPrice] = useState(0);
 
   const isPut = spread ? spread.type === "put-spread" : true;
+
+  // Stream own chain data when dialog is open and no external chain provided
+  const needsOwnStream = open && !!spread && (!externalChain || externalChain.length === 0);
+  const streamResult = useSpreadsStream(
+    spread?.symbol ?? "SPX",
+    spread?.expiry,
+    undefined, // selectedStrikes
+    undefined, // focusRange
+    undefined, // targetPutDelta
+    undefined, // targetCallDelta
+    undefined, // wingWidth
+    undefined, // mode
+    2000,      // updateIntervalMs
+    needsOwnStream, // enabled
+  );
+  const chain = needsOwnStream ? streamResult.chain : (externalChain ?? []);
+  const underlyingPrice = needsOwnStream ? streamResult.underlyingPrice : (externalUnderlyingPrice ?? 0);
 
   // Compute wing width and long leg from spread
   const wingWidth = spread ? deriveWingWidth(spread) : 5;
@@ -109,7 +127,7 @@ export function HedgeWizardDialog({
     }
   }, [open, spread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Derive quotes from the page's existing chain (no separate SSE stream) ---
+  // --- Derive quotes from chain data ---
   const quotes = useMemo(() => buildQuotesFromChain(chain), [chain]);
   const connected = chain.length > 0;
 
