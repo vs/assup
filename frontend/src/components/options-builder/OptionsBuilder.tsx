@@ -49,6 +49,8 @@ export interface OptionsBuilderProps {
   onClose?: () => void;
   /** When set, overrides delta-based auto-selection with specific strikes */
   strategyRecommendation?: StrategyRecommendation | null;
+  /** Pause the SSE stream (e.g. when a modal needs its own stream) */
+  paused?: boolean;
 }
 
 // --- Helpers ---
@@ -107,6 +109,7 @@ export function OptionsBuilder({
   onOrderPlaced,
   onClose,
   strategyRecommendation,
+  paused = false,
 }: OptionsBuilderProps) {
   // Strategy mode
   const [strategyMode, setStrategyMode] = useState<StrategyMode>(defaultMode);
@@ -212,7 +215,7 @@ export function OptionsBuilder({
     wingWidth,
     spreadMode,
     DEFAULT_UPDATE_INTERVAL_MS,
-    builderActive,
+    builderActive && !paused,
     strikeRange,
   );
 

@@ -177,6 +177,7 @@ export function IronCondorPage() {
         defaultMode="put-spread"
         onOrderPlaced={fetchSpreads}
         strategyRecommendation={strategyRec}
+        paused={hedgeDialogOpen}
       />
 
       {/* Close spread dialog */}

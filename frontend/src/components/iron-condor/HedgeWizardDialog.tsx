@@ -75,23 +75,6 @@ export function HedgeWizardDialog({
 
   const isPut = spread ? spread.type === "put-spread" : true;
 
-  // Stream own chain data when dialog is open and no external chain provided
-  const needsOwnStream = open && !!spread && (!externalChain || externalChain.length === 0);
-  const streamResult = useSpreadsStream(
-    spread?.symbol ?? "SPX",
-    spread?.expiry,
-    undefined, // selectedStrikes
-    undefined, // focusRange
-    undefined, // targetPutDelta
-    undefined, // targetCallDelta
-    undefined, // wingWidth
-    undefined, // mode
-    2000,      // updateIntervalMs
-    needsOwnStream, // enabled
-  );
-  const chain = needsOwnStream ? streamResult.chain : (externalChain ?? []);
-  const underlyingPrice = needsOwnStream ? streamResult.underlyingPrice : (externalUnderlyingPrice ?? 0);
-
   // Compute wing width and long leg from spread
   const wingWidth = spread ? deriveWingWidth(spread) : 5;
   const sortedLegs = spread
@@ -106,6 +89,35 @@ export function HedgeWizardDialog({
   const defaultStrike = isPut
     ? longLegStrike - wingWidth
     : longLegStrike + wingWidth;
+
+  // Stream own chain data — focused on the spread's hedge zone only
+  const needsOwnStream = open && !!spread && (!externalChain || externalChain.length === 0);
+  const hedgeFocusRange = useMemo(() => {
+    if (!spread) return undefined;
+    const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
+    const lo = strikes[0];
+    const hi = strikes[strikes.length - 1];
+    // Cover spread legs + 5 wing widths in the hedge direction
+    return isPut
+      ? { min: lo - wingWidth * 5, max: hi }
+      : { min: lo, max: hi + wingWidth * 5 };
+  }, [spread, isPut, wingWidth]);
+
+  const streamMode = isPut ? "put-spread" : "call-spread";
+  const streamResult = useSpreadsStream(
+    spread?.symbol ?? "SPX",
+    spread?.expiry,
+    undefined, // selectedStrikes — not needed, focusRange covers it
+    hedgeFocusRange, // dense subscription in the hedge zone
+    undefined, // targetPutDelta
+    undefined, // targetCallDelta
+    undefined, // wingWidth
+    streamMode, // only subscribe to the side we need
+    2000,      // updateIntervalMs
+    needsOwnStream, // enabled
+  );
+  const chain = needsOwnStream ? streamResult.chain : (externalChain ?? []);
+  const underlyingPrice = needsOwnStream ? streamResult.underlyingPrice : (externalUnderlyingPrice ?? 0);
 
   // Reset state when dialog opens with a new spread
   useEffect(() => {
