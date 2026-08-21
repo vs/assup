@@ -121,7 +121,7 @@ export function OptionsBuilder({
   const [putDelta, setPutDelta] = useState(4.5);
   const [callDelta, setCallDelta] = useState(4.5);
   const [wingWidth, setWingWidth] = useState(30);
-  const [strikeRange, setStrikeRange] = useState(30);
+  const [strikeRange, setStrikeRange] = useState<number | undefined>(undefined);
 
   // Selected legs (for vertical/iron-condor)
   const [selectedLegs, setSelectedLegs] = useState<SpreadSelectedLegs>({
@@ -627,8 +627,9 @@ export function OptionsBuilder({
             step={5}
             min={5}
             max={100}
-            value={strikeRange}
-            onChange={(e) => setStrikeRange(parseInt(e.target.value) || 30)}
+            value={strikeRange ?? ""}
+            placeholder="auto"
+            onChange={(e) => setStrikeRange(e.target.value ? parseInt(e.target.value) || 30 : undefined)}
             className="w-16 h-8 text-sm text-center"
           />
         </div>
