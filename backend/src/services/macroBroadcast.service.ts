@@ -1,21 +1,29 @@
 /**
  * Periodic macro data broadcaster.
- * Fetches live VIX and SPX prices from IBKR every 5 seconds,
- * merges with the latest stored macro snapshot, and broadcasts
- * via SSE so the frontend fear/greed gauge stays live.
+ * Subscribes once to streaming VIX and SPX market data, caches the latest
+ * tick values, and broadcasts every 5 seconds via SSE so the frontend
+ * fear/greed gauge stays live. Streaming avoids the per-poll snapshot races
+ * that left the LAST tick missing for indices.
  */
 
 import { Contract, SecType } from "@stoqey/ib";
-import { ibkrService } from "./ibkr.js";
+import { ibkrService, type StreamTickData } from "./ibkr.js";
 import { sseService } from "./sse.js";
 import { prisma } from "../db/index.js";
 import { getGexAnalysis } from "./gex.service.js";
+import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
 import type { MacroGexLevels } from "@assup/shared";
 
 const VIX_CONTRACT: Contract = { symbol: "VIX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
 const SPX_CONTRACT: Contract = { symbol: "SPX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
 
 const BROADCAST_INTERVAL_MS = 5_000;
+const STREAM_SESSION_ID = "macro-broadcast";
+
+interface TickCache {
+  last?: number;
+  close?: number;
+}
 
 class MacroBroadcastService {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -23,14 +31,27 @@ class MacroBroadcastService {
   private lastBroadcast: Record<string, unknown> | null = null;
   private gexLevels: MacroGexLevels | null = null;
   private gexTimer: ReturnType<typeof setInterval> | null = null;
+  private vixCache: TickCache = {};
+  private spxCache: TickCache = {};
+  private streamUnsubscribers: Array<() => void> = [];
+  private connectionUnsubscribe: (() => void) | null = null;
 
   start() {
     if (this.timer) return;
     console.log("[MacroBroadcast] Starting live macro broadcasts every 5s");
-    // Don't broadcast immediately — wait for first interval so IBKR connection is stable
     this.timer = setInterval(() => this.tick(), BROADCAST_INTERVAL_MS);
 
-    // Initial GEX fetch + 10-minute refresh
+    // Manage stream subscriptions based on IBKR connection lifecycle.
+    // The listener fires immediately with current status, so streams come up
+    // right away if IBKR is already connected.
+    this.connectionUnsubscribe = ibkrService.subscribe((status) => {
+      if (status.connected) {
+        this.subscribeStreams();
+      } else {
+        this.unsubscribeStreams();
+      }
+    });
+
     this.refreshGexLevels();
     this.gexTimer = setInterval(() => this.refreshGexLevels(), 10 * 60 * 1000);
   }
@@ -44,6 +65,62 @@ class MacroBroadcastService {
       clearInterval(this.gexTimer);
       this.gexTimer = null;
     }
+    if (this.connectionUnsubscribe) {
+      this.connectionUnsubscribe();
+      this.connectionUnsubscribe = null;
+    }
+    this.unsubscribeStreams();
+  }
+
+  private subscribeStreams() {
+    if (this.streamUnsubscribers.length > 0) return;
+
+    const granted = marketDataLineRegistry.reserve(STREAM_SESSION_ID, 2);
+    if (granted < 2) {
+      console.warn("[MacroBroadcast] Not enough market data lines to subscribe VIX/SPX");
+      marketDataLineRegistry.release(STREAM_SESSION_ID);
+      return;
+    }
+
+    try {
+      const unsubVix = ibkrService.subscribeMarketData(
+        VIX_CONTRACT,
+        (data) => this.applyTick(this.vixCache, data),
+        (err) => console.error("[MacroBroadcast] VIX stream error:", err.message),
+      );
+      const unsubSpx = ibkrService.subscribeMarketData(
+        SPX_CONTRACT,
+        (data) => this.applyTick(this.spxCache, data),
+        (err) => console.error("[MacroBroadcast] SPX stream error:", err.message),
+      );
+      this.streamUnsubscribers.push(unsubVix, unsubSpx);
+      console.log("[MacroBroadcast] Subscribed to VIX/SPX streams");
+    } catch (err) {
+      console.error("[MacroBroadcast] Failed to subscribe streams:", err);
+      marketDataLineRegistry.release(STREAM_SESSION_ID);
+    }
+  }
+
+  private unsubscribeStreams() {
+    for (const unsub of this.streamUnsubscribers) {
+      try {
+        unsub();
+      } catch {
+        // ignore
+      }
+    }
+    this.streamUnsubscribers = [];
+    marketDataLineRegistry.release(STREAM_SESSION_ID);
+    // Reset caches — values become stale on disconnect, and yesterday's close
+    // needs to be re-acquired from the fresh stream.
+    this.vixCache = {};
+    this.spxCache = {};
+  }
+
+  private applyTick(cache: TickCache, data: StreamTickData) {
+    // IBKR returns -1 / 0 as sentinels for missing data; only accept positive prices.
+    if (data.last != null && data.last > 0) cache.last = data.last;
+    if (data.close != null && data.close > 0) cache.close = data.close;
   }
 
   private async refreshGexLevels() {
@@ -62,7 +139,6 @@ class MacroBroadcastService {
   }
 
   private async tick() {
-    // Only broadcast if clients are listening and IBKR is connected
     if (sseService.getClientCount() === 0) return;
     if (!ibkrService.isConnected()) return;
 
@@ -73,19 +149,13 @@ class MacroBroadcastService {
         sseService.broadcast("macro", macro);
       }
     } catch {
-      // Silent — don't spam logs for transient IBKR errors
+      // Silent — don't spam logs for transient errors
     }
   }
 
   private async buildLiveMacro() {
-    // Fetch live VIX and SPX in parallel
-    const [vixData, spxData] = await Promise.all([
-      ibkrService.getMarketData(VIX_CONTRACT).catch(() => null),
-      ibkrService.getMarketData(SPX_CONTRACT).catch(() => null),
-    ]);
-
-    const vix = vixData?.last || vixData?.close || null;
-    const sp500Index = spxData?.last || spxData?.close || null;
+    const vix = this.vixCache.last ?? null;
+    const sp500Index = this.spxCache.last ?? null;
 
     if (vix == null && sp500Index == null) return null;
 
@@ -101,9 +171,8 @@ class MacroBroadcastService {
 
     const baseline = this.lastSnapshot ?? {};
 
-    // Compute changes from IBKR previous-day close (not from stale snapshot)
-    const vixPrevClose = vixData?.close ?? null;
-    const spxPrevClose = spxData?.close ?? null;
+    const vixPrevClose = this.vixCache.close ?? null;
+    const spxPrevClose = this.spxCache.close ?? null;
 
     const vixChange = vix != null && vixPrevClose != null
       ? Math.round((vix - vixPrevClose) * 100) / 100

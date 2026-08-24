@@ -1974,6 +1974,8 @@ class IBKRService {
           else if (all.has(67)) data.ask = all.get(67)!.value;
           if (all.has(4)) data.last = all.get(4)!.value;
           else if (all.has(68)) data.last = all.get(68)!.value;
+          if (all.has(9)) data.close = all.get(9)!.value;
+          else if (all.has(75)) data.close = all.get(75)!.value;
 
           // Option greeks
           if (contract.secType === SecType.OPT) {
