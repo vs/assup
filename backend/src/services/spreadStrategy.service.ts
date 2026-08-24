@@ -208,10 +208,16 @@ class SpreadStrategyService {
     // Restore delayed data type
     try { ibkrService.setMarketDataType(3); } catch { /* ignore */ }
 
-    // Extract prices
-    let underlyingPrice = underlyingData?.last ?? underlyingData?.close ?? null;
-    const spotVix = vixData?.last ?? vixData?.close ?? null;
-    let vix3m = vix3mData?.last ?? vix3mData?.close ?? null;
+    // Extract prices. IBKR returns 0 (or -1) as a sentinel for missing data
+    // — most commonly when no market data subscription covers the contract
+    // (e.g., VIX3M). Treat non-positive values as null so downstream filters
+    // report "missing data" instead of comparing against 0.
+    const positivePrice = (v: number | null | undefined): number | null =>
+      v != null && v > 0 ? v : null;
+
+    let underlyingPrice = positivePrice(underlyingData?.last) ?? positivePrice(underlyingData?.close);
+    const spotVix = positivePrice(vixData?.last) ?? positivePrice(vixData?.close);
+    let vix3m = positivePrice(vix3mData?.last) ?? positivePrice(vix3mData?.close);
 
     // For XSP, divide SPX price by 10
     if (symbol === "XSP" && underlyingPrice != null) {
