@@ -44,6 +44,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
       setError(null);
       setTargetExpiration(null);
       setAllExpirations([]);
+      setExpirationsLoading(false);
     }
   }, [open, spread?.id]);
 
