@@ -14,12 +14,21 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ArrowDownUp } from "lucide-react";
 import type { ActiveSpread } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
-import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency, availableStrikesForRight, deriveWingWidth } from "./rollOutHelpers";
+import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency, availableStrikesForRight, deriveWingWidth, defaultNewShortStrike, snapToNearestStrike, snapWingWidth, strikeIntervals, buildQuotesFromChain } from "./rollOutHelpers";
 
 interface RollOutDialogProps {
   open: boolean;
@@ -38,6 +47,9 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
   const [allExpirations, setAllExpirations] = useState<string[]>([]);
   const [targetExpiration, setTargetExpiration] = useState<string | null>(null);
   const [expirationsLoading, setExpirationsLoading] = useState(false);
+  const [quantity, setQuantity] = useState(0);
+  const [newShortStrike, setNewShortStrike] = useState(0);
+  const [wingWidth, setWingWidth] = useState(0);
 
   // Reset state on open / spread change
   useEffect(() => {
@@ -46,8 +58,11 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
       setTargetExpiration(null);
       setAllExpirations([]);
       setExpirationsLoading(false);
+      setQuantity(spread.quantity);
+      setNewShortStrike(0);
+      setWingWidth(deriveWingWidth(spread));
     }
-  }, [open, spread?.id]);
+  }, [open, spread?.id, spread?.quantity]);
 
   // Fetch expirations when dialog opens
   useEffect(() => {
@@ -106,9 +121,53 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     () => availableStrikesForRight(stream.chain, isPut ? "P" : "C"),
     [stream.chain, isPut],
   );
+
+  const newQuotes = useMemo(() => buildQuotesFromChain(stream.chain), [stream.chain]);
+
   const connected = stream.status === "connected" && stream.chain.length > 0;
 
+  // When the chain becomes available (or expiration changes), seed the new short
+  // strike from a delta-target heuristic, then snap to the nearest strike.
+  useEffect(() => {
+    if (!spread || !connected || newAvailableStrikes.length === 0) return;
+    const currentShortLeg = spread.legs.find(l => l.side === "SELL");
+    const currentShortDelta = currentShortLeg
+      ? Math.abs(newQuotes.get(`${currentShortLeg.strike}:${currentShortLeg.right}`)?.delta ?? 0)
+      : 0;
+    const targetAbsDelta = currentShortDelta > 0 ? currentShortDelta : 0.30;
+
+    setNewShortStrike(prev => {
+      // Don't overwrite a user-selected strike unless it's not in the new chain
+      if (prev > 0 && newAvailableStrikes.includes(prev)) return prev;
+      const def = defaultNewShortStrike(stream.chain, !!isPut, targetAbsDelta, stream.underlyingPrice);
+      return def > 0 ? snapToNearestStrike(def, newAvailableStrikes) : prev;
+    });
+
+    setWingWidth(prev => {
+      const intervals = strikeIntervals(newAvailableStrikes);
+      if (intervals.length === 0) return prev;
+      // Prefer the existing wing width; if not available, snap to nearest larger.
+      return snapWingWidth(prev > 0 ? prev : deriveWingWidth(spread), intervals);
+    });
+  }, [connected, newAvailableStrikes, stream.chain, stream.underlyingPrice, isPut, spread, newQuotes]);
+
   if (!spread) return null;
+
+  // Derived new long strike — snapped to chain.
+  const proposedLongStrike = isPut
+    ? newShortStrike - wingWidth
+    : newShortStrike + wingWidth;
+  const newLongStrike = newAvailableStrikes.length > 0
+    ? snapToNearestStrike(proposedLongStrike, newAvailableStrikes)
+    : proposedLongStrike;
+
+  // Available wing widths (intervals present in the chain)
+  const wingOptions = (() => {
+    const intervals = strikeIntervals(newAvailableStrikes);
+    const existing = deriveWingWidth(spread);
+    if (existing > 0 && !intervals.includes(existing)) intervals.push(existing);
+    return intervals.sort((a, b) => a - b);
+  })();
 
   const directionLabel = isPut ? "Roll Down & Out" : "Roll Up & Out";
 
@@ -207,6 +266,70 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
             <span className="text-xs text-muted-foreground">
               {connected ? `Live quotes (${newAvailableStrikes.length} strikes)` : targetExpiration ? "Loading chain..." : "Pick a target expiration"}
             </span>
+          </div>
+
+          {/* Quantity / strikes / wing controls */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Quantity to roll</Label>
+              <Input
+                type="number"
+                min={1}
+                max={spread.quantity}
+                value={quantity}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value);
+                  if (Number.isNaN(v)) return;
+                  setQuantity(Math.max(1, Math.min(spread.quantity, v)));
+                }}
+                className="w-full"
+              />
+              <span className="text-[10px] text-muted-foreground">max {spread.quantity}</span>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Wing width</Label>
+              <Select
+                value={String(wingWidth)}
+                onValueChange={(v) => setWingWidth(Number(v))}
+                disabled={!connected || wingOptions.length === 0}
+              >
+                <SelectTrigger className="w-full font-mono">
+                  <SelectValue placeholder="Wing" />
+                </SelectTrigger>
+                <SelectContent>
+                  {wingOptions.map(w => (
+                    <SelectItem key={w} value={String(w)}>{w}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1 col-span-1">
+              <Label className="text-xs">New short strike</Label>
+              <Select
+                value={String(newShortStrike)}
+                onValueChange={(v) => setNewShortStrike(Number(v))}
+                disabled={!connected || newAvailableStrikes.length === 0}
+              >
+                <SelectTrigger className="w-full font-mono">
+                  <SelectValue placeholder="Strike" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(isPut ? [...newAvailableStrikes].reverse() : newAvailableStrikes).map(s => (
+                    <SelectItem key={s} value={String(s)}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1 col-span-1">
+              <Label className="text-xs">New long strike</Label>
+              <div className="h-9 px-3 flex items-center text-sm font-mono rounded-md border bg-muted">
+                {newLongStrike || "—"}
+              </div>
+              <span className="text-[10px] text-muted-foreground">auto: short {isPut ? "−" : "+"} wing</span>
+            </div>
           </div>
 
           {error && (
