@@ -82,7 +82,10 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     const wing = deriveWingWidth(spread);
     const span = Math.max(wing * 6, (hi - lo) * 3, 20);
     return isPut ? { min: lo - span, max: hi } : { min: lo, max: hi + span };
-  }, [spread, isPut]);
+    // Key on spread?.id (not the object identity) so polling-refreshed parent
+    // state doesn't churn the focus range and reconnect the stream every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spread?.id, isPut]);
 
   const streamMode = isPut ? "put-spread" : "call-spread";
   const streamEnabled = open && !!spread && !!targetExpiration;
