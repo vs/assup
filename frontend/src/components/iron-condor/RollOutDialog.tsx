@@ -3,7 +3,7 @@
  * at higher (calls) or lower (puts) strikes at a later expiration.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,8 @@ import { ArrowDownUp } from "lucide-react";
 import type { ActiveSpread } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 import { api } from "@/api";
-import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency } from "./rollOutHelpers";
+import { useSpreadsStream } from "@/hooks/useSpreadsStream";
+import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency, availableStrikesForRight, deriveWingWidth } from "./rollOutHelpers";
 
 interface RollOutDialogProps {
   open: boolean;
@@ -69,9 +70,43 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     return () => { cancelled = true; };
   }, [open, spread?.id, spread?.symbol]);
 
+  // Compute focus range for the chain stream — covers the spread's strikes plus
+  // a generous window in the roll direction so the new short candidate has dense quotes.
+  // (placement: layout position 2 — plain consts that hooks below depend on)
+  const isPut = spread?.type === "put-spread";
+  const focusRange = useMemo(() => {
+    if (!spread) return undefined;
+    const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
+    const lo = strikes[0];
+    const hi = strikes[strikes.length - 1];
+    const wing = deriveWingWidth(spread);
+    const span = Math.max(wing * 6, (hi - lo) * 3, 20);
+    return isPut ? { min: lo - span, max: hi } : { min: lo, max: hi + span };
+  }, [spread, isPut]);
+
+  const streamMode = isPut ? "put-spread" : "call-spread";
+  const streamEnabled = open && !!spread && !!targetExpiration;
+  const stream = useSpreadsStream(
+    spread?.symbol ?? "",
+    targetExpiration ?? undefined,
+    undefined,         // selectedStrikes
+    focusRange,
+    undefined,         // targetPutDelta
+    undefined,         // targetCallDelta
+    undefined,         // wingWidth
+    streamMode,
+    2000,              // updateIntervalMs
+    streamEnabled,
+  );
+
+  const newAvailableStrikes = useMemo(
+    () => availableStrikesForRight(stream.chain, isPut ? "P" : "C"),
+    [stream.chain, isPut],
+  );
+  const connected = stream.status === "connected" && stream.chain.length > 0;
+
   if (!spread) return null;
 
-  const isPut = spread.type === "put-spread";
   const directionLabel = isPut ? "Roll Down & Out" : "Roll Up & Out";
 
   return (
@@ -161,6 +196,14 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
                 </div>
               );
             })()}
+          </div>
+
+          {/* Connection indicator */}
+          <div className="flex items-center gap-2">
+            <span className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-green-500" : "bg-yellow-400"}`} />
+            <span className="text-xs text-muted-foreground">
+              {connected ? `Live quotes (${newAvailableStrikes.length} strikes)` : targetExpiration ? "Loading chain..." : "Pick a target expiration"}
+            </span>
           </div>
 
           {error && (
