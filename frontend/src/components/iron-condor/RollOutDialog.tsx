@@ -17,7 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowDownUp } from "lucide-react";
 import type { ActiveSpread } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
-import { formatExpiry, fmtCurrency } from "./rollOutHelpers";
+import { api } from "@/api";
+import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency } from "./rollOutHelpers";
 
 interface RollOutDialogProps {
   open: boolean;
@@ -33,11 +34,39 @@ function strikeSummary(spread: ActiveSpread): string {
 
 export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSuccess }: RollOutDialogProps) {
   const [error, setError] = useState<string | null>(null);
+  const [allExpirations, setAllExpirations] = useState<string[]>([]);
+  const [targetExpiration, setTargetExpiration] = useState<string | null>(null);
+  const [expirationsLoading, setExpirationsLoading] = useState(false);
 
-  // Reset error state on open/spread change
+  // Reset state on open / spread change
   useEffect(() => {
-    if (open) setError(null);
+    if (open && spread) {
+      setError(null);
+      setTargetExpiration(null);
+      setAllExpirations([]);
+    }
   }, [open, spread?.id]);
+
+  // Fetch expirations when dialog opens
+  useEffect(() => {
+    if (!open || !spread) return;
+    let cancelled = false;
+    setExpirationsLoading(true);
+    api.ironCondor.getExpirations(spread.symbol)
+      .then(r => {
+        if (cancelled) return;
+        setAllExpirations(r.expirations);
+        setTargetExpiration(defaultTargetExpiration(spread.expiry, r.expirations));
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load expirations");
+      })
+      .finally(() => {
+        if (!cancelled) setExpirationsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, spread?.id, spread?.symbol]);
 
   if (!spread) return null;
 
@@ -87,7 +116,51 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
             </div>
           </div>
 
-          {/* Inputs and live data go here in subsequent tasks */}
+          {/* Target expiration picker */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Target Expiration
+              </span>
+              {expirationsLoading && (
+                <span className="text-xs text-muted-foreground">Loading...</span>
+              )}
+            </div>
+            {(() => {
+              const candidates = expirationsBeyond(spread.expiry, allExpirations);
+              if (candidates.length === 0 && !expirationsLoading) {
+                return (
+                  <div className="text-sm text-muted-foreground py-2">
+                    No further expirations available for {spread.symbol}.
+                  </div>
+                );
+              }
+              return (
+                <div className="flex gap-1.5 flex-wrap">
+                  {candidates.map(exp => {
+                    const dte = calendarDaysBetween(spread.expiry, exp);
+                    const month = exp.slice(4, 6);
+                    const day = exp.slice(6, 8);
+                    const selected = targetExpiration === exp;
+                    return (
+                      <button
+                        key={exp}
+                        onClick={() => setTargetExpiration(exp)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                          selected
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background hover:bg-muted border-border"
+                        }`}
+                      >
+                        {`${month}/${day}`}
+                        <span className="ml-1 text-[10px] opacity-70">+{dte}d</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
 
           {error && (
             <Alert variant="destructive">
