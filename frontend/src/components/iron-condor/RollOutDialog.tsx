@@ -28,7 +28,7 @@ import type { ActiveSpread } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
-import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency, availableStrikesForRight, deriveWingWidth, defaultNewShortStrike, snapToNearestStrike, snapWingWidth, strikeIntervals, buildQuotesFromChain } from "./rollOutHelpers";
+import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency, availableStrikesForRight, deriveWingWidth, defaultNewShortStrike, snapToNearestStrike, snapWingWidth, strikeIntervals } from "./rollOutHelpers";
 
 interface RollOutDialogProps {
   open: boolean;
@@ -122,24 +122,29 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     [stream.chain, isPut],
   );
 
-  const newQuotes = useMemo(() => buildQuotesFromChain(stream.chain), [stream.chain]);
-
   const connected = stream.status === "connected" && stream.chain.length > 0;
 
+  // Derived new long strike — snapped to chain. Declared here (above the next
+  // useEffect / future Task 6 useMemos) so any hook that depends on it can
+  // include it in its dep array safely.
+  const proposedLongStrike = isPut
+    ? newShortStrike - wingWidth
+    : newShortStrike + wingWidth;
+  const newLongStrike = newAvailableStrikes.length > 0
+    ? snapToNearestStrike(proposedLongStrike, newAvailableStrikes)
+    : proposedLongStrike;
+
   // When the chain becomes available (or expiration changes), seed the new short
-  // strike from a delta-target heuristic, then snap to the nearest strike.
+  // strike from a 30-delta heuristic, then snap to the nearest strike. We don't
+  // have the current short leg's delta directly (ActiveSpreadLeg has no delta
+  // field), so 0.30 is the spec-defined fallback.
   useEffect(() => {
     if (!spread || !connected || newAvailableStrikes.length === 0) return;
-    const currentShortLeg = spread.legs.find(l => l.side === "SELL");
-    const currentShortDelta = currentShortLeg
-      ? Math.abs(newQuotes.get(`${currentShortLeg.strike}:${currentShortLeg.right}`)?.delta ?? 0)
-      : 0;
-    const targetAbsDelta = currentShortDelta > 0 ? currentShortDelta : 0.30;
 
     setNewShortStrike(prev => {
       // Don't overwrite a user-selected strike unless it's not in the new chain
       if (prev > 0 && newAvailableStrikes.includes(prev)) return prev;
-      const def = defaultNewShortStrike(stream.chain, !!isPut, targetAbsDelta, stream.underlyingPrice);
+      const def = defaultNewShortStrike(stream.chain, !!isPut, 0.30, stream.underlyingPrice);
       return def > 0 ? snapToNearestStrike(def, newAvailableStrikes) : prev;
     });
 
@@ -149,16 +154,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
       // Prefer the existing wing width; if not available, snap to nearest larger.
       return snapWingWidth(prev > 0 ? prev : deriveWingWidth(spread), intervals);
     });
-  }, [connected, newAvailableStrikes, stream.chain, stream.underlyingPrice, isPut, spread, newQuotes]);
-
-  // Derived new long strike — snapped to chain. (placement: layout position 2 —
-  // declared above the null check so Task 6's limit-seeding useMemo can use it as a dep.)
-  const proposedLongStrike = isPut
-    ? newShortStrike - wingWidth
-    : newShortStrike + wingWidth;
-  const newLongStrike = newAvailableStrikes.length > 0
-    ? snapToNearestStrike(proposedLongStrike, newAvailableStrikes)
-    : proposedLongStrike;
+  }, [connected, newAvailableStrikes, stream.chain, stream.underlyingPrice, isPut, spread]);
 
   if (!spread) return null;
 
