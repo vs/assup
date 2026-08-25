@@ -301,3 +301,34 @@ export function summarizeNewSpread(
   const breakeven = isPut ? newShortStrike - newCreditPerContract : newShortStrike + newCreditPerContract;
   return { maxLoss, maxProfit, breakeven };
 }
+
+// ---------------------------------------------------------------------------
+// Display helpers (used by RollOutDialog UI)
+// ---------------------------------------------------------------------------
+
+/** Format a YYYYMMDD expiration as e.g. "Apr 18 (3 DTE)". Falls back to raw on bad input. */
+export function formatExpiry(expiry: string): string {
+  if (expiry.length !== 8) return expiry;
+  const d = new Date(parseInt(expiry.slice(0, 4)), parseInt(expiry.slice(4, 6)) - 1, parseInt(expiry.slice(6, 8)));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dte = Math.floor((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} (${dte} DTE)`;
+}
+
+/**
+ * Format a number as a currency string, e.g. 12.5 → "$12.50".
+ * `null` renders as "—". With `opts.sign === true`, positive values get a leading "+",
+ * negative values get a leading "-", zero renders without a sign.
+ */
+export function fmtCurrency(value: number | null, opts?: { sign?: boolean }): string {
+  if (value == null) return "—";
+  const abs = Math.abs(value);
+  const formatted = `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (opts?.sign) {
+    if (value > 0) return `+${formatted}`;
+    if (value < 0) return `-${formatted}`;
+    return formatted;
+  }
+  return value < 0 ? `-${formatted}` : formatted;
+}

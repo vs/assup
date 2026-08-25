@@ -11,11 +11,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowDownUp } from "lucide-react";
 import type { ActiveSpread } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
+import { formatExpiry, fmtCurrency } from "./rollOutHelpers";
 
 interface RollOutDialogProps {
   open: boolean;
@@ -24,26 +26,9 @@ interface RollOutDialogProps {
   onSuccess: () => void;
 }
 
-function formatExpiry(expiry: string): string {
-  if (expiry.length !== 8) return expiry;
-  const d = new Date(parseInt(expiry.slice(0, 4)), parseInt(expiry.slice(4, 6)) - 1, parseInt(expiry.slice(6, 8)));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dte = Math.floor((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} (${dte} DTE)`;
-}
-
 function strikeSummary(spread: ActiveSpread): string {
   const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
   return strikes.join(" / ");
-}
-
-function fmtCurrency(value: number | null, opts?: { sign?: boolean }): string {
-  if (value == null) return "—";
-  const abs = Math.abs(value);
-  const formatted = `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  if (opts?.sign) return value >= 0 ? `+${formatted}` : `-${formatted}`;
-  return value < 0 ? `-${formatted}` : formatted;
 }
 
 export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSuccess }: RollOutDialogProps) {
@@ -105,7 +90,9 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
           {/* Inputs and live data go here in subsequent tasks */}
 
           {error && (
-            <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">{error}</div>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
           {/* Footer */}
