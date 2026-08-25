@@ -151,9 +151,8 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     });
   }, [connected, newAvailableStrikes, stream.chain, stream.underlyingPrice, isPut, spread, newQuotes]);
 
-  if (!spread) return null;
-
-  // Derived new long strike — snapped to chain.
+  // Derived new long strike — snapped to chain. (placement: layout position 2 —
+  // declared above the null check so Task 6's limit-seeding useMemo can use it as a dep.)
   const proposedLongStrike = isPut
     ? newShortStrike - wingWidth
     : newShortStrike + wingWidth;
@@ -161,7 +160,10 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     ? snapToNearestStrike(proposedLongStrike, newAvailableStrikes)
     : proposedLongStrike;
 
-  // Available wing widths (intervals present in the chain)
+  if (!spread) return null;
+
+  // Available wing widths (intervals present in the chain) — uses `spread.legs`
+  // directly via `deriveWingWidth`, so kept after the null check.
   const wingOptions = (() => {
     const intervals = strikeIntervals(newAvailableStrikes);
     const existing = deriveWingWidth(spread);
