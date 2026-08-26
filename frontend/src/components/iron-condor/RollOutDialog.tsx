@@ -3,7 +3,7 @@
  * at higher (calls) or lower (puts) strikes at a later expiration.
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -96,6 +96,8 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
   const [wingWidth, setWingWidth] = useState(0);
   const [closeLimit, setCloseLimit] = useState(0);
   const [openLimit, setOpenLimit] = useState(0);
+  const closeLimitSeeded = useRef(false);
+  const openLimitSeeded = useRef(false);
 
   // Reset state on open / spread change
   useEffect(() => {
@@ -109,6 +111,8 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
       setWingWidth(deriveWingWidth(spread));
       setCloseLimit(0);
       setOpenLimit(0);
+      closeLimitSeeded.current = false;
+      openLimitSeeded.current = false;
     }
   }, [open, spread?.id, spread?.quantity]);
 
@@ -226,19 +230,22 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     });
   }, [connected, newAvailableStrikes, stream.chain, stream.underlyingPrice, isPut, spread]);
 
-  // Seed close limit once a positive mid is available.
+  // Seed close limit exactly once per dialog open, when a positive mid arrives.
+  // Using a ref sentinel so subsequent user edits (including manually typing 0)
+  // don't trigger re-seeding from the dependency array.
   useEffect(() => {
-    if (closeLimit === 0 && seedCloseDebit > 0) {
+    if (!closeLimitSeeded.current && seedCloseDebit > 0) {
+      closeLimitSeeded.current = true;
       setCloseLimit(Math.round(seedCloseDebit * 100) / 100);
     }
-  }, [closeLimit, seedCloseDebit]);
+  }, [seedCloseDebit]);
 
-  // Seed open limit once a positive mid is available.
   useEffect(() => {
-    if (openLimit === 0 && seedOpenCredit > 0) {
+    if (!openLimitSeeded.current && seedOpenCredit > 0) {
+      openLimitSeeded.current = true;
       setOpenLimit(Math.round(seedOpenCredit * 100) / 100);
     }
-  }, [openLimit, seedOpenCredit]);
+  }, [seedOpenCredit]);
 
   if (!spread) return null;
 
