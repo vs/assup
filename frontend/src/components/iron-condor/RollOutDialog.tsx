@@ -28,7 +28,22 @@ import type { ActiveSpread } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
 import { api } from "@/api";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
-import { defaultTargetExpiration, expirationsBeyond, calendarDaysBetween, formatExpiry, fmtCurrency, availableStrikesForRight, deriveWingWidth, defaultNewShortStrike, snapToNearestStrike, snapWingWidth, strikeIntervals } from "./rollOutHelpers";
+import {
+  buildQuotesFromChain,
+  availableStrikesForRight,
+  deriveWingWidth,
+  defaultTargetExpiration,
+  expirationsBeyond,
+  calendarDaysBetween,
+  defaultNewShortStrike,
+  snapToNearestStrike,
+  snapWingWidth,
+  strikeIntervals,
+  computeRollEconomicsMid,
+  formatExpiry,
+  fmtCurrency,
+} from "./rollOutHelpers";
+import type { ChainQuote } from "./rollOutHelpers";
 
 interface RollOutDialogProps {
   open: boolean;
@@ -42,6 +57,35 @@ function strikeSummary(spread: ActiveSpread): string {
   return strikes.join(" / ");
 }
 
+function fmt(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return v.toFixed(2);
+}
+
+function LegQuoteRow({ side, strike, right, quote }: {
+  side: "BUY" | "SELL";
+  strike: number;
+  right: "P" | "C";
+  quote: ChainQuote | undefined;
+}) {
+  return (
+    <div className="grid grid-cols-[auto_auto_1fr_auto_auto_auto] gap-x-3 items-center px-3 py-1.5 text-sm">
+      <Badge variant={side === "SELL" ? "danger" : "success"}>{side}</Badge>
+      <span className="font-mono font-medium">{strike}</span>
+      <span className="text-muted-foreground text-xs">{right === "P" ? "PUT" : "CALL"}</span>
+      <span className="text-right tabular-nums text-xs">
+        <span className="text-[10px] text-muted-foreground mr-1">bid</span>{fmt(quote?.bid)}
+      </span>
+      <span className="text-right tabular-nums text-xs">
+        <span className="text-[10px] text-muted-foreground mr-1">ask</span>{fmt(quote?.ask)}
+      </span>
+      <span className="text-right tabular-nums text-xs w-14">
+        <span className="text-[10px] text-muted-foreground mr-1">&delta;</span>{fmt(quote?.delta)}
+      </span>
+    </div>
+  );
+}
+
 export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSuccess }: RollOutDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [allExpirations, setAllExpirations] = useState<string[]>([]);
@@ -50,6 +94,8 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
   const [quantity, setQuantity] = useState(0);
   const [newShortStrike, setNewShortStrike] = useState(0);
   const [wingWidth, setWingWidth] = useState(0);
+  const [closeLimit, setCloseLimit] = useState(0);
+  const [openLimit, setOpenLimit] = useState(0);
 
   // Reset state on open / spread change
   useEffect(() => {
@@ -61,6 +107,8 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
       setQuantity(spread.quantity);
       setNewShortStrike(0);
       setWingWidth(deriveWingWidth(spread));
+      setCloseLimit(0);
+      setOpenLimit(0);
     }
   }, [open, spread?.id, spread?.quantity]);
 
@@ -122,6 +170,11 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     [stream.chain, isPut],
   );
 
+  const newQuotes = useMemo(
+    () => buildQuotesFromChain(stream.chain),
+    [stream.chain],
+  );
+
   const connected = stream.status === "connected" && stream.chain.length > 0;
 
   // Derived new long strike — snapped to chain. Declared here (above the next
@@ -133,6 +186,23 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
   const newLongStrike = newAvailableStrikes.length > 0
     ? snapToNearestStrike(proposedLongStrike, newAvailableStrikes)
     : proposedLongStrike;
+
+  // Per-contract close debit at mid (uses spread leg mid prices already on the spread).
+  const seedCloseDebit = useMemo(() => {
+    if (!spread) return 0;
+    const shortMid = spread.legs.find(l => l.side === "SELL")?.midPrice ?? 0;
+    const longMid = spread.legs.find(l => l.side === "BUY")?.midPrice ?? 0;
+    return Math.max(0, shortMid - longMid);
+  }, [spread]);
+
+  // Per-contract open credit at mid (uses live streamed quotes for the new strikes).
+  const seedOpenCredit = useMemo(() => {
+    if (!spread || newShortStrike === 0 || newLongStrike === 0) return 0;
+    const right: "P" | "C" = isPut ? "P" : "C";
+    const sMid = newQuotes.get(`${newShortStrike}:${right}`)?.mid ?? 0;
+    const lMid = newQuotes.get(`${newLongStrike}:${right}`)?.mid ?? 0;
+    return Math.max(0, sMid - lMid);
+  }, [spread, newShortStrike, newLongStrike, isPut, newQuotes]);
 
   // When the chain becomes available (or expiration changes), seed the new short
   // strike from a 30-delta heuristic, then snap to the nearest strike. We don't
@@ -156,6 +226,20 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     });
   }, [connected, newAvailableStrikes, stream.chain, stream.underlyingPrice, isPut, spread]);
 
+  // Seed close limit once a positive mid is available.
+  useEffect(() => {
+    if (closeLimit === 0 && seedCloseDebit > 0) {
+      setCloseLimit(Math.round(seedCloseDebit * 100) / 100);
+    }
+  }, [closeLimit, seedCloseDebit]);
+
+  // Seed open limit once a positive mid is available.
+  useEffect(() => {
+    if (openLimit === 0 && seedOpenCredit > 0) {
+      setOpenLimit(Math.round(seedOpenCredit * 100) / 100);
+    }
+  }, [openLimit, seedOpenCredit]);
+
   if (!spread) return null;
 
   // Available wing widths (intervals present in the chain) — uses `spread.legs`
@@ -166,6 +250,33 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     if (existing > 0 && !intervals.includes(existing)) intervals.push(existing);
     return intervals.sort((a, b) => a - b);
   })();
+
+  // Quotes for the current spread's legs (from the existing leg snapshot).
+  const currentQuotes: Map<string, ChainQuote> = (() => {
+    const m = new Map<string, ChainQuote>();
+    for (const leg of spread.legs) {
+      m.set(`${leg.strike}:${leg.right}`, {
+        strike: leg.strike,
+        right: leg.right,
+        conId: leg.conId,
+        bid: null,
+        ask: null,
+        mid: leg.midPrice,
+        delta: null,
+      });
+    }
+    return m;
+  })();
+
+  // Display economics — mirrors the seed values but reuses the helper for symmetry.
+  const economics = computeRollEconomicsMid(
+    spread,
+    newShortStrike,
+    newLongStrike,
+    isPut ? "P" : "C",
+    newQuotes,
+    currentQuotes,
+  );
 
   const directionLabel = isPut ? "Roll Down & Out" : "Roll Up & Out";
 
@@ -327,6 +438,96 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
                 {newLongStrike || "—"}
               </div>
               <span className="text-[10px] text-muted-foreground">auto: short {isPut ? "−" : "+"} wing</span>
+            </div>
+          </div>
+
+          {/* Live new-spread quotes */}
+          {connected && newShortStrike > 0 && newLongStrike > 0 && (
+            <div className="border-2 border-blue-200 bg-blue-50/50 rounded-lg overflow-hidden">
+              <div className="px-3 py-2 bg-blue-100/60 border-b border-blue-200">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">
+                  New Spread (target {targetExpiration?.slice(4, 6)}/{targetExpiration?.slice(6, 8)})
+                </span>
+              </div>
+              <div className="divide-y divide-blue-100">
+                <LegQuoteRow side="SELL" strike={newShortStrike} right={isPut ? "P" : "C"} quote={newQuotes.get(`${newShortStrike}:${isPut ? "P" : "C"}`)} />
+                <LegQuoteRow side="BUY" strike={newLongStrike} right={isPut ? "P" : "C"} quote={newQuotes.get(`${newLongStrike}:${isPut ? "P" : "C"}`)} />
+              </div>
+            </div>
+          )}
+
+          {/* Roll economics */}
+          {connected && (
+            <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Close spread cost (mid)</span>
+                <span className="font-mono text-red-600">
+                  −${economics.closeDebitMid.toFixed(2)}/ct
+                  <span className="text-xs text-muted-foreground ml-2">
+                    (${(economics.closeDebitMid * 100 * quantity).toFixed(2)} for {quantity})
+                  </span>
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">New spread credit (mid)</span>
+                <span className="font-mono text-green-600">
+                  +${economics.openCreditMid.toFixed(2)}/ct
+                  <span className="text-xs text-muted-foreground ml-2">
+                    (${(economics.openCreditMid * 100 * quantity).toFixed(2)} for {quantity})
+                  </span>
+                </span>
+              </div>
+              <div className="border-t pt-1 flex justify-between font-semibold">
+                <span>Net roll {economics.netDebitMid >= 0 ? "debit" : "credit"} (mid)</span>
+                <span className={`font-mono ${economics.netDebitMid >= 0 ? "text-red-600" : "text-green-600"}`}>
+                  {economics.netDebitMid >= 0 ? "−" : "+"}${Math.abs(economics.netDebitMid).toFixed(2)}/ct
+                  <span className="text-xs text-muted-foreground ml-2">
+                    (${(Math.abs(economics.netDebitMid) * 100 * quantity).toFixed(2)} total)
+                  </span>
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Per-order limits */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Close limit (debit, per contract)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  step="0.05"
+                  min={0}
+                  value={closeLimit}
+                  onChange={(e) => setCloseLimit(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-28 text-center tabular-nums"
+                />
+                <button
+                  onClick={() => setCloseLimit(Math.round(economics.closeDebitMid * 100) / 100)}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  snap to mid
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Open limit (credit, per contract)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  step="0.05"
+                  min={0}
+                  value={openLimit}
+                  onChange={(e) => setOpenLimit(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-28 text-center tabular-nums"
+                />
+                <button
+                  onClick={() => setOpenLimit(Math.round(economics.openCreditMid * 100) / 100)}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  snap to mid
+                </button>
+              </div>
             </div>
           </div>
 
