@@ -42,6 +42,8 @@ import {
   computeRollEconomicsMid,
   formatExpiry,
   fmtCurrency,
+  summarizeExisting,
+  summarizeNewSpread,
 } from "./rollOutHelpers";
 import type { ChainQuote } from "./rollOutHelpers";
 
@@ -283,6 +285,15 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
     isPut ? "P" : "C",
     newQuotes,
     currentQuotes,
+  );
+
+  const beforeSummary = summarizeExisting(spread);
+  const afterSummary = summarizeNewSpread(
+    newShortStrike,
+    newLongStrike,
+    !!isPut,
+    openLimit,
+    quantity,
   );
 
   const directionLabel = isPut ? "Roll Down & Out" : "Roll Up & Out";
@@ -537,6 +548,41 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
               </div>
             </div>
           </div>
+
+          {/* Before/after summary */}
+          {connected && newShortStrike > 0 && (
+            <div className="rounded-lg border px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Before / After
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-muted-foreground">Max loss</div>
+                  <div className="font-mono">
+                    <span className="text-red-600">{fmtCurrency(beforeSummary.maxLoss)}</span>
+                    <span className="mx-1 text-muted-foreground">→</span>
+                    <span className="text-red-600">{fmtCurrency(afterSummary.maxLoss)}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Max profit</div>
+                  <div className="font-mono">
+                    <span className="text-green-600">{fmtCurrency(beforeSummary.maxProfit)}</span>
+                    <span className="mx-1 text-muted-foreground">→</span>
+                    <span className="text-green-600">{fmtCurrency(afterSummary.maxProfit)}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Breakeven</div>
+                  <div className="font-mono">
+                    <span>{beforeSummary.breakeven.toFixed(2)}</span>
+                    <span className="mx-1 text-muted-foreground">→</span>
+                    <span>{afterSummary.breakeven.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {error && (
             <Alert variant="destructive">
