@@ -44,6 +44,8 @@ import {
   fmtCurrency,
   summarizeExisting,
   summarizeNewSpread,
+  buildCloseLegs,
+  buildOpenLegs,
 } from "./rollOutHelpers";
 import type { ChainQuote } from "./rollOutHelpers";
 
@@ -88,7 +90,7 @@ function LegQuoteRow({ side, strike, right, quote }: {
   );
 }
 
-export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSuccess }: RollOutDialogProps) {
+export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOutDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [allExpirations, setAllExpirations] = useState<string[]>([]);
   const [targetExpiration, setTargetExpiration] = useState<string | null>(null);
@@ -98,6 +100,9 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
   const [wingWidth, setWingWidth] = useState(0);
   const [closeLimit, setCloseLimit] = useState(0);
   const [openLimit, setOpenLimit] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [warning, setWarning] = useState<string | null>(null);
   const closeLimitSeeded = useRef(false);
   const openLimitSeeded = useRef(false);
 
@@ -105,6 +110,8 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
   useEffect(() => {
     if (open && spread) {
       setError(null);
+      setWarning(null);
+      setSuccess(false);
       setTargetExpiration(null);
       setAllExpirations([]);
       setExpirationsLoading(false);
@@ -297,6 +304,70 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
   );
 
   const directionLabel = isPut ? "Roll Down & Out" : "Roll Up & Out";
+
+  const newShortQuote = newQuotes.get(`${newShortStrike}:${isPut ? "P" : "C"}`);
+  const newLongQuote = newQuotes.get(`${newLongStrike}:${isPut ? "P" : "C"}`);
+  const hasValidConIds =
+    !!newShortQuote && newShortQuote.conId > 0 &&
+    !!newLongQuote && newLongQuote.conId > 0;
+  const inputsValid =
+    !!targetExpiration &&
+    quantity > 0 && quantity <= spread.quantity &&
+    newShortStrike > 0 && newLongStrike > 0 &&
+    closeLimit > 0 && openLimit > 0 &&
+    // Calls: short < long; Puts: short > long.
+    (isPut ? newShortStrike > newLongStrike : newShortStrike < newLongStrike);
+
+  const handlePlaceOrders = async () => {
+    if (!hasValidConIds || !inputsValid || !targetExpiration) return;
+    setSubmitting(true);
+    setError(null);
+    setWarning(null);
+
+    // Step 1: Close current spread.
+    try {
+      await api.ironCondor.closeSpread({
+        symbol: spread.symbol,
+        legs: buildCloseLegs(spread),
+        quantity,
+        limitPrice: closeLimit,
+      });
+    } catch (err) {
+      setError(`Close order failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setSubmitting(false);
+      return;
+    }
+
+    // Step 2: Open new spread. The IBKR combo limit convention is negative=credit,
+    // so we negate the user-entered open credit.
+    try {
+      await api.ironCondor.placeOrder({
+        symbol: spread.symbol,
+        legs: buildOpenLegs(
+          newShortStrike,
+          newLongStrike,
+          newShortQuote!.conId,
+          newLongQuote!.conId,
+          isPut ? "P" : "C",
+          targetExpiration,
+        ),
+        quantity,
+        limitPrice: -openLimit,
+      });
+    } catch (err) {
+      setWarning(
+        `Close order placed, but new spread submission failed: ${err instanceof Error ? err.message : "Unknown error"}. Check open orders and place the new spread manually.`,
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    setSuccess(true);
+    setTimeout(() => {
+      onOpenChange(false);
+      onSuccess();
+    }, 1500);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -589,11 +660,41 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess: _onSucces
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+          {warning && (
+            <Alert>
+              <AlertDescription className="text-amber-700">{warning}</AlertDescription>
+            </Alert>
+          )}
+          {success && (
+            <Alert>
+              <AlertDescription className="text-green-600">Roll orders submitted!</AlertDescription>
+            </Alert>
+          )}
 
           {/* Footer */}
-          <div className="flex justify-between pt-1">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button disabled>Place Roll Orders</Button>
+          <div className="flex justify-between items-center pt-1">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <div className="flex flex-col items-end gap-1">
+              {!hasValidConIds && connected && (
+                <span className="text-xs text-destructive">Quotes still loading — wait for chain</span>
+              )}
+              {!inputsValid && hasValidConIds && (
+                <span className="text-xs text-destructive">
+                  {isPut
+                    ? "New short must be > new long"
+                    : "New short must be < new long"} — check inputs
+                </span>
+              )}
+              <Button
+                onClick={handlePlaceOrders}
+                disabled={submitting || success || !hasValidConIds || !inputsValid}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {submitting ? "Placing..." : "Place Roll Orders"}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
