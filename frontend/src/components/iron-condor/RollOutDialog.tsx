@@ -209,12 +209,17 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
   }, [spread?.closeMidPrice]);
 
   // Per-contract open credit at mid (uses live streamed quotes for the new strikes).
+  // Both legs must have positive mids — otherwise scout-phase / partial-chain data
+  // (e.g. short quote present but long quote not yet arrived) would compute
+  // sMid − 0 and lock in a wildly inflated seed via openLimitSeeded.
   const seedOpenCredit = useMemo(() => {
     if (!spread || newShortStrike === 0 || newLongStrike === 0) return 0;
     const right: "P" | "C" = isPut ? "P" : "C";
-    const sMid = newQuotes.get(`${newShortStrike}:${right}`)?.mid ?? 0;
-    const lMid = newQuotes.get(`${newLongStrike}:${right}`)?.mid ?? 0;
-    return Math.max(0, sMid - lMid);
+    const shortQuote = newQuotes.get(`${newShortStrike}:${right}`);
+    const longQuote = newQuotes.get(`${newLongStrike}:${right}`);
+    if (!shortQuote?.mid || shortQuote.mid <= 0) return 0;
+    if (!longQuote?.mid || longQuote.mid <= 0) return 0;
+    return Math.max(0, shortQuote.mid - longQuote.mid);
   }, [spread, newShortStrike, newLongStrike, isPut, newQuotes]);
 
   // When the chain becomes available (or expiration changes), seed the new short
