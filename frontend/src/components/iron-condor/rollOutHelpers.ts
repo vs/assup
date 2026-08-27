@@ -282,23 +282,30 @@ export function summarizeExisting(spread: ActiveSpread): PayoffSummary {
 
 /**
  * After-state summary for the new credit spread that would replace the existing one.
- * Uses `openCreditPerContract` (the limit credit user enters for the open leg)
- * minus `closeDebitPerContract` (the cost paid to close the existing spread)
- * plus the realized P&L already locked in by the close — but for simplicity we
- * report the new spread's payoff in isolation; the dialog also shows the
- * net roll debit separately so the user sees both numbers.
+ * Accounts for the close debit paid to exit the existing spread — the realized
+ * close cost reduces the new spread's effective entry credit. Net credit can be
+ * negative for debit rolls, in which case max profit is also negative (the user
+ * is locking in a loss in exchange for moved strikes / more time).
+ *
+ * Breakeven: where total P&L (close cost + new spread payoff at expiry) = 0.
+ * When the net credit is non-positive, no expiry price makes the rolled position
+ * break even — `breakeven` is returned as NaN so callers can render a placeholder.
  */
 export function summarizeNewSpread(
   newShortStrike: number,
   newLongStrike: number,
   isPut: boolean,
   newCreditPerContract: number,
+  closeDebitPerContract: number,
   quantity: number,
 ): PayoffSummary {
   const wing = Math.abs(newShortStrike - newLongStrike);
-  const maxProfit = newCreditPerContract * 100 * quantity;
-  const maxLoss = -1 * (wing - newCreditPerContract) * 100 * quantity;
-  const breakeven = isPut ? newShortStrike - newCreditPerContract : newShortStrike + newCreditPerContract;
+  const netCreditPerContract = newCreditPerContract - closeDebitPerContract;
+  const maxProfit = netCreditPerContract * 100 * quantity;
+  const maxLoss = (netCreditPerContract - wing) * 100 * quantity;
+  const breakeven = netCreditPerContract > 0
+    ? (isPut ? newShortStrike - netCreditPerContract : newShortStrike + netCreditPerContract)
+    : NaN;
   return { maxLoss, maxProfit, breakeven };
 }
 

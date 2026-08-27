@@ -319,6 +319,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     newLongStrike,
     !!isPut,
     openLimit,
+    closeLimit,
     quantity,
   );
 
@@ -653,8 +654,13 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
           {/* Before/after summary */}
           {connected && newShortStrike > 0 && (
             <div className="rounded-lg border px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Before / After
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Before / After
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  After numbers include the close-debit cost
+                </span>
               </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
@@ -670,7 +676,9 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
                   <div className="font-mono">
                     <span className="text-green-600">{fmtCurrency(beforeSummary.maxProfit)}</span>
                     <span className="mx-1 text-muted-foreground">→</span>
-                    <span className="text-green-600">{fmtCurrency(afterSummary.maxProfit)}</span>
+                    <span className={afterSummary.maxProfit >= 0 ? "text-green-600" : "text-red-600"}>
+                      {fmtCurrency(afterSummary.maxProfit, { sign: true })}
+                    </span>
                   </div>
                 </div>
                 <div>
@@ -678,7 +686,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
                   <div className="font-mono">
                     <span>{beforeSummary.breakeven.toFixed(2)}</span>
                     <span className="mx-1 text-muted-foreground">→</span>
-                    <span>{afterSummary.breakeven.toFixed(2)}</span>
+                    <span>{Number.isFinite(afterSummary.breakeven) ? afterSummary.breakeven.toFixed(2) : "—"}</span>
                   </div>
                 </div>
               </div>
