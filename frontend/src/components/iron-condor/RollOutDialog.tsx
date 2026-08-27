@@ -233,10 +233,14 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     });
 
     setWingWidth(prev => {
+      // Once the user (or the initial seed) has set a wing > 0, leave it alone.
+      // The chain ticks every 2s; re-snapping here would clobber a valid pick
+      // like 5 down to 2.5 just because the literal adjacent-strike gaps don't
+      // include 5 (a 5-wide spread is still achievable by skipping a strike).
+      if (prev > 0) return prev;
       const intervals = strikeIntervals(newAvailableStrikes);
       if (intervals.length === 0) return prev;
-      // Prefer the existing wing width; if not available, snap to nearest larger.
-      return snapWingWidth(prev > 0 ? prev : deriveWingWidth(spread), intervals);
+      return snapWingWidth(deriveWingWidth(spread), intervals);
     });
   }, [connected, newAvailableStrikes, stream.chain, stream.underlyingPrice, isPut, spread]);
 
