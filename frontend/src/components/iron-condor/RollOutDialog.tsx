@@ -514,6 +514,11 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
                   ))}
                 </SelectContent>
               </Select>
+              {connected && wingWidth > 0 && Math.abs(newLongStrike - newShortStrike) !== wingWidth && (
+                <span className="text-[10px] text-amber-600">
+                  wing snapped: {wingWidth} → {Math.abs(newLongStrike - newShortStrike)}
+                </span>
+              )}
             </div>
 
             <div className="space-y-1 col-span-1">
@@ -611,6 +616,11 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
                   snap to mid
                 </button>
               </div>
+              {seedCloseDebit === 0 && (
+                <span className="text-[10px] text-amber-600">
+                  No mid price available from positions — enter manually
+                </span>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Open limit (credit, per contract)</Label>
