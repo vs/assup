@@ -17,6 +17,7 @@ import { ActiveSpreadsList } from "@/components/iron-condor/ActiveSpreadsList";
 import { CloseSpreadDialog } from "@/components/iron-condor/CloseSpreadDialog";
 import { GexModal } from "@/components/iron-condor/GexModal";
 import { HedgeWizardDialog } from "@/components/iron-condor/HedgeWizardDialog";
+import { RollOutDialog } from "@/components/iron-condor/RollOutDialog";
 import { StrategyAdvisor } from "@/components/iron-condor/StrategyAdvisor";
 import { OptionsBuilder } from "@/components/options-builder/OptionsBuilder";
 import type { StrategyRecommendation } from "@/components/options-builder/OptionsBuilder";
@@ -54,6 +55,10 @@ export function IronCondorPage() {
   const [hedgeDialogOpen, setHedgeDialogOpen] = useState(false);
   const [hedgingSpread, setHedgingSpread] = useState<ActiveSpread | null>(null);
   const [hedgeInitialStrategy, setHedgeInitialStrategy] = useState<HedgeStrategy | undefined>(undefined);
+
+  // Roll Out dialog
+  const [rollOutOpen, setRollOutOpen] = useState(false);
+  const [rollingOutSpread, setRollingOutSpread] = useState<ActiveSpread | null>(null);
 
   // Load symbols and risk thresholds from settings
   useEffect(() => {
@@ -102,6 +107,11 @@ export function IronCondorPage() {
     setHedgeDialogOpen(true);
   }, []);
 
+  const handleRollOutSpread = useCallback((spread: ActiveSpread) => {
+    setRollingOutSpread(spread);
+    setRollOutOpen(true);
+  }, []);
+
   const handleHedgeDialogClose = useCallback((open: boolean) => {
     if (!open) {
       setHedgeDialogOpen(false);
@@ -128,6 +138,7 @@ export function IronCondorPage() {
         spreads={spreads}
         onClose={handleCloseSpread}
         onHedge={handleHedgeSpread}
+        onRollOut={handleRollOutSpread}
         riskMap={riskMap}
         recommendations={recommendations}
       />
@@ -196,6 +207,17 @@ export function IronCondorPage() {
         risk={riskMap.get(hedgingSpread?.id ?? "") ?? { level: "healthy", premiumMultiple: null }}
         onSuccess={fetchSpreads}
         initialStrategy={hedgeInitialStrategy}
+      />
+
+      {/* Roll Out dialog */}
+      <RollOutDialog
+        open={rollOutOpen}
+        onOpenChange={(o) => {
+          setRollOutOpen(o);
+          if (!o) setRollingOutSpread(null);
+        }}
+        spread={rollingOutSpread}
+        onSuccess={fetchSpreads}
       />
 
       {/* GEX modal */}

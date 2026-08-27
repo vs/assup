@@ -6,7 +6,7 @@
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, AlertTriangle, ArrowDownUp, GitBranch, Shield, X as XIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, ArrowDownUp, Forward, GitBranch, Shield, X as XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ActiveSpread, ActiveSpreadLeg } from "@assup/shared";
 import type { HedgeStrategy } from "@assup/shared";
@@ -18,6 +18,7 @@ interface ActiveSpreadsListProps {
   spreads: ActiveSpread[];
   onClose: (spread: ActiveSpread) => void;
   onHedge: (spread: ActiveSpread, initialStrategy?: HedgeStrategy) => void;
+  onRollOut: (spread: ActiveSpread) => void;
   riskMap: Map<string, SpreadRiskStatus>;
   recommendations: Map<string, HedgeRecommendation>;
 }
@@ -102,10 +103,11 @@ function extractSideSpread(spread: ActiveSpread, side: "put" | "call"): ActiveSp
   };
 }
 
-function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
+function SpreadCard({ spread, onClose, onHedge, onRollOut, risk, recommendation }: {
   spread: ActiveSpread;
   onClose: () => void;
   onHedge: (spread: ActiveSpread, initialStrategy?: HedgeStrategy) => void;
+  onRollOut: (spread: ActiveSpread) => void;
   risk: SpreadRiskStatus;
   recommendation?: HedgeRecommendation;
 }) {
@@ -218,10 +220,13 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
 
           {isIronCondor ? (
             <div className="flex justify-end pt-2 border-t mt-2">
-              <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-1.5 gap-y-1 items-center">
+              <div className="grid grid-cols-[auto_auto_auto_auto_auto] gap-x-1.5 gap-y-1 items-center">
                 <span className="text-[10px] font-semibold text-red-600 pr-1">PUT</span>
                 <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "roll")} className="gap-1 text-xs h-7 px-2">
                   <ArrowDownUp className="h-3 w-3" /> Roll Down
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onRollOut(extractSideSpread(spread, "put"))} className="gap-1 text-xs h-7 px-2">
+                  <Forward className="h-3 w-3" /> Roll Down & Out
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "put"), "butterfly")} className="gap-1 text-xs h-7 px-2">
                   <GitBranch className="h-3 w-3" /> Butterfly
@@ -233,12 +238,16 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
                 <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "roll")} className="gap-1 text-xs h-7 px-2">
                   <ArrowDownUp className="h-3 w-3" /> Roll Up
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => onRollOut(extractSideSpread(spread, "call"))} className="gap-1 text-xs h-7 px-2">
+                  <Forward className="h-3 w-3" /> Roll Up & Out
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "butterfly")} className="gap-1 text-xs h-7 px-2">
                   <GitBranch className="h-3 w-3" /> Butterfly
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onHedge(extractSideSpread(spread, "call"), "protective")} className="gap-1 text-xs h-7 px-2">
                   <Shield className="h-3 w-3" /> Protective
                 </Button>
+                <div />
                 <div />
                 <div />
                 <div />
@@ -252,6 +261,10 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
               <Button variant="outline" size="sm" onClick={() => onHedge(spread, "roll")} className="gap-1 text-xs h-7 px-2">
                 <ArrowDownUp className="h-3 w-3" />
                 {spread.type === "put-spread" ? "Roll Down" : "Roll Up"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onRollOut(spread)} className="gap-1 text-xs h-7 px-2">
+                <Forward className="h-3 w-3" />
+                {spread.type === "put-spread" ? "Roll Down & Out" : "Roll Up & Out"}
               </Button>
               <Button variant="outline" size="sm" onClick={() => onHedge(spread, "butterfly")} className="gap-1 text-xs h-7 px-2">
                 <GitBranch className="h-3 w-3" /> Butterfly
@@ -271,7 +284,7 @@ function SpreadCard({ spread, onClose, onHedge, risk, recommendation }: {
   );
 }
 
-export function ActiveSpreadsList({ spreads, onClose, onHedge, riskMap, recommendations }: ActiveSpreadsListProps) {
+export function ActiveSpreadsList({ spreads, onClose, onHedge, onRollOut, riskMap, recommendations }: ActiveSpreadsListProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const count = spreads.length;
@@ -312,6 +325,7 @@ export function ActiveSpreadsList({ spreads, onClose, onHedge, riskMap, recommen
               spread={spread}
               onClose={() => onClose(spread)}
               onHedge={onHedge}
+              onRollOut={onRollOut}
               risk={riskMap.get(spread.id) ?? { level: "healthy", premiumMultiple: null }}
               recommendation={recommendations.get(spread.id)}
             />
