@@ -105,6 +105,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
   const [warning, setWarning] = useState<string | null>(null);
   const closeLimitSeeded = useRef(false);
   const openLimitSeeded = useRef(false);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset state on open / spread change
   useEffect(() => {
@@ -256,6 +257,17 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     }
   }, [seedOpenCredit]);
 
+  // Clear the post-success timer if the dialog unmounts before it fires,
+  // so we don't call onOpenChange/onSuccess on stale closures.
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
+      }
+    };
+  }, []);
+
   if (!spread) return null;
 
   // Available wing widths (intervals present in the chain) — uses `spread.legs`
@@ -363,7 +375,8 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     }
 
     setSuccess(true);
-    setTimeout(() => {
+    successTimerRef.current = setTimeout(() => {
+      successTimerRef.current = null;
       onOpenChange(false);
       onSuccess();
     }, 1500);
