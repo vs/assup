@@ -201,13 +201,12 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     ? snapToNearestStrike(proposedLongStrike, newAvailableStrikes)
     : proposedLongStrike;
 
-  // Per-contract close debit at mid (uses spread leg mid prices already on the spread).
+  // Per-contract close debit at mid. spread.closeMidPrice is already the correct
+  // close debit per share (the backend sums leg.midPrice values which are signed
+  // by side, so the sum naturally equals shortMid − longMid).
   const seedCloseDebit = useMemo(() => {
-    if (!spread) return 0;
-    const shortMid = spread.legs.find(l => l.side === "SELL")?.midPrice ?? 0;
-    const longMid = spread.legs.find(l => l.side === "BUY")?.midPrice ?? 0;
-    return Math.max(0, shortMid - longMid);
-  }, [spread]);
+    return Math.max(0, spread?.closeMidPrice ?? 0);
+  }, [spread?.closeMidPrice]);
 
   // Per-contract open credit at mid (uses live streamed quotes for the new strikes).
   const seedOpenCredit = useMemo(() => {
@@ -284,6 +283,10 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
   })();
 
   // Quotes for the current spread's legs (from the existing leg snapshot).
+  // ActiveSpreadLeg.midPrice is signed by side ( + for shorts = "what you pay
+  // to close", − for longs = "what you receive"), but computeRollEconomicsMid
+  // expects unsigned market mids matching the chain quote semantics. Take the
+  // absolute value here so the close-debit math stays correct.
   const currentQuotes: Map<string, ChainQuote> = (() => {
     const m = new Map<string, ChainQuote>();
     for (const leg of spread.legs) {
@@ -293,7 +296,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
         conId: leg.conId,
         bid: null,
         ask: null,
-        mid: leg.midPrice,
+        mid: leg.midPrice != null ? Math.abs(leg.midPrice) : null,
         delta: null,
       });
     }
