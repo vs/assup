@@ -222,46 +222,16 @@ export function HedgeWizardDialog({
   }, [step, limitPrice, hedgeMidPrice]);
 
   // --- Payoff analysis ---
-  // The "from today" baseline is the current close debit per share — what it
-  // would cost right now to buy back the position. If price stays past expiry
-  // such that the spread expires worthless, you "save" that close cost.
-  //
-  // Source priority:
-  //   1. Live chain quotes (always freshest — recomputes as quotes update).
-  //   2. spread.closeMidPrice (from position service, may be stale or null
-  //      if marketValue didn't come back from IBKR).
-  //   3. Entry credit from netPremium — last resort. This is the *original*
-  //      max profit, not the from-today value, so the BEFORE numbers will
-  //      look like the entry-state spread until quotes arrive.
-  const currentMarkPerShare = useMemo(() => {
-    if (!spread) return 0;
+  // Standard credit-spread payoff at expiry, using the ENTRY CREDIT as the
+  // baseline. We deliberately ignore current mark / unrealized P&L: this view
+  // shows the spread's intrinsic best/worst-case scenarios at expiration,
+  // and how a hedge shifts those scenarios. Net premium is signed (negative
+  // for net credit received), so abs() recovers the credit magnitude.
+  const originalCreditPerShare = spread
+    ? Math.abs(spread.netPremium) / (spread.quantity * 100)
+    : 0;
 
-    // 1. Sum signed mids from chain: SELL legs cost +mid to close (buy back),
-    //    BUY legs return -mid (sold out). Net = close debit per share.
-    let chainSum = 0;
-    let chainComplete = true;
-    for (const leg of spread.legs) {
-      const q = quotes.get(`${leg.strike}:${leg.right}`);
-      if (q?.mid == null || q.mid <= 0) {
-        chainComplete = false;
-        break;
-      }
-      chainSum += leg.side === "SELL" ? q.mid : -q.mid;
-    }
-    if (chainComplete && chainSum > 0) return chainSum;
-
-    // 2. spread.closeMidPrice already encodes the same signed-sum convention.
-    if (spread.closeMidPrice != null && spread.closeMidPrice > 0) {
-      return spread.closeMidPrice;
-    }
-
-    // 3. Entry credit fallback.
-    return Math.abs(spread.netPremium) / (spread.quantity * 100);
-  }, [spread, quotes]);
-
-  // Before analysis: payoff of the existing spread from today's mark to expiry.
-  // closeMidPrice is what it costs to close NOW; if held to expiry and it expires
-  // OTM, the "profit from here" = closeMidPrice (you saved that closing cost).
+  // Before analysis: standard expiration payoff for the existing spread.
   const beforeResult = useMemo(() => {
     if (!spread) return null;
     try {
@@ -273,14 +243,14 @@ export function HedgeWizardDialog({
       return computeHedgedPayoff({
         existingLegs,
         newLegs: [],
-        originalCreditMid: currentMarkPerShare,
+        originalCreditMid: originalCreditPerShare,
         hedgeDebitLimit: 0,
         quantity: spread.quantity,
       });
     } catch {
       return null;
     }
-  }, [spread, currentMarkPerShare, underlyingPrice]);
+  }, [spread, originalCreditPerShare, underlyingPrice]);
 
   // After analysis (hedged payoff)
   const afterResult = useMemo(() => {
@@ -358,7 +328,7 @@ export function HedgeWizardDialog({
       return computeHedgedPayoff({
         existingLegs,
         newLegs,
-        originalCreditMid: currentMarkPerShare,
+        originalCreditMid: originalCreditPerShare,
         hedgeDebitLimit: limitPrice,
         quantity: spread.quantity,
       });
@@ -374,7 +344,7 @@ export function HedgeWizardDialog({
     selectedStrike,
     right,
     isPut,
-    currentMarkPerShare,
+    originalCreditPerShare,
     limitPrice,
     underlyingPrice,
   ]);
