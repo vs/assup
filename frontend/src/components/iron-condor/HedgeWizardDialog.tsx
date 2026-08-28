@@ -222,12 +222,42 @@ export function HedgeWizardDialog({
   }, [step, limitPrice, hedgeMidPrice]);
 
   // --- Payoff analysis ---
-  // Use the current close mark (closeMidPrice) as the baseline — this represents
-  // the remaining risk from today's perspective. If closeMidPrice is unavailable,
-  // fall back to entry credit as a last resort.
-  const currentMarkPerShare = spread
-    ? (spread.closeMidPrice ?? Math.abs(spread.netPremium) / (spread.quantity * 100))
-    : 0;
+  // The "from today" baseline is the current close debit per share — what it
+  // would cost right now to buy back the position. If price stays past expiry
+  // such that the spread expires worthless, you "save" that close cost.
+  //
+  // Source priority:
+  //   1. Live chain quotes (always freshest — recomputes as quotes update).
+  //   2. spread.closeMidPrice (from position service, may be stale or null
+  //      if marketValue didn't come back from IBKR).
+  //   3. Entry credit from netPremium — last resort. This is the *original*
+  //      max profit, not the from-today value, so the BEFORE numbers will
+  //      look like the entry-state spread until quotes arrive.
+  const currentMarkPerShare = useMemo(() => {
+    if (!spread) return 0;
+
+    // 1. Sum signed mids from chain: SELL legs cost +mid to close (buy back),
+    //    BUY legs return -mid (sold out). Net = close debit per share.
+    let chainSum = 0;
+    let chainComplete = true;
+    for (const leg of spread.legs) {
+      const q = quotes.get(`${leg.strike}:${leg.right}`);
+      if (q?.mid == null || q.mid <= 0) {
+        chainComplete = false;
+        break;
+      }
+      chainSum += leg.side === "SELL" ? q.mid : -q.mid;
+    }
+    if (chainComplete && chainSum > 0) return chainSum;
+
+    // 2. spread.closeMidPrice already encodes the same signed-sum convention.
+    if (spread.closeMidPrice != null && spread.closeMidPrice > 0) {
+      return spread.closeMidPrice;
+    }
+
+    // 3. Entry credit fallback.
+    return Math.abs(spread.netPremium) / (spread.quantity * 100);
+  }, [spread, quotes]);
 
   // Before analysis: payoff of the existing spread from today's mark to expiry.
   // closeMidPrice is what it costs to close NOW; if held to expiry and it expires
