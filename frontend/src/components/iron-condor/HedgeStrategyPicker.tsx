@@ -4,7 +4,7 @@
  * for the user to choose between butterfly conversion and protective option.
  */
 
-import { GitBranch, Shield, Check, X, ArrowDownUp } from "lucide-react";
+import { GitBranch, Shield, Check, X, ArrowDownUp, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { ActiveSpread, HedgeStrategy } from "@assup/shared";
 import { spreadModeLabel } from "./utils";
@@ -143,7 +143,7 @@ export function HedgeStrategyPicker({ spread, premiumMultiple, onSelect }: Hedge
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Add a long {optionRight} at {butterflyExtraStrike} to transform your existing {spreadModeLabel(spread.type)} into a butterfly spread, capping maximum loss.
+            Overlay a debit {optionRight} spread (BUY {longStrike} / SELL {butterflyExtraStrike}) on top of your existing {spreadModeLabel(spread.type)}, producing an inverted butterfly. Profits if price moves past either wing; max loss occurs at the long strike.
           </p>
 
           <pre className="text-[10px] font-mono bg-muted/60 rounded p-2 leading-relaxed whitespace-pre">
@@ -151,20 +151,21 @@ export function HedgeStrategyPicker({ spread, premiumMultiple, onSelect }: Hedge
   SELL ${optionRight} ${shortStrike}
   BUY  ${optionRight} ${longStrike}
 
-After (Butterfly):
-  SELL ${optionRight} ${shortStrike}
+After (Inverted Butterfly):
+  SELL ${optionRight} ${shortStrike}  ← existing
   BUY  ${optionRight} ${longStrike}  ← existing
-  BUY  ${optionRight} ${butterflyExtraStrike}  ← new leg`}
+  BUY  ${optionRight} ${longStrike}  ← new (doubles middle)
+  SELL ${optionRight} ${butterflyExtraStrike}  ← new (outer wing)`}
           </pre>
 
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-xs text-green-700">
               <Check className="h-3 w-3 shrink-0" />
-              <span>Defined max loss at lower wing</span>
+              <span>Profits if price moves past either wing</span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-green-700">
-              <Check className="h-3 w-3 shrink-0" />
-              <span>Retains profit potential near short strike</span>
+            <div className="flex items-center gap-1.5 text-xs text-amber-600">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              <span>Max loss at the long strike — typically worse than the original spread</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-red-600">
               <X className="h-3 w-3 shrink-0" />

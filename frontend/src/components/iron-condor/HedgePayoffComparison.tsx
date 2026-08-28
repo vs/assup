@@ -3,6 +3,7 @@
  * Shows a before/after payoff chart and metrics table side by side.
  */
 
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PayoffComparisonChart } from "./PayoffComparisonChart";
 import type { HedgedPayoffResult } from "@/utils/spreadAnalysis";
@@ -43,10 +44,26 @@ export function HedgePayoffComparison({
   const profitChanged = afterResult.maxProfit !== beforeMaxProfit;
   const profitDelta = afterResult.maxProfit - beforeMaxProfit;
 
+  // The hedge can paradoxically widen worst-case loss (e.g. an inverted
+  // butterfly built from a debit-spread overlay puts the new max-loss point
+  // at the long strike). Surface this loudly so the user doesn't read
+  // "hedge" as "guaranteed risk reduction".
+  const lossWorsened = afterResult.maxLoss > beforeMaxLoss;
+  const lossDelta = afterResult.maxLoss - beforeMaxLoss;
+
   return (
     <div className="space-y-4">
       {/* Title */}
       <p className="text-sm font-semibold">Payoff Comparison</p>
+
+      {lossWorsened && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
+          <div className="text-xs leading-relaxed">
+            <span className="font-semibold">This hedge increases worst-case loss</span> by {fmtDollars(lossDelta)} ({fmtDollars(beforeMaxLoss)} &rarr; {fmtDollars(afterResult.maxLoss)}). The position profits only if the underlying moves past one of the wings; if it pins near the long strike at expiry, you lose more than the original spread's max loss.
+          </div>
+        </div>
+      )}
 
       {/* Chart */}
       <div className="border rounded-lg overflow-hidden">
