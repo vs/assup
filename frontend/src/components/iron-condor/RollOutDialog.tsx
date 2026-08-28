@@ -149,6 +149,11 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
 
   // Compute focus range for the chain stream — covers the spread's strikes plus
   // a generous window in the roll direction so the new short candidate has dense quotes.
+  // Also expanded to encompass the user's currently-selected new short/long strikes,
+  // so the backend resubscribes densely if they fall outside the seed range
+  // (e.g. existing spread is far below the roll target). Quantized to a coarse
+  // grid so small dropdown changes within the active range don't churn
+  // focusRangeKey and trigger SSE reconnects.
   // (placement: layout position 2 — plain consts that hooks below depend on)
   const isPut = spread?.type === "put-spread";
   const focusRange = useMemo(() => {
@@ -158,11 +163,32 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     const hi = strikes[strikes.length - 1];
     const wing = deriveWingWidth(spread);
     const span = Math.max(wing * 6, (hi - lo) * 3, 20);
-    return isPut ? { min: lo - span, max: hi } : { min: lo, max: hi + span };
+    let baseMin = isPut ? lo - span : lo;
+    let baseMax = isPut ? hi : hi + span;
+
+    // The chain-snapped `newLongStrike` is derived further down, so compute the
+    // proposed long strike inline from the picked short + wing. Pad ±10 so
+    // adjacent strikes also fall inside the dense band.
+    const pad = 10;
+    const proposedLong = newShortStrike > 0 && wingWidth > 0
+      ? (isPut ? newShortStrike - wingWidth : newShortStrike + wingWidth)
+      : 0;
+    for (const s of [newShortStrike, proposedLong]) {
+      if (s > 0) {
+        baseMin = Math.min(baseMin, s - pad);
+        baseMax = Math.max(baseMax, s + pad);
+      }
+    }
+
+    const q = 5;
+    return {
+      min: Math.floor(baseMin / q) * q,
+      max: Math.ceil(baseMax / q) * q,
+    };
     // Key on spread?.id (not the object identity) so polling-refreshed parent
     // state doesn't churn the focus range and reconnect the stream every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spread?.id, isPut]);
+  }, [spread?.id, isPut, newShortStrike, wingWidth]);
 
   const streamMode = isPut ? "put-spread" : "call-spread";
   const streamEnabled = open && !!spread && !!targetExpiration;
