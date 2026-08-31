@@ -599,8 +599,8 @@ model DividendReportRecord {
   taxCategory        String   @map("tax_category") @db.VarChar(20)
 
   currency           String   @db.VarChar(3)
-  grossUsd           Float    @map("gross_usd")
-  withholdUsd        Float    @map("withhold_usd")
+  grossUsd           Float    @map("gross_usd")    @db.DoublePrecision
+  withholdUsd        Float    @map("withhold_usd") @db.DoublePrecision
 
   upload DividendReportUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
 
