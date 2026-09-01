@@ -9,15 +9,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { taxesApi } from "@/api/taxes";
-import type { TaxDividend, DividendsByCountry } from "@assup/shared";
+import type { TaxDividendWithSource, DividendsByCountry } from "@assup/shared";
 import { formatCzk, formatUsd } from "./formatters";
+import { SourceBadge } from "./SourceBadge";
 
 interface Props {
   year: number;
 }
 
 export function DividendsTable({ year }: Props) {
-  const [dividends, setDividends] = useState<TaxDividend[]>([]);
+  const [dividends, setDividends] = useState<TaxDividendWithSource[]>([]);
   const [byCountry, setByCountry] = useState<DividendsByCountry[]>([]);
   const [totals, setTotals] = useState({ gross: 0, withholdingTax: 0, net: 0 });
   const [loading, setLoading] = useState(true);
@@ -132,6 +133,7 @@ export function DividendsTable({ year }: Props) {
                   <TableHead className="text-right">Gross</TableHead>
                   <TableHead className="text-right">W/H Tax</TableHead>
                   <TableHead className="text-right">Net (CZK)</TableHead>
+                  <TableHead className="text-right">Source</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -155,11 +157,14 @@ export function DividendsTable({ year }: Props) {
                     <TableCell className="text-right font-medium text-green-600">
                       {formatCzk(div.netCzk)}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <SourceBadge source={div.source} />
+                    </TableCell>
                   </TableRow>
                 ))}
                 {dividends.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={7} className="text-center py-8">
                       No dividends found for {year}
                     </TableCell>
                   </TableRow>
