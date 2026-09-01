@@ -154,6 +154,9 @@ export interface TaxOptionTradesResponse {
   };
 }
 
+// Tax categories are encoded by bucket membership: a row in `dividends` is a
+// DIVIDEND-category item, `capitalGains` is CAPITAL_GAIN, etc. We deliberately
+// do NOT add a `taxCategory` field to each row — the bucket is the category.
 export interface TaxDividendsResponse {
   dividends: TaxDividendWithSource[];
   byCountry: DividendsByCountry[];
@@ -339,5 +342,8 @@ export interface TaxInterestWithSource extends TaxInterest {
   // True when this interest row came from a DividendReportRecord (i.e., from
   // a security like TLT) rather than broker credit interest.
   fromSecurity: boolean;
-  symbol?: string; // present when fromSecurity is true
+  // Producer invariant: present iff fromSecurity === true. Not enforced via a
+  // discriminated union to keep the consumer ergonomics simple; producers
+  // (taxCalculation.service) always set both fields together.
+  symbol?: string;
 }
