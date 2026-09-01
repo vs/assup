@@ -11,6 +11,7 @@ import type {
   TaxStockTrade,
   TaxOptionTrade,
   TaxDividend,
+  TaxDividendWithSource,
   TaxInterest,
   TaxInterestWithSource,
   DividendsByCountry,
@@ -774,58 +775,77 @@ class TaxCalculationService {
   }
 
   /**
-   * Get dividends with CZK conversion for tax reporting
-   * Aggregates dividends and withholding taxes by symbol+date to handle reversals
+   * Get dividends with CZK conversion for tax reporting.
+   *
+   * Reconciliation: a DividendReportRecord at (symbol, payDate) is the
+   * authoritative source. The corresponding FLEX DIVIDEND row and FLEX
+   * WHT rows at that key are dropped from totals. Uncovered FLEX dividends
+   * keep the existing aggregation logic and are tagged source='flex'.
    */
   async getDividends(year: number): Promise<{
-    dividends: TaxDividend[];
+    dividends: TaxDividendWithSource[];
     byCountry: DividendsByCountry[];
     totals: { gross: number; withholdingTax: number; net: number };
+    unmatchedDividendReport: Array<{ symbol: string; payDate: string }>;
+    capitalGains: TaxDividendWithSource[];
+    returnOfCapital: TaxDividendWithSource[];
+    paymentInLieu: TaxDividendWithSource[];
   }> {
     const startDate = new Date(Date.UTC(year, 0, 1));
     const endDate = new Date(Date.UTC(year, 11, 31));
 
-    // Get dividends
-    const dividendTxns = await prisma.cashTransaction.findMany({
+    // Dividend Report records for the year, by category.
+    const drRecords = await prisma.dividendReportRecord.findMany({
+      where: { payDate: { gte: startDate, lte: endDate } },
+      orderBy: { payDate: "asc" },
+    });
+    const coveredKeys = new Set<string>();
+    for (const r of drRecords) {
+      coveredKeys.add(`${r.symbol}:${r.payDate.toISOString().slice(0, 10)}`);
+    }
+
+    // FLEX dividend + WHT rows for the year.
+    const flexDividends = await prisma.cashTransaction.findMany({
       where: {
         type: "DIVIDEND",
-        transactionDate: {
-          gte: startDate,
-          lte: endDate,
-        },
+        transactionDate: { gte: startDate, lte: endDate },
       },
       orderBy: { transactionDate: "asc" },
     });
-
-    // Get withholding taxes
-    const withholdingTxns = await prisma.cashTransaction.findMany({
+    const flexWht = await prisma.cashTransaction.findMany({
       where: {
         type: "WITHHOLDING_TAX",
-        transactionDate: {
-          gte: startDate,
-          lte: endDate,
-        },
+        transactionDate: { gte: startDate, lte: endDate },
       },
     });
 
-    // Aggregate dividends by symbol+date to handle reversals
-    // (e.g., a reversal of -5.97 and a re-payment of +5.97 should net to one entry)
+    // Apply reversal matching to all WHT (not just covered keys) so
+    // ticker-tied reversals net before being attributed.
+    const allWht = await prisma.cashTransaction.findMany({
+      where: { type: "WITHHOLDING_TAX" },
+      orderBy: { transactionDate: "asc" },
+    });
+    const reversalResult = matchWhtReversals(
+      allWht.map((w) => ({
+        transactionId: w.transactionId,
+        symbol: w.symbol ?? "",
+        description: w.description ?? "",
+        amount: w.amount,
+        transactionDate: w.transactionDate,
+        currency: w.currency ?? "USD",
+      }))
+    );
+
+    // Aggregate uncovered FLEX dividends by (symbol, date) — same as the
+    // previous implementation, but skipping covered keys.
     const dividendAggregates = new Map<
       string,
-      {
-        id: string;
-        symbol: string;
-        date: Date;
-        amount: number;
-        currency: string;
-        description: string;
-      }
+      { id: string; symbol: string; date: Date; amount: number; currency: string; description: string }
     >();
-
-    for (const div of dividendTxns) {
+    for (const div of flexDividends) {
       const dateKey = div.transactionDate.toISOString().split("T")[0];
       const key = `${div.symbol || ""}:${dateKey}`;
-
+      if (coveredKeys.has(key)) continue;
       const existing = dividendAggregates.get(key);
       if (existing) {
         existing.amount += div.amount || 0;
@@ -840,93 +860,156 @@ class TaxCalculationService {
         });
       }
     }
-
-    // Aggregate withholding taxes by symbol+date to handle reversals
-    const withholdingAggregates = new Map<string, number>();
-    for (const wh of withholdingTxns) {
+    const whtAggregates = new Map<string, number>();
+    for (const wh of flexWht) {
       const dateKey = wh.transactionDate.toISOString().split("T")[0];
       const key = `${wh.symbol || ""}:${dateKey}`;
-
-      const existing = withholdingAggregates.get(key) || 0;
-      withholdingAggregates.set(key, existing + (wh.amount || 0));
+      if (coveredKeys.has(key)) continue;
+      const status = reversalResult.statusByTxnId.get(wh.transactionId);
+      if (status === "reversed" || status === "original-paired") continue;
+      whtAggregates.set(key, (whtAggregates.get(key) || 0) + (wh.amount || 0));
     }
 
-    const dividends: TaxDividend[] = [];
-    const countryTotals: Map<
+    const dividends: TaxDividendWithSource[] = [];
+    const capitalGains: TaxDividendWithSource[] = [];
+    const returnOfCapital: TaxDividendWithSource[] = [];
+    const paymentInLieu: TaxDividendWithSource[] = [];
+    const countryTotals = new Map<
       string,
       { gross: number; withholdingTax: number; count: number }
-    > = new Map();
+    >();
 
+    // Process uncovered FLEX dividends.
     for (const [key, div] of dividendAggregates) {
-      // Skip if the aggregated dividend is zero (fully reversed)
-      if (Math.abs(div.amount) < 0.01) {
-        continue;
-      }
-
-      const rate = await cnbExchangeRateService.getRate(
-        div.date,
-        div.currency || "USD"
+      if (Math.abs(div.amount) < 0.01) continue;
+      const rate = (await cnbExchangeRateService.getRate(div.date, div.currency || "USD")) || 0;
+      const whtUsd = -(whtAggregates.get(key) || 0);
+      const grossUsd = div.amount;
+      const netUsd = grossUsd - whtUsd;
+      const country = this.extractCountry(div.description, div.symbol);
+      const hadReversedWht = flexWht.some(
+        (w) =>
+          (w.symbol || "") === div.symbol &&
+          w.transactionDate.toISOString().split("T")[0] === div.date.toISOString().split("T")[0] &&
+          reversalResult.statusByTxnId.get(w.transactionId) === "original-paired"
       );
 
-      // Find matching aggregated withholding tax (same symbol+date)
-      const withholdingAmount = withholdingAggregates.get(key) || 0;
-      // Withholding taxes are stored as negative, so we negate to get positive amount
-      // But if the dividend is negative (reversal), the withholding should also remain negative
-      const withholdingTaxUsd = -withholdingAmount;
-
-      const grossUsd = div.amount;
-      const netUsd = grossUsd - withholdingTaxUsd;
-
-      // Extract country from ISIN or description (first 2 chars of ISIN)
-      const country = this.extractCountry(div.description, div.symbol);
-
-      const dividend: TaxDividend = {
+      dividends.push({
         id: div.id,
         date: div.date.toISOString().split("T")[0],
         symbol: div.symbol,
         country,
         grossUsd,
-        withholdingTaxUsd,
+        withholdingTaxUsd: whtUsd,
         netUsd,
-        rate: rate || 0,
+        rate,
         grossCzk: rate ? grossUsd * rate : 0,
-        withholdingTaxCzk: rate ? withholdingTaxUsd * rate : 0,
+        withholdingTaxCzk: rate ? whtUsd * rate : 0,
         netCzk: rate ? netUsd * rate : 0,
         currency: div.currency,
-      };
+        source: hadReversedWht ? "flex+reversal" : "flex",
+      });
 
-      dividends.push(dividend);
-
-      // Accumulate by country
-      const existing = countryTotals.get(country) || {
-        gross: 0,
-        withholdingTax: 0,
-        count: 0,
-      };
+      const ct = countryTotals.get(country) || { gross: 0, withholdingTax: 0, count: 0 };
       countryTotals.set(country, {
-        gross: existing.gross + dividend.grossCzk,
-        withholdingTax: existing.withholdingTax + dividend.withholdingTaxCzk,
-        count: existing.count + 1,
+        gross: ct.gross + (rate ? grossUsd * rate : 0),
+        withholdingTax: ct.withholdingTax + (rate ? whtUsd * rate : 0),
+        count: ct.count + 1,
       });
     }
 
-    const byCountry: DividendsByCountry[] = Array.from(
-      countryTotals.entries()
-    ).map(([country, data]) => ({
-      country,
-      gross: data.gross,
-      withholdingTax: data.withholdingTax,
-      net: data.gross - data.withholdingTax,
-      count: data.count,
-    }));
+    // Process Dividend Report records.
+    for (const rec of drRecords) {
+      const rate = (await cnbExchangeRateService.getRate(rec.payDate, rec.currency)) || 0;
+      const grossUsd = rec.grossUsd;
+      const whtUsd = -rec.withholdUsd; // stored as negative; display positive.
+      const netUsd = grossUsd - whtUsd;
+      const country = (rec.country || "").toUpperCase() || this.extractCountry(rec.revenueComponent, rec.symbol);
 
+      const row: TaxDividendWithSource = {
+        id: rec.id,
+        date: rec.payDate.toISOString().split("T")[0],
+        symbol: rec.symbol,
+        country: this.isinCountryToName(country),
+        grossUsd,
+        withholdingTaxUsd: whtUsd,
+        netUsd,
+        rate,
+        grossCzk: rate ? grossUsd * rate : 0,
+        withholdingTaxCzk: rate ? whtUsd * rate : 0,
+        netCzk: rate ? netUsd * rate : 0,
+        currency: rec.currency,
+        source: "dividend-report",
+      };
+
+      switch (rec.taxCategory) {
+        case "DIVIDEND":
+          dividends.push(row);
+          {
+            const c = this.isinCountryToName(country);
+            const ct = countryTotals.get(c) || { gross: 0, withholdingTax: 0, count: 0 };
+            countryTotals.set(c, {
+              gross: ct.gross + (rate ? grossUsd * rate : 0),
+              withholdingTax: ct.withholdingTax + (rate ? whtUsd * rate : 0),
+              count: ct.count + 1,
+            });
+          }
+          break;
+        case "CAPITAL_GAIN":
+          capitalGains.push(row);
+          break;
+        case "ROC":
+          returnOfCapital.push(row);
+          break;
+        case "PIL":
+          paymentInLieu.push(row);
+          break;
+        case "INTEREST":
+          // Handled by getInterest, not here.
+          break;
+      }
+    }
+
+    // unmatchedDividendReport — DR records whose (symbol, payDate) had no FLEX dividend.
+    const flexKeySet = new Set(
+      flexDividends.map(
+        (d) => `${d.symbol || ""}:${d.transactionDate.toISOString().split("T")[0]}`
+      )
+    );
+    const unmatchedSet = new Set<string>();
+    for (const r of drRecords) {
+      const key = `${r.symbol}:${r.payDate.toISOString().slice(0, 10)}`;
+      if (!flexKeySet.has(key)) unmatchedSet.add(key);
+    }
+    const unmatchedDividendReport = [...unmatchedSet].map((k) => {
+      const [symbol, payDate] = k.split(":");
+      return { symbol, payDate };
+    });
+
+    const byCountry: DividendsByCountry[] = [...countryTotals.entries()].map(
+      ([country, data]) => ({
+        country,
+        gross: data.gross,
+        withholdingTax: data.withholdingTax,
+        net: data.gross - data.withholdingTax,
+        count: data.count,
+      })
+    );
     const totals = {
-      gross: byCountry.reduce((sum, c) => sum + c.gross, 0),
-      withholdingTax: byCountry.reduce((sum, c) => sum + c.withholdingTax, 0),
-      net: byCountry.reduce((sum, c) => sum + c.net, 0),
+      gross: byCountry.reduce((s, c) => s + c.gross, 0),
+      withholdingTax: byCountry.reduce((s, c) => s + c.withholdingTax, 0),
+      net: byCountry.reduce((s, c) => s + c.net, 0),
     };
 
-    return { dividends, byCountry, totals };
+    return {
+      dividends,
+      byCountry,
+      totals,
+      unmatchedDividendReport,
+      capitalGains,
+      returnOfCapital,
+      paymentInLieu,
+    };
   }
 
   /**

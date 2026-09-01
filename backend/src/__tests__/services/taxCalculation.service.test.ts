@@ -135,3 +135,200 @@ describe("taxCalculationService.getInterest with WHT reversal", () => {
     expect(result.total).toBeCloseTo((32.06 + 68.49) * 23.0, 2);
   });
 });
+
+describe("taxCalculationService.getDividends with Dividend Report override", () => {
+  beforeEach(cleanDb);
+
+  it("TLT FLEX dividend is replaced by Dividend Report INTEREST classification", async () => {
+    const batch = await seedImportBatch();
+    await seedRate("2025-12-04");
+    await seedRate("2025-12-24");
+
+    // FLEX shows TLT as Dividends with WHT.
+    await prisma.cashTransaction.createMany({
+      data: [
+        {
+          importBatchId: batch.id,
+          transactionId: "tlt-div-1",
+          symbol: "TLT",
+          description: "TLT(USZ958700214) CASH DIVIDEND USD 0.320648 PER SHARE (Ordinary Dividend)",
+          transactionDate: new Date("2025-12-04"),
+          amount: 32.06,
+          currency: "USD",
+          type: "DIVIDEND",
+        },
+        {
+          importBatchId: batch.id,
+          transactionId: "tlt-wht-1",
+          symbol: "TLT",
+          description: "TLT(USZ958700214) CASH DIVIDEND USD 0.320648 PER SHARE - US TAX",
+          transactionDate: new Date("2025-12-04"),
+          amount: -4.81,
+          currency: "USD",
+          type: "WITHHOLDING_TAX",
+        },
+        {
+          importBatchId: batch.id,
+          transactionId: "tlt-div-2",
+          symbol: "TLT",
+          description: "TLT(USZ958700214) CASH DIVIDEND USD 0.342437 PER SHARE (Ordinary Dividend)",
+          transactionDate: new Date("2025-12-24"),
+          amount: 68.49,
+          currency: "USD",
+          type: "DIVIDEND",
+        },
+        {
+          importBatchId: batch.id,
+          transactionId: "tlt-wht-2",
+          symbol: "TLT",
+          description: "TLT(USZ958700214) CASH DIVIDEND USD 0.342437 PER SHARE - US TAX",
+          transactionDate: new Date("2025-12-24"),
+          amount: -10.27,
+          currency: "USD",
+          type: "WITHHOLDING_TAX",
+        },
+      ],
+    });
+
+    // Dividend Report says it's INTEREST with 0 WHT.
+    const upload = await prisma.dividendReportUpload.create({
+      data: { filename: "dr.csv", fileHash: "h", taxYear: 2025, recordCount: 2 },
+    });
+    await prisma.dividendReportRecord.createMany({
+      data: [
+        {
+          uploadId: upload.id,
+          symbol: "TLT",
+          payDate: new Date("2025-12-04"),
+          revenueComponent: "Interest from RIC or REIT",
+          taxCategory: "INTEREST",
+          currency: "USD",
+          grossUsd: 32.06,
+          withholdUsd: 0,
+        },
+        {
+          uploadId: upload.id,
+          symbol: "TLT",
+          payDate: new Date("2025-12-24"),
+          revenueComponent: "Interest from RIC or REIT",
+          taxCategory: "INTEREST",
+          currency: "USD",
+          grossUsd: 68.49,
+          withholdUsd: 0,
+        },
+      ],
+    });
+
+    const result = await taxCalculationService.getDividends(2025);
+    // TLT should be GONE from the dividends bucket (it's interest now).
+    expect(result.dividends.find((d) => d.symbol === "TLT")).toBeUndefined();
+    expect(result.totals.gross).toBe(0);
+    expect(result.totals.withholdingTax).toBe(0);
+
+    // And present in the interest bucket.
+    const interest = await taxCalculationService.getInterest(2025);
+    expect(interest.interest.filter((i) => i.fromSecurity && i.symbol === "TLT").length).toBe(2);
+  });
+
+  it("partial split: QZDO contributes to both DIVIDEND and INTEREST buckets", async () => {
+    const batch = await seedImportBatch();
+    await seedRate("2026-01-15");
+    // Pay-date in 2026 — FLEX would land in 2026 too. Test against 2026.
+    await prisma.cashTransaction.createMany({
+      data: [
+        {
+          importBatchId: batch.id,
+          transactionId: "qzdo-div",
+          symbol: "QZDO",
+          description: "QZDO CASH DIVIDEND USD 0.37 PER SHARE (Ordinary Dividend)",
+          transactionDate: new Date("2026-01-15"),
+          amount: 111,
+          currency: "USD",
+          type: "DIVIDEND",
+        },
+        {
+          importBatchId: batch.id,
+          transactionId: "qzdo-wht",
+          symbol: "QZDO",
+          description: "QZDO CASH DIVIDEND USD 0.37 PER SHARE - US TAX",
+          transactionDate: new Date("2026-01-15"),
+          amount: -1.52,
+          currency: "USD",
+          type: "WITHHOLDING_TAX",
+        },
+      ],
+    });
+    const upload = await prisma.dividendReportUpload.create({
+      data: { filename: "dr.csv", fileHash: "h2", taxYear: 2025, recordCount: 2 },
+    });
+    await prisma.dividendReportRecord.createMany({
+      data: [
+        {
+          uploadId: upload.id,
+          symbol: "QZDO",
+          payDate: new Date("2026-01-15"),
+          revenueComponent: "Ordinary Dividend",
+          taxCategory: "DIVIDEND",
+          currency: "USD",
+          grossUsd: 10.140405,
+          withholdUsd: -1.52106075,
+        },
+        {
+          uploadId: upload.id,
+          symbol: "QZDO",
+          payDate: new Date("2026-01-15"),
+          revenueComponent: "Interest from RIC or REIT",
+          taxCategory: "INTEREST",
+          currency: "USD",
+          grossUsd: 100.859595,
+          withholdUsd: 0,
+        },
+      ],
+    });
+
+    const divs = await taxCalculationService.getDividends(2026);
+    const qzdoDiv = divs.dividends.find((d) => d.symbol === "QZDO");
+    expect(qzdoDiv?.grossUsd).toBeCloseTo(10.14, 2);
+    expect(qzdoDiv?.withholdingTaxUsd).toBeCloseTo(1.52, 2);
+    expect(qzdoDiv?.source).toBe("dividend-report");
+
+    const interest = await taxCalculationService.getInterest(2026);
+    const qzdoInt = interest.interest.find((i) => i.symbol === "QZDO");
+    expect(qzdoInt?.amountUsd).toBeCloseTo(100.86, 2);
+  });
+
+  it("uncovered FLEX dividend keeps its FLEX classification with source='flex'", async () => {
+    const batch = await seedImportBatch();
+    await seedRate("2025-03-27");
+    await prisma.cashTransaction.createMany({
+      data: [
+        {
+          importBatchId: batch.id,
+          transactionId: "zyn-div",
+          symbol: "ZYN",
+          description: "ZYN CASH DIVIDEND USD 0.9487 PER SHARE (Ordinary Dividend)",
+          transactionDate: new Date("2025-03-27"),
+          amount: 94.87,
+          currency: "USD",
+          type: "DIVIDEND",
+        },
+        {
+          importBatchId: batch.id,
+          transactionId: "zyn-wht",
+          symbol: "ZYN",
+          description: "ZYN CASH DIVIDEND USD 0.9487 PER SHARE - US TAX",
+          transactionDate: new Date("2025-03-27"),
+          amount: -14.23,
+          currency: "USD",
+          type: "WITHHOLDING_TAX",
+        },
+      ],
+    });
+
+    const result = await taxCalculationService.getDividends(2025);
+    const zyn = result.dividends.find((d) => d.symbol === "ZYN");
+    expect(zyn?.source).toBe("flex");
+    expect(zyn?.grossUsd).toBeCloseTo(94.87, 2);
+    expect(zyn?.withholdingTaxUsd).toBeCloseTo(14.23, 2);
+  });
+});
