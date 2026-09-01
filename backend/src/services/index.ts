@@ -3,6 +3,7 @@
  */
 
 export { ibkrService } from "./ibkr.js";
+export { matchWhtReversals, type WhtRow, type WhtReversalResult, type WhtStatus, type WhtPairing } from "./whtReversal.service.js";
 export { sseService } from "./sse.js";
 export { historicalDataService } from "./historicalData.js";
 export { assignmentService, type AssignmentMap, type AssignmentWithClass, getSecurityKey } from "./assignment.service.js";
