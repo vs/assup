@@ -155,18 +155,32 @@ export interface TaxOptionTradesResponse {
 }
 
 export interface TaxDividendsResponse {
-  dividends: TaxDividend[];
+  dividends: TaxDividendWithSource[];
   byCountry: DividendsByCountry[];
   totals: {
     gross: number;
     withholdingTax: number;
     net: number;
   };
+  // New: rows in the Dividend Report we couldn't match to a FLEX dividend.
+  unmatchedDividendReport: Array<{ symbol: string; payDate: string }>;
+  // New: informational buckets for non-dividend/non-interest components.
+  capitalGains: TaxDividendWithSource[];
+  returnOfCapital: TaxDividendWithSource[];
+  paymentInLieu: TaxDividendWithSource[];
 }
 
 export interface TaxInterestResponse {
-  interest: TaxInterest[];
+  interest: TaxInterestWithSource[];
   total: number;
+  // New: positive WHT entries that couldn't be paired to an original.
+  unpairedReversals: Array<{
+    transactionId: string;
+    symbol: string | null;
+    description: string;
+    amountUsd: number;
+    date: string;
+  }>;
 }
 
 // Lot Trace Types (FIFO visualization)
@@ -254,4 +268,76 @@ export interface OptionConsumedLot {
   pnlUsd: number;
   pnlCzk: number;
   holdingDays: number;
+}
+
+// Provenance tag for a tax-report row.
+export type TaxSource = "dividend-report" | "flex" | "flex+reversal";
+
+// Mapped category from RevenueComponent.
+export type TaxCategory =
+  | "DIVIDEND"
+  | "INTEREST"
+  | "CAPITAL_GAIN"
+  | "ROC"
+  | "PIL";
+
+// One Dividend Report record (one RevenueComponent row from IBKR CSV).
+export interface DividendReportRecordView {
+  id: string;
+  symbol: string;
+  payDate: string; // ISO date
+  exDate: string | null;
+  shares: number | null;
+  country: string | null;
+  revenueComponent: string;
+  qualifiedIndicator: string | null;
+  taxCategory: TaxCategory;
+  currency: string;
+  grossUsd: number;
+  withholdUsd: number;
+}
+
+// Dividend Report upload summary.
+export interface DividendReportUploadView {
+  id: string;
+  filename: string;
+  uploadedAt: string; // ISO timestamp
+  accountNumber: string | null;
+  taxYear: number;
+  recordCount: number;
+}
+
+// Detail response: upload + records + match diagnostics against FLEX.
+export interface DividendReportUploadDetail {
+  upload: DividendReportUploadView;
+  records: DividendReportRecordView[];
+  matchSummary: {
+    matchedFlexCount: number;
+    recordsWithoutFlex: Array<{ symbol: string; payDate: string }>;
+  };
+}
+
+// Upload result returned by POST /api/taxes/dividend-report.
+export interface DividendReportUploadResult {
+  status: "created" | "replaced" | "duplicate";
+  upload: DividendReportUploadView;
+  replacedUploadId?: string; // present when status === "replaced"
+  matchSummary: {
+    matchedFlexCount: number;
+    recordsWithoutFlex: Array<{ symbol: string; payDate: string }>;
+  };
+}
+
+// Provenance-tagged dividend row for tax UI.
+export interface TaxDividendWithSource extends TaxDividend {
+  source: TaxSource;
+}
+
+// Provenance-tagged interest row for tax UI.
+export interface TaxInterestWithSource extends TaxInterest {
+  source: TaxSource;
+  // True when this interest row came from a DividendReportRecord (i.e., from
+  // a security like TLT) rather than broker credit interest.
+  fromSecurity: boolean;
+  symbol?: string; // present when fromSecurity is true
 }
