@@ -14,3 +14,4 @@ export { wheelService } from "./wheel.service.js";
 export { accountHistoryService } from "./accountHistory.service.js";
 
 export { scanSymbols, type ScanCallbacks, type ScanContext } from "./optionScan.service.js";
+export { dividendReportImportService } from "./dividendReportImport.service.js";

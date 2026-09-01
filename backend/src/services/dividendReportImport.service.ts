@@ -270,3 +270,178 @@ export function parseDividendReportCsv(content: string): ParsedDividendReport {
 
   return { accountNumber, baseCurrency, taxYear, records };
 }
+
+// ---------------------------------------------------------------------------
+// Upload orchestration
+// ---------------------------------------------------------------------------
+
+import { createHash } from "node:crypto";
+import { prisma } from "../db/index.js";
+
+export interface DividendReportUploadResultInternal {
+  status: "created" | "replaced" | "duplicate";
+  uploadId: string;
+  replacedUploadId?: string;
+  taxYear: number;
+  recordCount: number;
+  matchedFlexCount: number;
+  recordsWithoutFlex: Array<{ symbol: string; payDate: string }>;
+}
+
+export class DividendReportImportService {
+  /**
+   * Upload a Dividend Report CSV. Parses, deduplicates by fileHash, replaces any
+   * prior upload for the same taxYear, and returns a match summary against
+   * existing FLEX CashTransaction rows.
+   */
+  async upload(
+    fileContent: string,
+    filename: string
+  ): Promise<DividendReportUploadResultInternal> {
+    const fileHash = createHash("sha256").update(fileContent).digest("hex");
+
+    // Exact-hash dedup: no-op if already imported.
+    const existing = await prisma.dividendReportUpload.findFirst({
+      where: { fileHash },
+    });
+    if (existing) {
+      const match = await this.computeMatchSummary(existing.id);
+      return {
+        status: "duplicate",
+        uploadId: existing.id,
+        taxYear: existing.taxYear,
+        recordCount: existing.recordCount,
+        matchedFlexCount: match.matchedFlexCount,
+        recordsWithoutFlex: match.recordsWithoutFlex,
+      };
+    }
+
+    const parsed = parseDividendReportCsv(fileContent);
+    if (parsed.records.length === 0) {
+      throw new Error(
+        "Dividend Report parse error: file contains zero RevenueComponent rows."
+      );
+    }
+    if (parsed.baseCurrency !== "USD") {
+      console.warn(
+        `[DividendReport] Non-USD base currency '${parsed.baseCurrency}' — tax calc assumes USD base.`
+      );
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      // Replace any prior upload for the same taxYear.
+      const prior = await tx.dividendReportUpload.findFirst({
+        where: { taxYear: parsed.taxYear },
+      });
+      let replacedUploadId: string | undefined;
+      if (prior) {
+        replacedUploadId = prior.id;
+        // Cascade deletes records.
+        await tx.dividendReportUpload.delete({ where: { id: prior.id } });
+      }
+
+      const upload = await tx.dividendReportUpload.create({
+        data: {
+          filename,
+          fileHash,
+          accountNumber: parsed.accountNumber,
+          taxYear: parsed.taxYear,
+          recordCount: parsed.records.length,
+        },
+      });
+
+      await tx.dividendReportRecord.createMany({
+        data: parsed.records.map((r) => ({
+          uploadId: upload.id,
+          symbol: r.symbol,
+          conId: r.conId,
+          country: r.country,
+          payDate: r.payDate,
+          exDate: r.exDate,
+          shares: r.shares,
+          revenueComponent: r.revenueComponent,
+          qualifiedIndicator: r.qualifiedIndicator,
+          taxCategory: r.taxCategory,
+          currency: r.currency,
+          grossUsd: r.grossUsd,
+          withholdUsd: r.withholdUsd,
+        })),
+      });
+
+      const match = await this.computeMatchSummary(upload.id, tx);
+
+      return {
+        status: replacedUploadId ? ("replaced" as const) : ("created" as const),
+        uploadId: upload.id,
+        replacedUploadId,
+        taxYear: upload.taxYear,
+        recordCount: upload.recordCount,
+        matchedFlexCount: match.matchedFlexCount,
+        recordsWithoutFlex: match.recordsWithoutFlex,
+      };
+    });
+  }
+
+  /**
+   * For a given upload, count how many of its records have at least one
+   * matching FLEX CashTransaction at (symbol, payDate), and list those that
+   * don't. Used for the "did this reconcile?" UI feedback.
+   */
+  async computeMatchSummary(
+    uploadId: string,
+    tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+  ): Promise<{
+    matchedFlexCount: number;
+    recordsWithoutFlex: Array<{ symbol: string; payDate: string }>;
+  }> {
+    const db = tx ?? prisma;
+    const records = await db.dividendReportRecord.findMany({
+      where: { uploadId },
+      select: { symbol: true, payDate: true },
+    });
+    // De-duplicate (symbol, payDate) — multiple components map to one FLEX row.
+    const groupKeys = new Set<string>();
+    for (const r of records) {
+      groupKeys.add(`${r.symbol}:${r.payDate.toISOString().slice(0, 10)}`);
+    }
+    let matched = 0;
+    const unmatched: Array<{ symbol: string; payDate: string }> = [];
+    for (const key of groupKeys) {
+      const [symbol, payDate] = key.split(":");
+      const flex = await db.cashTransaction.findFirst({
+        where: {
+          symbol,
+          type: "DIVIDEND",
+          transactionDate: new Date(`${payDate}T00:00:00.000Z`),
+        },
+        select: { id: true },
+      });
+      if (flex) matched++;
+      else unmatched.push({ symbol, payDate });
+    }
+    return { matchedFlexCount: matched, recordsWithoutFlex: unmatched };
+  }
+
+  async listUploads() {
+    return prisma.dividendReportUpload.findMany({
+      orderBy: { uploadedAt: "desc" },
+    });
+  }
+
+  async getUpload(id: string) {
+    return prisma.dividendReportUpload.findUnique({
+      where: { id },
+      include: {
+        records: {
+          orderBy: [{ payDate: "asc" }, { symbol: "asc" }],
+        },
+      },
+    });
+  }
+
+  async deleteUpload(id: string): Promise<void> {
+    await prisma.dividendReportUpload.delete({ where: { id } });
+  }
+}
+
+export const dividendReportImportService = new DividendReportImportService();

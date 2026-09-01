@@ -4,14 +4,26 @@
  */
 
 import { Router } from "express";
+import multer from "multer";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { yearParamSchema } from "@assup/shared";
 import { taxCalculationService } from "../services/taxCalculation.service.js";
 import { taxExportService } from "../services/taxExport.service.js";
+import { dividendReportImportService } from "../services/dividendReportImport.service.js";
 import { BadRequestError } from "../errors/index.js";
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB — Dividend Reports are small.
+  fileFilter: (_req, file, cb) => {
+    const ok = file.originalname.toLowerCase().endsWith(".csv");
+    if (ok) cb(null, true);
+    else cb(new Error("Only .csv files are allowed for Dividend Report uploads."));
+  },
+});
 
 /**
  * GET /api/taxes/summary/:year
@@ -139,6 +151,95 @@ router.get(
       `attachment; filename="tax-report-${year}-CZK.xlsx"`
     );
     res.send(buffer);
+  })
+);
+
+/**
+ * POST /api/taxes/dividend-report
+ * Upload a Dividend Report CSV. Replaces any prior upload for the same taxYear.
+ */
+router.post(
+  "/dividend-report",
+  upload.single("file") as unknown as Parameters<typeof router.post>[1],
+  asyncHandler(async (req, res) => {
+    const file = req.file as Express.Multer.File | undefined;
+    if (!file) throw new BadRequestError("No file provided.");
+    const result = await dividendReportImportService.upload(
+      file.buffer.toString("utf-8"),
+      file.originalname
+    );
+    res.status(result.status === "duplicate" ? 200 : 201).json(result);
+  })
+);
+
+/**
+ * GET /api/taxes/dividend-report/uploads
+ * List all Dividend Report uploads.
+ */
+router.get(
+  "/dividend-report/uploads",
+  asyncHandler(async (_req, res) => {
+    const uploads = await dividendReportImportService.listUploads();
+    res.json({
+      uploads: uploads.map((u) => ({
+        id: u.id,
+        filename: u.filename,
+        uploadedAt: u.uploadedAt.toISOString(),
+        accountNumber: u.accountNumber,
+        taxYear: u.taxYear,
+        recordCount: u.recordCount,
+      })),
+    });
+  })
+);
+
+/**
+ * GET /api/taxes/dividend-report/uploads/:id
+ * Get one upload with its records and a FLEX-match summary.
+ */
+router.get(
+  "/dividend-report/uploads/:id",
+  asyncHandler(async (req, res) => {
+    const upload = await dividendReportImportService.getUpload(req.params.id);
+    if (!upload) throw new BadRequestError("Upload not found.");
+    const match = await dividendReportImportService.computeMatchSummary(upload.id);
+    res.json({
+      upload: {
+        id: upload.id,
+        filename: upload.filename,
+        uploadedAt: upload.uploadedAt.toISOString(),
+        accountNumber: upload.accountNumber,
+        taxYear: upload.taxYear,
+        recordCount: upload.recordCount,
+      },
+      records: upload.records.map((r) => ({
+        id: r.id,
+        symbol: r.symbol,
+        payDate: r.payDate.toISOString().slice(0, 10),
+        exDate: r.exDate ? r.exDate.toISOString().slice(0, 10) : null,
+        shares: r.shares,
+        country: r.country,
+        revenueComponent: r.revenueComponent,
+        qualifiedIndicator: r.qualifiedIndicator,
+        taxCategory: r.taxCategory,
+        currency: r.currency,
+        grossUsd: r.grossUsd,
+        withholdUsd: r.withholdUsd,
+      })),
+      matchSummary: match,
+    });
+  })
+);
+
+/**
+ * DELETE /api/taxes/dividend-report/uploads/:id
+ * Delete an upload and cascade its records.
+ */
+router.delete(
+  "/dividend-report/uploads/:id",
+  asyncHandler(async (req, res) => {
+    await dividendReportImportService.deleteUpload(req.params.id);
+    res.status(204).send();
   })
 );
 
