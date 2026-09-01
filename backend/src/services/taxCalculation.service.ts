@@ -5,12 +5,14 @@
 
 import { prisma } from "../db/index.js";
 import { cnbExchangeRateService } from "./cnbExchangeRate.service.js";
+import { matchWhtReversals, type WhtRow } from "./whtReversal.service.js";
 import type {
   TaxSummary,
   TaxStockTrade,
   TaxOptionTrade,
   TaxDividend,
   TaxInterest,
+  TaxInterestWithSource,
   DividendsByCountry,
   MissingTradeRecord,
   LotTraceResponse,
@@ -928,44 +930,77 @@ class TaxCalculationService {
   }
 
   /**
-   * Get interest payments with CZK conversion for tax reporting
+   * Get interest payments with CZK conversion for tax reporting.
+   *
+   * Combines:
+   *  - FLEX `INTEREST` cash transactions (broker credit interest), with
+   *    cross-date WHT reversal matching applied so cancels net to zero.
+   *  - Dividend Report records with taxCategory = "INTEREST" (e.g., TLT
+   *    payments reclassified from dividend to interest).
    */
   async getInterest(year: number): Promise<{
-    interest: TaxInterest[];
+    interest: TaxInterestWithSource[];
     total: number;
+    unpairedReversals: Array<{
+      transactionId: string;
+      symbol: string | null;
+      description: string;
+      amountUsd: number;
+      date: string;
+    }>;
   }> {
     const startDate = new Date(Date.UTC(year, 0, 1));
     const endDate = new Date(Date.UTC(year, 11, 31));
 
+    // Pull FLEX interest rows for the year.
     const interestTxns = await prisma.cashTransaction.findMany({
       where: {
         type: "INTEREST",
-        transactionDate: {
-          gte: startDate,
-          lte: endDate,
-        },
+        transactionDate: { gte: startDate, lte: endDate },
       },
       orderBy: { transactionDate: "asc" },
     });
 
-    const interest: TaxInterest[] = [];
+    // Pull ALL WHT rows across the whole DB so reversal matching can pair
+    // across years.
+    const allWht = await prisma.cashTransaction.findMany({
+      where: { type: "WITHHOLDING_TAX" },
+      orderBy: { transactionDate: "asc" },
+    });
+    const whtRows: WhtRow[] = allWht.map((w) => ({
+      transactionId: w.transactionId,
+      symbol: w.symbol ?? "",
+      description: w.description ?? "",
+      amount: w.amount,
+      transactionDate: w.transactionDate,
+      currency: w.currency ?? "USD",
+    }));
+    const reversalResult = matchWhtReversals(whtRows);
+
+    // Pull Dividend Report records tagged INTEREST for the year.
+    const drInterest = await prisma.dividendReportRecord.findMany({
+      where: {
+        taxCategory: "INTEREST",
+        payDate: { gte: startDate, lte: endDate },
+      },
+      orderBy: { payDate: "asc" },
+    });
+
+    const interest: TaxInterestWithSource[] = [];
     let total = 0;
 
     for (const txn of interestTxns) {
       const currency = txn.currency || "USD";
       const amount = txn.amount || 0;
-
-      // CZK amounts don't need conversion
       let rate: number;
       let amountCzk: number;
       if (currency === "CZK") {
         rate = 1;
         amountCzk = amount;
       } else {
-        rate = await cnbExchangeRateService.getRate(txn.transactionDate, currency) || 0;
+        rate = (await cnbExchangeRateService.getRate(txn.transactionDate, currency)) || 0;
         amountCzk = amount * rate;
       }
-
       interest.push({
         id: txn.id,
         date: txn.transactionDate.toISOString().split("T")[0],
@@ -974,12 +1009,54 @@ class TaxCalculationService {
         rate,
         amountCzk,
         currency,
+        source: "flex",
+        fromSecurity: false,
       });
-
       total += amountCzk;
     }
 
-    return { interest, total };
+    for (const rec of drInterest) {
+      const rate = (await cnbExchangeRateService.getRate(rec.payDate, rec.currency)) || 0;
+      const amountCzk = rec.grossUsd * rate;
+      interest.push({
+        id: rec.id,
+        date: rec.payDate.toISOString().split("T")[0],
+        description: `${rec.symbol} — ${rec.revenueComponent}`,
+        amountUsd: rec.grossUsd,
+        rate,
+        amountCzk,
+        currency: rec.currency,
+        source: "dividend-report",
+        fromSecurity: true,
+        symbol: rec.symbol,
+      });
+      total += amountCzk;
+    }
+
+    // Surface unpaired positive WHT rows (cancels with no original) for the
+    // selected year.
+    const unpairedReversals: Array<{
+      transactionId: string;
+      symbol: string | null;
+      description: string;
+      amountUsd: number;
+      date: string;
+    }> = [];
+    for (const w of allWht) {
+      const status = reversalResult.statusByTxnId.get(w.transactionId);
+      if (status !== "unpaired") continue;
+      if (w.amount <= 0) continue; // only positive (reversal) orphans
+      if (w.transactionDate < startDate || w.transactionDate > endDate) continue;
+      unpairedReversals.push({
+        transactionId: w.transactionId,
+        symbol: w.symbol ?? null,
+        description: w.description ?? "",
+        amountUsd: w.amount,
+        date: w.transactionDate.toISOString().split("T")[0],
+      });
+    }
+
+    return { interest, total, unpairedReversals };
   }
 
   /**
