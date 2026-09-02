@@ -777,15 +777,26 @@ class TaxCalculationService {
   /**
    * Get dividends with CZK conversion for tax reporting.
    *
-   * Reconciliation: a DividendReportRecord covers (symbol, YYYY-MM) — the
-   * Dividend Report and FLEX use different pay-dates for the same payment
-   * (e.g. ZEB 2025-05-15 in FLEX vs 2025-05-16 in DR), so an exact-date join
-   * double-counts. Year-month coverage absorbs that drift.
+   * Reconciliation: each DividendReportRecord group (records sharing
+   * (symbol, payDate)) is matched against FLEX dividends by symbol + gross
+   * amount (±$0.01) within a ±60-day window. The closest-by-date match wins.
+   * Each FLEX row can be claimed by at most one DR group.
    *
-   * Any FLEX DIVIDEND row and FLEX WHT row within a covered (symbol, YYYY-MM)
-   * is dropped from totals; the DR rows in that month become authoritative.
-   * Uncovered FLEX dividends keep the existing aggregation logic and are
-   * tagged source='flex'.
+   * Why amount+window instead of exact date: IBKR's Dividend Report and
+   * FLEX use different pay-dates for the same payment. ZEB Feb 2025 is
+   * FLEX 2025-02-18 vs DR 2025-03-07 (17 days, different months). ZEB May
+   * 2025 is FLEX 2025-05-15 vs DR 2025-05-16 (1 day). Year-month coverage
+   * caught the May case but missed February; amount-based matching catches
+   * both because the amounts are identical.
+   *
+   * The matched FLEX dividend row and FLEX WHT rows on the same date are
+   * dropped from totals; the DR group becomes authoritative. Uncovered
+   * FLEX dividends keep the existing aggregation logic and are tagged
+   * source='flex'.
+   *
+   * Known limitation: a payment that crosses the tax-year boundary (FLEX
+   * in year N, DR in year N+1 or vice versa) is not reconciled — each row
+   * is processed in its own year. Doesn't occur in the user's data today.
    */
   async getDividends(year: number): Promise<{
     dividends: TaxDividendWithSource[];
@@ -799,17 +810,11 @@ class TaxCalculationService {
     const startDate = new Date(Date.UTC(year, 0, 1));
     const endDate = new Date(Date.UTC(year, 11, 31));
 
-    // Dividend Report records for the year, by category.
+    // Dividend Report records for the year.
     const drRecords = await prisma.dividendReportRecord.findMany({
       where: { payDate: { gte: startDate, lte: endDate } },
       orderBy: { payDate: "asc" },
     });
-    // Coverage is keyed by (symbol, YYYY-MM) — see method comment.
-    const coveredKeys = new Set<string>();
-    const monthKey = (d: Date) => d.toISOString().slice(0, 7); // YYYY-MM
-    for (const r of drRecords) {
-      coveredKeys.add(`${r.symbol}:${monthKey(r.payDate)}`);
-    }
 
     // FLEX dividend + WHT rows for the year.
     const flexDividends = await prisma.cashTransaction.findMany({
@@ -843,15 +848,72 @@ class TaxCalculationService {
       }))
     );
 
-    // Aggregate uncovered FLEX dividends by (symbol, date). Coverage is checked
-    // at the year-month level so any FLEX row sharing a covered month is dropped.
+    // ── Match DR groups to FLEX dividends by amount + ±60 days ───────────
+    // Group DR records by (symbol, payDate); sum gross to get one "payment".
+    const drGroupKey = (symbol: string, payDate: Date) =>
+      `${symbol}:${payDate.toISOString().slice(0, 10)}`;
+    const drGroups = new Map<
+      string,
+      { symbol: string; payDate: Date; totalGross: number }
+    >();
+    for (const r of drRecords) {
+      const key = drGroupKey(r.symbol, r.payDate);
+      const g = drGroups.get(key);
+      if (g) g.totalGross += r.grossUsd;
+      else drGroups.set(key, { symbol: r.symbol, payDate: r.payDate, totalGross: r.grossUsd });
+    }
+
+    const DATE_WINDOW_DAYS = 60;
+    const MS_PER_DAY = 86_400_000;
+    const flexBySymbol = new Map<string, typeof flexDividends>();
+    for (const f of flexDividends) {
+      const sym = f.symbol || "";
+      if (!flexBySymbol.has(sym)) flexBySymbol.set(sym, []);
+      flexBySymbol.get(sym)!.push(f);
+    }
+
+    const coveredFlexTxnIds = new Set<string>();
+    const matchedDrGroupKeys = new Set<string>();
+    // Iterate DR groups in payDate-ascending order for deterministic claiming.
+    const orderedGroups = [...drGroups.entries()].sort(
+      ([, a], [, b]) => a.payDate.getTime() - b.payDate.getTime()
+    );
+    for (const [groupKey, group] of orderedGroups) {
+      const candidates = (flexBySymbol.get(group.symbol) || []).filter((f) => {
+        if (coveredFlexTxnIds.has(f.transactionId)) return false;
+        if (Math.abs((f.amount || 0) - group.totalGross) > 0.01) return false;
+        const days = Math.abs(f.transactionDate.getTime() - group.payDate.getTime()) / MS_PER_DAY;
+        return days <= DATE_WINDOW_DAYS;
+      });
+      if (candidates.length === 0) continue;
+      // Closest-by-date wins.
+      candidates.sort(
+        (a, b) =>
+          Math.abs(a.transactionDate.getTime() - group.payDate.getTime()) -
+          Math.abs(b.transactionDate.getTime() - group.payDate.getTime())
+      );
+      coveredFlexTxnIds.add(candidates[0].transactionId);
+      matchedDrGroupKeys.add(groupKey);
+    }
+
+    // Any WHT row sharing (symbol, date) with a covered FLEX dividend is
+    // also covered (the DR group brings its own WHT amounts).
+    const coveredFlexDateSyms = new Set<string>();
+    for (const d of flexDividends) {
+      if (!coveredFlexTxnIds.has(d.transactionId)) continue;
+      coveredFlexDateSyms.add(
+        `${d.symbol || ""}:${d.transactionDate.toISOString().split("T")[0]}`
+      );
+    }
+
+    // Aggregate uncovered FLEX dividends by (symbol, date).
     const dividendAggregates = new Map<
       string,
       { id: string; symbol: string; date: Date; amount: number; currency: string; description: string }
     >();
     for (const div of flexDividends) {
+      if (coveredFlexTxnIds.has(div.transactionId)) continue;
       const sym = div.symbol || "";
-      if (coveredKeys.has(`${sym}:${monthKey(div.transactionDate)}`)) continue;
       const dateKey = div.transactionDate.toISOString().split("T")[0];
       const key = `${sym}:${dateKey}`;
       const existing = dividendAggregates.get(key);
@@ -871,10 +933,10 @@ class TaxCalculationService {
     const whtAggregates = new Map<string, number>();
     for (const wh of flexWht) {
       const sym = wh.symbol || "";
-      if (coveredKeys.has(`${sym}:${monthKey(wh.transactionDate)}`)) continue;
+      const dateKey = wh.transactionDate.toISOString().split("T")[0];
+      if (coveredFlexDateSyms.has(`${sym}:${dateKey}`)) continue;
       const status = reversalResult.statusByTxnId.get(wh.transactionId);
       if (status === "reversed" || status === "original-paired") continue;
-      const dateKey = wh.transactionDate.toISOString().split("T")[0];
       const key = `${sym}:${dateKey}`;
       whtAggregates.set(key, (whtAggregates.get(key) || 0) + (wh.amount || 0));
     }
@@ -979,22 +1041,15 @@ class TaxCalculationService {
       }
     }
 
-    // unmatchedDividendReport — DR records whose (symbol, YYYY-MM) had no FLEX dividend.
-    // Reported payDate is the DR record's date (preserves the original IBKR posting date for the warning).
-    const flexMonthSet = new Set(
-      flexDividends.map((d) => `${d.symbol || ""}:${monthKey(d.transactionDate)}`)
-    );
-    const unmatchedSet = new Map<string, { symbol: string; payDate: string }>();
-    for (const r of drRecords) {
-      const monthK = `${r.symbol}:${monthKey(r.payDate)}`;
-      if (flexMonthSet.has(monthK)) continue;
-      const payDate = r.payDate.toISOString().slice(0, 10);
-      const dedupKey = `${r.symbol}:${payDate}`;
-      if (!unmatchedSet.has(dedupKey)) {
-        unmatchedSet.set(dedupKey, { symbol: r.symbol, payDate });
-      }
+    // unmatchedDividendReport — DR groups that did not match any FLEX dividend.
+    const unmatchedDividendReport: Array<{ symbol: string; payDate: string }> = [];
+    for (const [groupKey, group] of drGroups) {
+      if (matchedDrGroupKeys.has(groupKey)) continue;
+      unmatchedDividendReport.push({
+        symbol: group.symbol,
+        payDate: group.payDate.toISOString().slice(0, 10),
+      });
     }
-    const unmatchedDividendReport = [...unmatchedSet.values()];
 
     const byCountry: DividendsByCountry[] = [...countryTotals.entries()].map(
       ([country, data]) => ({

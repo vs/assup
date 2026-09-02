@@ -332,9 +332,116 @@ describe("taxCalculationService.getDividends with Dividend Report override", () 
     expect(zyn?.withholdingTaxUsd).toBeCloseTo(14.23, 2);
   });
 
+  it("cross-month amount match: ZEB FLEX 2025-02-18 is covered by DR 2025-03-07 (same amount, 17 days apart)", async () => {
+    // The Feb payment crosses a calendar-month boundary: FLEX posts the cash
+    // settlement on Feb 18 but IBKR's Dividend Report uses Mar 7 as its
+    // ReportDate. Amount-based matching within ±60 days reconciles them.
+    const batch = await seedImportBatch();
+    await seedRate("2025-02-18");
+    await seedRate("2025-03-07");
+
+    await prisma.cashTransaction.createMany({
+      data: [
+        {
+          importBatchId: batch.id,
+          transactionId: "zeb-div-feb",
+          symbol: "ZEB",
+          description: "ZEB CASH DIVIDEND USD 0.031193 PER SHARE (Ordinary Div - NRA Withholding Exempt)",
+          transactionDate: new Date("2025-02-18"),
+          amount: 5.97,
+          currency: "USD",
+          type: "DIVIDEND",
+        },
+        {
+          importBatchId: batch.id,
+          transactionId: "zeb-wht-feb",
+          symbol: "ZEB",
+          description: "ZEB CASH DIVIDEND USD 0.031193 PER SHARE - FI TAX",
+          transactionDate: new Date("2025-02-18"),
+          amount: -2.09,
+          currency: "USD",
+          type: "WITHHOLDING_TAX",
+        },
+      ],
+    });
+
+    const upload = await prisma.dividendReportUpload.create({
+      data: { filename: "dr.csv", fileHash: "h-zeb-feb", taxYear: 2025, recordCount: 1 },
+    });
+    await prisma.dividendReportRecord.create({
+      data: {
+        uploadId: upload.id,
+        symbol: "ZEB",
+        country: "FI",
+        payDate: new Date("2025-03-07"),
+        revenueComponent: "Ordinary Div - NRA Withholding Exempt",
+        taxCategory: "DIVIDEND",
+        currency: "USD",
+        grossUsd: 5.97,
+        withholdUsd: -2.09,
+      },
+    });
+
+    const result = await taxCalculationService.getDividends(2025);
+    const zeb = result.dividends.filter((d) => d.symbol === "ZEB");
+    // Exactly one ZEB row, sourced from the Dividend Report.
+    expect(zeb).toHaveLength(1);
+    expect(zeb[0].source).toBe("dividend-report");
+    expect(zeb[0].grossUsd).toBeCloseTo(5.97, 2);
+    expect(zeb[0].withholdingTaxUsd).toBeCloseTo(2.09, 2);
+    expect(result.unmatchedDividendReport).toEqual([]);
+  });
+
+  it("does NOT match when amounts disagree even within the date window", async () => {
+    // Same symbol, dates within window, but different amounts → no match.
+    // Each row stands alone (the DR row becomes a new dividend, the FLEX
+    // row stays in the FLEX bucket).
+    const batch = await seedImportBatch();
+    await seedRate("2025-06-10");
+    await seedRate("2025-06-15");
+
+    await prisma.cashTransaction.createMany({
+      data: [
+        {
+          importBatchId: batch.id,
+          transactionId: "fake-flex",
+          symbol: "FAKE",
+          description: "FAKE CASH DIVIDEND (Ordinary Dividend)",
+          transactionDate: new Date("2025-06-10"),
+          amount: 50.0,
+          currency: "USD",
+          type: "DIVIDEND",
+        },
+      ],
+    });
+
+    const upload = await prisma.dividendReportUpload.create({
+      data: { filename: "dr.csv", fileHash: "h-fake", taxYear: 2025, recordCount: 1 },
+    });
+    await prisma.dividendReportRecord.create({
+      data: {
+        uploadId: upload.id,
+        symbol: "FAKE",
+        payDate: new Date("2025-06-15"),
+        revenueComponent: "Ordinary Dividend",
+        taxCategory: "DIVIDEND",
+        currency: "USD",
+        grossUsd: 75.0, // different amount
+        withholdUsd: 0,
+      },
+    });
+
+    const result = await taxCalculationService.getDividends(2025);
+    const fakeRows = result.dividends.filter((d) => d.symbol === "FAKE");
+    expect(fakeRows).toHaveLength(2);
+    expect(result.unmatchedDividendReport).toEqual([
+      { symbol: "FAKE", payDate: "2025-06-15" },
+    ]);
+  });
+
   it("year-month match: ZEB FLEX 2025-05-15 is covered by DR 2025-05-16 (no double-count)", async () => {
     // FLEX and IBKR's Dividend Report disagree on the exact pay-date for the
-    // same payment (a few days' drift). Coverage is at (symbol, YYYY-MM).
+    // same payment (a few days' drift). Amount-based matching within ±60 days.
     const batch = await seedImportBatch();
     await seedRate("2025-05-15");
     await seedRate("2025-05-16");

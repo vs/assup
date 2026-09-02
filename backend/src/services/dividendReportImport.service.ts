@@ -383,11 +383,10 @@ export class DividendReportImportService {
   }
 
   /**
-   * For a given upload, count how many of its records have at least one
-   * matching FLEX CashTransaction at (symbol, YYYY-MM), and list those that
-   * don't. Year-month matching mirrors the override key used by tax calc —
-   * IBKR's Dividend Report and FLEX disagree on the exact pay-date for the
-   * same payment, so a strict date join under-counts matches.
+   * For a given upload, count how many DR groups (records sharing
+   * (symbol, payDate)) match a FLEX CashTransaction by gross amount within
+   * ±$0.01 and pay-date within ±60 days. Mirrors taxCalculation.service's
+   * override logic so the UI feedback matches what tax-calc will actually do.
    */
   async computeMatchSummary(
     uploadId: string,
@@ -399,33 +398,63 @@ export class DividendReportImportService {
     const db = tx ?? prisma;
     const records = await db.dividendReportRecord.findMany({
       where: { uploadId },
-      select: { symbol: true, payDate: true },
+      select: { symbol: true, payDate: true, grossUsd: true },
     });
-    // De-duplicate to one entry per (symbol, exact payDate) for reporting,
-    // but match against FLEX at the year-month level.
-    const distinct = new Map<string, { symbol: string; payDate: string; ym: string }>();
+    // Build DR groups: one entry per (symbol, exact payDate), gross summed
+    // across component rows.
+    const groups = new Map<
+      string,
+      { symbol: string; payDate: string; payDateMs: number; totalGross: number }
+    >();
     for (const r of records) {
       const payDate = r.payDate.toISOString().slice(0, 10);
-      const ym = payDate.slice(0, 7);
       const key = `${r.symbol}:${payDate}`;
-      if (!distinct.has(key)) distinct.set(key, { symbol: r.symbol, payDate, ym });
+      const g = groups.get(key);
+      if (g) g.totalGross += r.grossUsd;
+      else
+        groups.set(key, {
+          symbol: r.symbol,
+          payDate,
+          payDateMs: r.payDate.getTime(),
+          totalGross: r.grossUsd,
+        });
     }
-    // Pull all FLEX DIVIDEND rows for symbols touched by this upload, then
-    // group by (symbol, YYYY-MM) once. One query instead of one-per-record.
-    const symbols = [...new Set([...distinct.values()].map((d) => d.symbol))];
+    // Pull all FLEX DIVIDEND rows for the symbols touched by this upload.
+    const symbols = [...new Set([...groups.values()].map((g) => g.symbol))];
     const flexRows = await db.cashTransaction.findMany({
       where: { symbol: { in: symbols }, type: "DIVIDEND" },
-      select: { symbol: true, transactionDate: true },
+      select: { symbol: true, transactionDate: true, amount: true, id: true },
     });
-    const flexMonths = new Set(
-      flexRows.map((f) => `${f.symbol}:${f.transactionDate.toISOString().slice(0, 7)}`)
-    );
+    const flexBySymbol = new Map<string, typeof flexRows>();
+    for (const f of flexRows) {
+      const sym = f.symbol || "";
+      if (!flexBySymbol.has(sym)) flexBySymbol.set(sym, []);
+      flexBySymbol.get(sym)!.push(f);
+    }
+    const DATE_WINDOW_DAYS = 60;
+    const MS_PER_DAY = 86_400_000;
+    const claimed = new Set<string>();
     let matched = 0;
     const unmatched: Array<{ symbol: string; payDate: string }> = [];
-    for (const entry of distinct.values()) {
-      const monthKey = `${entry.symbol}:${entry.ym}`;
-      if (flexMonths.has(monthKey)) matched++;
-      else unmatched.push({ symbol: entry.symbol, payDate: entry.payDate });
+    const ordered = [...groups.values()].sort((a, b) => a.payDateMs - b.payDateMs);
+    for (const group of ordered) {
+      const candidates = (flexBySymbol.get(group.symbol) || []).filter((f) => {
+        if (claimed.has(f.id)) return false;
+        if (Math.abs(f.amount - group.totalGross) > 0.01) return false;
+        const days = Math.abs(f.transactionDate.getTime() - group.payDateMs) / MS_PER_DAY;
+        return days <= DATE_WINDOW_DAYS;
+      });
+      if (candidates.length === 0) {
+        unmatched.push({ symbol: group.symbol, payDate: group.payDate });
+        continue;
+      }
+      candidates.sort(
+        (a, b) =>
+          Math.abs(a.transactionDate.getTime() - group.payDateMs) -
+          Math.abs(b.transactionDate.getTime() - group.payDateMs)
+      );
+      claimed.add(candidates[0].id);
+      matched++;
     }
     return { matchedFlexCount: matched, recordsWithoutFlex: unmatched };
   }
