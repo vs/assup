@@ -558,3 +558,53 @@ model FundFlow {
   @@index([type])
   @@map("fund_flows")
 }
+
+// Dividend Report Uploads - per-year IBKR Dividend Report CSV imports.
+// One upload per (account, taxYear). Re-uploading a year replaces prior records.
+model DividendReportUpload {
+  id            String   @id @default(uuid()) @db.Uuid
+  filename      String   @db.VarChar(255)
+  uploadedAt    DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+  fileHash      String   @map("file_hash") @db.VarChar(64)
+  accountNumber String?  @map("account_number") @db.VarChar(50)
+  taxYear       Int      @map("tax_year")
+  recordCount   Int      @map("record_count")
+
+  records DividendReportRecord[]
+
+  @@index([fileHash])
+  @@index([taxYear])
+  @@map("dividend_report_uploads")
+}
+
+// Dividend Report Records - one row per RevenueComponent (post-reclassification).
+// Keyed by (symbol, payDate) for joining with CashTransaction at tax-calc time.
+model DividendReportRecord {
+  id                 String   @id @default(uuid()) @db.Uuid
+  uploadId           String   @map("upload_id") @db.Uuid
+
+  symbol             String   @db.VarChar(50)
+  conId              Int?     @map("con_id")
+  country            String?  @db.VarChar(2)
+  payDate            DateTime @map("pay_date") @db.Date
+  exDate             DateTime? @map("ex_date") @db.Date
+  shares             Float?
+
+  // Raw IBKR classification, verbatim from CSV.
+  revenueComponent   String   @map("revenue_component") @db.VarChar(120)
+  qualifiedIndicator String?  @map("qualified_indicator") @db.VarChar(80)
+
+  // Mapped bucket: DIVIDEND, INTEREST, CAPITAL_GAIN, ROC, PIL.
+  // Stored (not computed) so a future mapping change does not restate old reports.
+  taxCategory        String   @map("tax_category") @db.VarChar(20)
+
+  currency           String   @db.VarChar(3)
+  grossUsd           Float    @map("gross_usd")    @db.DoublePrecision
+  withholdUsd        Float    @map("withhold_usd") @db.DoublePrecision
+
+  upload DividendReportUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([symbol, payDate])
+  @@index([payDate])
+  @@map("dividend_report_records")
+}

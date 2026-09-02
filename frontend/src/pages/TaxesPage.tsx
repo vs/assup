@@ -19,6 +19,8 @@ import { StockTradesTable } from "@/components/taxes/StockTradesTable";
 import { OptionTradesTable } from "@/components/taxes/OptionTradesTable";
 import { DividendsTable } from "@/components/taxes/DividendsTable";
 import { InterestTable } from "@/components/taxes/InterestTable";
+import { DividendReportPanel } from "@/components/taxes/DividendReportPanel";
+import { TaxWarningsStrip, type TaxWarnings } from "@/components/taxes/TaxWarningsStrip";
 import type { TaxSummary } from "@assup/shared";
 
 export function TaxesPage() {
@@ -28,6 +30,12 @@ export function TaxesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [warnings, setWarnings] = useState<TaxWarnings>({
+    unmatchedDividendReport: [],
+    unpairedReversals: [],
+    hasUnverifiedFlexDividends: false,
+    hasUnverifiedFlexInterest: false,
+  });
 
   const availableYears = Array.from({ length: 10 }, (_, i) => currentYear - i);
 
@@ -37,6 +45,18 @@ export function TaxesPage() {
       setError(null);
       const data = await taxesApi.summary(selectedYear);
       setSummary(data);
+      const [div, interest] = await Promise.all([
+        taxesApi.dividends(selectedYear),
+        taxesApi.interest(selectedYear),
+      ]);
+      setWarnings({
+        unmatchedDividendReport: div.unmatchedDividendReport,
+        unpairedReversals: interest.unpairedReversals,
+        hasUnverifiedFlexDividends: div.dividends.some((d) => d.source === "flex"),
+        hasUnverifiedFlexInterest: interest.interest.some(
+          (i) => i.source === "flex" && !i.fromSecurity
+        ),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tax data");
     } finally {
@@ -100,6 +120,9 @@ export function TaxesPage() {
           </AlertDescription>
         </Alert>
       )}
+
+      <TaxWarningsStrip warnings={warnings} />
+      <DividendReportPanel onChanged={loadData} />
 
       {summary && (
         <>
