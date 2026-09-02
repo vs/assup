@@ -331,4 +331,64 @@ describe("taxCalculationService.getDividends with Dividend Report override", () 
     expect(zyn?.grossUsd).toBeCloseTo(94.87, 2);
     expect(zyn?.withholdingTaxUsd).toBeCloseTo(14.23, 2);
   });
+
+  it("year-month match: ZEB FLEX 2025-05-15 is covered by DR 2025-05-16 (no double-count)", async () => {
+    // FLEX and IBKR's Dividend Report disagree on the exact pay-date for the
+    // same payment (a few days' drift). Coverage is at (symbol, YYYY-MM).
+    const batch = await seedImportBatch();
+    await seedRate("2025-05-15");
+    await seedRate("2025-05-16");
+
+    await prisma.cashTransaction.createMany({
+      data: [
+        {
+          importBatchId: batch.id,
+          transactionId: "zeb-div-may",
+          symbol: "ZEB",
+          description: "ZEB CASH DIVIDEND USD 0.044467 PER SHARE (Ordinary Div - NRA Withholding Exempt)",
+          transactionDate: new Date("2025-05-15"),
+          amount: 8.49,
+          currency: "USD",
+          type: "DIVIDEND",
+        },
+        {
+          importBatchId: batch.id,
+          transactionId: "zeb-wht-may",
+          symbol: "ZEB",
+          description: "ZEB CASH DIVIDEND USD 0.044467 PER SHARE - FI TAX",
+          transactionDate: new Date("2025-05-15"),
+          amount: -2.97,
+          currency: "USD",
+          type: "WITHHOLDING_TAX",
+        },
+      ],
+    });
+
+    const upload = await prisma.dividendReportUpload.create({
+      data: { filename: "dr.csv", fileHash: "h-zeb-may", taxYear: 2025, recordCount: 1 },
+    });
+    await prisma.dividendReportRecord.create({
+      data: {
+        uploadId: upload.id,
+        symbol: "ZEB",
+        country: "FI",
+        payDate: new Date("2025-05-16"),
+        revenueComponent: "Ordinary Div - NRA Withholding Exempt",
+        taxCategory: "DIVIDEND",
+        currency: "USD",
+        grossUsd: 8.49,
+        withholdUsd: -2.97,
+      },
+    });
+
+    const result = await taxCalculationService.getDividends(2025);
+    const zeb = result.dividends.filter((d) => d.symbol === "ZEB");
+    // Exactly one ZEB row, sourced from the Dividend Report; FLEX row dropped.
+    expect(zeb).toHaveLength(1);
+    expect(zeb[0].source).toBe("dividend-report");
+    expect(zeb[0].grossUsd).toBeCloseTo(8.49, 2);
+    expect(zeb[0].withholdingTaxUsd).toBeCloseTo(2.97, 2);
+    // The May DR record is now matched, so it doesn't appear in unmatched.
+    expect(result.unmatchedDividendReport).toEqual([]);
+  });
 });

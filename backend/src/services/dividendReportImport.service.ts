@@ -384,8 +384,10 @@ export class DividendReportImportService {
 
   /**
    * For a given upload, count how many of its records have at least one
-   * matching FLEX CashTransaction at (symbol, payDate), and list those that
-   * don't. Used for the "did this reconcile?" UI feedback.
+   * matching FLEX CashTransaction at (symbol, YYYY-MM), and list those that
+   * don't. Year-month matching mirrors the override key used by tax calc —
+   * IBKR's Dividend Report and FLEX disagree on the exact pay-date for the
+   * same payment, so a strict date join under-counts matches.
    */
   async computeMatchSummary(
     uploadId: string,
@@ -399,25 +401,31 @@ export class DividendReportImportService {
       where: { uploadId },
       select: { symbol: true, payDate: true },
     });
-    // De-duplicate (symbol, payDate) — multiple components map to one FLEX row.
-    const groupKeys = new Set<string>();
+    // De-duplicate to one entry per (symbol, exact payDate) for reporting,
+    // but match against FLEX at the year-month level.
+    const distinct = new Map<string, { symbol: string; payDate: string; ym: string }>();
     for (const r of records) {
-      groupKeys.add(`${r.symbol}:${r.payDate.toISOString().slice(0, 10)}`);
+      const payDate = r.payDate.toISOString().slice(0, 10);
+      const ym = payDate.slice(0, 7);
+      const key = `${r.symbol}:${payDate}`;
+      if (!distinct.has(key)) distinct.set(key, { symbol: r.symbol, payDate, ym });
     }
+    // Pull all FLEX DIVIDEND rows for symbols touched by this upload, then
+    // group by (symbol, YYYY-MM) once. One query instead of one-per-record.
+    const symbols = [...new Set([...distinct.values()].map((d) => d.symbol))];
+    const flexRows = await db.cashTransaction.findMany({
+      where: { symbol: { in: symbols }, type: "DIVIDEND" },
+      select: { symbol: true, transactionDate: true },
+    });
+    const flexMonths = new Set(
+      flexRows.map((f) => `${f.symbol}:${f.transactionDate.toISOString().slice(0, 7)}`)
+    );
     let matched = 0;
     const unmatched: Array<{ symbol: string; payDate: string }> = [];
-    for (const key of groupKeys) {
-      const [symbol, payDate] = key.split(":");
-      const flex = await db.cashTransaction.findFirst({
-        where: {
-          symbol,
-          type: "DIVIDEND",
-          transactionDate: new Date(`${payDate}T00:00:00.000Z`),
-        },
-        select: { id: true },
-      });
-      if (flex) matched++;
-      else unmatched.push({ symbol, payDate });
+    for (const entry of distinct.values()) {
+      const monthKey = `${entry.symbol}:${entry.ym}`;
+      if (flexMonths.has(monthKey)) matched++;
+      else unmatched.push({ symbol: entry.symbol, payDate: entry.payDate });
     }
     return { matchedFlexCount: matched, recordsWithoutFlex: unmatched };
   }

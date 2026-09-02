@@ -777,10 +777,15 @@ class TaxCalculationService {
   /**
    * Get dividends with CZK conversion for tax reporting.
    *
-   * Reconciliation: a DividendReportRecord at (symbol, payDate) is the
-   * authoritative source. The corresponding FLEX DIVIDEND row and FLEX
-   * WHT rows at that key are dropped from totals. Uncovered FLEX dividends
-   * keep the existing aggregation logic and are tagged source='flex'.
+   * Reconciliation: a DividendReportRecord covers (symbol, YYYY-MM) — the
+   * Dividend Report and FLEX use different pay-dates for the same payment
+   * (e.g. ZEB 2025-05-15 in FLEX vs 2025-05-16 in DR), so an exact-date join
+   * double-counts. Year-month coverage absorbs that drift.
+   *
+   * Any FLEX DIVIDEND row and FLEX WHT row within a covered (symbol, YYYY-MM)
+   * is dropped from totals; the DR rows in that month become authoritative.
+   * Uncovered FLEX dividends keep the existing aggregation logic and are
+   * tagged source='flex'.
    */
   async getDividends(year: number): Promise<{
     dividends: TaxDividendWithSource[];
@@ -799,9 +804,11 @@ class TaxCalculationService {
       where: { payDate: { gte: startDate, lte: endDate } },
       orderBy: { payDate: "asc" },
     });
+    // Coverage is keyed by (symbol, YYYY-MM) — see method comment.
     const coveredKeys = new Set<string>();
+    const monthKey = (d: Date) => d.toISOString().slice(0, 7); // YYYY-MM
     for (const r of drRecords) {
-      coveredKeys.add(`${r.symbol}:${r.payDate.toISOString().slice(0, 10)}`);
+      coveredKeys.add(`${r.symbol}:${monthKey(r.payDate)}`);
     }
 
     // FLEX dividend + WHT rows for the year.
@@ -836,23 +843,24 @@ class TaxCalculationService {
       }))
     );
 
-    // Aggregate uncovered FLEX dividends by (symbol, date) — same as the
-    // previous implementation, but skipping covered keys.
+    // Aggregate uncovered FLEX dividends by (symbol, date). Coverage is checked
+    // at the year-month level so any FLEX row sharing a covered month is dropped.
     const dividendAggregates = new Map<
       string,
       { id: string; symbol: string; date: Date; amount: number; currency: string; description: string }
     >();
     for (const div of flexDividends) {
+      const sym = div.symbol || "";
+      if (coveredKeys.has(`${sym}:${monthKey(div.transactionDate)}`)) continue;
       const dateKey = div.transactionDate.toISOString().split("T")[0];
-      const key = `${div.symbol || ""}:${dateKey}`;
-      if (coveredKeys.has(key)) continue;
+      const key = `${sym}:${dateKey}`;
       const existing = dividendAggregates.get(key);
       if (existing) {
         existing.amount += div.amount || 0;
       } else {
         dividendAggregates.set(key, {
           id: div.id,
-          symbol: div.symbol || "",
+          symbol: sym,
           date: div.transactionDate,
           amount: div.amount || 0,
           currency: div.currency || "USD",
@@ -862,11 +870,12 @@ class TaxCalculationService {
     }
     const whtAggregates = new Map<string, number>();
     for (const wh of flexWht) {
-      const dateKey = wh.transactionDate.toISOString().split("T")[0];
-      const key = `${wh.symbol || ""}:${dateKey}`;
-      if (coveredKeys.has(key)) continue;
+      const sym = wh.symbol || "";
+      if (coveredKeys.has(`${sym}:${monthKey(wh.transactionDate)}`)) continue;
       const status = reversalResult.statusByTxnId.get(wh.transactionId);
       if (status === "reversed" || status === "original-paired") continue;
+      const dateKey = wh.transactionDate.toISOString().split("T")[0];
+      const key = `${sym}:${dateKey}`;
       whtAggregates.set(key, (whtAggregates.get(key) || 0) + (wh.amount || 0));
     }
 
@@ -970,21 +979,22 @@ class TaxCalculationService {
       }
     }
 
-    // unmatchedDividendReport — DR records whose (symbol, payDate) had no FLEX dividend.
-    const flexKeySet = new Set(
-      flexDividends.map(
-        (d) => `${d.symbol || ""}:${d.transactionDate.toISOString().split("T")[0]}`
-      )
+    // unmatchedDividendReport — DR records whose (symbol, YYYY-MM) had no FLEX dividend.
+    // Reported payDate is the DR record's date (preserves the original IBKR posting date for the warning).
+    const flexMonthSet = new Set(
+      flexDividends.map((d) => `${d.symbol || ""}:${monthKey(d.transactionDate)}`)
     );
-    const unmatchedSet = new Set<string>();
+    const unmatchedSet = new Map<string, { symbol: string; payDate: string }>();
     for (const r of drRecords) {
-      const key = `${r.symbol}:${r.payDate.toISOString().slice(0, 10)}`;
-      if (!flexKeySet.has(key)) unmatchedSet.add(key);
+      const monthK = `${r.symbol}:${monthKey(r.payDate)}`;
+      if (flexMonthSet.has(monthK)) continue;
+      const payDate = r.payDate.toISOString().slice(0, 10);
+      const dedupKey = `${r.symbol}:${payDate}`;
+      if (!unmatchedSet.has(dedupKey)) {
+        unmatchedSet.set(dedupKey, { symbol: r.symbol, payDate });
+      }
     }
-    const unmatchedDividendReport = [...unmatchedSet].map((k) => {
-      const [symbol, payDate] = k.split(":");
-      return { symbol, payDate };
-    });
+    const unmatchedDividendReport = [...unmatchedSet.values()];
 
     const byCountry: DividendsByCountry[] = [...countryTotals.entries()].map(
       ([country, data]) => ({
