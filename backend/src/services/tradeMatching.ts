@@ -538,8 +538,8 @@ export function groupOptionTrades(
 }
 
 /**
- * Group stock trades for display - uses IBKR's realizedPnl directly
- * Returns only sell trades (realized P&L)
+ * Group stock trades for display on the profit page.
+ * Returns only sell trades (realized P&L).
  *
  * NOTE: This is for the profit page. For wheel page, use groupStockTradesForWheel()
  */
@@ -561,9 +561,11 @@ export function groupStockTrades(
     // Note: commission is already negative (money paid), so we add it to subtract
     const sellProceeds = quantity * sell.tradePrice + sell.commission;
 
-    // Use IBKR's cost basis if available, otherwise derive from proceeds and P&L
+    // IBKR signs costBasis on a SELL as the negative of the original cash outflow;
+    // take its magnitude so the displayed cost basis is positive. If IBKR didn't
+    // provide costBasis, derive it from proceeds and realizedPnl.
     const costBasis = sell.costBasis !== null
-      ? sell.costBasis
+      ? Math.abs(sell.costBasis)
       : sellProceeds - sell.realizedPnl;
 
     const sellDetail: StockTradeDetail = {
@@ -577,13 +579,20 @@ export function groupStockTrades(
       buySell: sell.buySell,
     };
 
+    // Stock-level P&L from displayed cost basis. We don't use IBKR's realizedPnl
+    // directly: for called-away shares it bakes the assigned-CALL premium into the
+    // stock P&L (Section 1234), which is already shown on the option's own row —
+    // using it here would double-count the premium and mismatch the displayed
+    // cost basis vs. sell proceeds.
+    const profit = sellProceeds - costBasis;
+
     result.push({
       symbol: sell.symbol,
       buyTrade: undefined,
       sellTrade: sellDetail,
       costBasis,
       sellProceeds,
-      profit: sell.realizedPnl,
+      profit,
       quantity,
       assetClassId: assetClass?.assetClassId,
       assetClassName: assetClass?.assetClassName,

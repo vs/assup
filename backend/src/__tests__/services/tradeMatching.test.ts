@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   groupOptionTrades,
+  groupStockTrades,
   groupStockTradesForWheel,
   type OptionTradeInput,
   type StockTradeInput,
@@ -166,5 +167,54 @@ describe("groupStockTradesForWheel — IBKR cost basis and called-away P&L", () 
     expect(sold).toBeDefined();
     expect(sold!.costBasis).toBeCloseTo(15000, 2);
     expect(sold!.profit).toBeCloseTo(1000, 2);
+  });
+});
+
+describe("groupStockTrades (profit page) — IBKR cost basis and called-away P&L", () => {
+  // Same QZJO called-away scenario as the wheel regression above. The profit
+  // page must not display IBKR's realizedPnl ($620.85) on the stock row because
+  // it bakes in the assigned-CALL premium ($494) that already appears on the
+  // option's own row. The stock row should show |costBasis|=$17873.05,
+  // sellProceeds≈$17999.61, profit≈$126.56.
+  it("uses |costBasis| and stock-only profit for called-away shares", () => {
+    const groups = groupStockTrades([
+      makeStkInput({
+        id: "qzjo-sell",
+        tradeDate: "2026-05-15",
+        buySell: "SELL",
+        quantity: -100,
+        tradePrice: 180,
+        proceeds: 18000,
+        commission: -0.3903,
+        costBasis: -17873.05204,
+        realizedPnl: 620.846223,
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    const sold = groups[0];
+    expect(sold.costBasis).toBeCloseTo(17873.05, 2);
+    expect(sold.sellProceeds).toBeCloseTo(17999.61, 2);
+    expect(sold.profit).toBeCloseTo(126.56, 2);
+  });
+
+  it("handles a regular sell with no called-away premium", () => {
+    const groups = groupStockTrades([
+      makeStkInput({
+        id: "stk-sell",
+        tradeDate: "2026-02-01",
+        buySell: "SELL",
+        quantity: -100,
+        tradePrice: 160,
+        proceeds: 16000,
+        costBasis: -15000,
+        realizedPnl: 1000,
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    const sold = groups[0];
+    expect(sold.costBasis).toBeCloseTo(15000, 2);
+    expect(sold.profit).toBeCloseTo(1000, 2);
   });
 });
