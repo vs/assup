@@ -49,13 +49,19 @@ export function TaxesPage() {
         taxesApi.dividends(selectedYear),
         taxesApi.interest(selectedYear),
       ]);
+      // IBKR's Dividend Report for year N only becomes available in
+      // early year N+1, so warnings about "unverified rows" / unmatched DR
+      // records / unpaired WHT reversals are not actionable for the in-flight
+      // year. Suppress until the year is closed.
+      const isPastYear = selectedYear < currentYear;
       setWarnings({
-        unmatchedDividendReport: div.unmatchedDividendReport,
-        unpairedReversals: interest.unpairedReversals,
-        hasUnverifiedFlexDividends: div.dividends.some((d) => d.source === "flex"),
-        hasUnverifiedFlexInterest: interest.interest.some(
-          (i) => i.source === "flex" && !i.fromSecurity
-        ),
+        unmatchedDividendReport: isPastYear ? div.unmatchedDividendReport : [],
+        unpairedReversals: isPastYear ? interest.unpairedReversals : [],
+        hasUnverifiedFlexDividends:
+          isPastYear && div.dividends.some((d) => d.source === "flex"),
+        hasUnverifiedFlexInterest:
+          isPastYear &&
+          interest.interest.some((i) => i.source === "flex" && !i.fromSecurity),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tax data");
