@@ -302,6 +302,13 @@ class ProfitService {
           summary.optionsProfit += g.profit;
           summary.tradeCount++;
         } else {
+          // Called-away CALLs realize the premium this month (the stock SELL row
+          // shows stock-only P&L). PUT assignments roll the premium into the stock's
+          // adjusted cost basis, so the premium is realized when the stock is later
+          // sold — don't count it here to avoid double-counting.
+          if (g.right === "C") {
+            summary.optionsProfit += g.profit;
+          }
           summary.assignedCount++;
         }
       }
@@ -741,8 +748,12 @@ class ProfitService {
     }
 
     // Calculate summary
+    // Include called-away CALLs (the stock SELL row shows stock-only P&L, so the
+    // CALL premium belongs here). PUT-assigned PUTs are excluded: their premium
+    // is folded into the stock's adjusted cost basis and will be realized when
+    // the stock is eventually sold.
     const optionsProfit = nonSpreadTrades
-      .filter((g) => !g.wasAssigned)
+      .filter((g) => !(g.wasAssigned && g.right === "P"))
       .reduce((sum, g) => sum + g.profit, 0);
     const spreadsProfit = spreadTrades.reduce((sum, s) => sum + s.profit, 0);
     const stocksProfit = monthStockGroups.reduce((sum, g) => sum + g.profit, 0);
