@@ -67,15 +67,13 @@ export function TaxesPage() {
                 withholdingTaxUsd: d.withholdingTaxUsd,
               }))
           : [],
-        unverifiedFlexInterest: isPastYear
-          ? interest.interest
-              .filter((i) => i.source === "flex" && !i.fromSecurity)
-              .map((i) => ({
-                date: i.date,
-                description: i.description,
-                amountUsd: i.amountUsd,
-              }))
-          : [],
+        // Broker credit interest never appears in the Dividend Report, so an
+        // `interest` row that is `source: "flex" && !fromSecurity` is broker
+        // interest and is supposed to stay FLEX-sourced. Don't flag those as
+        // "unverified". Only security-derived interest rows that somehow ended
+        // up FLEX-tagged would be unverified, and the current pipeline never
+        // produces that combination — so this stays empty in practice.
+        unverifiedFlexInterest: [],
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tax data");
