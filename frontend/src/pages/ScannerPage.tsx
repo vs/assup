@@ -146,67 +146,20 @@ export function ScannerPage() {
   }
 
   useEffect(() => {
-    loadData();
+    loadEssentials();
+    loadAuxiliary();
   }, []);
 
-  async function loadData() {
+  async function loadEssentials() {
     try {
       setLoading(true);
-      const [presetsData, acData, positionsData, watchlistsData, wheelData] = await Promise.all([
+      const [presetsData, acData] = await Promise.all([
         api.scanner.presets.list(),
         api.assetClasses.list(),
-        api.positions.list(),
-        api.watchlists.list(),
-        api.wheel.list().catch(() => ({ tickers: [] })),
       ]);
       setPresets(presetsData);
       setAssetClasses(acData);
 
-      // Build cost basis map from positions + wheel tracker
-      const cbMap = new Map<string, TickerCostBasis>();
-      for (const pos of positionsData) {
-        if (pos.secType === "STK") {
-          cbMap.set(pos.symbol, {
-            shares: pos.position,
-            avgCost: pos.avgCost > 0 ? pos.avgCost : null,
-            wheelCostBasis: null,
-          });
-        }
-      }
-      for (const wt of wheelData.tickers) {
-        const existing = cbMap.get(wt.symbol);
-        cbMap.set(wt.symbol, {
-          shares: existing?.shares ?? (wt.shareQuantity || null),
-          avgCost: existing?.avgCost ?? wt.positionAvgCost,
-          wheelCostBasis: wt.adjustedCostBasis > 0 ? wt.adjustedCostBasis : null,
-        });
-      }
-      setCostBasisMap(cbMap);
-
-      // Collect unique stock symbols from positions
-      const symbolsSet = new Set<string>();
-      for (const pos of positionsData) {
-        // Only include stocks (STK), not options
-        if (pos.secType === "STK") {
-          symbolsSet.add(pos.symbol);
-        }
-      }
-
-      // Fetch all watchlists with items to get symbols
-      const watchlistsWithItems = await Promise.all(
-        watchlistsData.map((wl) => api.watchlists.get(wl.id))
-      );
-      for (const wl of watchlistsWithItems) {
-        for (const item of wl.items) {
-          if (item.secType === "STK") {
-            symbolsSet.add(item.symbol);
-          }
-        }
-      }
-
-      setAvailableSymbols(Array.from(symbolsSet).sort());
-
-      // Load default preset if exists, but preserve targetAssetClasses from URL/user selection
       const defaultPreset = presetsData.find((p) => p.isDefault);
       if (defaultPreset) {
         setCriteria((prev) => ({
@@ -221,6 +174,59 @@ export function ScannerPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadAuxiliary() {
+    const [positionsResult, watchlistsResult, wheelResult] = await Promise.allSettled([
+      api.positions.list(),
+      api.watchlists.list(),
+      api.wheel.list(),
+    ]);
+
+    const positionsData = positionsResult.status === "fulfilled" ? positionsResult.value : [];
+    const watchlistsData = watchlistsResult.status === "fulfilled" ? watchlistsResult.value : [];
+    const wheelData = wheelResult.status === "fulfilled" ? wheelResult.value : { tickers: [] };
+
+    const cbMap = new Map<string, TickerCostBasis>();
+    for (const pos of positionsData) {
+      if (pos.secType === "STK") {
+        cbMap.set(pos.symbol, {
+          shares: pos.position,
+          avgCost: pos.avgCost > 0 ? pos.avgCost : null,
+          wheelCostBasis: null,
+        });
+      }
+    }
+    for (const wt of wheelData.tickers) {
+      const existing = cbMap.get(wt.symbol);
+      cbMap.set(wt.symbol, {
+        shares: existing?.shares ?? (wt.shareQuantity || null),
+        avgCost: existing?.avgCost ?? wt.positionAvgCost,
+        wheelCostBasis: wt.adjustedCostBasis > 0 ? wt.adjustedCostBasis : null,
+      });
+    }
+    setCostBasisMap(cbMap);
+
+    const symbolsSet = new Set<string>();
+    for (const pos of positionsData) {
+      if (pos.secType === "STK") {
+        symbolsSet.add(pos.symbol);
+      }
+    }
+
+    const watchlistsWithItems = await Promise.all(
+      watchlistsData.map((wl) => api.watchlists.get(wl.id).catch(() => null))
+    );
+    for (const wl of watchlistsWithItems) {
+      if (!wl) continue;
+      for (const item of wl.items) {
+        if (item.secType === "STK") {
+          symbolsSet.add(item.symbol);
+        }
+      }
+    }
+
+    setAvailableSymbols(Array.from(symbolsSet).sort());
   }
 
   function loadPreset(presetId: string) {
