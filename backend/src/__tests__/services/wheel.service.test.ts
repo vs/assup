@@ -208,4 +208,97 @@ describe("wheelService.reconstructCycles — long-leg trade handling", () => {
     // currentPnl = netPremium + shortClose + longClose = 71 + (-4980) + 3980 = -929
     expect(spread.currentPnl!).toBeCloseTo(-929, 0);
   });
+
+  // Regression for the QZAC cycle-1 orphan: the close-before-open same-day sort
+  // moved a same-contract buyback BEFORE the SOLD-PUT that should have started
+  // the cycle. The buyback then ran while currentCycle was still null and was
+  // silently dropped, inflating realized P&L by the buyback cost ($65 in the
+  // real data). The pre-pair pass must keep open→close order for same-day
+  // same-contract pairs while still placing roll-style closes before opens
+  // (different contracts).
+  it("keeps same-day same-contract open+close in one cycle (no orphan)", async () => {
+    const trades: RawTradeShape[] = [
+      // Cycle-starter: sold on Nov 18 expiring Jan 2 (still open after Nov 18)
+      makeTrade({
+        id: "open-put-65",
+        tradeDate: "2025-11-18",
+        symbol: "QZAC  260102P00065000",
+        strike: 65,
+        expiry: new Date("2026-01-02"),
+        right: "P",
+        buySell: "SELL",
+        openClose: "O",
+        quantity: -1,
+        tradePrice: 3.64,
+        proceeds: 364,
+        commission: -1.05,
+      }),
+      // Same-day open + buyback of a different strike — this pair must be
+      // preserved as (open, close) so the buyback lands in cycle 1.
+      makeTrade({
+        id: "open-put-75",
+        tradeDate: "2025-11-18",
+        symbol: "QZAC  251121P00075000",
+        strike: 75,
+        expiry: new Date("2025-11-21"),
+        right: "P",
+        buySell: "SELL",
+        openClose: "O",
+        quantity: -1,
+        tradePrice: 1.15,
+        proceeds: 115,
+        commission: -0.05,
+      }),
+      makeTrade({
+        id: "close-put-75",
+        tradeDate: "2025-11-18",
+        symbol: "QZAC  251121P00075000",
+        strike: 75,
+        expiry: new Date("2025-11-21"),
+        right: "P",
+        buySell: "BUY",
+        openClose: "C",
+        quantity: 1,
+        tradePrice: 0.65,
+        proceeds: -65,
+        commission: -0.05,
+      }),
+      // Close the cycle-starter Dec 1
+      makeTrade({
+        id: "close-put-65",
+        tradeDate: "2025-12-01",
+        symbol: "QZAC  260102P00065000",
+        strike: 65,
+        expiry: new Date("2026-01-02"),
+        right: "P",
+        buySell: "BUY",
+        openClose: "C",
+        quantity: 1,
+        tradePrice: 1.15,
+        proceeds: -115,
+        commission: -0.01,
+      }),
+    ];
+
+    const cycles = await wheelService.reconstructCycles(
+      "QZAC",
+      null,
+      [],
+      undefined,
+      { dbTrades: trades as never, assignedOptions: [] }
+    );
+
+    expect(cycles).toHaveLength(1);
+    const cycle = cycles[0];
+
+    // Cycle starts on the 65 PUT, not the 75 PUT — the pre-pair pass moves the
+    // 75 close after its 75 open, leaving the 65 open as the cycle's first trade.
+    expect(cycle.startDate).toBe("2025-11-18");
+    expect(cycle.endDate).toBe("2025-12-01");
+    expect(cycle.entryDescription).toBe("Sold PUT $65");
+
+    // Realized P&L must reflect both buybacks: 362.95 + 114.95 - 65.05 - 115.01 ≈ 297.84.
+    // Previously the 75 buyback was orphaned, giving 362.89 (overstated by $65).
+    expect(cycle.realizedPnL).toBeCloseTo(297.84, 1);
+  });
 });

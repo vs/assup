@@ -1518,32 +1518,40 @@ export const wheelService = {
     // SELL-to-close) get their own real close records when expired or sold; treating
     // a SELL-to-close as a new short opener (or a BUY-to-open as a short closer)
     // produces phantom expired-worthless rows that double-count and corrupt cycles.
+    //
+    // Two-pass: tally opens first, then subtract closes. Order-independent so the
+    // upstream close-before-open same-day sort doesn't cause a close to "miss" its
+    // matching open (which was previously the cause of phantom expirations on
+    // intraday open+buyback pairs).
     const openOptionLegs = new Map<string, { qty: number; expiry: Date; right: string; strike: number; symbol: string; underlying: string | null }>();
     for (const trade of filteredTrades) {
       if (trade.secType !== "OPT" || !trade.expiry || !trade.strike || !trade.right) continue;
-      const key = `${trade.right}:${trade.strike}:${trade.expiry.toISOString().split("T")[0]}`;
       const isShortOpen = trade.buySell === "SELL" && trade.openClose !== "C";
+      if (!isShortOpen) continue;
+      const key = `${trade.right}:${trade.strike}:${trade.expiry.toISOString().split("T")[0]}`;
+      const existing = openOptionLegs.get(key);
+      if (existing) {
+        existing.qty += Math.abs(trade.quantity);
+      } else {
+        openOptionLegs.set(key, {
+          qty: Math.abs(trade.quantity),
+          expiry: trade.expiry,
+          right: trade.right,
+          strike: trade.strike,
+          symbol: trade.symbol,
+          underlying: trade.underlying,
+        });
+      }
+    }
+    for (const trade of filteredTrades) {
+      if (trade.secType !== "OPT" || !trade.expiry || !trade.strike || !trade.right) continue;
       const isShortClose = trade.buySell === "BUY" && trade.openClose !== "O";
-      if (isShortOpen) {
-        const existing = openOptionLegs.get(key);
-        if (existing) {
-          existing.qty += Math.abs(trade.quantity);
-        } else {
-          openOptionLegs.set(key, {
-            qty: Math.abs(trade.quantity),
-            expiry: trade.expiry,
-            right: trade.right,
-            strike: trade.strike,
-            symbol: trade.symbol,
-            underlying: trade.underlying,
-          });
-        }
-      } else if (isShortClose) {
-        const existing = openOptionLegs.get(key);
-        if (existing) {
-          existing.qty -= Math.abs(trade.quantity);
-          if (existing.qty <= 0) openOptionLegs.delete(key);
-        }
+      if (!isShortClose) continue;
+      const key = `${trade.right}:${trade.strike}:${trade.expiry.toISOString().split("T")[0]}`;
+      const existing = openOptionLegs.get(key);
+      if (existing) {
+        existing.qty -= Math.abs(trade.quantity);
+        if (existing.qty <= 0) openOptionLegs.delete(key);
       }
     }
 
@@ -1596,6 +1604,39 @@ export const wheelService = {
         }
         return 0;
       });
+    }
+
+    // Same-day same-contract pair fix: the close-before-open sort above is correct
+    // for rolls (close one contract + open a different one), but wrongly flips order
+    // for an intra-day open + buyback of the SAME contract — orphaning the buyback
+    // when it lands before any cycle has started. Move each such close to immediately
+    // after its matching open so it gets included in the active cycle.
+    for (let i = 0; i < filteredTrades.length; i++) {
+      const t = filteredTrades[i];
+      if (t.secType !== "OPT" || t.openClose !== "C" || !t.expiry || !t.strike || !t.right) continue;
+      const dateStr = t.tradeDate.toISOString().split("T")[0];
+      const expiryMs = t.expiry.getTime();
+      let matchingOpenIdx = -1;
+      for (let j = i + 1; j < filteredTrades.length; j++) {
+        const u = filteredTrades[j];
+        if (u.tradeDate.toISOString().split("T")[0] !== dateStr) break;
+        if (u.secType !== "OPT") continue;
+        if (
+          u.openClose === "O" &&
+          u.right === t.right &&
+          u.strike === t.strike &&
+          u.expiry?.getTime() === expiryMs
+        ) {
+          matchingOpenIdx = j;
+          break;
+        }
+      }
+      if (matchingOpenIdx !== -1) {
+        const [closeTrade] = filteredTrades.splice(i, 1);
+        // splice shifted matchingOpenIdx down by one; insert the close right after the open.
+        filteredTrades.splice(matchingOpenIdx, 0, closeTrade);
+        i--; // re-evaluate the new trade at position i on the next iteration
+      }
     }
 
     // Helper to find matching assigned option for a stock trade
