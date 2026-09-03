@@ -647,15 +647,17 @@ export function groupStockTradesForWheel(
     const quantity = Math.abs(sell.quantity);
     const sellProceeds = quantity * sell.tradePrice + sell.commission;
 
-    // Use IBKR's realizedPnl if available, otherwise calculate from matched cost basis
-    const profit = sell.realizedPnl !== null
-      ? sell.realizedPnl
-      : sellProceeds - matchedCostBasis;
-
-    // Use IBKR's cost basis if available, otherwise use FIFO-calculated
+    // IBKR signs costBasis on a SELL as the negative of the original cash outflow;
+    // take its magnitude so per-share buyPrice (costBasis/quantity) is positive.
     const costBasis = sell.costBasis !== null
-      ? sell.costBasis
+      ? Math.abs(sell.costBasis)
       : matchedCostBasis;
+
+    // Stock-level P&L from displayed cost basis. We don't use IBKR's realizedPnl
+    // directly: for called-away shares it bakes the assigned-CALL premium into the
+    // stock P&L (Section 1234), which is already shown on the option's own row —
+    // using it here would double-count the premium and mismatch the buy→sell prices.
+    const profit = sellProceeds - costBasis;
 
     const buyDetail: StockTradeDetail | undefined = matchedBuyTrade
       ? {
