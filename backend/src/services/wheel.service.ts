@@ -1510,14 +1510,21 @@ export const wheelService = {
       }
     }
 
-    // Generate synthetic expiration trades for options that expired without a close
-    // trade record (IBKR doesn't generate trade records for worthless expirations).
+    // Generate synthetic expiration trades for SHORT options that expired without a
+    // close trade record (IBKR doesn't generate trade records for worthless expirations).
     // Without these, optionPosition gets stuck and cycles never properly end.
+    //
+    // Only track SHORT legs (SELL-to-open and BUY-to-close). Long legs (BUY-to-open,
+    // SELL-to-close) get their own real close records when expired or sold; treating
+    // a SELL-to-close as a new short opener (or a BUY-to-open as a short closer)
+    // produces phantom expired-worthless rows that double-count and corrupt cycles.
     const openOptionLegs = new Map<string, { qty: number; expiry: Date; right: string; strike: number; symbol: string; underlying: string | null }>();
     for (const trade of filteredTrades) {
       if (trade.secType !== "OPT" || !trade.expiry || !trade.strike || !trade.right) continue;
       const key = `${trade.right}:${trade.strike}:${trade.expiry.toISOString().split("T")[0]}`;
-      if (trade.buySell === "SELL") {
+      const isShortOpen = trade.buySell === "SELL" && trade.openClose !== "C";
+      const isShortClose = trade.buySell === "BUY" && trade.openClose !== "O";
+      if (isShortOpen) {
         const existing = openOptionLegs.get(key);
         if (existing) {
           existing.qty += Math.abs(trade.quantity);
@@ -1531,7 +1538,7 @@ export const wheelService = {
             underlying: trade.underlying,
           });
         }
-      } else if (trade.buySell === "BUY") {
+      } else if (isShortClose) {
         const existing = openOptionLegs.get(key);
         if (existing) {
           existing.qty -= Math.abs(trade.quantity);
@@ -1627,7 +1634,8 @@ export const wheelService = {
     let currentCycle: WheelCycle | null = null;
     let cycleTradeIndices: number[] = []; // Track which raw trade indices belong to current cycle
     let sharePosition = 0;
-    let optionPosition = 0; // positive = short options (sold contracts)
+    let optionPosition = 0; // positive = short options (sold-to-open contracts)
+    let longOptionPosition = 0; // positive = long options (bought-to-open contracts, e.g. spread protection)
     let cycleNumber = 0;
     let runningCostBasis = 0;
 
@@ -1645,27 +1653,55 @@ export const wheelService = {
       const isPut = trade.right === "P";
       const isCall = trade.right === "C";
 
-      const prevTotalPosition = sharePosition + optionPosition * 100;
+      const prevTotalPosition = sharePosition + (optionPosition + longOptionPosition) * 100;
 
       // Determine trade type and update positions
       let tradeType: WheelTrade["type"] | null = null;
       let isWheelTrade = true;
       let assignedOptionInfo: { strike: number; expiry: string } | null = null;
 
+      // openClose === "C" with a SELL means closing a long leg (e.g. long side of a spread).
+      // openClose === "O" with a BUY means opening a long leg (e.g. protective put / long call).
+      // When openClose is unspecified, default to SELL-to-open / BUY-to-close (the wheel-strategy norm).
+      const qtyAbs = Math.abs(trade.quantity);
       if (isOption && isSell && isPut) {
-        tradeType = "SOLD_PUT";
-        optionPosition += Math.abs(trade.quantity);
+        if (trade.openClose === "C") {
+          tradeType = "SOLD_PUT";
+          longOptionPosition = Math.max(0, longOptionPosition - qtyAbs);
+          isWheelTrade = false;
+        } else {
+          tradeType = "SOLD_PUT";
+          optionPosition += qtyAbs;
+        }
       } else if (isOption && isBuy && isPut) {
-        tradeType = "BOUGHT_PUT";
-        optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity));
-        isWheelTrade = trade.proceeds < 0; // buyback
+        if (trade.openClose === "O") {
+          tradeType = "BOUGHT_PUT";
+          longOptionPosition += qtyAbs;
+          isWheelTrade = false;
+        } else {
+          tradeType = "BOUGHT_PUT";
+          optionPosition = Math.max(0, optionPosition - qtyAbs);
+          isWheelTrade = trade.proceeds < 0; // buyback
+        }
       } else if (isOption && isSell && isCall) {
-        tradeType = "SOLD_CALL";
-        optionPosition += Math.abs(trade.quantity);
+        if (trade.openClose === "C") {
+          tradeType = "SOLD_CALL";
+          longOptionPosition = Math.max(0, longOptionPosition - qtyAbs);
+          isWheelTrade = false;
+        } else {
+          tradeType = "SOLD_CALL";
+          optionPosition += qtyAbs;
+        }
       } else if (isOption && isBuy && isCall) {
-        tradeType = "BOUGHT_CALL";
-        optionPosition = Math.max(0, optionPosition - Math.abs(trade.quantity));
-        isWheelTrade = trade.proceeds < 0; // buyback
+        if (trade.openClose === "O") {
+          tradeType = "BOUGHT_CALL";
+          longOptionPosition += qtyAbs;
+          isWheelTrade = false;
+        } else {
+          tradeType = "BOUGHT_CALL";
+          optionPosition = Math.max(0, optionPosition - qtyAbs);
+          isWheelTrade = trade.proceeds < 0; // buyback
+        }
       } else if (isStock && isBuy && (assignedOptionInfo = findAssignedOption(trade, "PUT"))) {
         tradeType = "ASSIGNED";
         sharePosition += Math.abs(trade.quantity);
@@ -1708,7 +1744,7 @@ export const wheelService = {
         }
       }
 
-      const newTotalPosition = sharePosition + optionPosition * 100;
+      const newTotalPosition = sharePosition + (optionPosition + longOptionPosition) * 100;
       const dateStr = trade.tradeDate.toISOString().split("T")[0];
 
       // Cycle starts: position went from 0 to non-zero
@@ -1897,10 +1933,17 @@ export const wheelService = {
           currentCycle.exitType = isPut ? "put_expired" : "cc_expired";
           currentCycle.exitDescription = isPut ? "PUT expired worthless" : "CC expired worthless";
         } else if (tradeType === "BOUGHT_PUT" || tradeType === "BOUGHT_CALL") {
-          // Closed option position (buyback to close)
+          // Closed option position (buyback to close, or long open that took us back to flat)
           currentCycle.status = "closed";
           currentCycle.exitType = isPut ? "put_closed" : "cc_closed";
           currentCycle.exitDescription = isPut ? "PUT bought back" : "CC bought back";
+        } else if (tradeType === "SOLD_PUT" || tradeType === "SOLD_CALL") {
+          // Cycle ended on a long-leg close (e.g. selling the long side of a spread).
+          // A short open can't end a cycle (it increases position), so reaching here
+          // means trade.openClose === "C" and we just closed the last long contract.
+          currentCycle.status = "closed";
+          currentCycle.exitType = isPut ? "put_closed" : "cc_closed";
+          currentCycle.exitDescription = isPut ? "Long PUT sold to close" : "Long CALL sold to close";
         }
 
         // Calculate metrics
