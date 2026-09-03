@@ -432,26 +432,17 @@ export function groupOptionTrades(
       // Use IBKR's authoritative realizedPnl directly
       // Sum up realizedPnl from all close trades (handles partial closes)
       profit = closeTrades.reduce((sum, t) => sum + (t.realizedPnl || 0), 0);
-      // Derive cost basis from IBKR data: costBasis = closeProceeds - realizedPnl
-      // For a BUY to close: proceeds is negative, realizedPnl is negative for loss
-      // costBasis = |proceeds| - realizedPnl (e.g., 805 - (-762.68) = 1567.68... wait that's wrong)
-      // Actually: realizedPnl = proceeds - costBasis, so costBasis = proceeds - realizedPnl
-      // For BUY to close short: proceeds = -805, realizedPnl = -762.68
-      // costBasis should be the premium received when opening = -805 - (-762.68) = -42.32? No...
-      // Let me think again. IBKR's costBasis field has the answer.
       const ibkrCostBasis = closeTrades.reduce((sum, t) => sum + (t.costBasis || 0), 0);
       if (ibkrCostBasis > 0) {
         finalCostBasis = ibkrCostBasis;
       } else {
-        // Fallback: derive from proceeds and P&L
-        // For closing short: costBasis (premium received) = -proceeds - realizedPnl
-        // proceeds = -805 (paid to close), realizedPnl = -762.68 (loss)
-        // costBasis = -(-805) - (-762.68) = 805 - (-762.68) = 805 + 762.68? That's also wrong.
-        // Let me reconsider: realizedPnl = proceeds_close + costBasis_open
-        // -762.68 = -805 + costBasis_open => costBasis_open = -762.68 + 805 = 42.32
-        // So the premium received was only $42.32, which matches the IBKR cost_basis field!
+        // Derive original open premium from realizedPnl = proceeds_open + proceeds_close.
+        // proceeds_open = realizedPnl - proceeds_close; costBasis is its magnitude.
+        // Works for both directions:
+        //   SHORT close: proceeds_close=-4980, pnl=-4795 → |−4795−(−4980)|=185 (premium received)
+        //   LONG  close: proceeds_close=+3980, pnl=+3866 → |+3866−(+3980)|=114 (premium paid)
         const closeProceedsTotal = closeTrades.reduce((sum, t) => sum + t.proceeds, 0);
-        finalCostBasis = Math.abs(closeProceedsTotal + profit);
+        finalCostBasis = Math.abs(profit - closeProceedsTotal);
       }
     } else if (openTrade?.buySell === "SELL") {
       // Short position: profit = premium received - cost to close - commissions
