@@ -168,7 +168,29 @@ router.post(
       file.buffer.toString("utf-8"),
       file.originalname
     );
-    res.status(result.status === "duplicate" ? 200 : 201).json(result);
+    // Shape the response per DividendReportUploadResult (nested: upload + matchSummary).
+    const uploadRow = await dividendReportImportService.getUpload(result.uploadId);
+    if (!uploadRow) {
+      throw new Error(
+        `Upload ${result.uploadId} not found immediately after creation — race or rollback?`
+      );
+    }
+    res.status(result.status === "duplicate" ? 200 : 201).json({
+      status: result.status,
+      upload: {
+        id: uploadRow.id,
+        filename: uploadRow.filename,
+        uploadedAt: uploadRow.uploadedAt.toISOString(),
+        accountNumber: uploadRow.accountNumber,
+        taxYear: uploadRow.taxYear,
+        recordCount: uploadRow.recordCount,
+      },
+      replacedUploadId: result.replacedUploadId,
+      matchSummary: {
+        matchedFlexCount: result.matchedFlexCount,
+        recordsWithoutFlex: result.recordsWithoutFlex,
+      },
+    });
   })
 );
 
