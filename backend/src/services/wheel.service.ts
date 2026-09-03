@@ -1799,7 +1799,9 @@ export const wheelService = {
         }
 
         // Track realized P&L based on trade type (skip cycle-starting trades already handled)
-        if (prevTotalPosition !== 0 || tradeType !== "SOLD_PUT") {
+        const isCycleStartingSale = prevTotalPosition === 0 &&
+          (tradeType === "SOLD_PUT" || tradeType === "SOLD_CALL");
+        if (!isCycleStartingSale) {
           switch (tradeType) {
             case "SOLD_PUT":
             case "SOLD_CALL":
