@@ -33,8 +33,8 @@ export function TaxesPage() {
   const [warnings, setWarnings] = useState<TaxWarnings>({
     unmatchedDividendReport: [],
     unpairedReversals: [],
-    hasUnverifiedFlexDividends: false,
-    hasUnverifiedFlexInterest: false,
+    unverifiedFlexDividends: [],
+    unverifiedFlexInterest: [],
   });
 
   const availableYears = Array.from({ length: 10 }, (_, i) => currentYear - i);
@@ -57,11 +57,25 @@ export function TaxesPage() {
       setWarnings({
         unmatchedDividendReport: isPastYear ? div.unmatchedDividendReport : [],
         unpairedReversals: isPastYear ? interest.unpairedReversals : [],
-        hasUnverifiedFlexDividends:
-          isPastYear && div.dividends.some((d) => d.source === "flex"),
-        hasUnverifiedFlexInterest:
-          isPastYear &&
-          interest.interest.some((i) => i.source === "flex" && !i.fromSecurity),
+        unverifiedFlexDividends: isPastYear
+          ? div.dividends
+              .filter((d) => d.source === "flex")
+              .map((d) => ({
+                symbol: d.symbol,
+                date: d.date,
+                grossUsd: d.grossUsd,
+                withholdingTaxUsd: d.withholdingTaxUsd,
+              }))
+          : [],
+        unverifiedFlexInterest: isPastYear
+          ? interest.interest
+              .filter((i) => i.source === "flex" && !i.fromSecurity)
+              .map((i) => ({
+                date: i.date,
+                description: i.description,
+                amountUsd: i.amountUsd,
+              }))
+          : [],
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tax data");

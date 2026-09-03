@@ -71,8 +71,7 @@ export function matchWhtReversals(rows: WhtRow[]): WhtReversalResult {
   }
 
   for (const [key, group] of byKey) {
-    // Sort by date ASC so the earliest negative WHT is the candidate "original"
-    // for each subsequent reversal.
+    // Sort by date ASC for deterministic iteration order.
     group.sort((a, b) => a.transactionDate.getTime() - b.transactionDate.getTime());
     const used = new Set<string>();
 
@@ -80,23 +79,32 @@ export function matchWhtReversals(rows: WhtRow[]): WhtReversalResult {
       if (used.has(r.transactionId)) continue;
       const reversal = isReversalDescription(r.description) || r.amount > 0;
       if (!reversal) continue;
-      // Find the most recent un-paired negative-amount row before-or-at this row.
-      let match: WhtRow | null = null;
-      for (let i = group.indexOf(r) - 1; i >= 0; i--) {
-        const cand = group[i];
+      // Find the un-paired negative-amount row with matching magnitude that is
+      // closest in date. Don't constrain to "before" — IBKR sometimes posts
+      // the cancel entry back-dated to the original's transaction date, and
+      // same-date sort order between original and reversal is non-deterministic.
+      let bestMatch: WhtRow | null = null;
+      let bestDateDiff = Infinity;
+      for (const cand of group) {
+        if (cand.transactionId === r.transactionId) continue;
         if (used.has(cand.transactionId)) continue;
         if (cand.amount >= 0) continue;
         if (Math.abs(cand.amount + r.amount) > 0.01) continue;
-        match = cand;
-        break;
+        const diff = Math.abs(
+          cand.transactionDate.getTime() - r.transactionDate.getTime()
+        );
+        if (diff < bestDateDiff) {
+          bestMatch = cand;
+          bestDateDiff = diff;
+        }
       }
-      if (match) {
-        statusByTxnId.set(match.transactionId, "original-paired");
+      if (bestMatch) {
+        statusByTxnId.set(bestMatch.transactionId, "original-paired");
         statusByTxnId.set(r.transactionId, "reversed");
-        used.add(match.transactionId);
+        used.add(bestMatch.transactionId);
         used.add(r.transactionId);
         pairings.push({
-          originalTxnId: match.transactionId,
+          originalTxnId: bestMatch.transactionId,
           reversedTxnId: r.transactionId,
           matchKey: key,
         });

@@ -108,4 +108,30 @@ describe("matchWhtReversals", () => {
     const result = matchWhtReversals(rows);
     expect(result.statusByTxnId.get("orphan")).toBe("unpaired");
   });
+
+  it("pairs same-date ticker WHT regardless of input order (cancel back-dated to original)", () => {
+    // IBKR sometimes posts the cancel back-dated to the original's transaction
+    // date. The reversal can therefore appear in input order BEFORE the
+    // original. The matcher must still pair them.
+    const rows = [
+      row(
+        "rev-first",
+        "2025-12-04",
+        4.81,
+        "TLT(USZ958700214) CASH DIVIDEND USD 0.320648 PER SHARE - US TAX",
+        "TLT"
+      ),
+      row(
+        "orig-second",
+        "2025-12-04",
+        -4.81,
+        "TLT(USZ958700214) CASH DIVIDEND USD 0.320648 PER SHARE - US TAX",
+        "TLT"
+      ),
+    ];
+    const result = matchWhtReversals(rows);
+    expect(result.statusByTxnId.get("orig-second")).toBe("original-paired");
+    expect(result.statusByTxnId.get("rev-first")).toBe("reversed");
+    expect(result.pairings).toHaveLength(1);
+  });
 });
