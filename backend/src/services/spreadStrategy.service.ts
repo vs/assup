@@ -13,6 +13,7 @@ import { Contract, SecType, BarSizeSetting, WhatToShow } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
 import { prisma } from "../db/index.js";
 import { isMarketOpen } from "../utils/market.js";
+import { fetchVix3m } from "./research/providers/tradingview.js";
 
 // --- Strategy constants ---
 
@@ -25,6 +26,7 @@ const POSITION_MULT_MAX = 2.0;
 const COOLOFF_DAYS = 3;              // trading days to skip after a loss
 const HV_LOOKBACK = 10;             // days for realized vol calculation
 const SETTINGS_KEY = "spreadStrategy";
+const VIX3M_SNAPSHOT_KEY = "vix3mSnapshot";
 
 // --- Symbol-specific configuration ---
 
@@ -82,6 +84,8 @@ export interface StrategyMetrics {
   underlyingPrice: number | null;
   spotVix: number | null;
   vix3m: number | null;
+  vix3mSource: "live" | "cached" | "none";
+  vix3mAgeMinutes: number | null;
   hv10: number | null;
   ivHvRatio: number | null;
 
@@ -176,6 +180,7 @@ function addTradingDays(from: Date, n: number): Date {
 // --- Service ---
 
 class SpreadStrategyService {
+  private warnedStale = false;
 
   /**
    * Compute strategy metrics for a given symbol.
@@ -196,12 +201,13 @@ class SpreadStrategyService {
     try { ibkrService.setMarketDataType(dataType as 1 | 2); } catch { /* ignore */ }
 
     // Fetch market data in parallel
-    const [underlyingData, vixData, vix3mData, historicalBars] = await Promise.all([
+    const useTradingViewVix3m = config.vix3mSymbol === "VIX3M";
+    const [underlyingData, vixData, vix3mResult, historicalBars] = await Promise.all([
       ibkrService.getMarketData(makeIndexContract(config.priceSymbol)).catch(() => null),
       ibkrService.getMarketData(makeIndexContract(config.vixSymbol)).catch(() => null),
-      config.vix3mSymbol !== config.vixSymbol
-        ? ibkrService.getMarketData(makeIndexContract(config.vix3mSymbol)).catch(() => null)
-        : Promise.resolve(null),
+      useTradingViewVix3m
+        ? this.getVix3m()
+        : Promise.resolve({ value: null, source: "none" as const, ageMinutes: null }),
       this.fetchHistoricalCloses(config.priceSymbol),
     ]);
 
@@ -217,7 +223,9 @@ class SpreadStrategyService {
 
     let underlyingPrice = positivePrice(underlyingData?.last) ?? positivePrice(underlyingData?.close);
     const spotVix = positivePrice(vixData?.last) ?? positivePrice(vixData?.close);
-    let vix3m = positivePrice(vix3mData?.last) ?? positivePrice(vix3mData?.close);
+    let vix3m: number | null = vix3mResult.value;
+    let vix3mSource: "live" | "cached" | "none" = vix3mResult.source;
+    let vix3mAgeMinutes: number | null = vix3mResult.ageMinutes;
 
     // For XSP, divide SPX price by 10
     if (symbol === "XSP" && underlyingPrice != null) {
@@ -227,6 +235,8 @@ class SpreadStrategyService {
     // If VIX3M is unavailable (RUT case), fall back to spot VIX
     if (vix3m == null && config.vix3mSymbol === config.vixSymbol) {
       vix3m = spotVix;
+      vix3mSource = spotVix != null ? "live" : "none";
+      vix3mAgeMinutes = spotVix != null ? 0 : null;
     }
 
     // Compute HV10
@@ -314,6 +324,8 @@ class SpreadStrategyService {
       underlyingPrice,
       spotVix,
       vix3m,
+      vix3mSource,
+      vix3mAgeMinutes,
       hv10: hv10 != null ? Math.round(hv10 * 100) / 100 : null,
       ivHvRatio,
       filters,
@@ -354,6 +366,51 @@ class SpreadStrategyService {
   }
 
   // --- Private helpers ---
+
+  /**
+   * Fetch the latest VIX3M reading.
+   * Tries TradingView first; on success, persists the snapshot to `Setting`.
+   * On failure, falls back to the last persisted snapshot (returns it tagged as "cached").
+   * If both fail, returns source: "none".
+   */
+  private async getVix3m(): Promise<{
+    value: number | null;
+    source: "live" | "cached" | "none";
+    ageMinutes: number | null;
+  }> {
+    const live = await fetchVix3m();
+    if (live != null) {
+      const fetchedAt = new Date().toISOString();
+      try {
+        await prisma.setting.upsert({
+          where: { key: VIX3M_SNAPSHOT_KEY },
+          create: { key: VIX3M_SNAPSHOT_KEY, value: { value: live, fetchedAt } },
+          update: { value: { value: live, fetchedAt } },
+        });
+      } catch (err) {
+        console.warn("Failed to persist vix3mSnapshot:", err);
+      }
+      this.warnedStale = false;
+      return { value: live, source: "live", ageMinutes: 0 };
+    }
+
+    const snapshot = await prisma.setting.findUnique({
+      where: { key: VIX3M_SNAPSHOT_KEY },
+    });
+    const cached = snapshot?.value as { value: number; fetchedAt: string } | undefined;
+
+    if (cached?.value != null && cached.fetchedAt) {
+      const ageMs = Date.now() - new Date(cached.fetchedAt).getTime();
+      const ageMinutes = Math.max(0, Math.floor(ageMs / 60000));
+      if (!this.warnedStale) {
+        console.warn(`VIX3M live fetch failed; serving cached value (age ${ageMinutes}m)`);
+        this.warnedStale = true;
+      }
+      return { value: cached.value, source: "cached", ageMinutes };
+    }
+
+    return { value: null, source: "none", ageMinutes: null };
+  }
 
   private async fetchHistoricalCloses(symbol: string): Promise<number[]> {
     if (!ibkrService.isConnected()) return [];
