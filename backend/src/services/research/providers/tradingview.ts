@@ -88,39 +88,3 @@ export async function fetchMacroQuotes(): Promise<MacroQuotes> {
   return result;
 }
 
-// --- VIX3M helper ---
-
-const VIX3M_SYMBOL = "CBOE:VIX3M";
-const VIX3M_TIMEOUT_MS = 5000;
-
-/**
- * Fetch the latest close for CBOE:VIX3M from TradingView's public scanner.
- * Returns null on any failure: HTTP error, timeout, missing row, non-positive value.
- * Never throws — callers handle the null fallback.
- */
-export async function fetchVix3m(): Promise<number | null> {
-  try {
-    const res = await fetch(SCANNER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        symbols: { tickers: [VIX3M_SYMBOL] },
-        columns: ["close"],
-      }),
-      signal: AbortSignal.timeout(VIX3M_TIMEOUT_MS),
-    });
-
-    if (!res.ok) return null;
-
-    const json = (await res.json()) as TvScanResponse;
-    const row = json.data?.find((r) => r.s === VIX3M_SYMBOL);
-    const close = row?.d?.[0];
-
-    if (typeof close !== "number" || !Number.isFinite(close) || close <= 0) {
-      return null;
-    }
-    return close;
-  } catch {
-    return null;
-  }
-}

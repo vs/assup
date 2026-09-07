@@ -13,7 +13,7 @@ import { Contract, SecType, BarSizeSetting, WhatToShow } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
 import { prisma } from "../db/index.js";
 import { isMarketOpen } from "../utils/market.js";
-import { fetchVix3m } from "./research/providers/tradingview.js";
+import { fetchVix3m } from "./research/providers/yahoo.js";
 
 // --- Strategy constants ---
 
@@ -201,11 +201,11 @@ class SpreadStrategyService {
     try { ibkrService.setMarketDataType(dataType as 1 | 2); } catch { /* ignore */ }
 
     // Fetch market data in parallel
-    const useTradingViewVix3m = config.vix3mSymbol === "VIX3M";
+    const useExternalVix3m = config.vix3mSymbol === "VIX3M";
     const [underlyingData, vixData, vix3mResult, historicalBars] = await Promise.all([
       ibkrService.getMarketData(makeIndexContract(config.priceSymbol)).catch(() => null),
       ibkrService.getMarketData(makeIndexContract(config.vixSymbol)).catch(() => null),
-      useTradingViewVix3m
+      useExternalVix3m
         ? this.getVix3m()
         : Promise.resolve({ value: null, source: "none" as const, ageMinutes: null }),
       this.fetchHistoricalCloses(config.priceSymbol),
@@ -369,7 +369,7 @@ class SpreadStrategyService {
 
   /**
    * Fetch the latest VIX3M reading.
-   * Tries TradingView first; on success, persists the snapshot to `Setting`.
+   * Tries Yahoo Finance first; on success, persists the snapshot to `Setting`.
    * On failure, falls back to the last persisted snapshot (returns it tagged as "cached").
    * If both fail, returns source: "none".
    */

@@ -18,9 +18,8 @@ vi.mock("../../services/ibkr.js", () => ({
   },
 }));
 
-vi.mock("../../services/research/providers/tradingview.js", () => ({
+vi.mock("../../services/research/providers/yahoo.js", () => ({
   fetchVix3m: vi.fn(),
-  fetchMacroQuotes: vi.fn(),
 }));
 
 vi.mock("../../utils/market.js", () => ({
@@ -29,7 +28,7 @@ vi.mock("../../utils/market.js", () => ({
 
 import { spreadStrategyService } from "../../services/spreadStrategy.service.js";
 import { ibkrService } from "../../services/ibkr.js";
-import { fetchVix3m } from "../../services/research/providers/tradingview.js";
+import { fetchVix3m } from "../../services/research/providers/yahoo.js";
 import { prisma } from "../../db/index.js";
 
 const SPX_PRICE = 5200;
@@ -61,7 +60,7 @@ beforeEach(() => {
 });
 
 describe("SpreadStrategyService.getMetrics (SPX)", () => {
-  it("returns live VIX3M from TradingView and persists the snapshot", async () => {
+  it("returns live VIX3M from Yahoo and persists the snapshot", async () => {
     (fetchVix3m as any).mockResolvedValue(16.82);
 
     const metrics = await spreadStrategyService.getMetrics("SPX");
@@ -81,7 +80,7 @@ describe("SpreadStrategyService.getMetrics (SPX)", () => {
     );
   });
 
-  it("falls back to the cached snapshot when TradingView fails", async () => {
+  it("falls back to the cached snapshot when Yahoo fails", async () => {
     (fetchVix3m as any).mockResolvedValue(null);
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     (prisma.setting.findUnique as any).mockResolvedValue({
@@ -98,7 +97,7 @@ describe("SpreadStrategyService.getMetrics (SPX)", () => {
     expect(prisma.setting.upsert).not.toHaveBeenCalled();
   });
 
-  it("returns source: none when both TradingView and the cache are empty", async () => {
+  it("returns source: none when both Yahoo and the cache are empty", async () => {
     (fetchVix3m as any).mockResolvedValue(null);
     (prisma.setting.findUnique as any).mockResolvedValue(null);
 
