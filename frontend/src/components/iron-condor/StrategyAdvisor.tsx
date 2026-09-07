@@ -8,7 +8,7 @@
  *  - Apply button to feed recommendations into the OptionsBuilder
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -101,11 +101,6 @@ export function StrategyAdvisor({ symbol, baseQuantity, onApply }: StrategyAdvis
     }
   }, [symbol]);
 
-  // Fetch on mount and when symbol changes
-  useEffect(() => {
-    fetchMetrics();
-  }, [fetchMetrics]);
-
   const handleApply = useCallback(() => {
     if (!metrics?.recommendedShortStrike || !metrics?.recommendedLongStrike) return;
     const mult = metrics.positionMultiplier ?? 1;
@@ -179,6 +174,18 @@ export function StrategyAdvisor({ symbol, baseQuantity, onApply }: StrategyAdvis
           {error && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {error}
+            </div>
+          )}
+
+          {!metrics && !loading && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm text-muted-foreground">
+                Fetch VIX-based entry filters, recommended strikes, and position sizing for {symbol}.
+              </div>
+              <Button size="sm" onClick={fetchMetrics} className="gap-1.5 shrink-0">
+                <Zap className="h-3.5 w-3.5" />
+                Run Analysis
+              </Button>
             </div>
           )}
 
