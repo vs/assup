@@ -299,8 +299,12 @@ export function OptionsBuilder({
   }, [chain, chainHasDeltas, scouting, putDelta, callDelta, wingWidth, hasPutSide, hasCallSide, isSpreadMode]);
 
   // --- Apply strategy recommendation (overrides delta-based auto-select) ---
+  // Guarded by ref: each "Apply to Builder" click passes a fresh object reference,
+  // so we apply once per click and ignore the constant chain updates from SSE.
+  const appliedRecRef = useRef<StrategyRecommendation | null>(null);
   useEffect(() => {
     if (!strategyRecommendation) return;
+    if (appliedRecRef.current === strategyRecommendation) return;
     if (chain.length === 0) return;
 
     const { shortStrike, longStrike, wingWidth: recWingWidth, quantity: recQuantity } = strategyRecommendation;
@@ -319,6 +323,7 @@ export function OptionsBuilder({
     setWingWidth(recWingWidth);
     setQuantity(recQuantity);
     autoSelectDoneRef.current = true;
+    appliedRecRef.current = strategyRecommendation;
 
     // Ensure put-spread mode
     if (strategyMode !== "put-spread") setStrategyMode("put-spread");
