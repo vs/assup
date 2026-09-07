@@ -172,9 +172,12 @@ export function IronCondorPage() {
         </button>
       </div>
 
-      {/* Strategy Advisor — VIX-based strike/sizing recommendations */}
+      {/* Strategy Advisor — VIX-based strike/sizing recommendations.
+          Keys are prefixed because StrategyAdvisor and OptionsBuilder are
+          siblings; sharing the same raw `symbol` value defeats React's
+          reconciliation (collision-handled by appending instead of swapping). */}
       <StrategyAdvisor
-        key={symbol}
+        key={`advisor:${symbol}`}
         symbol={symbol}
         baseQuantity={1}
         onApply={handleStrategyApply}
@@ -182,7 +185,7 @@ export function IronCondorPage() {
 
       {/* Options builder — re-mounts on symbol change to reset all internal state */}
       <OptionsBuilder
-        key={symbol}
+        key={`builder:${symbol}`}
         symbol={symbol}
         allowedModes={["put-spread", "call-spread", "iron-condor"]}
         defaultMode="put-spread"
