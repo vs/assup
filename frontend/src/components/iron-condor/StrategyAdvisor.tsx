@@ -24,6 +24,15 @@ import {
 import { api } from "@/api";
 import type { SpreadStrategyMetrics, StrategyFilter } from "@assup/shared";
 
+function formatStaleAge(minutes: number | null): string {
+  if (minutes == null) return "";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
 export interface StrategyApplyParams {
   shortStrike: number;
   longStrike: number;
@@ -187,10 +196,20 @@ export function StrategyAdvisor({ symbol, baseQuantity, onApply }: StrategyAdvis
                     value={metrics.spotVix?.toFixed(1) ?? null}
                     color={metrics.spotVix != null && metrics.spotVix > 25 ? "text-red-600" : undefined}
                   />
-                  <MetricCard
-                    label="VIX3M"
-                    value={metrics.vix3m?.toFixed(1) ?? null}
-                  />
+                  <div className="relative">
+                    <MetricCard
+                      label="VIX3M"
+                      value={metrics.vix3m?.toFixed(1) ?? null}
+                    />
+                    {metrics.vix3mSource === "cached" && (
+                      <div
+                        className="absolute -top-1 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 leading-none whitespace-nowrap"
+                        title={`Live VIX3M unavailable — showing cached value from ${formatStaleAge(metrics.vix3mAgeMinutes)} ago`}
+                      >
+                        cached · {formatStaleAge(metrics.vix3mAgeMinutes)}
+                      </div>
+                    )}
+                  </div>
                   <MetricCard
                     label="HV10"
                     value={metrics.hv10?.toFixed(1) ?? null}
