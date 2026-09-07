@@ -107,6 +107,7 @@ export class SpreadStreamSession {
     try {
       await this.initialize();
     } catch (err) {
+      console.error(`[SpreadStream:${this.sessionId}] initialize() threw:`, err);
       this.sendEvent("error", {
         message:
           err instanceof Error ? err.message : "Failed to initialize stream",
@@ -117,6 +118,9 @@ export class SpreadStreamSession {
   }
 
   private async initialize(): Promise<void> {
+    const t0 = Date.now();
+    console.log(`[SpreadStream:${this.sessionId}] init start symbol=${this.symbol} mode=${this.mode ?? "iron-condor"}`);
+
     const config = SYMBOL_CONFIG[this.symbol] ?? {
       tradingClass: this.symbol,
       multiplier: 100,
@@ -388,6 +392,7 @@ export class SpreadStreamSession {
       chain: initChain,
       scouting: shouldScout,
     } satisfies SpreadStreamInitEvent);
+    console.log(`[SpreadStream:${this.sessionId}] init sent in ${Date.now() - t0}ms — strikes=${initChain.length} exp=${selectedExpiration} scout=${shouldScout}`);
 
     // 10. Start flush interval (150ms)
     this.flushInterval = setInterval(() => this.flushTickBuffer(), 150);
@@ -931,6 +936,7 @@ export class SpreadStreamSession {
 
   destroy(): void {
     if (this.destroyed) return;
+    console.log(`[SpreadStream:${this.sessionId}] destroy() called`);
     this.destroyed = true;
 
     for (const unsub of this.unsubscribers) {
