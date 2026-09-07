@@ -26,17 +26,18 @@ export async function getExpirations(symbol: string): Promise<string[]> {
     tradingClass: symbol,
     multiplier: 100,
   };
-  const optionSymbol = config.optionSymbol ?? symbol;
 
   const api = ibkrService.getApi();
   if (!api || !api.isConnected) {
     throw new Error("Not connected to TWS");
   }
 
-  const { secType, exchange } = getSymbolContractType(optionSymbol);
+  // Always use the actual symbol for chain queries — XSPW is a child of XSP
+  // in IBKR's taxonomy, not SPX, so a priceSymbol redirect must not apply here.
+  const { secType, exchange } = getSymbolContractType(symbol);
 
   const underlyingContract: Contract = {
-    symbol: optionSymbol,
+    symbol,
     secType,
     exchange,
     currency: "USD",
@@ -44,12 +45,12 @@ export async function getExpirations(symbol: string): Promise<string[]> {
 
   const contractDetails = await api.getContractDetails(underlyingContract);
   if (!contractDetails.length) {
-    throw new Error(`No contract details for ${optionSymbol}`);
+    throw new Error(`No contract details for ${symbol}`);
   }
   const conId = contractDetails[0].contract.conId!;
 
   const secDefs = await api.getSecDefOptParams(
-    optionSymbol,
+    symbol,
     "",
     secType,
     conId,

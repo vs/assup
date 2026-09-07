@@ -32,9 +32,11 @@ export async function placeComboOrder(req: IronCondorOrderRequest): Promise<Iron
     throw new Error("Not connected to TWS");
   }
 
-  // Build BAG contract — use the IBKR option symbol (e.g. XSP options use SPX)
+  // Build BAG contract — symbol must match the underlying of the option legs
+  // (e.g. XSP legs require BAG symbol "XSP", not "SPX", since the leg conIds
+  // come from XSP's option chain).
   const config = SYMBOL_CONFIG[req.symbol];
-  const bagSymbol = config?.optionSymbol ?? req.symbol;
+  const bagSymbol = req.symbol;
   // Index options (SPX, XSP, RUT) trade exclusively on CBOE. Use direct CBOE routing
   // to avoid TWS error 10043 ("Missing or invalid NonGuaranteed value") which occurs
   // when SMART routing requires NonGuaranteed for mixed-action combo legs.

@@ -125,24 +125,40 @@ export class SpreadStreamSession {
       tradingClass: this.symbol,
       multiplier: 100,
     };
-    const optionSymbol = config.optionSymbol ?? this.symbol;
+    // Price-only redirect: e.g. XSP fetches its underlying price from SPX/10
+    // because SPX has reliable index data. The chain query and option contracts
+    // still use this.symbol — XSPW is a child of XSP in IBKR, not SPX, so
+    // querying getSecDefOptParams via SPX returns SPX strikes (~5000), and
+    // filtering against XSP's ~580 underlying yields an empty chain.
+    const priceSymbol = config.priceSymbol ?? this.symbol;
     const priceDivisor = config.priceDivisor ?? 1;
 
     // Acquire live market data early — some indices (e.g. RUT) don't have
     // delayed data, so the underlying price snapshot would return nothing.
     await ibkrService.acquireLiveMarketData();
 
-    // 1. Fetch underlying price (retry up to 3 times — the market data type
-    //    switch above may not take effect before the first snapshot request)
+    // Price contract — may redirect to a different symbol (XSP → SPX)
+    const { secType: priceSecType, exchange: priceExchange } =
+      getSymbolContractType(priceSymbol);
+    const priceContract: Contract = {
+      symbol: priceSymbol,
+      secType: priceSecType,
+      exchange: priceExchange,
+      currency: "USD",
+    };
+
+    // Underlying contract for chain queries — always uses this.symbol
     const { secType: underlyingSecType, exchange: underlyingExchange } =
-      getSymbolContractType(optionSymbol);
+      getSymbolContractType(this.symbol);
     const underlyingContract: Contract = {
-      symbol: optionSymbol,
+      symbol: this.symbol,
       secType: underlyingSecType,
       exchange: underlyingExchange,
       currency: "USD",
     };
 
+    // 1. Fetch underlying price (retry up to 3 times — the market data type
+    //    switch above may not take effect before the first snapshot request)
     let underlyingPrice = 0;
     const MAX_PRICE_RETRIES = 3;
     for (let attempt = 0; attempt < MAX_PRICE_RETRIES; attempt++) {
@@ -151,7 +167,7 @@ export class SpreadStreamSession {
         await new Promise((r) => setTimeout(r, 1500));
         if (this.destroyed) return;
       }
-      const underlyingData = await ibkrService.getMarketData(underlyingContract);
+      const underlyingData = await ibkrService.getMarketData(priceContract);
       if (this.destroyed) return;
 
       underlyingPrice =
@@ -179,12 +195,12 @@ export class SpreadStreamSession {
     if (this.destroyed) return;
 
     if (!contractDetails.length) {
-      throw new Error(`No contract details for ${optionSymbol}`);
+      throw new Error(`No contract details for ${this.symbol}`);
     }
     const conId = contractDetails[0].contract.conId!;
 
     const secDefs = await api.getSecDefOptParams(
-      optionSymbol,
+      this.symbol,
       "",
       underlyingSecType,
       conId,
@@ -252,7 +268,7 @@ export class SpreadStreamSession {
 
     const conIdMap = await this.resolveConIds(
       api,
-      optionSymbol,
+      this.symbol,
       selectedExpiration,
       strikes,
       tradingClass,
@@ -292,7 +308,7 @@ export class SpreadStreamSession {
 
     // Store params for potential focus transition
     this.allFilteredStrikes = strikes;
-    this.storedOptionSymbol = optionSymbol;
+    this.storedOptionSymbol = this.symbol;
     this.storedSelectedExpiration = selectedExpiration;
     this.storedTradingClass = tradingClass;
     this.storedMultiplier = multiplier;
@@ -311,9 +327,11 @@ export class SpreadStreamSession {
     );
     const linesGranted = this.linesGranted;
 
-    // Subscribe to underlying
+    // Subscribe to underlying price stream — uses the price contract,
+    // which may be a substitute (e.g. SPX for XSP). Quotes are scaled
+    // back to this.symbol via priceDivisor before exposure to clients.
     const unsubUnderlying = ibkrService.subscribeMarketData(
-      underlyingContract,
+      priceContract,
       (data: StreamTickData) => {
         const price =
           (data.last ?? data.bid ?? data.ask ?? 0) / priceDivisor;
@@ -372,7 +390,7 @@ export class SpreadStreamSession {
     // Subscribe to option strikes (adds directly to this.strikeUnsubs)
     this.subscribeOptionStrikes(
       strikesToSubscribe.filter(s => subscribedStrikes.has(s)),
-      optionSymbol,
+      this.symbol,
       selectedExpiration,
       tradingClass,
       multiplier,
@@ -425,7 +443,7 @@ export class SpreadStreamSession {
    */
   private subscribeOptionStrikes(
     strikes: number[],
-    optionSymbol: string,
+    underlyingSymbol: string,
     selectedExpiration: string,
     tradingClass: string,
     multiplier: number,
@@ -440,7 +458,7 @@ export class SpreadStreamSession {
         if (this.strikeUnsubs.has(bufferKey)) continue;
 
         const optContract: Contract = {
-          symbol: optionSymbol,
+          symbol: underlyingSymbol,
           secType: SecType.OPT,
           exchange: "SMART",
           currency: "USD",

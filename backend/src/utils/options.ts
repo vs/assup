@@ -12,16 +12,18 @@ import { parseExpirationDate } from "./market.js";
 
 /**
  * Index-specific option configuration: trading class, multiplier,
- * and optional symbol/price mapping for mini indices (e.g. XSP → SPX/10).
+ * and optional price-source mapping for mini indices (e.g. XSP → SPX/10).
  */
 export const SYMBOL_CONFIG: Record<
   string,
   {
     tradingClass: string;
     multiplier: number;
-    /** IBKR symbol for the option contracts (e.g. XSP options are listed under SPX with tradingClass XSPW) */
-    optionSymbol?: string;
-    /** Divisor to derive this symbol's price from the optionSymbol's price (e.g. XSP = SPX / 10) */
+    /** Substitute symbol used only for the underlying price snapshot/stream.
+     *  E.g. XSP redirects to SPX since the SPX index quote is more reliable.
+     *  Option chain definitions and option contracts still use the original symbol. */
+    priceSymbol?: string;
+    /** Divisor to derive this symbol's price from the priceSymbol's price (e.g. XSP = SPX / 10) */
     priceDivisor?: number;
     /** Minimum price increment for combo/spread orders (default 0.01) */
     comboTickSize?: number;
@@ -34,7 +36,7 @@ export const SYMBOL_CONFIG: Record<
   XSP: {
     tradingClass: "XSPW",
     multiplier: 100,
-    optionSymbol: "SPX",
+    priceSymbol: "SPX",
     priceDivisor: 10,
     comboTickSize: 0.05,
     comboExchange: "CBOE",
