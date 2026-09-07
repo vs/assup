@@ -173,6 +173,8 @@ export interface SpreadStrategyMetrics {
   underlyingPrice: number | null;
   spotVix: number | null;
   vix3m: number | null;
+  vix3mSource: "live" | "cached" | "none";
+  vix3mAgeMinutes: number | null;
   hv10: number | null;
   ivHvRatio: number | null;
 
