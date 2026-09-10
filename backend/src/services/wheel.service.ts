@@ -1004,6 +1004,11 @@ export const wheelService = {
       }
     }
 
+    // Whether this refresh actually carries live market data. When TWS is
+    // disconnected, fetchIBKRData returns empty maps and applyLiveDataToSummary
+    // would zero out the live fields — so we must not persist those.
+    const ibkrHasLiveData = ibkrData.positions.length > 0 || ibkrData.marketPrices.size > 0;
+
     const summaries = await Promise.all(
       trackers.map(async (tracker) => {
         if (!rebuildSymbols.has(tracker.symbol)) {
@@ -1011,7 +1016,22 @@ export const wheelService = {
           if (cache && cache.summary) {
             const cachedSummary = parseSummary(cache.summary as Prisma.JsonValue);
             if (cachedSummary) {
-              return applyLiveDataToSummary(cachedSummary, ibkrData);
+              const fresh = applyLiveDataToSummary(cachedSummary, ibkrData);
+              // Re-persist the refreshed live fields (P&L, price, positions) so the
+              // instant cache-only path (getCachedTrackedTickers) stops serving P&L
+              // frozen at the last trade-change rebuild. Trade stats are unchanged,
+              // so cache validity is preserved — only the volatile fields move.
+              const stats = tradeStatsBySymbol.get(tracker.symbol);
+              if (stats && ibkrHasLiveData) {
+                await upsertWheelSummaryCache({
+                  symbol: tracker.symbol,
+                  startDate: tracker.startDate,
+                  tradeCount: stats.tradeCount,
+                  lastTradeDate: stats.lastTradeDate,
+                  summary: fresh,
+                });
+              }
+              return fresh;
             }
           }
         }
