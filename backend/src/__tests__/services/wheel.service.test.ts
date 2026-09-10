@@ -19,7 +19,7 @@ vi.mock("../../services/ibkr.js", () => ({
   },
 }));
 
-import { wheelService } from "../../services/wheel.service.js";
+import { wheelService, normalizeSplitsForUnderlying } from "../../services/wheel.service.js";
 
 interface RawTradeShape {
   id: string;
@@ -461,5 +461,72 @@ describe("wheelService.reconstructCycles — long-leg trade handling", () => {
     // Realized P&L must reflect both buybacks: 362.95 + 114.95 - 65.05 - 115.01 ≈ 297.84.
     // Previously the 75 buyback was orphaned, giving 362.89 (overstated by $65).
     expect(cycle.realizedPnL).toBeCloseTo(297.84, 1);
+  });
+});
+
+// Regression for the QZCI split bug: when only an *option* contract is held
+// through a stock split, IBKR's corporate-action row stores the OCC option
+// symbol (e.g. "QZCI  260618P00025000") in the `symbol` field and the
+// underlying only appears at the front of the description ("QZCI(...) SPLIT
+// 5 FOR 1 ..."). Matching corporate actions by `symbol === underlying` misses
+// those rows, so trades stay in pre-split terms while live IBKR positions are
+// post-split — mixing before/after-split values on the Wheel page.
+describe("normalizeSplitsForUnderlying — underlying matching", () => {
+  const palOption = {
+    symbol: "QZCI  260618P00025000",
+    description: "QZCI(USZ100985263) SPLIT 5 FOR 1 (QZCI  260618P00025000, QZCI 18JUN26 25 P, )",
+    exDate: new Date("2026-05-15"),
+    splitRatio: 5,
+  };
+
+  it("matches an option-adjustment split whose symbol is the OCC option code", () => {
+    const splits = normalizeSplitsForUnderlying("QZCI", [palOption]);
+    expect(splits).toHaveLength(1);
+    expect(splits[0].splitRatio).toBe(5);
+    expect(splits[0].exDate.toISOString()).toBe(palOption.exDate.toISOString());
+  });
+
+  it("matches a plain stock split whose symbol is the underlying", () => {
+    const qzfa = {
+      symbol: "QZFA",
+      description: "QZFA(USZ339079289) SPLIT 10 FOR 1 (QZFA, ACME STREAMING INC, USZ339079289)",
+      exDate: new Date("2025-11-14"),
+      splitRatio: 10,
+    };
+    const splits = normalizeSplitsForUnderlying("QZFA", [qzfa]);
+    expect(splits).toHaveLength(1);
+    expect(splits[0].splitRatio).toBe(10);
+  });
+
+  it("de-duplicates the stock row and per-contract option rows of one split event", () => {
+    const stockRow = {
+      symbol: "QZCI",
+      description: "QZCI(USZ100985263) SPLIT 5 FOR 1 (QZCI, ACME PRECIOUS METALS, )",
+      exDate: new Date("2026-05-15"),
+      splitRatio: 5,
+    };
+    const splits = normalizeSplitsForUnderlying("QZCI", [stockRow, palOption]);
+    expect(splits).toHaveLength(1);
+    expect(splits[0].splitRatio).toBe(5);
+  });
+
+  it("does not match a different underlying that shares a prefix", () => {
+    const other = {
+      symbol: "QZCIX  260618P00025000",
+      description: "QZCIX(USZ348674897) SPLIT 2 FOR 1 (QZCIX, OTHER, )",
+      exDate: new Date("2026-05-15"),
+      splitRatio: 2,
+    };
+    expect(normalizeSplitsForUnderlying("QZCI", [other])).toHaveLength(0);
+  });
+
+  it("skips rows without a parsable ratio", () => {
+    const noRatio = {
+      symbol: "QZCI  260618P00025000",
+      description: "QZCI(USZ100985263) SPLIT 5 FOR 1 (...)",
+      exDate: new Date("2026-05-15"),
+      splitRatio: null,
+    };
+    expect(normalizeSplitsForUnderlying("QZCI", [noRatio])).toHaveLength(0);
   });
 });

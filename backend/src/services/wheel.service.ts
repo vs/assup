@@ -84,7 +84,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 8;
+const WHEEL_CACHE_VERSION = 9;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -774,6 +774,54 @@ function detectSpreadGroups(trades: WheelMatchedTrade[]): WheelSpreadGroup[] {
   }
 
   return groups;
+}
+
+/** A normalized stock-split event: one entry per split. */
+export interface SplitEvent {
+  exDate: Date;
+  splitRatio: number;
+}
+
+/**
+ * Derive the underlying ticker from an IBKR corporate-action row.
+ *
+ * IBKR descriptions lead with the affected underlying, e.g.
+ * "QZCI(USZ100985263) SPLIT 5 FOR 1 (...)" → "QZCI". For plain stock splits the
+ * `symbol` field already equals this; for option-adjustment rows `symbol` is the
+ * OCC option code (e.g. "QZCI  260618P00025000") and only the description carries
+ * the underlying, so we prefer the description and fall back to `symbol`.
+ */
+function underlyingFromCorporateAction(ca: { symbol: string; description: string | null }): string {
+  return ca.description?.match(/^([A-Za-z0-9.]+)\(/)?.[1] ?? ca.symbol;
+}
+
+/**
+ * Normalize split corporate actions affecting `symbol` to one event per split.
+ *
+ * Matches on the underlying ticker (not the raw `symbol` field) so option-only
+ * holdings — whose corporate-action rows carry the OCC option code in `symbol`
+ * rather than the ticker — are still adjusted. Without this, an option held
+ * through a split keeps pre-split strikes/quantities in trade history while the
+ * live IBKR position is post-split, mixing before/after-split values.
+ *
+ * De-duplicates by ex-date + ratio so the stock row and any per-contract option
+ * rows of the same split event are counted once (avoids double-adjustment).
+ */
+export function normalizeSplitsForUnderlying(
+  symbol: string,
+  actions: { symbol: string; description: string | null; exDate: Date; splitRatio: number | null }[],
+): SplitEvent[] {
+  const seen = new Set<string>();
+  const splits: SplitEvent[] = [];
+  for (const ca of actions) {
+    if (ca.splitRatio == null) continue;
+    if (underlyingFromCorporateAction(ca) !== symbol) continue;
+    const key = `${ca.exDate.toISOString()}:${ca.splitRatio}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    splits.push({ exDate: ca.exDate, splitRatio: ca.splitRatio });
+  }
+  return splits.sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
 }
 
 export const wheelService = {
@@ -1497,21 +1545,29 @@ export const wheelService = {
       }
     }
 
-    // Adjust trades for stock splits to normalize all values to post-split terms
-    const splits = await prisma.corporateAction.findMany({
+    // Adjust trades for stock splits to normalize all values to post-split terms.
+    // Match by underlying ticker, not the raw `symbol` field: when only an option
+    // is held through a split, IBKR's row carries the OCC option code in `symbol`
+    // and the ticker only in the description (e.g. "QZCI(...) SPLIT 5 FOR 1 ...").
+    const candidateSplits = await prisma.corporateAction.findMany({
       where: {
-        symbol,
         actionType: { in: ["FS", "SD"] },
         splitRatio: { not: null },
+        OR: [
+          { symbol },
+          { description: { startsWith: `${symbol}(` } },
+        ],
       },
       orderBy: { exDate: "asc" },
+      select: { symbol: true, description: true, exDate: true, splitRatio: true },
     });
+    const splits = normalizeSplitsForUnderlying(symbol, candidateSplits);
 
     if (splits.length > 0) {
       const getSplitMultiplier = (tradeDate: Date): number => {
         let multiplier = 1;
         for (const split of splits) {
-          if (split.exDate > tradeDate && split.splitRatio) {
+          if (split.exDate > tradeDate) {
             multiplier *= split.splitRatio;
           }
         }
