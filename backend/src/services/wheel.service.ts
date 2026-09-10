@@ -85,7 +85,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 6;
+const WHEEL_CACHE_VERSION = 7;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -1684,6 +1684,9 @@ export const wheelService = {
     let cycleRealizedPnL = 0;
     let cycleCapitalDeployed = 0;
     let cyclePremiumReceived = 0; // Track total premium for capital calculation
+    let cycleStockCost = 0; // Cost of shares currently held in this cycle (sum across lots)
+    let cycleStockQty = 0; // Shares currently held in this cycle
+    let cycleStockRealizedPnL = 0; // Realized stock P&L from shares sold in this cycle
 
     for (let tradeIdx = 0; tradeIdx < filteredTrades.length; tradeIdx++) {
       const trade = filteredTrades[tradeIdx];
@@ -1817,6 +1820,9 @@ export const wheelService = {
         cycleRealizedPnL = 0;
         cycleCapitalDeployed = 0;
         cyclePremiumReceived = 0;
+        cycleStockCost = 0;
+        cycleStockQty = 0;
+        cycleStockRealizedPnL = 0;
         cycleTradeIndices = [];
 
         // Calculate initial capital deployed
@@ -1895,29 +1901,37 @@ export const wheelService = {
               // No additional P&L - premium already counted when sold
               break;
             case "CALLED_AWAY":
-              // Add (exit price - entry strike) x shares
-              if (currentCycle.entryStrike > 0) {
-                const exitPrice = trade.proceeds / Math.abs(trade.quantity);
-                const stockPnL = (exitPrice - currentCycle.entryStrike) * Math.abs(trade.quantity);
-                cycleRealizedPnL += stockPnL;
-              }
-              break;
-            case "SOLD_SHARES":
-              // Use entryStrike (original assignment/purchase price) as cost basis,
+            case "SOLD_SHARES": {
+              // Use the actual cost of shares acquired in this cycle as the basis,
               // not runningCostBasis which is reduced by option premiums already
-              // counted in cycleRealizedPnL. This avoids double-counting premiums.
-              // Same approach as CALLED_AWAY above.
-              if (currentCycle.entryStrike > 0) {
-                const sellPrice = trade.proceeds / Math.abs(trade.quantity);
-                const stockPnL = (sellPrice - currentCycle.entryStrike) * Math.abs(trade.quantity);
+              // counted in cycleRealizedPnL. A cycle can hold lots acquired at
+              // different prices (multiple assignments), so average across lots
+              // rather than pricing everything against entryStrike.
+              const qtySold = Math.abs(trade.quantity);
+              const sellPrice = trade.proceeds / qtySold;
+              if (cycleStockQty > 0) {
+                const avgCost = cycleStockCost / cycleStockQty;
+                const sharesOut = Math.min(qtySold, cycleStockQty);
+                const stockPnL = (sellPrice - avgCost) * qtySold;
                 cycleRealizedPnL += stockPnL;
+                cycleStockRealizedPnL += stockPnL;
+                cycleStockCost -= avgCost * sharesOut;
+                cycleStockQty -= sharesOut;
+              } else if (currentCycle.entryStrike > 0) {
+                // No stock acquisition recorded in this cycle - fall back to entry strike
+                const stockPnL = (sellPrice - currentCycle.entryStrike) * qtySold;
+                cycleRealizedPnL += stockPnL;
+                cycleStockRealizedPnL += stockPnL;
               }
               break;
+            }
             case "ASSIGNED":
             case "BOUGHT_SHARES":
               // No realized P&L - just acquiring shares
-              // Update capital deployed to reflect actual stock cost
-              cycleCapitalDeployed = Math.abs(trade.proceeds) - cyclePremiumReceived;
+              cycleStockCost += Math.abs(trade.proceeds);
+              cycleStockQty += Math.abs(trade.quantity);
+              // Update capital deployed to reflect cumulative stock cost across lots
+              cycleCapitalDeployed = cycleStockCost - cyclePremiumReceived;
               break;
           }
         }
@@ -1993,8 +2007,7 @@ export const wheelService = {
         currentCycle.durationDays = Math.ceil((endMs - startMs) / (1000 * 60 * 60 * 24));
 
         const capitalAtRisk = currentCycle.entryStrike * 100;
-        const totalProfit = currentCycle.totalPremium +
-          (currentCycle.exitPrice ? (currentCycle.exitPrice - currentCycle.entryStrike) * (currentCycle.shareQuantity || 100) : 0);
+        const totalProfit = currentCycle.totalPremium + cycleStockRealizedPnL;
 
         currentCycle.roc = capitalAtRisk > 0 ? (totalProfit / capitalAtRisk) * 100 : 0;
         currentCycle.annualizedRoc = currentCycle.durationDays > 0
@@ -2026,6 +2039,9 @@ export const wheelService = {
         cycleRealizedPnL = 0;
         cycleCapitalDeployed = 0;
         cyclePremiumReceived = 0;
+        cycleStockCost = 0;
+        cycleStockQty = 0;
+        cycleStockRealizedPnL = 0;
       }
     }
 

@@ -209,6 +209,167 @@ describe("wheelService.reconstructCycles — long-leg trade handling", () => {
     expect(spread.currentPnl!).toBeCloseTo(-929, 0);
   });
 
+  // Regression for the QZBE cycle-5 bug: a cycle with TWO put assignments at
+  // different strikes (100 @ $30, then 100 @ $21.50) ended by calling away all
+  // 200 shares at $26. CALLED_AWAY priced ALL shares against entryStrike (the
+  // first assignment's $30), giving (26-30)*200 = -800 instead of the true
+  // (26-30)*100 + (26-21.5)*100 = +50, flipping a profitable cycle to a loss.
+  it("uses per-lot cost basis when multiple assignments are called away together", async () => {
+    const trades: RawTradeShape[] = [
+      // First CSP, assigned at $30
+      makeTrade({
+        id: "open-put-30",
+        tradeDate: "2026-01-30",
+        symbol: "QZBE  260220P00030000",
+        underlying: "QZBE",
+        strike: 30,
+        expiry: new Date("2026-02-20"),
+        right: "P",
+        buySell: "SELL",
+        openClose: "O",
+        quantity: -1,
+        tradePrice: 0.3,
+        proceeds: 30,
+        wasAssigned: true,
+      }),
+      makeTrade({
+        id: "assign-stock-30",
+        tradeDate: "2026-02-20",
+        symbol: "QZBE",
+        underlying: "QZBE",
+        secType: "STK",
+        buySell: "BUY",
+        openClose: "O",
+        quantity: 100,
+        tradePrice: 30,
+        proceeds: -3000,
+      }),
+      makeTrade({
+        id: "assign-close-put-30",
+        tradeDate: "2026-02-20",
+        symbol: "QZBE  260220P00030000",
+        underlying: "QZBE",
+        strike: 30,
+        expiry: new Date("2026-02-20"),
+        right: "P",
+        buySell: "BUY",
+        openClose: "C",
+        quantity: 1,
+        proceeds: 0,
+      }),
+      // Second CSP while holding shares, assigned at $21.50
+      makeTrade({
+        id: "open-put-21.5",
+        tradeDate: "2026-03-23",
+        symbol: "QZBE  260327P00021500",
+        underlying: "QZBE",
+        strike: 21.5,
+        expiry: new Date("2026-03-27"),
+        right: "P",
+        buySell: "SELL",
+        openClose: "O",
+        quantity: -1,
+        tradePrice: 0.35,
+        proceeds: 35,
+        wasAssigned: true,
+      }),
+      makeTrade({
+        id: "assign-stock-21.5",
+        tradeDate: "2026-03-27",
+        symbol: "QZBE",
+        underlying: "QZBE",
+        secType: "STK",
+        buySell: "BUY",
+        openClose: "O",
+        quantity: 100,
+        tradePrice: 21.5,
+        proceeds: -2150,
+      }),
+      makeTrade({
+        id: "assign-close-put-21.5",
+        tradeDate: "2026-03-27",
+        symbol: "QZBE  260327P00021500",
+        underlying: "QZBE",
+        strike: 21.5,
+        expiry: new Date("2026-03-27"),
+        right: "P",
+        buySell: "BUY",
+        openClose: "C",
+        quantity: 1,
+        proceeds: 0,
+      }),
+      // Covered calls on both lots, assigned (called away) at $26
+      makeTrade({
+        id: "open-call-26",
+        tradeDate: "2026-05-18",
+        symbol: "QZBE  260529C00026000",
+        underlying: "QZBE",
+        strike: 26,
+        expiry: new Date("2026-05-29"),
+        right: "C",
+        buySell: "SELL",
+        openClose: "O",
+        quantity: -2,
+        tradePrice: 0.55,
+        proceeds: 110,
+        wasAssigned: true,
+      }),
+      makeTrade({
+        id: "called-away-stock",
+        tradeDate: "2026-05-29",
+        symbol: "QZBE",
+        underlying: "QZBE",
+        secType: "STK",
+        buySell: "SELL",
+        openClose: "C",
+        quantity: -200,
+        tradePrice: 26,
+        proceeds: 5200,
+      }),
+      makeTrade({
+        id: "assign-close-call-26",
+        tradeDate: "2026-05-29",
+        symbol: "QZBE  260529C00026000",
+        underlying: "QZBE",
+        strike: 26,
+        expiry: new Date("2026-05-29"),
+        right: "C",
+        buySell: "BUY",
+        openClose: "C",
+        quantity: 2,
+        proceeds: 0,
+      }),
+    ];
+
+    const assignedOptions = [
+      { expiry: new Date("2026-02-20"), strike: 30, right: "P", tradeDate: new Date("2026-01-30") },
+      { expiry: new Date("2026-03-27"), strike: 21.5, right: "P", tradeDate: new Date("2026-03-23") },
+      { expiry: new Date("2026-05-29"), strike: 26, right: "C", tradeDate: new Date("2026-05-18") },
+    ];
+
+    const cycles = await wheelService.reconstructCycles(
+      "QZBE",
+      null,
+      [],
+      undefined,
+      { dbTrades: trades as never, assignedOptions }
+    );
+
+    expect(cycles).toHaveLength(1);
+    const cycle = cycles[0];
+    expect(cycle.status).toBe("called_away");
+    expect(cycle.startDate).toBe("2026-01-30");
+    expect(cycle.endDate).toBe("2026-05-29");
+
+    // Premiums: 30 + 35 + 110 = 175
+    // Stock P&L: (26-30)*100 + (26-21.5)*100 = -400 + 450 = +50
+    expect(cycle.realizedPnL).toBeCloseTo(225, 1);
+
+    // Capital deployed: both lots' cost (3000 + 2150) minus premiums received
+    // by then (30 + 35) — the second assignment must accumulate, not overwrite.
+    expect(cycle.capitalDeployed).toBeCloseTo(5085, 1);
+  });
+
   // Regression for the QZAC cycle-1 orphan: the close-before-open same-day sort
   // moved a same-contract buyback BEFORE the SOLD-PUT that should have started
   // the cycle. The buyback then ran while currentCycle was still null and was
