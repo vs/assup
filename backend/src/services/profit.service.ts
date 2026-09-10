@@ -2,7 +2,6 @@
  * Service for calculating profit from options trading, dividends, and interest
  */
 
-import { SecType } from "@stoqey/ib";
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
 import { cnbExchangeRateService } from "./cnbExchangeRate.service.js";
@@ -902,27 +901,14 @@ class ProfitService {
           }
         }
 
-        // Fetch prices for underlyings not held as stock positions
+        // Fetch prices for underlyings not held as stock positions — concurrent
+        // and served from the shared 30s quote cache (see getStockQuotes).
         const missingSymbols = Array.from(underlyingSymbols).filter(s => !underlyingPriceMap.has(s));
         if (missingSymbols.length > 0) {
-          const pricePromises = missingSymbols.map(async (symbol) => {
-            try {
-              const isIndex = INDEX_SYMBOLS.has(symbol);
-              const data = await ibkrService.getMarketData({
-                symbol,
-                secType: isIndex ? SecType.IND : SecType.STK,
-                exchange: isIndex ? "CBOE" : "SMART",
-                currency: "USD",
-              });
-              const price = data?.last ?? data?.close;
-              if (price != null && price > 0) {
-                underlyingPriceMap.set(symbol, price);
-              }
-            } catch {
-              // Skip - price will remain missing
-            }
-          });
-          await Promise.all(pricePromises);
+          const quotes = await ibkrService.getStockQuotes(missingSymbols, { indexSymbols: INDEX_SYMBOLS });
+          for (const [symbol, price] of quotes) {
+            underlyingPriceMap.set(symbol, price);
+          }
         }
 
         for (const pos of ibkrPositions) {
@@ -1064,27 +1050,14 @@ class ProfitService {
           }
         }
 
-        // Fetch prices for underlyings not held as stock positions
+        // Fetch prices for underlyings not held as stock positions — concurrent
+        // and served from the shared 30s quote cache (see getStockQuotes).
         const missingSymbols = Array.from(underlyingSymbols).filter(s => !underlyingPriceMap.has(s));
         if (missingSymbols.length > 0) {
-          const pricePromises = missingSymbols.map(async (symbol) => {
-            try {
-              const isIndex = INDEX_SYMBOLS.has(symbol);
-              const data = await ibkrService.getMarketData({
-                symbol,
-                secType: isIndex ? SecType.IND : SecType.STK,
-                exchange: isIndex ? "CBOE" : "SMART",
-                currency: "USD",
-              });
-              const price = data?.last ?? data?.close;
-              if (price != null && price > 0) {
-                underlyingPriceMap.set(symbol, price);
-              }
-            } catch {
-              // Skip - price will remain missing
-            }
-          });
-          await Promise.all(pricePromises);
+          const quotes = await ibkrService.getStockQuotes(missingSymbols, { indexSymbols: INDEX_SYMBOLS });
+          for (const [symbol, price] of quotes) {
+            underlyingPriceMap.set(symbol, price);
+          }
         }
 
         for (const pos of positions) {

@@ -1096,19 +1096,21 @@ class IBKRService {
   }
 
   /**
-   * Fetch last/close/bid prices for a set of stock symbols, fully concurrently.
+   * Fetch last/close/bid prices for a set of underlying symbols, fully concurrently.
    *
    * Unlike the serial-batch helpers above, this fires all requests at once
    * (bounded by `concurrency`) against a single per-request deadline — so the
    * wall time is the slowest single quote, not the sum of serial batches. Recent
-   * quotes are served from a short-lived cache (STOCK_QUOTE_TTL_MS). Symbols that
-   * don't resolve within the deadline are simply omitted (no slow retry pass).
+   * quotes are served from a short-lived cache (STOCK_QUOTE_TTL_MS) shared across
+   * all callers. Symbols that don't resolve within the deadline are simply omitted
+   * (no slow retry pass). Pass `indexSymbols` to fetch those as IND/CBOE contracts
+   * (e.g. SPX, RUT) instead of the default STK/SMART.
    */
   async getStockQuotes(
     symbols: string[],
-    timeoutMs = 4000,
-    concurrency = 25,
+    opts: { timeoutMs?: number; concurrency?: number; indexSymbols?: Set<string> } = {},
   ): Promise<Map<string, number>> {
+    const { timeoutMs = 4000, concurrency = 25, indexSymbols } = opts;
     const out = new Map<string, number>();
     if (!this.api || !this.api.isConnected) return out;
 
@@ -1126,13 +1128,13 @@ class IBKRService {
 
     const fetchOne = async (symbol: string) => {
       try {
-        const data = await this.getMarketData(
-          { symbol, secType: SecType.STK, exchange: "SMART", currency: "USD" },
-          false,
-          timeoutMs,
-        );
+        const isIndex = indexSymbols?.has(symbol) ?? false;
+        const contract = isIndex
+          ? { symbol, secType: SecType.IND, exchange: "CBOE", currency: "USD" }
+          : { symbol, secType: SecType.STK, exchange: "SMART", currency: "USD" };
+        const data = await this.getMarketData(contract, false, timeoutMs);
         const price = data?.last ?? data?.close ?? data?.bid;
-        if (price != null) {
+        if (price != null && price > 0) {
           out.set(symbol, price);
           this._stockQuoteCache.set(symbol, { price, ts: Date.now() });
         }
