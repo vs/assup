@@ -121,6 +121,15 @@ export function WheelPage() {
     return data.tickers.filter((t) => t.symbol.includes(q));
   }, [data?.tickers, filter]);
 
+  // Active wheels first, idle ones dimmed below a divider
+  const { activeTickers, idleTickers } = useMemo(
+    () => ({
+      activeTickers: filteredTickers.filter((t) => t.currentPhase !== "idle"),
+      idleTickers: filteredTickers.filter((t) => t.currentPhase === "idle"),
+    }),
+    [filteredTickers]
+  );
+
   const sparklineSymbols = useMemo(
     () => data?.tickers.map((t) => t.symbol) ?? [],
     [data?.tickers]
@@ -213,6 +222,27 @@ export function WheelPage() {
   if (loading && !data) {
     return <PageLoadingSkeleton />;
   }
+
+  const renderTickerCard = (ticker: WheelTickerSummary) => {
+    const sparkline = getSparklineState(ticker.symbol);
+    return (
+      <WheelTickerCard
+        key={ticker.symbol}
+        ticker={ticker}
+        isExpanded={expandedTicker === ticker.symbol}
+        onToggle={() =>
+          setExpandedTicker(
+            expandedTicker === ticker.symbol ? null : ticker.symbol
+          )
+        }
+        onRemove={() => handleRemoveTicker(ticker.symbol)}
+        sparklineData={sparkline.data}
+        sparklineLoading={sparkline.loading}
+        sparklineError={sparkline.error}
+        onChartClick={() => setChartSymbol(ticker.symbol)}
+      />
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -379,26 +409,18 @@ export function WheelPage() {
 
       {/* Ticker Cards */}
       <div className="space-y-4 mt-4">
-        {filteredTickers.map((ticker) => {
-          const sparkline = getSparklineState(ticker.symbol);
-          return (
-            <WheelTickerCard
-              key={ticker.symbol}
-              ticker={ticker}
-              isExpanded={expandedTicker === ticker.symbol}
-              onToggle={() =>
-                setExpandedTicker(
-                  expandedTicker === ticker.symbol ? null : ticker.symbol
-                )
-              }
-              onRemove={() => handleRemoveTicker(ticker.symbol)}
-              sparklineData={sparkline.data}
-              sparklineLoading={sparkline.loading}
-              sparklineError={sparkline.error}
-              onChartClick={() => setChartSymbol(ticker.symbol)}
-            />
-          );
-        })}
+        {activeTickers.map(renderTickerCard)}
+        {activeTickers.length > 0 && idleTickers.length > 0 && (
+          <div className="border-t border-border" />
+        )}
+        {idleTickers.map((ticker) => (
+          <div
+            key={ticker.symbol}
+            className="opacity-60 transition-opacity hover:opacity-100 focus-within:opacity-100"
+          >
+            {renderTickerCard(ticker)}
+          </div>
+        ))}
         {data?.tickers.length === 0 && (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
