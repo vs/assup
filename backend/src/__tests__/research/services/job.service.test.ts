@@ -60,6 +60,22 @@ describe("jobService", () => {
     );
   });
 
+  it("marks stale queued/running jobs as failed on startup", async () => {
+    vi.mocked(prisma.researchJob.updateMany).mockResolvedValue({ count: 3 });
+
+    const count = await jobService.failStaleJobs();
+
+    expect(count).toBe(3);
+    expect(prisma.researchJob.updateMany).toHaveBeenCalledWith({
+      where: { status: { in: ["queued", "running"] } },
+      data: expect.objectContaining({
+        status: "failed",
+        error: "Server restarted while job was in progress",
+        completedAt: expect.any(Date),
+      }),
+    });
+  });
+
   it("fails a job with error message", async () => {
     vi.mocked(prisma.researchJob.update).mockResolvedValue({} as any);
     await jobService.fail("job-1", "Something went wrong");

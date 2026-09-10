@@ -37,6 +37,7 @@ import { calendarService } from "./services/calendar.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
 import { initAnalyzers } from "./services/research/analyzers/index.js";
 import { schedulerService } from "./services/research/scheduler.service.js";
+import { jobService } from "./services/research/job.service.js";
 
 
 const app = express();
@@ -227,6 +228,7 @@ initAnalyzers();
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   scanJobService.init();
+  jobService.failStaleJobs().catch(console.error);
   macroBroadcastService.start();
   calendarService.startBackgroundSync();
 

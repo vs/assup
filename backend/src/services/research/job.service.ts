@@ -72,6 +72,25 @@ class JobService {
     return job;
   }
 
+  /**
+   * Mark jobs left in "queued"/"running" state as failed (server restart scenario).
+   * Jobs run in-process, so any job still active at startup was orphaned by a restart.
+   */
+  async failStaleJobs() {
+    const result = await prisma.researchJob.updateMany({
+      where: { status: { in: ["queued", "running"] } },
+      data: {
+        status: "failed",
+        error: "Server restarted while job was in progress",
+        completedAt: new Date(),
+      },
+    });
+    if (result.count > 0) {
+      console.log(`[JobService] Marked ${result.count} stale research jobs as failed`);
+    }
+    return result.count;
+  }
+
   async fail(id: string, error: string) {
     const job = await prisma.researchJob.update({
       where: { id },
