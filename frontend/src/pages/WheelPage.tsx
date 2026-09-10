@@ -23,7 +23,7 @@ import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { Sparkline } from "@/components/Sparkline";
 import { ChartModal } from "@/components/ChartModal";
-import { useSparklines } from "@/hooks";
+import { useSparklines, useWheelUpdates } from "@/hooks";
 import { Plus, X, ChevronDown, ChevronUp, Loader2, Check, Vault, TrendingUp, TrendingUpDown, PercentCircle, CircleDot, RefreshCw, ShoppingCart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { scannerApi } from "@/api/scanner";
@@ -121,6 +121,9 @@ export function WheelPage() {
     () => readCache(CACHE_KEYS.tickers) === null
   );
   const [error, setError] = useState<string | null>(null);
+  // True while the backend's background live-data refresh is in flight (between
+  // the instant cached response and the "wheel_strategy" SSE event).
+  const [refreshing, setRefreshing] = useState(false);
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newSymbol, setNewSymbol] = useState("");
@@ -189,6 +192,9 @@ export function WheelPage() {
       setData(wheelData);
       writeCache(CACHE_KEYS.tickers, wheelData);
       setError(null);
+      // The instant response triggers a background live refresh on the server;
+      // show a spinner until the "wheel_strategy" SSE event lands (or times out).
+      setRefreshing(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
       return;
@@ -209,6 +215,31 @@ export function WheelPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Live data arrives over SSE once the backend's background fan-out finishes.
+  // Replace tickers + metrics (keep the separately-loaded suggestions) and cache.
+  useWheelUpdates((payload) => {
+    const update = payload as Partial<Pick<WheelListResponse, "tickers" | "metrics">>;
+    if (!update?.tickers || !update?.metrics) return;
+    setData((prev) => {
+      const next: WheelListResponse = {
+        tickers: update.tickers!,
+        metrics: update.metrics!,
+        suggestions: prev?.suggestions ?? [],
+      };
+      writeCache(CACHE_KEYS.tickers, next);
+      return next;
+    });
+    setRefreshing(false);
+  });
+
+  // Safety net: clear the refreshing spinner if no SSE update lands (e.g. SSE
+  // disconnected or the server-side refresh failed) so it can't spin forever.
+  useEffect(() => {
+    if (!refreshing) return;
+    const timer = setTimeout(() => setRefreshing(false), 50_000);
+    return () => clearTimeout(timer);
+  }, [refreshing]);
 
   const handleAddTicker = async () => {
     if (!newSymbol.trim()) return;
@@ -287,7 +318,7 @@ export function WheelPage() {
       <PageHeader
         title="Wheel"
         subtitle="Track your wheel strategy performance"
-        loading={loading}
+        loading={loading || refreshing}
         onRefresh={loadData}
         actions={
           <div className="flex items-center gap-2">

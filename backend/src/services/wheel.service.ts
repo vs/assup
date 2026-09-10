@@ -1094,6 +1094,84 @@ export const wheelService = {
   },
 
   /**
+   * Get tracked tickers WITHOUT any live IBKR fetch — for an instant response.
+   *
+   * Returns each ticker's last-computed summary straight from the DB cache when
+   * it's still valid for the current trades; for a cache miss it recomputes from
+   * DB trades only (no TWS round-trip). This is database-only and returns in well
+   * under a second, unlike getTrackedTickers which blocks on the multi-second
+   * market-data fan-out in fetchIBKRData. Callers pair this with computeLiveList
+   * to refresh live prices/positions in the background and push them over SSE.
+   */
+  async getCachedTrackedTickers(): Promise<WheelTickerSummary[]> {
+    const trackers = await prisma.wheelTracker.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    if (trackers.length === 0) return [];
+
+    const symbols = trackers.map((t) => t.symbol);
+    const [caches, statsEntries] = await Promise.all([
+      loadWheelSummaryCache(symbols),
+      Promise.all(
+        trackers.map(async (tracker) => {
+          const stats = await this.getTradeStats(tracker.symbol, tracker.startDate);
+          return [tracker.symbol, stats] as const;
+        })
+      ),
+    ]);
+
+    const cacheBySymbol = new Map(caches.map((c) => [c.symbol, c]));
+    const statsBySymbol = new Map(statsEntries);
+
+    const summaries = await Promise.all(
+      trackers.map(async (tracker) => {
+        const cache = cacheBySymbol.get(tracker.symbol);
+        const stats = statsBySymbol.get(tracker.symbol);
+        const cachedSummary = cache ? parseSummary(cache.summary as Prisma.JsonValue) : null;
+        // Trades-based validity only (no hasTodayTrades check — we have no IBKR
+        // data here; the background refresh corrects any intraday drift).
+        const cacheValid =
+          cachedSummary !== null &&
+          cache !== undefined &&
+          dateKey(cache.startDate) === dateKey(tracker.startDate) &&
+          stats !== undefined &&
+          cache.tradeCount === stats.tradeCount &&
+          dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate);
+
+        if (cacheValid) return cachedSummary;
+
+        // Cache miss: recompute from DB trades only. Passing no cachedData keeps
+        // this off TWS — live fields (prices, open positions) stay empty until the
+        // background refresh fills them in.
+        return this.getTickerSummary(tracker.symbol, tracker.startDate);
+      })
+    );
+
+    return summaries.sort((a, b) => {
+      const aActive = a.currentPhase !== "idle" ? 1 : 0;
+      const bActive = b.currentPhase !== "idle" ? 1 : 0;
+      return bActive - aActive;
+    });
+  },
+
+  /**
+   * Compute the full live ticker list (with fresh IBKR prices/positions) and
+   * aggregate metrics. This performs the expensive market-data fan-out and also
+   * refreshes the per-symbol DB cache via getTrackedTickers, so subsequent
+   * getCachedTrackedTickers calls return up-to-date summaries instantly.
+   */
+  async computeLiveList(): Promise<{ tickers: WheelTickerSummary[]; metrics: WheelAggregateMetrics }> {
+    const symbols = await this.getTrackerSymbols();
+    if (symbols.length === 0) {
+      return { tickers: [], metrics: this.getAggregateMetricsFromSummaries([]) };
+    }
+    const ibkrData = await this.fetchIBKRData(symbols);
+    const tickers = await this.getTrackedTickers(ibkrData);
+    const metrics = this.getAggregateMetricsFromSummaries(tickers);
+    return { tickers, metrics };
+  },
+
+  /**
    * Get detailed view for a single ticker
    */
   async getTickerDetail(symbol: string): Promise<WheelTickerDetail | null> {

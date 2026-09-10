@@ -271,3 +271,24 @@ export function useMacroUpdates(onUpdate: (data: unknown) => void) {
   }, []);
 }
 
+// Hook that receives the wheel live-data refresh ("wheel_strategy" event),
+// broadcast after the backend finishes the background IBKR fan-out.
+export function useWheelUpdates(onUpdate: (data: unknown) => void) {
+  const callbackRef = useRef(onUpdate);
+  useEffect(() => {
+    callbackRef.current = onUpdate;
+  });
+
+  useEffect(() => {
+    const unsubscribe = sseManager.subscribe();
+    const removeListener = sseManager.addListener("wheel_strategy", (data) => {
+      callbackRef.current(data);
+    });
+
+    return () => {
+      removeListener();
+      unsubscribe();
+    };
+  }, []);
+}
+

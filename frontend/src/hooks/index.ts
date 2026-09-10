@@ -6,5 +6,6 @@ export {
   useSSEConnection,
   useAllocationUpdates,
   usePositionUpdates,
+  useWheelUpdates,
 } from "./useSSE";
 export { useTickerProfile, usePrefetchTickerProfiles } from "./useTickerProfile";

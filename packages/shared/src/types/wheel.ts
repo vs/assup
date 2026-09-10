@@ -228,3 +228,11 @@ export interface WheelListResponse {
 export interface WheelSuggestionsResponse {
   suggestions: WheelSuggestion[];
 }
+
+// Payload broadcast over SSE ("wheel_strategy" event) when the background
+// live-data refresh completes. Carries the freshly computed tickers + metrics
+// so the client can replace the instant cached response it rendered first.
+export interface WheelLiveUpdate {
+  tickers: WheelTickerSummary[];
+  metrics: WheelAggregateMetrics;
+}

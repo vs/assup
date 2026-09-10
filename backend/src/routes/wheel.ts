@@ -5,42 +5,55 @@
 import { Router } from "express";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { wheelService } from "../services/index.js";
+import { sseService } from "../services/sse.js";
 import { NotFoundError, BadRequestError } from "../errors/index.js";
 
 const router = Router();
 
+// Single in-flight background refresh shared across all concurrent/repeated
+// requests. The live market-data fan-out takes tens of seconds, so we never
+// block the HTTP response on it and never run more than one at a time.
+let wheelRefreshInFlight: Promise<void> | null = null;
+
+function triggerWheelRefresh(): void {
+  if (wheelRefreshInFlight) return;
+  wheelRefreshInFlight = (async () => {
+    try {
+      const { tickers, metrics } = await wheelService.computeLiveList();
+      sseService.broadcast("wheel_strategy", { tickers, metrics });
+    } catch (err) {
+      console.error("Wheel background refresh failed:", err);
+    } finally {
+      wheelRefreshInFlight = null;
+    }
+  })();
+}
+
 /**
  * GET /api/wheel
  * List all tracked tickers with summary data, aggregate metrics, and suggestions.
- * Fetches IBKR data once and shares it between tickers and suggestions.
+ *
+ * Responds instantly from the DB summary cache (no TWS round-trip), then kicks
+ * off a background refresh that fetches live IBKR prices/positions and pushes the
+ * updated tickers + metrics over SSE as a "wheel_strategy" event. This keeps the
+ * endpoint sub-second instead of blocking ~40s on the market-data fan-out.
  */
 router.get(
   "/",
   asyncHandler(async (_req, res) => {
-    // Fetch IBKR data once, shared between tickers and suggestions
     const includeSuggestionsParam = Array.isArray(_req.query.includeSuggestions)
       ? _req.query.includeSuggestions[0]
       : _req.query.includeSuggestions;
     const includeSuggestions = includeSuggestionsParam !== "false" && includeSuggestionsParam !== "0";
 
-    const symbols = await wheelService.getTrackerSymbols();
-    if (symbols.length === 0) {
-      const metrics = wheelService.getAggregateMetricsFromSummaries([]);
-      const suggestions = includeSuggestions ? await wheelService.getSuggestions() : [];
-      res.json({ tickers: [], metrics, suggestions });
-      return;
-    }
-
-    const ibkrData = await wheelService.fetchIBKRData(symbols);
-
-    // Run tickers and suggestions in parallel using shared IBKR data
-    const [tickers, suggestions] = await Promise.all([
-      wheelService.getTrackedTickers(ibkrData),
-      includeSuggestions ? wheelService.getSuggestions(ibkrData.positions) : Promise.resolve([]),
-    ]);
-
+    const tickers = await wheelService.getCachedTrackedTickers();
     const metrics = wheelService.getAggregateMetricsFromSummaries(tickers);
+    const suggestions = includeSuggestions ? await wheelService.getSuggestions() : [];
+
     res.json({ tickers, metrics, suggestions });
+
+    // Refresh live data in the background and broadcast it when ready.
+    triggerWheelRefresh();
   })
 );
 
