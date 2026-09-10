@@ -199,6 +199,12 @@ class IBKRService {
   private _executionsInflight: Promise<{ executions: ExecutionDetail[]; commissions: Map<string, CommissionReport> }> | null = null;
   private _executionsCacheTs = 0;
 
+  // Short-lived stock quote cache (symbol → last price). Lets back-to-back
+  // callers (e.g. the wheel background refresh + detail endpoint) reuse a recent
+  // quote instead of re-hitting TWS for every symbol.
+  private _stockQuoteCache = new Map<string, { price: number; ts: number }>();
+  private static readonly STOCK_QUOTE_TTL_MS = 30_000;
+
   // Track TWS API timeouts so callers can surface warnings
   private _executionsTimedOut = false;
 
@@ -285,7 +291,7 @@ class IBKRService {
         },
       });
 
-      this.api.connect(1);
+      this.api.connect(parseInt(process.env.IB_CLIENT_ID || "1", 10));
     } catch (err) {
       console.error("Failed to connect to TWS:", err);
       this.handleError(err);
@@ -1087,6 +1093,67 @@ class IBKRService {
     }
 
     return results;
+  }
+
+  /**
+   * Fetch last/close/bid prices for a set of stock symbols, fully concurrently.
+   *
+   * Unlike the serial-batch helpers above, this fires all requests at once
+   * (bounded by `concurrency`) against a single per-request deadline — so the
+   * wall time is the slowest single quote, not the sum of serial batches. Recent
+   * quotes are served from a short-lived cache (STOCK_QUOTE_TTL_MS). Symbols that
+   * don't resolve within the deadline are simply omitted (no slow retry pass).
+   */
+  async getStockQuotes(
+    symbols: string[],
+    timeoutMs = 4000,
+    concurrency = 25,
+  ): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (!this.api || !this.api.isConnected) return out;
+
+    const now = Date.now();
+    const misses: string[] = [];
+    for (const symbol of symbols) {
+      const cached = this._stockQuoteCache.get(symbol);
+      if (cached && now - cached.ts < IBKRService.STOCK_QUOTE_TTL_MS) {
+        out.set(symbol, cached.price);
+      } else {
+        misses.push(symbol);
+      }
+    }
+    if (misses.length === 0) return out;
+
+    const fetchOne = async (symbol: string) => {
+      try {
+        const data = await this.getMarketData(
+          { symbol, secType: SecType.STK, exchange: "SMART", currency: "USD" },
+          false,
+          timeoutMs,
+        );
+        const price = data?.last ?? data?.close ?? data?.bid;
+        if (price != null) {
+          out.set(symbol, price);
+          this._stockQuoteCache.set(symbol, { price, ts: Date.now() });
+        }
+      } catch {
+        // No data for this symbol within the deadline — omit it.
+      }
+    };
+
+    // Sliding-window pool: keep up to `concurrency` requests in flight at once.
+    let next = 0;
+    const worker = async () => {
+      while (next < misses.length) {
+        const idx = next++;
+        await fetchOne(misses[idx]);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, misses.length) }, worker),
+    );
+
+    return out;
   }
 
   /**
