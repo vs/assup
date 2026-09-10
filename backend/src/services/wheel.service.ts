@@ -84,7 +84,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 7;
+const WHEEL_CACHE_VERSION = 8;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -297,6 +297,7 @@ function buildLivePositions(
       marketPrice: currentPrice,
       pnl,
       pnlPercent,
+      projectedProfit: null,
     });
   }
 
@@ -393,6 +394,8 @@ function buildLivePositions(
           pnl,
           pnlPercent,
           theta,
+          // Net credit kept if both legs expire worthless (negative for debit spreads).
+          projectedProfit: netAvgCost * qty * 100,
         });
       }
     }
@@ -451,6 +454,8 @@ function buildLivePositions(
       pnl,
       pnlPercent,
       theta,
+      // Full premium kept if the short option expires worthless.
+      projectedProfit: p.avgCost * qty,
     });
   }
 

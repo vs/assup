@@ -1060,6 +1060,16 @@ function ActivePositions({
   const fmtPct = (v: number | null) =>
     v == null ? "" : ` ${v >= 0 ? "+" : ""}${v.toFixed(0)}%`;
 
+  // Total premium kept if every short option here expires worthless.
+  const hasProjected = positions.some((p) => p.projectedProfit != null);
+  const totalProjected = positions.reduce((sum, p) => sum + (p.projectedProfit ?? 0), 0);
+
+  const projectedCell = (p: WheelLivePosition) => (
+    <td className={`px-3 py-2 text-right tabular-nums ${pnlColor(p.projectedProfit)}`}>
+      {p.projectedProfit != null ? fmtPnL(p.projectedProfit) : "—"}
+    </td>
+  );
+
   // Action cell: Close button, or "price x qty / Adjust" when a close order exists
   const renderActionCell = (p: WheelLivePosition) => {
     const closeTarget = wheelLegToClosePosition(symbol, p);
@@ -1106,6 +1116,7 @@ function ActivePositions({
             <th className="text-right font-normal px-3 py-1.5">Mkt</th>
             <th className="text-right font-normal px-3 py-1.5">Theta</th>
             <th className="text-right font-normal px-3 py-1.5">P&L</th>
+            <th className="text-right font-normal px-3 py-1.5" title="Profit if the short option expires worthless">Projected</th>
             <th className="px-2 py-2" />
           </tr>
         </thead>
@@ -1123,6 +1134,7 @@ function ActivePositions({
               <td className={`px-3 py-2 text-right tabular-nums font-medium ${pnlColor(shares.pnl)}`}>
                 {fmtPnL(shares.pnl)}{fmtPct(shares.pnlPercent)}
               </td>
+              {projectedCell(shares)}
               <td className="px-2 py-2" />
             </tr>
           )}
@@ -1147,6 +1159,7 @@ function ActivePositions({
               <td className={`px-3 py-2 text-right tabular-nums font-medium ${pnlColor(c.pnl)}`}>
                 {fmtPnL(c.pnl)}{fmtPct(c.pnlPercent)}
               </td>
+              {projectedCell(c)}
               {renderActionCell(c)}
             </tr>
           ))}
@@ -1171,10 +1184,25 @@ function ActivePositions({
               <td className={`px-3 py-2 text-right tabular-nums font-medium ${pnlColor(p.pnl)}`}>
                 {fmtPnL(p.pnl)}{fmtPct(p.pnlPercent)}
               </td>
+              {projectedCell(p)}
               {renderActionCell(p)}
             </tr>
           ))}
         </tbody>
+        {hasProjected && (
+          <tfoot>
+            <tr className="border-t">
+              <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={4}>
+                Projected if worthless
+              </td>
+              <td className="px-3 py-2" />
+              <td className={`px-3 py-2 text-right tabular-nums font-semibold ${pnlColor(totalProjected)}`}>
+                {fmtPnL(totalProjected)}
+              </td>
+              <td className="px-2 py-2" />
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

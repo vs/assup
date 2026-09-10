@@ -118,6 +118,12 @@ export interface WheelLivePosition {
   pnl: number | null;
   /** % return on shares, or % of premium captured for options */
   pnlPercent: number | null;
+  /**
+   * Profit still to be earned if the (short) option expires worthless — i.e. the
+   * net premium kept. Positive for short legs/credit spreads, negative for debit
+   * spreads. null for shares (they don't expire).
+   */
+  projectedProfit: number | null;
   /** Daily theta decay in $ (positive = earning from decay) */
   theta?: number;
   /** Short strike of a spread (the sold leg) */
