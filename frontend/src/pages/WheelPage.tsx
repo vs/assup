@@ -841,117 +841,75 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
     return <div className="py-4 text-center text-muted-foreground">No data</div>;
   }
 
-  const INITIAL_CYCLE_LIMIT = 5;
+  const INITIAL_CYCLE_LIMIT = 3;
 
-  // Show last N cycles by default (always including in-progress ones)
-  const allCycles = detail.cycles;
-  const recentCycles = showAllCycles
+  // Newest cycles first; show the last N by default (always including in-progress)
+  const allCycles = [...detail.cycles].reverse();
+  const visibleCycles = showAllCycles
     ? allCycles
-    : allCycles.slice(-INITIAL_CYCLE_LIMIT);
+    : allCycles.slice(0, INITIAL_CYCLE_LIMIT);
   const hasOlderCycles = allCycles.length > INITIAL_CYCLE_LIMIT;
 
-  // Default to the last cycle if none selected
-  const selectedCycle = recentCycles.find((c) => c.cycleNumber === selectedCycleNumber)
-    || recentCycles[recentCycles.length - 1];
+  // Default to the most recent cycle if none selected
+  const selectedCycle = allCycles.find((c) => c.cycleNumber === selectedCycleNumber)
+    || allCycles[0];
+
+  const hasPositions = detail.livePositions?.length > 0;
+
+  const cycleList = allCycles.length > 0 ? (
+    <div className="rounded-lg border bg-card">
+      <div className="flex items-center justify-between px-3 py-2 border-b">
+        <h4 className="text-xs font-medium text-muted-foreground">
+          Cycles <span className="tabular-nums">({allCycles.length})</span>
+        </h4>
+        {hasOlderCycles && (
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={() => setShowAllCycles((v) => !v)}
+          >
+            {showAllCycles ? "Show less" : "Show all"}
+          </button>
+        )}
+      </div>
+      <div className={`divide-y divide-border/50 ${showAllCycles ? "max-h-64 overflow-y-auto" : ""}`}>
+        {visibleCycles.map((cycle) => (
+          <CycleRow
+            key={cycle.cycleNumber}
+            cycle={cycle}
+            selected={selectedCycle?.cycleNumber === cycle.cycleNumber}
+            onSelect={() => setSelectedCycleNumber(cycle.cycleNumber)}
+          />
+        ))}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-4">
-      {/* Cycle Summary Cards */}
-      <div className="flex gap-4 overflow-x-auto p-2">
-        {hasOlderCycles && !showAllCycles && (
-          <Card
-            className="min-w-[120px] cursor-pointer transition-all hover:bg-muted/50 flex items-center justify-center border-dashed"
-            onClick={() => setShowAllCycles(true)}
-          >
-            <CardContent className="pt-4 text-center">
-              <div className="text-sm text-muted-foreground">
-                {allCycles.length - recentCycles.length} more
-                {allCycles.length - recentCycles.length === 1 ? " cycle" : " cycles"}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        {recentCycles.map((cycle) => (
-          <Card
-            key={cycle.cycleNumber}
-            className={`min-w-[220px] cursor-pointer transition-all ${
-              cycle.status === "in_progress" ? "border-primary" : ""
-            } ${
-              selectedCycle?.cycleNumber === cycle.cycleNumber
-                ? "ring-2 ring-primary ring-offset-2"
-                : "hover:bg-muted/50"
-            }`}
-            onClick={() => setSelectedCycleNumber(cycle.cycleNumber)}
-          >
-            <CardContent className="pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-medium">Cycle {cycle.cycleNumber}</span>
-                <Badge variant={cycle.status === "in_progress" ? "default" : "secondary"}>
-                  {cycle.status === "in_progress"
-                    ? "In Progress"
-                    : cycle.status === "called_away"
-                    ? "Called Away"
-                    : cycle.status === "expired_worthless"
-                    ? "Expired"
-                    : cycle.status === "closed"
-                    ? "Closed"
-                    : "Sold"}
-                </Badge>
-              </div>
-              {/* Entry/Exit info */}
-              <div className="text-xs space-y-1 mb-2">
-                <div className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-muted-foreground">
-                    {cycle.entryDescription} ({cycle.startDate})
-                  </span>
-                </div>
-                {cycle.exitDescription ? (
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-muted-foreground">
-                      {cycle.exitDescription} ({cycle.endDate})
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-muted-foreground">
-                      Running...
-                    </span>
-                  </div>
-                )}
-              </div>
-              <CycleSummaryMetrics cycle={cycle} />
-              <div className="text-xs text-muted-foreground mt-2">
-                {cycle.durationDays} days • {cycle.trades.length} trades
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Active positions + trade log for selected cycle */}
-      {detail.livePositions?.length > 0 ? (
-        <div className="grid grid-cols-[1fr_2fr] gap-6 items-start">
-          <ActivePositions
-            positions={detail.livePositions}
-            symbol={symbol}
-            openOrders={openOrders}
-            onClosePosition={(pos, order) => {
-              setClosePosition(pos);
-              setExistingOrderForDialog(order);
-            }}
-          />
-          {selectedCycle ? (
-            <CycleTradesView cycle={selectedCycle} />
-          ) : (
-            <div className="text-sm text-muted-foreground py-4">
-              No trade history yet — import a FLEX report to see trades.
-            </div>
-          )}
+      {/* Positions (left) + cycle list (right) */}
+      {hasPositions ? (
+        <div className="grid grid-cols-[1.4fr_1fr] gap-6 items-start">
+          <div className="space-y-2">
+            <h4 className="text-xs font-medium text-muted-foreground">Positions</h4>
+            <ActivePositions
+              positions={detail.livePositions}
+              symbol={symbol}
+              openOrders={openOrders}
+              onClosePosition={(pos, order) => {
+                setClosePosition(pos);
+                setExistingOrderForDialog(order);
+              }}
+            />
+          </div>
+          {cycleList}
         </div>
-      ) : selectedCycle ? (
+      ) : (
+        cycleList
+      )}
+
+      {/* Trade log for the selected cycle */}
+      {selectedCycle ? (
         <CycleTradesView cycle={selectedCycle} />
       ) : (
         <div className="text-center text-muted-foreground py-4">
@@ -978,63 +936,69 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   );
 }
 
-// Display cycle P&L metrics from the cycle's pre-calculated fields
-function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCycle }) {
-  const isCompleted = cycle.status !== "in_progress";
+const CYCLE_STATUS_LABELS: Record<string, string> = {
+  in_progress: "In Progress",
+  called_away: "Called Away",
+  expired_worthless: "Expired",
+  closed: "Closed",
+  sold_shares: "Sold",
+};
 
-  if (isCompleted) {
-    // Completed cycles: show just P&L with percentage
-    return (
-      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-        <div>
-          <div className="text-muted-foreground">P&L</div>
-          <div className={`font-medium ${cycle.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {cycle.realizedPnL >= 0 ? "+" : ""}{formatCurrency(cycle.realizedPnL)}
-            {cycle.pnlPercent !== null && (
-              <span className="text-xs ml-1">({cycle.pnlPercent.toFixed(1)}%)</span>
-            )}
-          </div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">ROC</div>
-          <div className="font-medium">
-            {cycle.roc.toFixed(1)}%
-            <span className="text-xs text-muted-foreground ml-1">
-              ({cycle.annualizedRoc.toFixed(0)}% ann.)
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+/** One compact, selectable row in the cycle list. */
+function CycleRow({
+  cycle,
+  selected,
+  onSelect,
+}: {
+  cycle: import("@assup/shared").WheelCycle;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const inProgress = cycle.status === "in_progress";
+  // In-progress P&L is realized + unrealized; completed cycles carry P&L in realizedPnL.
+  const pnl = inProgress
+    ? cycle.realizedPnL + (cycle.unrealizedPnL ?? 0)
+    : cycle.realizedPnL;
+  const endLabel = inProgress ? "now" : (cycle.endDate ? formatShortExpiry(cycle.endDate) : "—");
 
-  // In-progress cycles: show Realized | Unrealized
   return (
-    <div className="mt-2 space-y-2 text-sm">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <div className="text-muted-foreground">Realized</div>
-          <div className={`font-medium ${cycle.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {cycle.realizedPnL >= 0 ? "+" : ""}{formatCurrency(cycle.realizedPnL)}
-          </div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">Unrealized</div>
-          <div className={`font-medium ${(cycle.unrealizedPnL ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {(cycle.unrealizedPnL ?? 0) >= 0 ? "+" : ""}{formatCurrency(cycle.unrealizedPnL ?? 0)}
-          </div>
-        </div>
-      </div>
-      <div>
-        <div className="text-muted-foreground">ROC</div>
-        <div className="font-medium">
-          {cycle.roc.toFixed(1)}%
-          <span className="text-xs text-muted-foreground ml-1">
-            ({cycle.annualizedRoc.toFixed(0)}% ann.)
-          </span>
-        </div>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onSelect}
+      title={cycle.exitDescription ?? cycle.entryDescription}
+      className={`group flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+        selected
+          ? "bg-primary/10 border-l-2 border-l-primary"
+          : "border-l-2 border-l-transparent hover:bg-muted/50"
+      }`}
+    >
+      {/* Status dot */}
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${
+          inProgress ? "bg-green-500 animate-pulse" : "bg-muted-foreground/40"
+        }`}
+        title={CYCLE_STATUS_LABELS[cycle.status] ?? cycle.status}
+      />
+      {/* Cycle number */}
+      <span className="w-7 shrink-0 font-medium tabular-nums text-muted-foreground">
+        #{cycle.cycleNumber}
+      </span>
+      {/* Date range */}
+      <span className="flex-1 truncate text-xs text-muted-foreground tabular-nums">
+        {formatShortExpiry(cycle.startDate)} <span className="opacity-50">→</span> {endLabel}
+      </span>
+      {/* P&L */}
+      <span className={`w-16 shrink-0 text-right font-medium tabular-nums ${pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+        {pnl >= 0 ? "+" : ""}{formatCurrency(pnl)}
+      </span>
+      {/* ROC */}
+      <span
+        className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground"
+        title={`${cycle.annualizedRoc.toFixed(0)}% annualized`}
+      >
+        {cycle.roc.toFixed(1)}%
+      </span>
+    </button>
   );
 }
 
