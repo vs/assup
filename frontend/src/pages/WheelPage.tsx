@@ -7,8 +7,10 @@ import type {
   WheelMatchedTrade,
   WheelLivePosition,
   SparklinePoint,
+  CurrentOptionPosition,
+  Order,
 } from "@assup/shared";
-import { formatCurrency } from "@assup/shared";
+import { formatCurrency, formatDisplayName } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +29,7 @@ import type { LucideIcon } from "lucide-react";
 import { scannerApi } from "@/api/scanner";
 import type { ScannerCriteria } from "@assup/shared";
 import { OptionsBuilderDialog } from "@/components/options-builder/OptionsBuilderDialog";
+import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
 import {
   Dialog,
   DialogContent,
@@ -70,6 +73,41 @@ const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 function formatShortExpiry(expiry: string): string {
   const [, m, d] = expiry.split("-");
   return `${SHORT_MONTHS[parseInt(m, 10) - 1]}${parseInt(d, 10)}`;
+}
+
+/**
+ * Map a wheel option leg to the position shape ClosePositionDialog expects.
+ * Wheel single legs are always short, so quantity is negated (→ buy to close)
+ * and per-share avgCost becomes per-contract.
+ */
+function wheelLegToClosePosition(
+  symbol: string,
+  pos: WheelLivePosition
+): CurrentOptionPosition | null {
+  if ((pos.type !== "put" && pos.type !== "call") || pos.strike == null || !pos.expiry) {
+    return null;
+  }
+  const right = pos.type === "call" ? "C" : "P";
+  return {
+    symbol,
+    displayName: formatDisplayName({
+      symbol,
+      secType: "OPT",
+      strike: pos.strike,
+      right,
+      lastTradeDateOrContractMonth: pos.expiry.replace(/-/g, ""),
+    }),
+    underlying: symbol,
+    strike: pos.strike,
+    expiry: pos.expiry,
+    right,
+    quantity: -pos.quantity,
+    avgCost: pos.avgCost * 100,
+    marketPrice: pos.marketPrice ?? 0,
+    marketValue: -(pos.marketPrice ?? 0) * pos.quantity * 100,
+    unrealizedPnl: pos.pnl ?? 0,
+    projectedProfit: 0,
+  };
 }
 
 export function WheelPage() {
@@ -769,8 +807,11 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   const [loading, setLoading] = useState(() => readCache(cacheKey) === null);
   const [selectedCycleNumber, setSelectedCycleNumber] = useState<number | null>(null);
   const [showAllCycles, setShowAllCycles] = useState(false);
+  const [openOrders, setOpenOrders] = useState<Order[]>([]);
+  const [closePosition, setClosePosition] = useState<CurrentOptionPosition | null>(null);
+  const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
 
-  useEffect(() => {
+  const loadDetail = useCallback(() => {
     api.wheel
       .detail(symbol)
       .then((data) => {
@@ -780,6 +821,17 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [symbol, cacheKey]);
+
+  const loadOrders = useCallback(() => {
+    api.orders.list()
+      .then(setOpenOrders)
+      .catch(() => setOpenOrders([]));
+  }, []);
+
+  useEffect(() => {
+    loadDetail();
+    loadOrders();
+  }, [loadDetail, loadOrders]);
 
   if (loading) {
     return <div className="py-4 text-center text-muted-foreground">Loading...</div>;
@@ -882,7 +934,15 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       {/* Active positions + trade log for selected cycle */}
       {detail.livePositions?.length > 0 ? (
         <div className="grid grid-cols-[1fr_2fr] gap-6 items-start">
-          <ActivePositions positions={detail.livePositions} />
+          <ActivePositions
+            positions={detail.livePositions}
+            symbol={symbol}
+            openOrders={openOrders}
+            onClosePosition={(pos, order) => {
+              setClosePosition(pos);
+              setExistingOrderForDialog(order);
+            }}
+          />
           {selectedCycle ? (
             <CycleTradesView cycle={selectedCycle} />
           ) : (
@@ -898,6 +958,22 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
           No wheel cycles found. Sell a PUT or buy shares to start tracking.
         </div>
       )}
+
+      <ClosePositionDialog
+        open={!!closePosition}
+        onOpenChange={(open) => {
+          if (!open) {
+            setClosePosition(null);
+            setExistingOrderForDialog(null);
+          }
+        }}
+        position={closePosition}
+        existingOrder={existingOrderForDialog}
+        onOrderPlaced={() => {
+          loadOrders();
+          loadDetail();
+        }}
+      />
     </div>
   );
 }
@@ -962,7 +1038,17 @@ function CycleSummaryMetrics({ cycle }: { cycle: import("@assup/shared").WheelCy
   );
 }
 
-function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
+function ActivePositions({
+  positions,
+  symbol,
+  openOrders,
+  onClosePosition,
+}: {
+  positions: WheelLivePosition[];
+  symbol: string;
+  openOrders: Order[];
+  onClosePosition: (pos: CurrentOptionPosition, existingOrder: Order | null) => void;
+}) {
   const shares = positions.find((p) => p.type === "shares");
   // CC and Call Spreads together, sorted by expiry
   const callSide = positions
@@ -982,6 +1068,39 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
   const fmtPct = (v: number | null) =>
     v == null ? "" : ` ${v >= 0 ? "+" : ""}${v.toFixed(0)}%`;
 
+  // Action cell: Close button, or "price x qty / Adjust" when a close order exists
+  const renderActionCell = (p: WheelLivePosition) => {
+    const closeTarget = wheelLegToClosePosition(symbol, p);
+    if (!closeTarget) return <td className="px-2 py-1.5" />;
+    const matchingOrder = openOrders.find(
+      (o) => o.action === "BUY" && o.secType === "OPT" && o.displayName === closeTarget.displayName
+    );
+    return (
+      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+        {matchingOrder ? (
+          <span
+            className="cursor-pointer group/order relative text-xs tabular-nums"
+            onClick={() => onClosePosition(closeTarget, matchingOrder)}
+          >
+            {formatCurrency(matchingOrder.limitPrice ?? 0)} x {matchingOrder.quantity}
+            <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/order:opacity-100 bg-card text-xs">
+              Adjust
+            </span>
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => onClosePosition(closeTarget, null)}
+          >
+            Close
+          </Button>
+        )}
+      </td>
+    );
+  };
+
   return (
     <div className="rounded-lg border bg-card">
       <table className="w-full text-sm">
@@ -992,6 +1111,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
             <th className="text-right font-normal px-4 py-2">Mkt Price</th>
             <th className="text-right font-normal px-4 py-2">Theta</th>
             <th className="text-right font-normal px-4 py-2">P&L</th>
+            <th className="px-2 py-2" />
           </tr>
         </thead>
         <tbody>
@@ -1008,6 +1128,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(shares.pnl)}`}>
                 {fmtPnL(shares.pnl)}{fmtPct(shares.pnlPercent)}
               </td>
+              <td className="px-2 py-1.5" />
             </tr>
           )}
           {callSide.map((c, i) => (
@@ -1031,6 +1152,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(c.pnl)}`}>
                 {fmtPnL(c.pnl)}{fmtPct(c.pnlPercent)}
               </td>
+              {renderActionCell(c)}
             </tr>
           ))}
           {putSide.map((p, i) => (
@@ -1054,6 +1176,7 @@ function ActivePositions({ positions }: { positions: WheelLivePosition[] }) {
               <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(p.pnl)}`}>
                 {fmtPnL(p.pnl)}{fmtPct(p.pnlPercent)}
               </td>
+              {renderActionCell(p)}
             </tr>
           ))}
         </tbody>
