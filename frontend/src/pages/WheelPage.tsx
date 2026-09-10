@@ -857,8 +857,8 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   const hasPositions = detail.livePositions?.length > 0;
 
   const cycleList = allCycles.length > 0 ? (
-    <div className="rounded-lg border bg-card">
-      <div className="flex items-center justify-between px-3 py-2 border-b">
+    <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="flex h-9 items-center justify-between border-b bg-muted/30 px-3">
         <h4 className="text-xs font-medium text-muted-foreground">
           Cycles <span className="tabular-nums">({allCycles.length})</span>
         </h4>
@@ -890,18 +890,15 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
       {/* Positions (left) + cycle list (right) */}
       {hasPositions ? (
         <div className="grid grid-cols-[1.4fr_1fr] gap-6 items-start">
-          <div className="space-y-2">
-            <h4 className="text-xs font-medium text-muted-foreground">Positions</h4>
-            <ActivePositions
-              positions={detail.livePositions}
-              symbol={symbol}
-              openOrders={openOrders}
-              onClosePosition={(pos, order) => {
-                setClosePosition(pos);
-                setExistingOrderForDialog(order);
-              }}
-            />
-          </div>
+          <ActivePositions
+            positions={detail.livePositions}
+            symbol={symbol}
+            openOrders={openOrders}
+            onClosePosition={(pos, order) => {
+              setClosePosition(pos);
+              setExistingOrderForDialog(order);
+            }}
+          />
           {cycleList}
         </div>
       ) : (
@@ -1035,12 +1032,12 @@ function ActivePositions({
   // Action cell: Close button, or "price x qty / Adjust" when a close order exists
   const renderActionCell = (p: WheelLivePosition) => {
     const closeTarget = wheelLegToClosePosition(symbol, p);
-    if (!closeTarget) return <td className="px-2 py-1.5" />;
+    if (!closeTarget) return <td className="px-2 py-2" />;
     const matchingOrder = openOrders.find(
       (o) => o.action === "BUY" && o.secType === "OPT" && o.displayName === closeTarget.displayName
     );
     return (
-      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+      <td className="px-2 py-2 text-right whitespace-nowrap">
         {matchingOrder ? (
           <span
             className="cursor-pointer group/order relative text-xs tabular-nums"
@@ -1066,38 +1063,41 @@ function ActivePositions({
   };
 
   return (
-    <div className="rounded-lg border bg-card">
+    <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="flex h-9 items-center border-b bg-muted/30 px-3">
+        <h4 className="text-xs font-medium text-muted-foreground">Positions</h4>
+      </div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-xs text-muted-foreground border-b">
-            <th className="text-left font-normal px-4 py-2">Position</th>
-            <th className="text-right font-normal px-4 py-2">Avg Cost</th>
-            <th className="text-right font-normal px-4 py-2">Mkt Price</th>
-            <th className="text-right font-normal px-4 py-2">Theta</th>
-            <th className="text-right font-normal px-4 py-2">P&L</th>
+          <tr className="border-b text-[11px] uppercase tracking-wide text-muted-foreground/60">
+            <th className="text-left font-normal px-3 py-1.5">Position</th>
+            <th className="text-right font-normal px-3 py-1.5">Avg Cost</th>
+            <th className="text-right font-normal px-3 py-1.5">Mkt</th>
+            <th className="text-right font-normal px-3 py-1.5">Theta</th>
+            <th className="text-right font-normal px-3 py-1.5">P&L</th>
             <th className="px-2 py-2" />
           </tr>
         </thead>
         <tbody>
           {shares && (
             <tr className="border-b border-border/50">
-              <td className="px-4 py-1.5 font-medium">
+              <td className="px-3 py-2 font-medium">
                 {shares.quantity} shares
               </td>
-              <td className="px-4 py-1.5 text-right tabular-nums">${shares.avgCost.toFixed(2)}</td>
-              <td className="px-4 py-1.5 text-right tabular-nums">
+              <td className="px-3 py-2 text-right tabular-nums">${shares.avgCost.toFixed(2)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">
                 {shares.marketPrice != null ? `$${shares.marketPrice.toFixed(2)}` : "—"}
               </td>
-              <td className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">—</td>
-              <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(shares.pnl)}`}>
+              <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
+              <td className={`px-3 py-2 text-right tabular-nums font-medium ${pnlColor(shares.pnl)}`}>
                 {fmtPnL(shares.pnl)}{fmtPct(shares.pnlPercent)}
               </td>
-              <td className="px-2 py-1.5" />
+              <td className="px-2 py-2" />
             </tr>
           )}
           {callSide.map((c, i) => (
             <tr key={`c-${i}`} className="border-b border-border/50">
-              <td className="px-4 py-1.5 font-medium whitespace-nowrap">
+              <td className="px-3 py-2 font-medium whitespace-nowrap">
                 {c.type === "call-spread" ? (
                   <>CS {c.expiry ? formatShortExpiry(c.expiry) : ""} ${c.shortStrike}/{c.longStrike}</>
                 ) : (
@@ -1106,14 +1106,14 @@ function ActivePositions({
                 {c.quantity > 1 && <span className="opacity-75"> x{c.quantity}</span>}
                 {c.dte != null && <span className="text-xs text-muted-foreground ml-1">({c.dte}d)</span>}
               </td>
-              <td className="px-4 py-1.5 text-right tabular-nums">${c.avgCost.toFixed(2)}</td>
-              <td className="px-4 py-1.5 text-right tabular-nums">
+              <td className="px-3 py-2 text-right tabular-nums">${c.avgCost.toFixed(2)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">
                 {c.marketPrice != null ? `$${c.marketPrice.toFixed(2)}` : "—"}
               </td>
-              <td className={`px-4 py-1.5 text-right tabular-nums ${c.theta != null ? (c.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"}`}>
+              <td className={`px-3 py-2 text-right tabular-nums ${c.theta != null ? (c.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"}`}>
                 {c.theta != null ? formatCurrency(c.theta) : "—"}
               </td>
-              <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(c.pnl)}`}>
+              <td className={`px-3 py-2 text-right tabular-nums font-medium ${pnlColor(c.pnl)}`}>
                 {fmtPnL(c.pnl)}{fmtPct(c.pnlPercent)}
               </td>
               {renderActionCell(c)}
@@ -1121,7 +1121,7 @@ function ActivePositions({
           ))}
           {putSide.map((p, i) => (
             <tr key={`p-${i}`} className={i < putSide.length - 1 ? "border-b border-border/50" : ""}>
-              <td className="px-4 py-1.5 font-medium whitespace-nowrap">
+              <td className="px-3 py-2 font-medium whitespace-nowrap">
                 {p.type === "put-spread" ? (
                   <>PS {p.expiry ? formatShortExpiry(p.expiry) : ""} ${p.shortStrike}/{p.longStrike}</>
                 ) : (
@@ -1130,14 +1130,14 @@ function ActivePositions({
                 {p.quantity > 1 && <span className="opacity-75"> x{p.quantity}</span>}
                 {p.dte != null && <span className="text-xs text-muted-foreground ml-1">({p.dte}d)</span>}
               </td>
-              <td className="px-4 py-1.5 text-right tabular-nums">${p.avgCost.toFixed(2)}</td>
-              <td className="px-4 py-1.5 text-right tabular-nums">
+              <td className="px-3 py-2 text-right tabular-nums">${p.avgCost.toFixed(2)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">
                 {p.marketPrice != null ? `$${p.marketPrice.toFixed(2)}` : "—"}
               </td>
-              <td className={`px-4 py-1.5 text-right tabular-nums ${p.theta != null ? (p.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"}`}>
+              <td className={`px-3 py-2 text-right tabular-nums ${p.theta != null ? (p.theta >= 0 ? "text-green-600" : "text-red-600") : "text-muted-foreground"}`}>
                 {p.theta != null ? formatCurrency(p.theta) : "—"}
               </td>
-              <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${pnlColor(p.pnl)}`}>
+              <td className={`px-3 py-2 text-right tabular-nums font-medium ${pnlColor(p.pnl)}`}>
                 {fmtPnL(p.pnl)}{fmtPct(p.pnlPercent)}
               </td>
               {renderActionCell(p)}
