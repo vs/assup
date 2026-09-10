@@ -56,5 +56,8 @@ tmp/
 .superpowers/
 .playwright-mcp/
 
+# Local MCP server config (machine-specific)
+.mcp.json
+
 # Seeking Alpha browser session
 backend/.sa-session/
