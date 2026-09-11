@@ -24,8 +24,10 @@ import type { ScannerSubscription } from "@stoqey/ib";
 import { ScanCode, Instrument, LocationCode } from "@stoqey/ib";
 import type { ImportedTrade } from "@prisma/client";
 import { Subscription, lastValueFrom } from "rxjs";
-import { BadRequestError } from "../errors/index.js";
+import { BadRequestError, OrderRejectedError } from "../errors/index.js";
 import { isMarketOpen } from "../utils/market.js";
+import { orderErrorRegistry } from "./orderErrorRegistry.js";
+import { confirmOrder } from "./orderConfirmation.js";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -275,11 +277,24 @@ class IBKRService {
         },
       });
 
-      // Subscribe to errors — surface TWS messages, suppress noisy expected ones
+      // Subscribe to errors — record order-level ones, then log the rest
       this.api.error.subscribe({
         next: (err) => {
           const code = Number(err.code);
-          // Suppress high-volume expected errors:
+          const message = err.error?.message ?? "Unknown TWS error";
+
+          // Record BEFORE the noise filter below. Codes 200 and 321 are
+          // suppressed from the log because scanning emits them in bulk, but
+          // they are also genuine order rejection causes — dropping them here
+          // is what let rejected orders report success.
+          if (err.reqId > 0) {
+            const detail = err.advancedOrderReject
+              ? `${message} (${JSON.stringify(err.advancedOrderReject)})`
+              : message;
+            orderErrorRegistry.record(err.reqId, code, detail);
+          }
+
+          // Suppress high-volume expected errors from the log:
           // 200: No security definition found (during scanning)
           // 300: Can't find EId with tickerId (stale cancel after reconnect)
           // 321: Error validating request (during scanning)
@@ -1378,55 +1393,21 @@ class IBKRService {
     const orderId = await this.api.placeNewOrder(contract, order);
     console.log(`Order submitted, orderId: ${orderId}`);
 
-    // Wait briefly and check order status to catch immediate rejections
-    // TWS sends async error messages for rejected orders
-    await this.waitForOrderConfirmation(orderId);
+    // Throws OrderRejectedError if TWS refused the order or never confirmed it.
+    const status = await this.confirmOrder(orderId);
+    console.log(`Order ${orderId} confirmed with status: ${status}`);
 
     return orderId;
   }
 
   /**
-   * Wait for order confirmation or rejection from TWS
-   * Polls open orders briefly to check if order was accepted or cancelled
+   * Wait for TWS to confirm an order, throwing if it was rejected or never
+   * acknowledged. Shared by every order path (place, modify, combo, single).
    */
-  private async waitForOrderConfirmation(orderId: number): Promise<void> {
-    const maxWaitMs = 3000;
-    const pollIntervalMs = 500;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < maxWaitMs) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-
-      try {
-        const orders = await this.getAllOpenOrders();
-        const order = orders.find((o) => o.orderId === orderId);
-
-        if (order) {
-          const status = order.orderStatus?.status || order.orderState?.status;
-          console.log(`Order ${orderId} status: ${status}`);
-
-          if (status === "Cancelled" || status === "Inactive") {
-            throw new Error(`Order was ${status.toLowerCase()} by TWS`);
-          }
-
-          // Order exists and is not cancelled - consider it confirmed
-          if (status === "PreSubmitted" || status === "Submitted" || status === "Filled") {
-            console.log(`Order ${orderId} confirmed with status: ${status}`);
-            return;
-          }
-        }
-      } catch (err) {
-        // If error is our own rejection, rethrow it
-        if (err instanceof Error && err.message.includes("Order was")) {
-          throw err;
-        }
-        // Otherwise log and continue polling
-        console.debug(`Error checking order status: ${err}`);
-      }
-    }
-
-    // After timeout, assume order is ok if we didn't see rejection
-    console.log(`Order ${orderId} confirmation timeout - assuming submitted`);
+  async confirmOrder(orderId: number): Promise<string> {
+    return confirmOrder(orderId, {
+      getOpenOrders: () => this.getAllOpenOrders(),
+    });
   }
 
   /**
@@ -1630,8 +1611,8 @@ class IBKRService {
     console.log(`Modifying order ${orderId}: ${orderParams.action} ${orderParams.quantity} @ $${orderParams.limitPrice}`);
     this.api.modifyOrder(orderId, contract, order);
 
-    // Wait for confirmation like placeOrder does
-    await this.waitForOrderConfirmation(orderId);
+    // Throws OrderRejectedError if TWS refused the modification.
+    await this.confirmOrder(orderId);
   }
 
   /**
@@ -1654,18 +1635,32 @@ class IBKRService {
     while (Date.now() - startTime < maxWaitMs) {
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
 
+      // 10147/10148 ("order to cancel not found / not cancellable") are
+      // classified non-fatal — the order is already gone, which is the
+      // outcome we wanted. Anything else means the cancel genuinely failed.
+      const fatal = orderErrorRegistry.firstFatal(orderId);
+      if (fatal) {
+        orderErrorRegistry.clear(orderId);
+        throw new OrderRejectedError(
+          `TWS refused to cancel order ${orderId} (error ${fatal.code}): ${fatal.message}`,
+          fatal.code,
+        );
+      }
+
       try {
         const orders = await this.getAllOpenOrders();
         const order = orders.find((o) => o.orderId === orderId);
 
         if (!order) {
           console.log(`Order ${orderId} cancelled successfully`);
+          orderErrorRegistry.clear(orderId);
           return;
         }
 
         const status = order.orderStatus?.status || order.orderState?.status;
         if (status === "Cancelled" || status === "Inactive") {
           console.log(`Order ${orderId} confirmed cancelled`);
+          orderErrorRegistry.clear(orderId);
           return;
         }
       } catch (err) {
