@@ -9,12 +9,13 @@ import type { LucideIcon } from "lucide-react";
 interface MetricCardProps {
   label: string;
   value: string;
-  detail: string;
+  detail: string | string[];
   icon: LucideIcon;
   valueClassName?: string;
 }
 
 function MetricCard({ label, value, detail, icon: Icon, valueClassName }: MetricCardProps) {
+  const detailLines = Array.isArray(detail) ? detail : [detail];
   return (
     <Card>
       <CardContent className="py-3 px-4">
@@ -23,7 +24,11 @@ function MetricCard({ label, value, detail, icon: Icon, valueClassName }: Metric
           <Icon className="h-4 w-4 text-muted-foreground/60" />
         </div>
         <div className={`text-xl font-semibold tabular-nums ${valueClassName ?? ""}`}>{value}</div>
-        <div className="text-xs text-muted-foreground mt-1">{detail}</div>
+        <div className="mt-1 space-y-0.5">
+          {detailLines.map((line, i) => (
+            <div key={i} className="text-xs text-muted-foreground tabular-nums">{line}</div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
@@ -74,19 +79,19 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         label="Net Liquidation"
         icon={Landmark}
         value={formatCurrency(nlv)}
-        detail={`Cash ${formatCurrency(cash)} · Stocks ${formatCurrency(stockValue)}`}
+        detail={[`Cash ${formatCurrency(cash)}`, `Stocks ${formatCurrency(stockValue)}`]}
       />
       <MetricCard
         label="Puts Exposure"
         icon={ShieldAlert}
         value={formatCurrency(shortPutNotional)}
-        detail={`Sold · Bought ${formatCurrency(longPutNotional)} · Δ ${formatCurrency(putDelta)}`}
+        detail={[`Bought ${formatCurrency(longPutNotional)}`, `Δ ${formatCurrency(putDelta)}`]}
       />
       <MetricCard
         label="Calls Exposure"
         icon={ShieldCheck}
         value={formatCurrency(shortCallNotional)}
-        detail={`Sold · Bought ${formatCurrency(longCallNotional)} · Δ ${formatCurrency(callDelta)}`}
+        detail={[`Bought ${formatCurrency(longCallNotional)}`, `Δ ${formatCurrency(callDelta)}`]}
       />
       <MetricCard
         label="Daily Theta"
@@ -106,14 +111,17 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
         label="Current Month"
         icon={CalendarClock}
         value={pace ? formatCurrency(pace.estimatedTotal) : "—"}
-        detail={pace ? `Realized ${formatCurrency(pace.realized)} · Projected ${formatCurrency(pace.projected)}` : ""}
+        detail={pace ? [`Realized ${formatCurrency(pace.realized)}`, `Projected ${formatCurrency(pace.projected)}`] : ""}
         valueClassName={pace && pace.estimatedTotal >= 0 ? "text-green-600" : "text-red-600"}
       />
       <MetricCard
         label="Today's P&L"
         icon={Clock}
         value={formatCurrency(todayTotal)}
-        detail={`Realized ${formatCurrency(todayRealized)} · ${nlv > 0 ? `${(todayTotal / nlv * 100).toFixed(2)}% of portfolio` : ""}`}
+        detail={[
+          `Realized ${formatCurrency(todayRealized)}`,
+          nlv > 0 ? `${(todayTotal / nlv * 100).toFixed(2)}% of portfolio` : "",
+        ].filter(Boolean)}
         valueClassName={todayTotal >= 0 ? "text-green-600" : "text-red-600"}
       />
     </div>
