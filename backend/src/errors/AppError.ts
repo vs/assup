@@ -60,3 +60,19 @@ export class BadRequestError extends AppError {
     super(message, 400);
   }
 }
+
+/**
+ * Error for an order TWS refused or never confirmed (422)
+ *
+ * The request was well formed; the broker would not accept it. `twsCode` is the
+ * IBKR error code when the failure came from an explicit TWS rejection, and
+ * null when the order simply went unconfirmed.
+ */
+export class OrderRejectedError extends AppError {
+  public readonly twsCode: number | null;
+
+  constructor(message: string, twsCode: number | null = null) {
+    super(message, 422);
+    this.twsCode = twsCode;
+  }
+}

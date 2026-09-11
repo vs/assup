@@ -8,4 +8,5 @@ export {
   ValidationError,
   IBKRConnectionError,
   BadRequestError,
+  OrderRejectedError,
 } from "./AppError.js";
