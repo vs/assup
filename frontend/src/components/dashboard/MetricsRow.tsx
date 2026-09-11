@@ -38,8 +38,10 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
   const nlv = positionSummary?.account.netLiquidation ?? 0;
   const cash = positionSummary?.account.cashValue ?? 0;
   const stockValue = positionSummary?.summary.totalStockValue ?? 0;
-  const putNotional = positionSummary?.summary.totalPutNotional ?? 0;
-  const callNotional = positionSummary?.summary.totalCallNotional ?? 0;
+  const shortPutNotional = positionSummary?.summary.totalShortPutNotional ?? 0;
+  const longPutNotional = positionSummary?.summary.totalLongPutNotional ?? 0;
+  const shortCallNotional = positionSummary?.summary.totalShortCallNotional ?? 0;
+  const longCallNotional = positionSummary?.summary.totalLongCallNotional ?? 0;
   const putDelta = positionSummary?.summary.totalPutDelta ?? 0;
   const callDelta = positionSummary?.summary.totalCallDelta ?? 0;
   const totalTheta = positionSummary?.summary.totalTheta ?? 0;
@@ -77,14 +79,14 @@ export function MetricsRow({ positionSummary, dashboardData }: MetricsRowProps) 
       <MetricCard
         label="Puts Exposure"
         icon={ShieldAlert}
-        value={formatCurrency(putNotional)}
-        detail={`Delta ${formatCurrency(putDelta)}`}
+        value={formatCurrency(shortPutNotional)}
+        detail={`Sold · Bought ${formatCurrency(longPutNotional)} · Δ ${formatCurrency(putDelta)}`}
       />
       <MetricCard
         label="Calls Exposure"
         icon={ShieldCheck}
-        value={formatCurrency(callNotional)}
-        detail={`Delta ${formatCurrency(callDelta)}`}
+        value={formatCurrency(shortCallNotional)}
+        detail={`Sold · Bought ${formatCurrency(longCallNotional)} · Δ ${formatCurrency(callDelta)}`}
       />
       <MetricCard
         label="Daily Theta"

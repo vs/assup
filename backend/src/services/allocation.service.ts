@@ -38,7 +38,11 @@ export interface AllocationResult {
   totalOptionsNotional: number;
   totalOptionsDelta: number;
   totalPutNotional: number;
+  totalShortPutNotional: number;
+  totalLongPutNotional: number;
   totalCallNotional: number;
+  totalShortCallNotional: number;
+  totalLongCallNotional: number;
   totalPutDelta: number;
   totalCallDelta: number;
   unassignedValue: number;
@@ -88,7 +92,11 @@ class AllocationService {
     let totalOptionsNotional = 0;
     let totalOptionsDelta = 0;
     let totalPutNotional = 0;
+    let totalShortPutNotional = 0;
+    let totalLongPutNotional = 0;
     let totalCallNotional = 0;
+    let totalShortCallNotional = 0;
+    let totalLongCallNotional = 0;
     let totalPutDelta = 0;
     let totalCallDelta = 0;
 
@@ -135,9 +143,23 @@ class AllocationService {
       if (isPut) {
         totalPutNotional += Math.abs(notional);
         totalPutDelta += Math.abs(delta);
+        // Split put notional by direction: sold (short) vs bought (long).
+        // Short puts = obligation to buy; long puts = right to sell/hedge.
+        if (isShort) {
+          totalShortPutNotional += Math.abs(notional);
+        } else {
+          totalLongPutNotional += Math.abs(notional);
+        }
       } else {
         totalCallNotional += Math.abs(notional);
         totalCallDelta += Math.abs(delta);
+        // Split call notional by direction: sold (short) vs bought (long).
+        // Short calls = obligation to sell; long calls = right to buy.
+        if (isShort) {
+          totalShortCallNotional += Math.abs(notional);
+        } else {
+          totalLongCallNotional += Math.abs(notional);
+        }
       }
 
       if (pos.assetClassId && pos.assetClassName) {
@@ -239,7 +261,11 @@ class AllocationService {
       totalOptionsNotional,
       totalOptionsDelta,
       totalPutNotional,
+      totalShortPutNotional,
+      totalLongPutNotional,
       totalCallNotional,
+      totalShortCallNotional,
+      totalLongCallNotional,
       totalPutDelta,
       totalCallDelta,
       unassignedValue,

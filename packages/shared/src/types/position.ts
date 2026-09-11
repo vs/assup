@@ -68,7 +68,15 @@ export interface PositionSummaryData {
   totalOptionsNotional: number;
   totalOptionsDelta: number;
   totalPutNotional: number;
+  /** Notional of sold (short) puts only — obligation to buy underlying */
+  totalShortPutNotional: number;
+  /** Notional of bought (long) puts only — right to sell underlying */
+  totalLongPutNotional: number;
   totalCallNotional: number;
+  /** Notional of sold (short) calls only — obligation to sell underlying */
+  totalShortCallNotional: number;
+  /** Notional of bought (long) calls only — right to buy underlying */
+  totalLongCallNotional: number;
   totalPutDelta: number;
   totalCallDelta: number;
   /** Portfolio-wide daily theta in $ (sum across all option positions) */
