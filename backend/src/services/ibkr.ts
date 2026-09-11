@@ -798,8 +798,12 @@ class IBKRService {
 
       return Array.from(chainMap.values());
     } catch (err) {
+      // Never degrade an infrastructure failure into an empty chain — callers
+      // cannot tell that apart from "this symbol has no options listed", which
+      // silently turns a TWS outage into a legitimate-looking 0-result scan.
+      const reason = err instanceof Error ? err.message : String(err);
       console.error(`Failed to get option chain for ${symbol}:`, err);
-      return [];
+      throw new Error(`Option chain lookup failed for ${symbol}: ${reason}`);
     }
   }
 

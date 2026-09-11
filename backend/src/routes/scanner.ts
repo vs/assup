@@ -160,13 +160,19 @@ router.post(
     }
 
     // Scan for options opportunities
-    const opportunities = await scanOptionsForSymbols(symbolAssignments, criteria);
+    const { opportunities, failures } = await scanOptionsForSymbols(symbolAssignments, criteria);
 
     res.json({
       criteria,
       targetAssetClasses: criteria.targetAssetClasses || [],
       symbolsScanned: symbolAssignments.map((s) => s.symbol),
       opportunities,
+      failures,
+      ...(failures.length > 0 && {
+        message: `${failures.length} of ${symbolAssignments.length} symbol(s) could not be scanned: ${failures
+          .map((f) => `${f.symbol} — ${f.error}`)
+          .join("; ")}`,
+      }),
     });
   })
 );
@@ -210,7 +216,7 @@ async function scanOptionsForSymbols(
     message: `Starting scan for ${totalSymbols} symbols`,
   });
 
-  const opportunities = await scanSymbols({
+  const { opportunities, failures } = await scanSymbols({
     symbolAssignments,
     criteria,
     callbacks: {
@@ -245,16 +251,21 @@ async function scanOptionsForSymbols(
   // Sort by annualized return descending
   opportunities.sort((a, b) => b.annualizedReturn - a.annualizedReturn);
 
-  console.log(`=== Scan Complete: ${opportunities.length} total opportunities found ===\n`);
+  const failureNote = failures.length > 0 ? ` (${failures.length} symbol(s) failed to scan)` : "";
+  console.log(`=== Scan Complete: ${opportunities.length} total opportunities found${failureNote} ===\n`);
+  for (const f of failures) {
+    console.error(`[Scanner] FAILED ${f.symbol}: ${f.error}`);
+  }
 
   sseService.broadcast("scanner", {
     status: "completed",
     totalSymbols,
     opportunitiesFound: opportunities.length,
-    message: `Scan complete: ${opportunities.length} opportunities found`,
+    failures,
+    message: `Scan complete: ${opportunities.length} opportunities found${failureNote}`,
   });
 
-  return opportunities;
+  return { opportunities, failures };
 }
 
 export default router;

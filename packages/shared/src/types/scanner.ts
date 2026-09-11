@@ -60,11 +60,22 @@ export interface OptionOpportunity {
   underlyingPrice?: number;
 }
 
+/**
+ * A symbol that could not be scanned at all (TWS timeout, chain lookup
+ * failure, …). Distinct from a symbol that was scanned and simply had no
+ * contracts matching the criteria.
+ */
+export interface SymbolScanFailure {
+  symbol: string;
+  error: string;
+}
+
 export interface ScanResult {
   criteria: ScannerCriteria;
   targetAssetClasses: string[];
   symbolsScanned: string[];
   opportunities: OptionOpportunity[];
+  failures?: SymbolScanFailure[];
   message?: string;
 }
 

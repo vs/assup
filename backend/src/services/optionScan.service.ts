@@ -40,6 +40,20 @@ export interface ScanContext {
   callbacks: ScanCallbacks;
 }
 
+export interface ScanOutcome {
+  opportunities: OptionOpportunity[];
+  /**
+   * Symbols that could not be scanned (TWS timeout, chain lookup failure, …).
+   * These are NOT zero-opportunity results — the symbol was never evaluated.
+   */
+  failures: SymbolScanFailure[];
+}
+
+export interface SymbolScanFailure {
+  symbol: string;
+  error: string;
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -55,9 +69,11 @@ export interface ScanContext {
  *   5. Evaluates each contract against the criteria (return, premium, delta)
  *   6. Reports per-symbol results via `callbacks.onSymbolComplete`
  *
- * Returns the full (unsorted) array of qualifying opportunities.
+ * Returns the full (unsorted) array of qualifying opportunities, plus the list
+ * of symbols that failed to scan so callers can distinguish "nothing matched"
+ * from "we never got an answer from TWS".
  */
-export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]> {
+export async function scanSymbols(ctx: ScanContext): Promise<ScanOutcome> {
   const { symbolAssignments, criteria, signal, callbacks } = ctx;
   const symbols = Array.from(symbolAssignments.keys());
 
@@ -66,6 +82,7 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
   }
 
   const allOpportunities: OptionOpportunity[] = [];
+  const failures: SymbolScanFailure[] = [];
 
   await withLiveMarketData(async () => {
     for (const symbol of symbols) {
@@ -168,7 +185,9 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
 
         console.log(`[Scanner] ${symbol}: done, ${symbolOpportunities.length} opportunities found`);
       } catch (err) {
-        console.error(`[Scanner] ${symbol}: error —`, err instanceof Error ? err.message : String(err));
+        const reason = err instanceof Error ? err.message : String(err);
+        console.error(`[Scanner] ${symbol}: error —`, reason);
+        failures.push({ symbol, error: reason });
       }
 
       allOpportunities.push(...symbolOpportunities);
@@ -176,7 +195,7 @@ export async function scanSymbols(ctx: ScanContext): Promise<OptionOpportunity[]
     }
   });
 
-  return allOpportunities;
+  return { opportunities: allOpportunities, failures };
 }
 
 // ---------------------------------------------------------------------------

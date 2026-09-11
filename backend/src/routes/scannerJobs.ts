@@ -156,7 +156,7 @@ async function executeJobScan(
   );
 
   // Delegate to shared scan logic
-  await scanSymbols({
+  const { failures } = await scanSymbols({
     symbolAssignments,
     criteria,
     signal,
@@ -169,6 +169,17 @@ async function executeJobScan(
       },
     },
   });
+
+  // A scan where nothing could be reached is a failed job, not an empty result.
+  // Reporting "0 opportunities" would hide a TWS outage behind a normal-looking
+  // completed job.
+  if (failures.length > 0) {
+    const detail = failures.map((f) => `${f.symbol} — ${f.error}`).join("; ");
+    if (failures.length === symbolAssignments.size) {
+      throw new Error(`Scan failed for all ${failures.length} symbol(s): ${detail}`);
+    }
+    console.error(`[ScanJob ${jobId}] partial failure: ${detail}`);
+  }
 }
 
 /**
