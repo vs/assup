@@ -159,6 +159,25 @@ export async function scanSymbols(ctx: ScanContext): Promise<ScanOutcome> {
         // Get market data for options contracts
         const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
 
+        // A scan where not a single quote came back is an infrastructure
+        // failure, not an empty result: processOption skips contracts without
+        // bid/ask, so this would otherwise render as "nothing met your
+        // criteria" and look identical to a genuine zero.
+        if (marketDataMap.size === 0 && contracts.length > 0) {
+          throw new Error(
+            `No market data returned for any of ${contracts.length} contracts — ` +
+              `TWS provided no quotes. The market may be closed, or the request may have ` +
+              `exceeded IBKR's market data lines. Narrowing the expiration or strike range ` +
+              `reduces the contract count and usually resolves this.`,
+          );
+        }
+
+        if (marketDataMap.size < contracts.length / 2) {
+          console.warn(
+            `[Scanner] ${symbol}: only ${marketDataMap.size}/${contracts.length} contracts returned quotes — results are partial`,
+          );
+        }
+
         // Process PUT options
         if (scanPuts) {
           for (const entry of putFilteredChain) {

@@ -48,6 +48,15 @@ const criteria: ScannerCriteria = {
 
 const symbolAssignments = new Map([["QZAC", { name: "Stocks: Tech", color: "#fff" }]]);
 
+/** A chain entry ~30 days out at a strike inside the PUT range (underlying is mocked to 100). */
+function futureChainEntry(strike: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  const expiration = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const base = { symbol: "QZAC", secType: "OPT", strike, lastTradeDateOrContractMonth: expiration, multiplier: 100, currency: "USD" };
+  return { strike, expiration, call: { ...base, right: "C" }, put: { ...base, right: "P" } };
+}
+
 beforeEach(() => {
   getOptionChain.mockReset();
   getMarketDataBatch.mockReset();
@@ -74,6 +83,42 @@ describe("scanSymbols — TWS failures must not masquerade as zero results", () 
     ]);
     expect(result.opportunities).toHaveLength(0);
     expect(completed).toEqual([{ symbol: "QZAC", count: 0 }]);
+  });
+
+  it("reports a failure when no contract returned market data", async () => {
+    // The real-world case: the chain resolves fine, but every snapshot request
+    // times out (market closed / TWS saturated), so the scan sees no quotes.
+    getOptionChain.mockResolvedValue([futureChainEntry(90), futureChainEntry(85)]);
+    getMarketDataBatch.mockResolvedValue(new Map());
+
+    const result = await scanSymbols({
+      symbolAssignments,
+      criteria,
+      callbacks: { onSymbolComplete: () => {} },
+    });
+
+    expect(result.opportunities).toHaveLength(0);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0].symbol).toBe("QZAC");
+    expect(result.failures[0].error).toMatch(/no market data/i);
+    expect(result.failures[0].error).toContain("2");
+  });
+
+  it("does not report a failure when quotes arrive but nothing meets the criteria", async () => {
+    getOptionChain.mockResolvedValue([futureChainEntry(90)]);
+    getMarketDataBatch.mockResolvedValue(
+      new Map([["NBIS_" + futureChainEntry(90).expiration + "_90_P", { bid: 1, ask: 1.1 }]]),
+    );
+
+    const result = await scanSymbols({
+      symbolAssignments,
+      // Impossible return floor — a genuine "nothing matched" result.
+      criteria: { ...criteria, minAnnualizedReturn: 100000 },
+      callbacks: { onSymbolComplete: () => {} },
+    });
+
+    expect(result.opportunities).toHaveLength(0);
+    expect(result.failures).toEqual([]);
   });
 
   it("reports no failures when a symbol genuinely has no options listed", async () => {
