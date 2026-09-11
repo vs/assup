@@ -78,8 +78,10 @@ export function HeaderFearGauge() {
   if (!result && isConnected) return null;
 
   const labelColor = result ? getLabelColor(result.score) : "";
-  const vix = result?.components.find((c) => c.name === "VIX");
-  const sp500 = result?.components.find((c) => c.name === "S&P 500");
+  // Display live values straight from macro details — the score components
+  // require indicator data (e.g. SMA200) that may be missing from the
+  // baseline snapshot, and price display must not depend on it.
+  const details = macro?.details ?? null;
   const dimmed = !isConnected;
 
   return (
@@ -119,16 +121,19 @@ export function HeaderFearGauge() {
 
             {/* VIX + S&P details */}
             <div className="hidden lg:flex items-center gap-3 text-xs text-muted-foreground">
-              {vix && (
+              {details?.vix != null && (
                 <span className="flex items-center gap-1">
-                  VIX: <span className="font-semibold">{vix.display}</span>
-                  {vix.change != null && <DailyChangeArrow change={vix.change} />}
+                  VIX: <span className="font-semibold">{details.vix.toFixed(1)}</span>
+                  {details.vixChange != null && <DailyChangeArrow change={details.vixChange} />}
                 </span>
               )}
-              {sp500 && (
+              {details?.sp500Index != null && (
                 <span className="flex items-center gap-1">
-                  S&P: <span className="font-semibold">{sp500.display}</span>
-                  {sp500.change != null && <DailyChangeArrow change={sp500.change} />}
+                  S&P:{" "}
+                  <span className="font-semibold">
+                    {details.sp500Index.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                  </span>
+                  {details.sp500Change != null && <DailyChangeArrow change={details.sp500Change} />}
                 </span>
               )}
             </div>
