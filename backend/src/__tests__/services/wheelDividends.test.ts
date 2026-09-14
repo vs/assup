@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   parseDividendPerShare,
   buildDividendPayments,
+  attributeDividends,
   type DividendCashRow,
+  type ShareSegment,
 } from "../../services/wheelDividends.js";
 
 const row = (
@@ -110,5 +112,126 @@ describe("buildDividendPayments", () => {
         row("DIVIDEND", "2026-08-06", 66.09, "TLT(USZ958700214) CASH DIVIDEND USD 0 PER SHARE"),
       ])
     ).toThrow(/rate of 0/);
+  });
+});
+
+describe("attributeDividends", () => {
+  const payment = (payDate: string, gross: number, perShare: number, wht: number) => ({
+    payDate,
+    perShare,
+    gross,
+    withholdingTax: wht,
+    net: gross + wht,
+    sharesPaidOn: gross / perShare,
+  });
+
+  const segment = (
+    cycleNumber: number,
+    from: string,
+    to: string | null,
+    shares: number
+  ): ShareSegment => ({
+    cycleNumber,
+    from: new Date(`${from}T00:00:00.000Z`),
+    to: to ? new Date(`${to}T00:00:00.000Z`) : null,
+    shares,
+  });
+
+  it("credits the cycle holding shares on the pay date", () => {
+    const byCycle = attributeDividends(
+      "TLT",
+      [payment("2026-03-05", 33.05, 0.330454, -4.96)],
+      [segment(2, "2026-01-10", "2026-05-20", 100)]
+    );
+
+    expect([...byCycle.keys()]).toEqual([2]);
+    const [dividend] = byCycle.get(2)!;
+    expect(dividend.id).toBe("TLT-2026-03-05");
+    expect(dividend.shares).toBe(100);
+    expect(dividend.net).toBeCloseTo(28.09, 2);
+    expect(dividend.gross).toBeCloseTo(33.05, 2);
+    expect(dividend.withholdingTax).toBeCloseTo(-4.96, 2);
+  });
+
+  it("credits an open-ended segment for the in-progress cycle", () => {
+    const byCycle = attributeDividends(
+      "TLT",
+      [payment("2026-08-06", 33.05, 0.330454, -4.96)],
+      [segment(3, "2026-07-01", null, 100)]
+    );
+
+    expect(byCycle.get(3)).toHaveLength(1);
+  });
+
+  it("credits nothing to a cycle that never held shares", () => {
+    const byCycle = attributeDividends(
+      "TLT",
+      [payment("2026-03-05", 33.05, 0.330454, -4.96)],
+      []
+    );
+
+    expect(byCycle.size).toBe(0);
+  });
+
+  it("scales the payment down to the cycle's share of the holding", () => {
+    // 200 shares paid on, only 100 belong to the wheel cycle.
+    const byCycle = attributeDividends(
+      "TLT",
+      [payment("2026-03-05", 66.09, 0.330454, -9.91)],
+      [segment(1, "2026-01-10", "2026-05-20", 100)]
+    );
+
+    const [dividend] = byCycle.get(1)!;
+    expect(dividend.shares).toBe(100);
+    expect(dividend.gross).toBeCloseTo(33.045, 2);
+    expect(dividend.withholdingTax).toBeCloseTo(-4.955, 2);
+    expect(dividend.net).toBeCloseTo(28.09, 2);
+  });
+
+  it("credits a payment landing 30 days after the shares were called away", () => {
+    const byCycle = attributeDividends(
+      "TLT",
+      [payment("2026-06-19", 33.05, 0.330454, -4.96)],
+      [segment(2, "2026-01-10", "2026-05-20", 100)]
+    );
+
+    expect(byCycle.get(2)).toHaveLength(1);
+    expect(byCycle.get(2)![0].shares).toBe(100);
+  });
+
+  it("drops a payment landing 90 days after the shares were called away", () => {
+    const byCycle = attributeDividends(
+      "TLT",
+      [payment("2026-08-18", 33.05, 0.330454, -4.96)],
+      [segment(2, "2026-01-10", "2026-05-20", 100)]
+    );
+
+    expect(byCycle.size).toBe(0);
+  });
+
+  it("prefers the most recent exited cycle inside the grace window", () => {
+    const byCycle = attributeDividends(
+      "TLT",
+      [payment("2026-06-19", 33.05, 0.330454, -4.96)],
+      [
+        segment(1, "2025-11-01", "2026-01-15", 100),
+        segment(2, "2026-02-01", "2026-05-20", 100),
+      ]
+    );
+
+    expect([...byCycle.keys()]).toEqual([2]);
+  });
+
+  it("groups several payments under the same cycle in pay-date order", () => {
+    const byCycle = attributeDividends(
+      "TLT",
+      [
+        payment("2026-02-05", 33.05, 0.330454, -4.96),
+        payment("2026-03-05", 33.05, 0.330454, -4.96),
+      ],
+      [segment(1, "2026-01-10", "2026-05-20", 100)]
+    );
+
+    expect(byCycle.get(1)!.map((d) => d.payDate)).toEqual(["2026-02-05", "2026-03-05"]);
   });
 });

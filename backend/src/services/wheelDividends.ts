@@ -7,6 +7,8 @@
  * unit-testable without trade reconstruction or a database.
  */
 
+import type { WheelDividend } from "@assup/shared";
+
 /** One raw cash-transaction row, already converted to USD. */
 export interface DividendCashRow {
   type: "DIVIDEND" | "WITHHOLDING_TAX";
@@ -108,4 +110,93 @@ export function buildDividendPayments(
   }
 
   return payments.sort((a, b) => a.payDate.localeCompare(b.payDate));
+}
+
+/** A period during which one cycle held a fixed number of shares. */
+export interface ShareSegment {
+  cycleNumber: number;
+  from: Date;
+  /** null while the cycle still holds these shares */
+  to: Date | null;
+  shares: number;
+}
+
+/**
+ * How long after a share exit a dividend may still be credited to that cycle.
+ *
+ * IBKR gives us the pay date only, and pay dates trail ex-dates by 2-4 weeks, so
+ * a dividend earned before an assignment or called-away exit routinely lands after
+ * the cycle closed. The window stands in for the missing ex-date.
+ */
+export const DIVIDEND_GRACE_DAYS = 60;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Attribute each payment to the cycle that earned it, keyed by cycle number.
+ *
+ * 1. A segment covering the pay date with shares wins.
+ * 2. Otherwise the most recently exited share-holding segment, if it ended within
+ *    DIVIDEND_GRACE_DAYS before the pay date.
+ * 3. Otherwise the payment is dropped — a CSP-only cycle or a gap between cycles
+ *    earns no dividend.
+ *
+ * The credited amount is scaled by `segment.shares / payment.sharesPaidOn`, which
+ * keeps the non-wheel part of a larger holding out of the cycle and scales the
+ * withholding along with the gross.
+ */
+export function attributeDividends(
+  symbol: string,
+  payments: DividendPayment[],
+  segments: ShareSegment[]
+): Map<number, WheelDividend[]> {
+  const byCycle = new Map<number, WheelDividend[]>();
+  const holdingSegments = segments.filter((s) => s.shares > 0);
+
+  for (const payment of payments) {
+    const paidAt = new Date(`${payment.payDate}T00:00:00.000Z`).getTime();
+
+    let match = holdingSegments.find(
+      (s) => s.from.getTime() <= paidAt && (s.to === null || paidAt <= s.to.getTime())
+    );
+
+    if (!match) {
+      // Grace window: the most recent exit that is still within range.
+      let best: ShareSegment | undefined;
+      for (const segment of holdingSegments) {
+        if (segment.to === null) continue;
+        const endedAt = segment.to.getTime();
+        if (endedAt >= paidAt) continue;
+        if (paidAt - endedAt > DIVIDEND_GRACE_DAYS * DAY_MS) continue;
+        if (!best || segment.to.getTime() > best.to!.getTime()) best = segment;
+      }
+      match = best;
+    }
+
+    if (!match) continue;
+
+    const ratio = payment.sharesPaidOn > 0 ? match.shares / payment.sharesPaidOn : 0;
+    const gross = payment.gross * ratio;
+    const withholdingTax = payment.withholdingTax * ratio;
+
+    const dividend: WheelDividend = {
+      id: `${symbol}-${payment.payDate}`,
+      payDate: payment.payDate,
+      perShare: payment.perShare,
+      shares: match.shares,
+      gross,
+      withholdingTax,
+      net: gross + withholdingTax,
+    };
+
+    const existing = byCycle.get(match.cycleNumber);
+    if (existing) existing.push(dividend);
+    else byCycle.set(match.cycleNumber, [dividend]);
+  }
+
+  for (const dividends of byCycle.values()) {
+    dividends.sort((a, b) => a.payDate.localeCompare(b.payDate));
+  }
+
+  return byCycle;
 }
