@@ -95,7 +95,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 10;
+const WHEEL_CACHE_VERSION = 11;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -2248,7 +2248,9 @@ export const wheelService = {
 
       // Calculate unrealized P&L for in-progress cycles using live prices
       let unrealizedPnL = 0;
-      let openOptionPremium = 0; // Premium already counted in realized that should move to unrealized
+      // Signed cash already booked into realized for legs that are still open, and
+      // so must move to unrealized: credits for shorts, debits for longs.
+      let openOptionPremium = 0;
 
       if (cachedData) {
         // For held shares: use IBKR's avgCost (not runningCostBasis which double-counts premiums
@@ -2263,19 +2265,24 @@ export const wheelService = {
           }
         }
 
-        // For open options: use IBKR's pre-calculated unrealizedPnl
-        // IBKR's unrealizedPnl = costBasis - marketValue (premium received - cost to close)
-        // Since we already counted premium in cycleRealizedPnL, we need to move it to unrealized
-        if (optionPosition > 0 && cachedData.positions) {
+        // For open options: use IBKR's pre-calculated unrealizedPnl, which already
+        // nets the cash paid or received against the current mark.
+        //
+        // Both directions are handled: a short leg's premium and a long leg's debit
+        // were booked into cycleRealizedPnL when the trade was walked, and both must
+        // move to unrealized while the leg is still held — a debit paid for a call
+        // we still own is the cost of an asset, not a realized loss.
+        //
+        // `-avgCost * pos` recovers the signed cash booked: positive (credit) for a
+        // short leg (pos < 0), negative (debit) for a long leg (pos > 0).
+        if ((optionPosition > 0 || longOptionPosition > 0) && cachedData.positions) {
           for (const pos of cachedData.positions) {
-            if (pos.contract.secType === "OPT" &&
-                pos.contract.symbol === symbol &&
-                pos.pos < 0 && // short position
-                pos.unrealizedPnl != null) {
-              unrealizedPnL += pos.unrealizedPnl;
-              // Track the premium for this open position (avgCost is per contract)
-              openOptionPremium += pos.avgCost * Math.abs(pos.pos);
-            }
+            if (pos.contract.secType !== "OPT") continue;
+            if (pos.contract.symbol !== symbol) continue;
+            if (pos.pos === 0) continue;
+            if (pos.unrealizedPnl == null) continue;
+            unrealizedPnL += pos.unrealizedPnl;
+            openOptionPremium += -pos.avgCost * pos.pos;
           }
         }
       }

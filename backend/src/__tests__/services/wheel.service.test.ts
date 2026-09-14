@@ -735,3 +735,136 @@ describe("wheelService.getTickerSummaryWithCycles — dividends", () => {
     expect(summary.totalDividends).toBe(0);
   });
 });
+
+describe("wheelService.reconstructCycles — open long options", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Regression for the ZUX bug: buying a long CALL to open booked the full debit
+  // as realized P&L. The debit is the cost of a position that is still held, not
+  // a loss — it belongs in unrealized until the leg is closed. The correction that
+  // moves open-position cash out of realized only walked SHORT legs, so with no
+  // short open the long leg was never backed out.
+  const stockAndLongCall = () => [
+    makeTrade({
+      id: "buy-shares",
+      tradeDate: "2026-01-05",
+      symbol: "ZUX",
+      underlying: "ZUX",
+      secType: "STK",
+      quantity: 100,
+      proceeds: -2129,
+      buySell: "BUY",
+      openClose: "O",
+    }),
+    makeTrade({
+      id: "buy-long-call",
+      tradeDate: "2026-05-19",
+      symbol: "ZUX",
+      underlying: "ZUX",
+      secType: "OPT",
+      right: "C",
+      strike: 95,
+      expiry: new Date("2027-01-15"),
+      quantity: 1,
+      proceeds: -1947,
+      buySell: "BUY",
+      openClose: "O",
+    }),
+  ];
+
+  const liveData = {
+    positions: [
+      {
+        account: "U1",
+        contract: { secType: "STK", symbol: "ZUX" },
+        pos: 100,
+        avgCost: 21.29,
+        marketPrice: 95.62,
+        marketValue: 9562,
+        unrealizedPnl: 7433,
+      },
+      {
+        account: "U1",
+        contract: {
+          secType: "OPT",
+          symbol: "ZUX",
+          right: "C",
+          strike: 95,
+          lastTradeDateOrContractMonth: "20270115",
+          conId: 111,
+        },
+        pos: 1,
+        avgCost: 1947,
+        marketPrice: 24.47,
+        marketValue: 2447,
+        unrealizedPnl: 500,
+      },
+    ],
+    todayTrades: [],
+    marketPrices: new Map([["ZUX", 95.62]]),
+    optionPrices: new Map(),
+    optionThetas: new Map(),
+  };
+
+  it("does not book an open long call's debit as realized P&L", async () => {
+    const cycles = await wheelService.reconstructCycles(
+      "ZUX",
+      null,
+      [],
+      liveData as never,
+      { dbTrades: stockAndLongCall() as never, assignedOptions: [], dividendRows: [] } as never
+    );
+
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0].status).toBe("in_progress");
+    // Nothing has been closed, so nothing is realized.
+    expect(cycles[0].realizedPnL).toBeCloseTo(0, 6);
+  });
+
+  it("counts the open long call's mark-to-market in unrealized P&L", async () => {
+    const cycles = await wheelService.reconstructCycles(
+      "ZUX",
+      null,
+      [],
+      liveData as never,
+      { dbTrades: stockAndLongCall() as never, assignedOptions: [], dividendRows: [] } as never
+    );
+
+    // Shares: (95.62 - 21.29) * 100 = 7433, plus the call's 500.
+    expect(cycles[0].unrealizedPnL).toBeCloseTo(7933, 6);
+  });
+
+  it("still realizes the full result once the long call is sold to close", async () => {
+    const trades = [
+      ...stockAndLongCall(),
+      makeTrade({
+        id: "sell-long-call",
+        tradeDate: "2026-06-20",
+        symbol: "ZUX",
+        underlying: "ZUX",
+        secType: "OPT",
+        right: "C",
+        strike: 95,
+        expiry: new Date("2027-01-15"),
+        quantity: -1,
+        proceeds: 2500,
+        buySell: "SELL",
+        openClose: "C",
+      }),
+    ];
+
+    const cycles = await wheelService.reconstructCycles(
+      "ZUX",
+      null,
+      [],
+      // Only the shares remain open now.
+      { ...liveData, positions: [liveData.positions[0]] } as never,
+      { dbTrades: trades as never, assignedOptions: [], dividendRows: [] } as never
+    );
+
+    // Bought for 1947, sold for 2500 → 553 realized.
+    expect(cycles[0].realizedPnL).toBeCloseTo(553, 6);
+  });
+});
