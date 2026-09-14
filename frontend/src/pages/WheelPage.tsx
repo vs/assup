@@ -1209,38 +1209,49 @@ function ActivePositions({
   );
 }
 
+/**
+ * Row text for the cycle trade table. Two rules keep every row parallel:
+ *
+ * - `open` states what opened the position in the past tense, taken verbatim
+ *   from the leg's action ("Bought 100 shares", "Sold PUT") plus the contract
+ *   and the price paid or received.
+ * - `close` states how it ended, again past tense, and is never empty — a
+ *   position still running reads "Still open". The caller prefixes every
+ *   outcome with an arrow, so no variant carries its own.
+ */
 function formatTradeDesc(trade: WheelMatchedTrade): { open: string; close: string; date: string } {
   const date = trade.openLeg?.date ?? trade.closeLeg?.date ?? "";
+  const priceSuffix = (price: number | null | undefined) =>
+    price != null && price > 0 ? ` @ $${price.toFixed(2)}` : "";
 
   if (!trade.openLeg) {
     const cp = trade.closeLeg;
-    const price = cp?.price != null && cp.price > 0 ? ` @ $${cp.price.toFixed(2)}` : "";
-    return { open: "Rolled from previous", close: `${cp?.action ?? ""}${price}`, date };
+    return {
+      open: "Rolled from previous cycle",
+      close: `${cp?.action ?? "Closed"}${priceSuffix(cp?.price)}`,
+      date,
+    };
   }
 
   let open: string;
   if (trade.type === "STOCK") {
-    open = `Buy ${trade.openLeg.quantity} shares @ $${trade.openLeg.price.toFixed(2)}`;
+    open = `${trade.openLeg.action}${priceSuffix(trade.openLeg.price)}`;
   } else {
     const parts = trade.displayName.split(" ");
     if (parts.length >= 4) {
-      open = `${trade.openLeg.action} $${parts[2]} ${parts[1]} @ $${trade.openLeg.price.toFixed(2)}`;
+      open = `${trade.openLeg.action} $${parts[2]} ${parts[1]}${priceSuffix(trade.openLeg.price)}`;
     } else {
-      const price = trade.openLeg.price > 0 ? ` @ $${trade.openLeg.price.toFixed(2)}` : "";
-      open = `${trade.openLeg.action}${price}`;
+      open = `${trade.openLeg.action}${priceSuffix(trade.openLeg.price)}`;
     }
   }
 
   let close: string;
   if (trade.status === "open") {
-    close = "open";
+    close = "Still open";
   } else if (trade.closeLeg) {
-    const price = trade.closeLeg.price != null && trade.closeLeg.price > 0
-      ? ` @ $${trade.closeLeg.price.toFixed(2)}`
-      : "";
-    close = `${trade.closeLeg.action}${price}`;
+    close = `${trade.closeLeg.action}${priceSuffix(trade.closeLeg.price)}`;
   } else {
-    close = "";
+    close = "Closed";
   }
 
   return { open, close, date };
@@ -1329,10 +1340,12 @@ function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle 
                 <tr key={`div-${d.id}`} className="border-b border-border/30 last:border-0">
                   <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap">{d.payDate}</td>
                   <td className="py-1 pr-2 whitespace-nowrap">
-                    Dividend ${d.perShare.toFixed(4)} × {d.shares} shares
+                    Received dividend ${d.perShare.toFixed(4)} × {d.shares} shares
                   </td>
                   <td className="py-1 pr-2 whitespace-nowrap text-muted-foreground">
-                    gross {formatCurrency(d.gross)} · wht {formatCurrency(d.withholdingTax)}
+                    → {d.withholdingTax < 0
+                      ? `Withheld ${formatCurrency(Math.abs(d.withholdingTax))} tax`
+                      : "No tax withheld"}
                   </td>
                   <td className="py-1 text-right tabular-nums whitespace-nowrap font-medium">
                     <span className="text-green-600">+{formatCurrency(d.net)}</span>
@@ -1350,11 +1363,9 @@ function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle 
                 <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap">{desc.date}</td>
                 <td className="py-1 pr-2 whitespace-nowrap">{desc.open}</td>
                 <td className="py-1 pr-2 whitespace-nowrap">
-                  {desc.close && (
-                    trade.status === "open"
-                      ? <span className="text-blue-600">open</span>
-                      : <span className="text-muted-foreground">→ {desc.close}</span>
-                  )}
+                  <span className={trade.status === "open" ? "text-blue-600" : "text-muted-foreground"}>
+                    → {desc.close}
+                  </span>
                 </td>
                 <td className="py-1 text-right tabular-nums whitespace-nowrap font-medium">
                   {pnl !== null ? (
