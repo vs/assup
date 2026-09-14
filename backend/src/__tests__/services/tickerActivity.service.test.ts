@@ -1,4 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// The service also exposes a DB-backed loader; stub prisma so importing it here
+// doesn't demand a database connection for these pure-function tests.
+vi.mock("../../db/index.js", () => ({
+  prisma: { cashTransaction: { findMany: vi.fn() }, importedTrade: { findMany: vi.fn() } },
+}));
+
 import { buildTickerActivity } from "../../services/tickerActivity.service.js";
 import type { OptionTradeInput, StockTradeInput } from "../../services/tradeMatching.js";
 
@@ -168,6 +175,56 @@ describe("buildTickerActivity", () => {
       firstDate: null,
       lastDate: null,
     });
+  });
+
+  it("nets withholding cancel/re-issue rows into a single dividend entry", () => {
+    const payDate = new Date("2024-03-07");
+    const rows = [
+      {
+        type: "DIVIDEND" as const,
+        transactionDate: payDate,
+        description:
+          "TLT(USZ958700214) CASH DIVIDEND USD 0.330454 PER SHARE (Ordinary Dividend)",
+        amountUsd: 33.05,
+      },
+      {
+        type: "WITHHOLDING_TAX" as const,
+        transactionDate: payDate,
+        description: "TLT(USZ958700214) CASH DIVIDEND USD 0.330454 PER SHARE - US TAX",
+        amountUsd: -9.92,
+      },
+      // IBKR cancels the first withholding and re-issues it at a lower rate.
+      {
+        type: "WITHHOLDING_TAX" as const,
+        transactionDate: payDate,
+        description: "TLT(USZ958700214) CASH DIVIDEND USD 0.330454 PER SHARE - US TAX",
+        amountUsd: 9.92,
+      },
+      {
+        type: "WITHHOLDING_TAX" as const,
+        transactionDate: payDate,
+        description: "TLT(USZ958700214) CASH DIVIDEND USD 0.330454 PER SHARE - US TAX",
+        amountUsd: -4.96,
+      },
+    ];
+
+    const result = buildTickerActivity("TLT", [], [], rows, []);
+
+    expect(result.closed).toHaveLength(1);
+    const entry = result.closed[0];
+    expect(entry.kind).toBe("DIVIDEND");
+    expect(entry.status).toBe("paid");
+    expect(entry.sortDate).toBe("2024-03-07");
+    expect(entry.dividend).not.toBeNull();
+    expect(entry.dividend!.perShare).toBeCloseTo(0.330454, 6);
+    expect(entry.dividend!.shares).toBeCloseTo(100, 0);
+    expect(entry.dividend!.gross).toBeCloseTo(33.05, 2);
+    expect(entry.dividend!.withholdingTax).toBeCloseTo(-4.96, 2);
+    // 33.05 - 4.96
+    expect(entry.realizedPnL).toBeCloseTo(28.09, 2);
+
+    expect(result.summary.dividends).toBeCloseTo(28.09, 2);
+    expect(result.summary.total).toBeCloseTo(28.09, 2);
   });
 
   it("orders closed entries newest-first", () => {

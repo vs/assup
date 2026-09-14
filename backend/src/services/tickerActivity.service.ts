@@ -22,7 +22,7 @@ import {
   type OptionTradeInput,
   type StockTradeInput,
 } from "./tradeMatching.js";
-import type { DividendCashRow } from "./wheelDividends.js";
+import { buildDividendPayments, type DividendCashRow } from "./wheelDividends.js";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -80,6 +80,37 @@ function calledAwayDates(optionTrades: OptionTradeInput[]): Set<string> {
   return dates;
 }
 
+function dividendToEntry(
+  symbol: string,
+  payment: ReturnType<typeof buildDividendPayments>[number]
+): TickerActivityEntry {
+  const shares = Math.round(payment.sharesPaidOn);
+  return {
+    id: `${symbol}-div-${payment.payDate}`,
+    kind: "DIVIDEND",
+    displayName: `Dividend $${payment.perShare.toFixed(4)} × ${shares} shares`,
+    status: "paid",
+    sortDate: payment.payDate,
+    realizedPnL: payment.net,
+    unrealizedPnL: null,
+    openLeg: null,
+    closeLeg: {
+      date: payment.payDate,
+      action: "Dividend received",
+      price: payment.perShare,
+      quantity: shares,
+      total: payment.gross,
+    },
+    dividend: {
+      perShare: payment.perShare,
+      shares,
+      gross: payment.gross,
+      withholdingTax: payment.withholdingTax,
+      net: payment.net,
+    },
+  };
+}
+
 function emptySummary(): TickerActivitySummary {
   return {
     optionsPnL: 0,
@@ -131,7 +162,6 @@ export function buildTickerActivity(
   dividendRows: DividendCashRow[],
   positions: Position[]
 ): TickerActivity {
-  void dividendRows;
   void positions;
 
   const entries: TickerActivityEntry[] = [];
@@ -150,6 +180,10 @@ export function buildTickerActivity(
       entry.closeLeg = { ...entry.closeLeg, action: "Called away" };
     }
     entries.push(entry);
+  }
+
+  for (const payment of buildDividendPayments(symbol, dividendRows)) {
+    entries.push(dividendToEntry(symbol, payment));
   }
 
   const open = entries
