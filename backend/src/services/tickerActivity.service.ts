@@ -111,6 +111,31 @@ function dividendToEntry(
   };
 }
 
+/** IBKR reports option expiry as YYYYMMDD; trade groups use YYYY-MM-DD. */
+const compactDate = (iso: string): string => iso.replace(/-/g, "");
+
+function findOptionPosition(
+  positions: Position[],
+  symbol: string,
+  strike: number,
+  expiry: string,
+  right: string
+): Position | undefined {
+  const target = compactDate(expiry);
+  return positions.find(
+    (p) =>
+      p.secType === "OPT" &&
+      (p.underlying ?? p.symbol) === symbol &&
+      p.strike === strike &&
+      p.right === right &&
+      p.expiry === target
+  );
+}
+
+function findStockPosition(positions: Position[], symbol: string): Position | undefined {
+  return positions.find((p) => p.secType === "STK" && p.symbol === symbol);
+}
+
 function emptySummary(): TickerActivitySummary {
   return {
     optionsPnL: 0,
@@ -162,17 +187,29 @@ export function buildTickerActivity(
   dividendRows: DividendCashRow[],
   positions: Position[]
 ): TickerActivity {
-  void positions;
-
   const entries: TickerActivityEntry[] = [];
 
   for (const group of groupOptionTrades(optionTrades)) {
-    entries.push(toEntry(optionGroupToWheelMatchedTrade(group, symbol), "OPTION"));
+    const entry = toEntry(optionGroupToWheelMatchedTrade(group, symbol), "OPTION");
+    if (entry.status === "open") {
+      const position = findOptionPosition(
+        positions,
+        symbol,
+        group.strike,
+        group.expiry,
+        group.right
+      );
+      entry.unrealizedPnL = position?.unrealizedPnl ?? null;
+    }
+    entries.push(entry);
   }
 
   const calledAwayOn = calledAwayDates(optionTrades);
   for (const group of groupStockTradesForWheel(stockTrades)) {
     const entry = toEntry(stockGroupToWheelMatchedTrade(group), "STOCK");
+    if (entry.status === "open") {
+      entry.unrealizedPnL = findStockPosition(positions, symbol)?.unrealizedPnl ?? null;
+    }
     // A share lot sold on a day a covered call was assigned was called away, not
     // sold at market. The premium itself stays on the option's own row.
     if (entry.status === "closed" && entry.closeLeg && calledAwayOn.has(entry.closeLeg.date)) {

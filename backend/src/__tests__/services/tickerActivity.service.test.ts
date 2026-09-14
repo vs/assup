@@ -227,6 +227,65 @@ describe("buildTickerActivity", () => {
     expect(result.summary.total).toBeCloseTo(28.09, 2);
   });
 
+  it("attaches unrealized P&L to an open option from the live position", () => {
+    const openPut = optionTrade({
+      id: "o1",
+      conId: 20,
+      strike: 90,
+      expiry: new Date("2099-03-20"),
+      tradeDate: new Date("2024-02-01"),
+    });
+
+    const positions = [
+      {
+        account: "U1",
+        symbol: "TLT Mar20'99 90 PUT",
+        conId: 20,
+        secType: "OPT",
+        exchange: "SMART",
+        currency: "USD",
+        position: -1,
+        avgCost: 155,
+        costBasis: -155,
+        marketValue: -93,
+        unrealizedPnl: 62,
+        strike: 90,
+        expiry: "20990320",
+        right: "P" as const,
+        underlying: "TLT",
+        assetClassId: null,
+        assetClassName: null,
+        assetClassColor: null,
+      },
+    ];
+
+    const result = buildTickerActivity("TLT", [openPut], [], [], positions);
+
+    expect(result.closed).toHaveLength(0);
+    expect(result.open).toHaveLength(1);
+    expect(result.open[0].status).toBe("open");
+    expect(result.open[0].realizedPnL).toBeNull();
+    expect(result.open[0].unrealizedPnL).toBe(62);
+    // Open entries contribute nothing to realized totals.
+    expect(result.summary.total).toBe(0);
+    expect(result.summary.entryCount).toBe(0);
+  });
+
+  it("leaves unrealized P&L null when TWS returns no positions", () => {
+    const openPut = optionTrade({
+      id: "o1",
+      conId: 20,
+      strike: 90,
+      expiry: new Date("2099-03-20"),
+      tradeDate: new Date("2024-02-01"),
+    });
+
+    const result = buildTickerActivity("TLT", [openPut], [], [], []);
+
+    expect(result.open).toHaveLength(1);
+    expect(result.open[0].unrealizedPnL).toBeNull();
+  });
+
   it("orders closed entries newest-first", () => {
     const options = [
       optionTrade({ id: "old", conId: 10 }),
