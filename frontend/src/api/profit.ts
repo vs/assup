@@ -11,6 +11,7 @@ import type {
   MonthDetail,
   MonthProfitView,
   AllPositionsView,
+  TickerActivity,
 } from "@assup/shared";
 
 interface MonthlyProfitQueryParams {
@@ -23,6 +24,12 @@ export const profitApi = {
    * Get available years with profit data
    */
   years: () => request<{ years: number[] }>("/api/profit/years"),
+
+  /**
+   * Get the per-ticker realized P&L activity log
+   */
+  tickerActivity: (symbol: string) =>
+    request<TickerActivity>(`/api/profit/ticker/${encodeURIComponent(symbol)}/activity`),
 
   /**
    * Import a Flex Query file
