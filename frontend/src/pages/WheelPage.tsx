@@ -5,6 +5,7 @@ import type {
   WheelTickerSummary,
   WheelSuggestion,
   WheelMatchedTrade,
+  WheelDividend,
   WheelLivePosition,
   SparklinePoint,
   CurrentOptionPosition,
@@ -726,6 +727,14 @@ function WheelTickerCard({
             <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Cost Basis</div>
               <div className="font-semibold">${ticker.adjustedCostBasis.toFixed(2)}</div>
+              {ticker.totalDividends > 0 && (
+                <div
+                  className="text-[10px] text-green-600 tabular-nums"
+                  title="Dividends received while holding wheel shares, net of withholding tax"
+                >
+                  div +{formatCurrency(ticker.totalDividends)}
+                </div>
+              )}
             </div>
             <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Realized</div>
@@ -1254,15 +1263,43 @@ function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle 
     );
   }
 
+  type CycleRowItem =
+    | { kind: "trade"; sortDate: string; trade: WheelMatchedTrade }
+    | { kind: "dividend"; sortDate: string; dividend: WheelDividend };
+
+  // Dividends sit alongside the trades that earned them, ordered by pay date.
+  const rowItems: CycleRowItem[] = [
+    ...cycle.trades.map((trade) => ({
+      kind: "trade" as const,
+      sortDate: trade.openLeg?.date ?? trade.closeLeg?.date ?? "",
+      trade,
+    })),
+    ...(cycle.dividends ?? []).map((dividend) => ({
+      kind: "dividend" as const,
+      sortDate: dividend.payDate,
+      dividend,
+    })),
+  ].sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-sm font-medium text-muted-foreground">
           Trades in Cycle {cycle.cycleNumber}
         </h4>
-        <span className="text-xs text-muted-foreground">
-          {cycle.trades.length} trade{cycle.trades.length !== 1 ? "s" : ""}
-        </span>
+        <div className="flex items-center gap-3">
+          {cycle.dividendIncome > 0 && (
+            <span
+              className="text-xs text-green-600 tabular-nums"
+              title="Dividends earned in this cycle, net of withholding tax"
+            >
+              Dividends +{formatCurrency(cycle.dividendIncome)}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {cycle.trades.length} trade{cycle.trades.length !== 1 ? "s" : ""}
+          </span>
+        </div>
       </div>
       {/* Spread groups */}
       {cycle.spreadGroups && cycle.spreadGroups.length > 0 && (
@@ -1293,7 +1330,26 @@ function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle 
       )}
       <table className="text-xs w-full">
         <tbody>
-          {cycle.trades.map((trade) => {
+          {rowItems.map((item) => {
+            if (item.kind === "dividend") {
+              const d = item.dividend;
+              return (
+                <tr key={`div-${d.id}`} className="border-b border-border/30 last:border-0">
+                  <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap">{d.payDate}</td>
+                  <td className="py-1 pr-2 whitespace-nowrap">
+                    Dividend ${d.perShare.toFixed(4)} × {d.shares} sh
+                  </td>
+                  <td className="py-1 pr-2 whitespace-nowrap text-muted-foreground">
+                    gross {formatCurrency(d.gross)} · wht {formatCurrency(d.withholdingTax)}
+                  </td>
+                  <td className="py-1 text-right tabular-nums whitespace-nowrap font-medium">
+                    <span className="text-green-600">+{formatCurrency(d.net)}</span>
+                  </td>
+                </tr>
+              );
+            }
+
+            const trade = item.trade;
             const desc = formatTradeDesc(trade);
             const pnl = trade.netPnL;
             const premium = trade.openLeg?.total;
