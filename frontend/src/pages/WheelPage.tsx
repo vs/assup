@@ -727,14 +727,6 @@ function WheelTickerCard({
             <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Cost Basis</div>
               <div className="font-semibold">${ticker.adjustedCostBasis.toFixed(2)}</div>
-              {ticker.totalDividends > 0 && (
-                <div
-                  className="text-[10px] text-green-600 tabular-nums"
-                  title="Dividends received while holding wheel shares, net of withholding tax"
-                >
-                  div +{formatCurrency(ticker.totalDividends)}
-                </div>
-              )}
             </div>
             <div className="text-right border-l border-border pl-4">
               <div className="text-xs text-muted-foreground">Realized</div>
@@ -1337,7 +1329,7 @@ function CycleTradesView({ cycle }: { cycle: import("@assup/shared").WheelCycle 
                 <tr key={`div-${d.id}`} className="border-b border-border/30 last:border-0">
                   <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap">{d.payDate}</td>
                   <td className="py-1 pr-2 whitespace-nowrap">
-                    Dividend ${d.perShare.toFixed(4)} × {d.shares} sh
+                    Dividend ${d.perShare.toFixed(4)} × {d.shares} shares
                   </td>
                   <td className="py-1 pr-2 whitespace-nowrap text-muted-foreground">
                     gross {formatCurrency(d.gross)} · wht {formatCurrency(d.withholdingTax)}
