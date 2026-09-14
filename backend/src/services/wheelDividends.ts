@@ -8,6 +8,8 @@
  */
 
 import type { WheelDividend } from "@assup/shared";
+import { prisma } from "../db/index.js";
+import { convertToUsd } from "./currency.js";
 
 /** One raw cash-transaction row, already converted to USD. */
 export interface DividendCashRow {
@@ -199,4 +201,101 @@ export function attributeDividends(
   }
 
   return byCycle;
+}
+
+const DIVIDEND_CASH_TYPES = ["DIVIDEND", "WITHHOLDING_TAX"] as const;
+
+const cashRowSelect = {
+  symbol: true,
+  type: true,
+  transactionDate: true,
+  description: true,
+  amount: true,
+  currency: true,
+};
+
+interface RawCashRow {
+  symbol: string | null;
+  type: string;
+  transactionDate: Date;
+  description: string;
+  amount: number;
+  currency: string;
+}
+
+const toDividendCashRow = async (row: RawCashRow): Promise<DividendCashRow> => ({
+  type: row.type as DividendCashRow["type"],
+  transactionDate: row.transactionDate,
+  description: row.description,
+  amountUsd: await convertToUsd(row.amount, row.currency, row.transactionDate),
+});
+
+/** Dividend + withholding rows for one ticker, converted to USD. */
+export async function fetchDividendCashRows(
+  symbol: string,
+  startDate: Date | null
+): Promise<DividendCashRow[]> {
+  const rows = (await prisma.cashTransaction.findMany({
+    where: {
+      symbol,
+      type: { in: [...DIVIDEND_CASH_TYPES] },
+      ...(startDate ? { transactionDate: { gte: startDate } } : {}),
+    },
+    orderBy: { transactionDate: "asc" },
+    select: cashRowSelect,
+  })) as RawCashRow[];
+
+  return Promise.all(rows.map(toDividendCashRow));
+}
+
+/**
+ * Batch variant for the tracked-ticker list: one query for every symbol.
+ * Per-symbol start dates are applied by the caller, which already filters trades
+ * the same way.
+ */
+export async function fetchDividendCashRowsForSymbols(
+  symbols: string[]
+): Promise<Map<string, DividendCashRow[]>> {
+  const bySymbol = new Map<string, DividendCashRow[]>();
+  if (symbols.length === 0) return bySymbol;
+
+  const rows = (await prisma.cashTransaction.findMany({
+    where: {
+      symbol: { in: symbols },
+      type: { in: [...DIVIDEND_CASH_TYPES] },
+    },
+    orderBy: { transactionDate: "asc" },
+    select: cashRowSelect,
+  })) as RawCashRow[];
+
+  for (const row of rows) {
+    if (!row.symbol) continue;
+    const converted = await toDividendCashRow(row);
+    const existing = bySymbol.get(row.symbol);
+    if (existing) existing.push(converted);
+    else bySymbol.set(row.symbol, [converted]);
+  }
+
+  return bySymbol;
+}
+
+/** Count + latest pay date, used to invalidate the wheel summary cache. */
+export async function getDividendStats(
+  symbol: string,
+  startDate: Date | null
+): Promise<{ dividendCount: number; lastDividendDate: Date | null }> {
+  const stats = await prisma.cashTransaction.aggregate({
+    where: {
+      symbol,
+      type: { in: [...DIVIDEND_CASH_TYPES] },
+      ...(startDate ? { transactionDate: { gte: startDate } } : {}),
+    },
+    _count: { _all: true },
+    _max: { transactionDate: true },
+  });
+
+  return {
+    dividendCount: stats._count._all,
+    lastDividendDate: stats._max.transactionDate ?? null,
+  };
 }

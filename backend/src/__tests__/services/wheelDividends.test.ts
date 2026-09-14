@@ -1,4 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// The module also exposes DB-backed loaders; stub prisma so importing it here
+// doesn't demand a database connection for these pure-function tests.
+vi.mock("../../db/index.js", () => ({
+  prisma: { cashTransaction: { findMany: vi.fn(), aggregate: vi.fn() } },
+}));
+
 import {
   parseDividendPerShare,
   buildDividendPayments,
