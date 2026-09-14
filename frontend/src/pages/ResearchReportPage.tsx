@@ -1478,9 +1478,6 @@ export function ResearchReportPage() {
       {/* Position & Wheel info */}
       <TickerPositionInfo symbol={symbol} />
 
-      {/* Realized P&L activity log */}
-      <TickerActivityLog symbol={symbol} />
-
       {/* Chart + Company Info Panel (two columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Chart — 3 of 5 columns (memoized to prevent re-mount on parent re-renders) */}
@@ -1500,6 +1497,9 @@ export function ResearchReportPage() {
           <TickerEventsCard symbol={symbol} />
         </div>
       </div>
+
+      {/* Realized P&L activity log */}
+      <TickerActivityLog symbol={symbol} />
 
       {/* Summary */}
       {report && (

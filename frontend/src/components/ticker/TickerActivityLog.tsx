@@ -21,6 +21,22 @@ const STATUS_LABELS: Record<TickerActivityEntry["status"], string> = {
   paid: "paid",
 };
 
+/**
+ * On a ticker page the symbol is implied, so strip it from the row label:
+ *   "TLT Jul24'26 89 CALL" -> "Jul24'26 89 CALL"
+ *   "200 TLT"              -> "200 shares"
+ * Dividend labels and any unrecognised shape pass through unchanged.
+ */
+function shortLabel(displayName: string, symbol: string): string {
+  if (displayName.startsWith(`${symbol} `)) {
+    return displayName.slice(symbol.length + 1);
+  }
+  if (displayName.endsWith(` ${symbol}`)) {
+    return `${displayName.slice(0, -(symbol.length + 1))} shares`;
+  }
+  return displayName;
+}
+
 function Money({ value, muted = false }: { value: number; muted?: boolean }) {
   const tone = muted
     ? "text-muted-foreground"
@@ -43,17 +59,17 @@ function LegRow({ label, date, action, amount }: {
 }) {
   return (
     <tr className="text-muted-foreground">
-      <td className="py-0.5 pr-3 w-14">{label}</td>
-      <td className="py-0.5 pr-3 whitespace-nowrap">{date}</td>
-      <td className="py-0.5 pr-3">{action}</td>
-      <td className="py-0.5 text-right tabular-nums whitespace-nowrap">
+      <td className="py-0.5 pr-3 whitespace-nowrap w-px">{label}</td>
+      <td className="py-0.5 pr-3 whitespace-nowrap w-px">{date}</td>
+      <td className="py-0.5 pr-3 w-full">{action}</td>
+      <td className="py-0.5 text-right tabular-nums whitespace-nowrap w-px">
         {amount !== null ? formatCurrency(amount) : "—"}
       </td>
     </tr>
   );
 }
 
-function EntryRow({ entry }: { entry: TickerActivityEntry }) {
+function EntryRow({ entry, symbol }: { entry: TickerActivityEntry; symbol: string }) {
   const [expanded, setExpanded] = useState(false);
 
   const priceSuffix = (price: number | null) =>
@@ -70,14 +86,14 @@ function EntryRow({ entry }: { entry: TickerActivityEntry }) {
         className="border-b border-border/30 last:border-0 cursor-pointer hover:bg-muted/40"
         onClick={() => setExpanded((v) => !v)}
       >
-        <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap w-24">
+        <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap w-px">
           {entry.sortDate || "—"}
         </td>
-        <td className="py-1 pr-3">{entry.displayName}</td>
-        <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap">
+        <td className="py-1 pr-3 w-full">{shortLabel(entry.displayName, symbol)}</td>
+        <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap w-px">
           {STATUS_LABELS[entry.status]}
         </td>
-        <td className="py-1 text-right whitespace-nowrap font-medium">
+        <td className="py-1 text-right whitespace-nowrap w-px font-medium">
           {entry.realizedPnL !== null ? (
             <Money value={entry.realizedPnL} />
           ) : entry.unrealizedPnL !== null ? (
@@ -158,7 +174,7 @@ export function TickerActivityLog({ symbol }: { symbol: string }) {
   const visible = showAll ? data.closed : data.closed.slice(0, COLLAPSED_COUNT);
 
   return (
-    <Card>
+    <Card className="max-w-3xl">
       <CardContent className="py-3 px-4">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
           <span className="text-sm font-medium">Activity</span>
@@ -178,7 +194,7 @@ export function TickerActivityLog({ symbol }: { symbol: string }) {
             <table className="text-xs w-full mb-3">
               <tbody>
                 {data.open.map((entry) => (
-                  <EntryRow key={entry.id} entry={entry} />
+                  <EntryRow key={entry.id} entry={entry} symbol={symbol} />
                 ))}
               </tbody>
             </table>
@@ -191,7 +207,7 @@ export function TickerActivityLog({ symbol }: { symbol: string }) {
             <table className="text-xs w-full">
               <tbody>
                 {visible.map((entry) => (
-                  <EntryRow key={entry.id} entry={entry} />
+                  <EntryRow key={entry.id} entry={entry} symbol={symbol} />
                 ))}
               </tbody>
             </table>
