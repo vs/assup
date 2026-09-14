@@ -15,6 +15,7 @@ export * from "./order.schema.js";
 export * from "./profit.schema.js";
 export * from "./taxes.schema.js";
 export * from "./tickerProfile.schema.js";
+export * from "./tickerActivity.schema.js";
 export * from "./ironCondor.schema.js";
 export * from "./flex-web.schema.js";
 export * from "./roll.schema.js";

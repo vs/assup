@@ -8,10 +8,12 @@ import multer from "multer";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { importService, profitService } from "../services/index.js";
+import { getTickerActivity } from "../services/tickerActivity.service.js";
 import {
   monthlyProfitQuerySchema,
   monthParamsSchema,
   importBatchIdParamSchema,
+  tickerActivityParamSchema,
 } from "@assup/shared";
 import { NotFoundError, BadRequestError } from "../errors/index.js";
 
@@ -217,6 +219,19 @@ router.post(
   "/recalculate-assignments",
   asyncHandler(async (_req, res) => {
     const result = await importService.recalculateAssignments();
+    res.json(result);
+  })
+);
+
+/**
+ * GET /api/profit/ticker/:symbol/activity
+ * Per-ticker log of realized P&L events: option round-trips, share lots, dividends
+ */
+router.get(
+  "/ticker/:symbol/activity",
+  validate({ params: tickerActivityParamSchema }),
+  asyncHandler(async (req, res) => {
+    const result = await getTickerActivity(req.params.symbol.toUpperCase());
     res.json(result);
   })
 );

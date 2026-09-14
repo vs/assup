@@ -22,7 +22,14 @@ import {
   type OptionTradeInput,
   type StockTradeInput,
 } from "./tradeMatching.js";
-import { buildDividendPayments, type DividendCashRow } from "./wheelDividends.js";
+import {
+  buildDividendPayments,
+  fetchDividendCashRows,
+  type DividendCashRow,
+} from "./wheelDividends.js";
+import { prisma } from "../db/index.js";
+import { ibkrService } from "./ibkr.js";
+import { positionService } from "./position.service.js";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -231,4 +238,58 @@ export function buildTickerActivity(
     .sort((a, b) => b.sortDate.localeCompare(a.sortDate));
 
   return { symbol, open, closed, summary: summarize(entries) };
+}
+
+const tradeSelect = {
+  id: true,
+  tradeId: true,
+  symbol: true,
+  secType: true,
+  description: true,
+  conId: true,
+  strike: true,
+  expiry: true,
+  right: true,
+  underlying: true,
+  tradeDate: true,
+  quantity: true,
+  tradePrice: true,
+  proceeds: true,
+  commission: true,
+  buySell: true,
+  openClose: true,
+  wasAssigned: true,
+  costBasis: true,
+  realizedPnl: true,
+} as const;
+
+/**
+ * Load everything the activity log needs for one symbol and build it.
+ *
+ * Options are matched on `underlying`, stock trades and cash on `symbol`.
+ * A TWS outage degrades to an empty position list — the realized log still
+ * renders, open rows just have no unrealized P&L.
+ */
+export async function getTickerActivity(symbol: string): Promise<TickerActivity> {
+  const [trades, dividendRows, positions] = await Promise.all([
+    prisma.importedTrade.findMany({
+      where: {
+        OR: [
+          { underlying: symbol, secType: "OPT" },
+          { symbol, secType: "STK" },
+        ],
+      },
+      orderBy: { tradeDate: "asc" },
+      select: tradeSelect,
+    }),
+    fetchDividendCashRows(symbol, null),
+    ibkrService.isConnected()
+      ? positionService.getPositions().catch(() => [] as Position[])
+      : Promise.resolve([] as Position[]),
+  ]);
+
+  const optionTrades = trades.filter((t) => t.secType === "OPT") as OptionTradeInput[];
+  const stockTrades = trades.filter((t) => t.secType === "STK") as StockTradeInput[];
+
+  return buildTickerActivity(symbol, optionTrades, stockTrades, dividendRows, positions);
 }
