@@ -26,6 +26,15 @@ import {
   type StockTradeInput
 } from "./tradeMatching.js";
 import type { WheelMatchedTrade } from "@assup/shared";
+import {
+  attributeDividends,
+  buildDividendPayments,
+  fetchDividendCashRows,
+  fetchDividendCashRowsForSymbols,
+  getDividendStats,
+  type DividendCashRow,
+  type ShareSegment,
+} from "./wheelDividends.js";
 
 /** Get current date at midnight in US Eastern timezone for DTE calculations */
 function nowInET(): Date {
@@ -58,6 +67,8 @@ interface RawTrade {
 interface PrefetchedTradeData {
   dbTrades: RawTrade[];
   assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null; tradeDate: Date }>;
+  /** Dividend + withholding rows for this symbol, already converted to USD */
+  dividendRows: DividendCashRow[];
 }
 
 const tradeSelect = {
@@ -84,7 +95,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 9;
+const WHEEL_CACHE_VERSION = 10;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -123,6 +134,8 @@ const upsertWheelSummaryCache = async (data: {
   startDate: Date | null;
   tradeCount: number;
   lastTradeDate: Date | null;
+  dividendCount: number;
+  lastDividendDate: Date | null;
   summary: WheelTickerSummary;
 }) => {
   if (wheelSummaryCacheAvailable === false) return;
@@ -134,12 +147,16 @@ const upsertWheelSummaryCache = async (data: {
         startDate: data.startDate,
         tradeCount: data.tradeCount,
         lastTradeDate: data.lastTradeDate,
+        dividendCount: data.dividendCount,
+        lastDividendDate: data.lastDividendDate,
         summary: serializeSummary(data.summary),
       },
       update: {
         startDate: data.startDate,
         tradeCount: data.tradeCount,
         lastTradeDate: data.lastTradeDate,
+        dividendCount: data.dividendCount,
+        lastDividendDate: data.lastDividendDate,
         summary: serializeSummary(data.summary),
         computedAt: new Date(),
       },
@@ -973,8 +990,11 @@ export const wheelService = {
 
     const tradeStatsEntries = await Promise.all(
       trackers.map(async (tracker) => {
-        const stats = await this.getTradeStats(tracker.symbol, tracker.startDate);
-        return [tracker.symbol, stats] as const;
+        const [stats, dividendStats] = await Promise.all([
+          this.getTradeStats(tracker.symbol, tracker.startDate),
+          getDividendStats(tracker.symbol, tracker.startDate),
+        ]);
+        return [tracker.symbol, { ...stats, ...dividendStats }] as const;
       })
     );
     const tradeStatsBySymbol = new Map(tradeStatsEntries);
@@ -999,6 +1019,8 @@ export const wheelService = {
         stats &&
         cache.tradeCount === stats.tradeCount &&
         dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate) &&
+        cache.dividendCount === stats.dividendCount &&
+        dateKey(cache.lastDividendDate) === dateKey(stats.lastDividendDate) &&
         !hasTodayTrades;
 
       if (!cacheValid) {
@@ -1009,10 +1031,11 @@ export const wheelService = {
     // Prefetch trades only for symbols that need recomputation
     const tradesBySymbol = new Map<string, RawTrade[]>();
     const assignedBySymbol = new Map<string, Array<{ expiry: Date | null; strike: number | null; right: string | null; tradeDate: Date }>>();
+    const dividendRowsBySymbol = new Map<string, DividendCashRow[]>();
 
     if (rebuildSymbols.size > 0) {
       const symbolsToFetch = Array.from(rebuildSymbols);
-      const [allDbTrades, allAssignedOptions] = await Promise.all([
+      const [allDbTrades, allAssignedOptions, allDividendRows] = await Promise.all([
         prisma.importedTrade.findMany({
           where: {
             OR: [
@@ -1037,7 +1060,12 @@ export const wheelService = {
             tradeDate: true,
           },
         }),
+        fetchDividendCashRowsForSymbols(symbolsToFetch),
       ]);
+
+      for (const [sym, rows] of allDividendRows) {
+        dividendRowsBySymbol.set(sym, rows);
+      }
 
       for (const trade of allDbTrades as unknown as RawTrade[]) {
         const sym = trade.underlying || trade.symbol;
@@ -1076,6 +1104,8 @@ export const wheelService = {
                   startDate: tracker.startDate,
                   tradeCount: stats.tradeCount,
                   lastTradeDate: stats.lastTradeDate,
+                  dividendCount: stats.dividendCount,
+                  lastDividendDate: stats.lastDividendDate,
                   summary: fresh,
                 });
               }
@@ -1093,6 +1123,9 @@ export const wheelService = {
         const prefetched: PrefetchedTradeData = {
           dbTrades: symbolTrades,
           assignedOptions: assignedBySymbol.get(tracker.symbol) || [],
+          dividendRows: (dividendRowsBySymbol.get(tracker.symbol) || []).filter(
+            (row) => !tracker.startDate || row.transactionDate >= tracker.startDate
+          ),
         };
 
         const summary = await this.getTickerSummary(tracker.symbol, tracker.startDate, ibkrData, prefetched);
@@ -1103,6 +1136,8 @@ export const wheelService = {
             startDate: tracker.startDate,
             tradeCount: stats.tradeCount,
             lastTradeDate: stats.lastTradeDate,
+            dividendCount: stats.dividendCount,
+            lastDividendDate: stats.lastDividendDate,
             summary,
           });
         }
@@ -1140,8 +1175,11 @@ export const wheelService = {
       loadWheelSummaryCache(symbols),
       Promise.all(
         trackers.map(async (tracker) => {
-          const stats = await this.getTradeStats(tracker.symbol, tracker.startDate);
-          return [tracker.symbol, stats] as const;
+          const [stats, dividendStats] = await Promise.all([
+            this.getTradeStats(tracker.symbol, tracker.startDate),
+            getDividendStats(tracker.symbol, tracker.startDate),
+          ]);
+          return [tracker.symbol, { ...stats, ...dividendStats }] as const;
         })
       ),
     ]);
@@ -1162,7 +1200,9 @@ export const wheelService = {
           dateKey(cache.startDate) === dateKey(tracker.startDate) &&
           stats !== undefined &&
           cache.tradeCount === stats.tradeCount &&
-          dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate);
+          dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate) &&
+          cache.dividendCount === stats.dividendCount &&
+          dateKey(cache.lastDividendDate) === dateKey(stats.lastDividendDate);
 
         if (cacheValid) return cachedSummary;
 
@@ -1241,6 +1281,7 @@ export const wheelService = {
 
     // Calculate totals
     const totalPremiums = cycles.reduce((sum, c) => sum + c.totalPremium, 0);
+    const totalDividends = cycles.reduce((sum, c) => sum + c.dividendIncome, 0);
 
     // Use cached positions or empty array
     const positions = cachedData?.positions ?? [];
@@ -1325,13 +1366,21 @@ export const wheelService = {
         // for assignments, additional purchases, and cost averaging.
         // IBKR's avgCost already nets out the assignment PUT premium, so we only
         // subtract post-assignment (CC) premiums to avoid double-counting.
+        // Dividends are cash IBKR's avgCost never reflects, so they come off too.
         const shares = liveShareQuantity || currentCycle.shareQuantity || 100;
-        adjustedCostBasis = positionAvgCost - (currentCycle.postAssignmentPremium / shares);
+        adjustedCostBasis =
+          positionAvgCost -
+          (currentCycle.postAssignmentPremium / shares) -
+          (currentCycle.dividendIncome / shares);
       } else if (hasAssignment) {
-        // No live position data - fall back to assignment strike adjusted by premiums
-        adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
+        // No live position data - fall back to assignment strike adjusted by
+        // premiums and dividends received while holding the shares.
+        const shares = currentCycle.shareQuantity || 100;
+        adjustedCostBasis =
+          currentCycle.entryStrike -
+          ((currentCycle.totalPremium + currentCycle.dividendIncome) / shares);
       } else {
-        // CSP phase - no shares yet, use put strike as potential cost basis
+        // CSP phase - no shares yet (so no dividends), use put strike as potential cost basis
         adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / 100);
       }
     }
@@ -1399,6 +1448,7 @@ export const wheelService = {
       sharePnLPercent,
       adjustedCostBasis,
       totalPremiums,
+      totalDividends,
       currentPrice,
       breakEven,
       percentBelowMarket,
@@ -1464,16 +1514,18 @@ export const wheelService = {
   async reconstructCycles(symbol: string, startDate: Date | null, cachedTodayTrades?: RawTrade[], cachedData?: CachedIBKRData, prefetchedData?: PrefetchedTradeData): Promise<WheelCycle[]> {
     let dbTrades: RawTrade[];
     let assignedOptions: Array<{ expiry: Date | null; strike: number | null; right: string | null; tradeDate: Date }>;
+    let dividendRows: DividendCashRow[];
 
     if (prefetchedData) {
       // Use pre-fetched data from batch query
       dbTrades = prefetchedData.dbTrades;
       assignedOptions = prefetchedData.assignedOptions;
+      dividendRows = prefetchedData.dividendRows ?? [];
     } else {
       // Fetch both queries in parallel
       const whereClause = buildTradeWhereClause(symbol, startDate);
 
-      const [fetchedTrades, fetchedAssigned] = await Promise.all([
+      const [fetchedTrades, fetchedAssigned, fetchedDividends] = await Promise.all([
         prisma.importedTrade.findMany({
           where: whereClause,
           orderBy: { tradeDate: "asc" },
@@ -1492,10 +1544,12 @@ export const wheelService = {
             tradeDate: true,
           },
         }),
+        fetchDividendCashRows(symbol, startDate),
       ]);
 
       dbTrades = fetchedTrades as RawTrade[];
       assignedOptions = fetchedAssigned;
+      dividendRows = fetchedDividends;
     }
 
     // Use cached today's executions or fetch if not provided
@@ -1800,6 +1854,11 @@ export const wheelService = {
     let cycleStockQty = 0; // Shares currently held in this cycle
     let cycleStockRealizedPnL = 0; // Realized stock P&L from shares sold in this cycle
 
+    // Share-holding intervals, so dividends can be attributed to the cycle that
+    // actually owned the shares on the pay date.
+    const shareSegments: ShareSegment[] = [];
+    let openSegment: ShareSegment | null = null;
+
     for (let tradeIdx = 0; tradeIdx < filteredTrades.length; tradeIdx++) {
       const trade = filteredTrades[tradeIdx];
       const isOption = trade.secType === "OPT";
@@ -1810,6 +1869,7 @@ export const wheelService = {
       const isCall = trade.right === "C";
 
       const prevTotalPosition = sharePosition + (optionPosition + longOptionPosition) * 100;
+      const prevSharePosition = sharePosition;
 
       // Determine trade type and update positions
       let tradeType: WheelTrade["type"] | null = null;
@@ -1964,6 +2024,8 @@ export const wheelService = {
           durationDays: 0,
           trades: [],
           spreadGroups: [],
+          dividends: [],
+          dividendIncome: 0,
           entryType,
           entryDescription,
           exitType: "in_progress",
@@ -2076,6 +2138,24 @@ export const wheelService = {
           if (sharePosition > 0) {
             currentCycle.postAssignmentPremium += premium;
           }
+        }
+      }
+
+      // Close the running share interval and open a new one whenever the share
+      // count changes, tagging it with the cycle that holds those shares.
+      if (sharePosition !== prevSharePosition) {
+        if (openSegment) {
+          openSegment.to = trade.tradeDate;
+          openSegment = null;
+        }
+        if (sharePosition > 0 && currentCycle) {
+          openSegment = {
+            cycleNumber: currentCycle.cycleNumber,
+            from: trade.tradeDate,
+            to: null,
+            shares: sharePosition,
+          };
+          shareSegments.push(openSegment);
         }
       }
 
@@ -2217,6 +2297,39 @@ export const wheelService = {
       currentCycle.trades = matched.trades as any;
       currentCycle.spreadGroups = matched.spreadGroups;
       cycles.push(currentCycle);
+    }
+
+    // Dividends are applied last: the in-progress cycle's realizedPnL is only
+    // finalized above, and attribution needs the completed share timeline.
+    const payments = buildDividendPayments(symbol, dividendRows);
+    const dividendsByCycle = attributeDividends(symbol, payments, shareSegments);
+
+    for (const cycle of cycles) {
+      const dividends = dividendsByCycle.get(cycle.cycleNumber) ?? [];
+      cycle.dividends = dividends;
+      cycle.dividendIncome = dividends.reduce((sum, d) => sum + d.net, 0);
+
+      if (cycle.dividendIncome === 0) continue;
+
+      // Dividends are cash received — always realized, never unrealized.
+      cycle.realizedPnL += cycle.dividendIncome;
+
+      if (cycle.status !== "in_progress") {
+        const capitalAtRisk = cycle.entryStrike * 100;
+        if (capitalAtRisk > 0) {
+          cycle.roc += (cycle.dividendIncome / capitalAtRisk) * 100;
+          cycle.annualizedRoc = cycle.durationDays > 0
+            ? cycle.roc * (365 / cycle.durationDays)
+            : 0;
+        }
+        cycle.pnlPercent = cycle.capitalDeployed > 0
+          ? (cycle.realizedPnL / cycle.capitalDeployed) * 100
+          : null;
+      } else {
+        cycle.pnlPercent = cycle.capitalDeployed > 0
+          ? ((cycle.realizedPnL + (cycle.unrealizedPnL ?? 0)) / cycle.capitalDeployed) * 100
+          : null;
+      }
     }
 
     return cycles;

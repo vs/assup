@@ -73,6 +73,24 @@ export interface WheelSpreadGroup {
   dte: number;
 }
 
+/** A dividend payment attributed to a wheel cycle, net of withholding tax */
+export interface WheelDividend {
+  /** Stable id: `${symbol}-${payDate}` */
+  id: string;
+  /** IBKR pay date, YYYY-MM-DD */
+  payDate: string;
+  /** Dividend rate per share as declared by IBKR */
+  perShare: number;
+  /** Shares of this cycle the payment was credited against */
+  shares: number;
+  /** Gross dividend attributed to this cycle (USD) */
+  gross: number;
+  /** Withholding tax attributed to this cycle (USD, negative) */
+  withholdingTax: number;
+  /** gross + withholdingTax — the cash actually kept */
+  net: number;
+}
+
 // A complete wheel cycle (any period with non-zero position)
 export interface WheelCycle {
   cycleNumber: number;
@@ -91,6 +109,10 @@ export interface WheelCycle {
   trades: WheelMatchedTrade[];
   /** Spread groups detected from paired option legs */
   spreadGroups: WheelSpreadGroup[];
+  /** Dividends earned while this cycle held shares, net of withholding tax */
+  dividends: WheelDividend[];
+  /** Sum of `dividends[].net` — included in realizedPnL and roc */
+  dividendIncome: number;
   // New fields for clarity
   entryType: "sold_put" | "bought_shares" | "assigned" | "sold_call";
   entryDescription: string; // "Sold PUT $145" or "Bought 100 @ $148"
@@ -146,6 +168,8 @@ export interface WheelTickerSummary {
   positionAvgCost: number | null;
   adjustedCostBasis: number; // per share
   totalPremiums: number;
+  /** Net dividends across all cycles for this ticker */
+  totalDividends: number;
   currentPrice: number | null;
   breakEven: number;
   percentBelowMarket: number | null;

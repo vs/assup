@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../db/index.js", () => ({
   prisma: {
     corporateAction: { findMany: vi.fn(async () => []) },
+    cashTransaction: { findMany: vi.fn(async () => []), aggregate: vi.fn(async () => ({ _count: { _all: 0 }, _max: { transactionDate: null } })) },
   },
 }));
 
@@ -528,5 +529,209 @@ describe("normalizeSplitsForUnderlying — underlying matching", () => {
       splitRatio: null,
     };
     expect(normalizeSplitsForUnderlying("QZCI", [noRatio])).toHaveLength(0);
+  });
+});
+
+describe("wheelService.reconstructCycles — dividends", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const dividendRow = (date: string, type: "DIVIDEND" | "WITHHOLDING_TAX", amountUsd: number) => ({
+    type,
+    transactionDate: new Date(`${date}T00:00:00.000Z`),
+    description: "QZAC(USZ641423770) CASH DIVIDEND USD 0.50 PER SHARE (Ordinary Dividend)",
+    amountUsd,
+  });
+
+  // Sell a CSP, get assigned, hold shares across a pay date, then sell the shares.
+  const assignedCycleTrades = () => [
+    makeTrade({
+      id: "put-open",
+      tradeDate: "2026-01-05",
+      secType: "OPT",
+      right: "P",
+      strike: 100,
+      expiry: new Date("2026-02-20"),
+      quantity: 1,
+      proceeds: 200,
+      buySell: "SELL",
+      openClose: "O",
+    }),
+    makeTrade({
+      id: "assignment",
+      tradeDate: "2026-02-20",
+      secType: "STK",
+      quantity: 100,
+      proceeds: -10000,
+      buySell: "BUY",
+      openClose: "O",
+      wasAssigned: true,
+      strike: 100,
+      expiry: new Date("2026-02-20"),
+    }),
+    makeTrade({
+      id: "stock-sell",
+      tradeDate: "2026-05-15",
+      secType: "STK",
+      quantity: 100,
+      proceeds: 10500,
+      buySell: "SELL",
+      openClose: "C",
+    }),
+  ];
+
+  const assignedOptions = () => [
+    { expiry: new Date("2026-02-20"), strike: 100, right: "P", tradeDate: new Date("2026-02-20") },
+  ];
+
+  it("credits a dividend paid while the cycle held shares", async () => {
+    const cycles = await wheelService.reconstructCycles("QZAC", null, [], undefined, {
+      dbTrades: assignedCycleTrades() as never,
+      assignedOptions: assignedOptions(),
+      dividendRows: [
+        dividendRow("2026-03-10", "DIVIDEND", 50),
+        dividendRow("2026-03-10", "WITHHOLDING_TAX", -7.5),
+      ],
+    } as never);
+
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0].dividends).toHaveLength(1);
+    expect(cycles[0].dividendIncome).toBeCloseTo(42.5, 6);
+    expect(cycles[0].dividends[0].shares).toBe(100);
+  });
+
+  it("adds dividend income to the cycle's realized P&L", async () => {
+    const withoutDividend = await wheelService.reconstructCycles("QZAC", null, [], undefined, {
+      dbTrades: assignedCycleTrades() as never,
+      assignedOptions: assignedOptions(),
+      dividendRows: [],
+    } as never);
+
+    const withDividend = await wheelService.reconstructCycles("QZAC", null, [], undefined, {
+      dbTrades: assignedCycleTrades() as never,
+      assignedOptions: assignedOptions(),
+      dividendRows: [
+        dividendRow("2026-03-10", "DIVIDEND", 50),
+        dividendRow("2026-03-10", "WITHHOLDING_TAX", -7.5),
+      ],
+    } as never);
+
+    expect(withDividend[0].realizedPnL - withoutDividend[0].realizedPnL).toBeCloseTo(42.5, 6);
+    expect(withDividend[0].roc).toBeGreaterThan(withoutDividend[0].roc);
+  });
+
+  it("ignores a dividend paid before the cycle held any shares", async () => {
+    const cycles = await wheelService.reconstructCycles("QZAC", null, [], undefined, {
+      dbTrades: assignedCycleTrades() as never,
+      assignedOptions: assignedOptions(),
+      // Paid during the CSP phase, before assignment.
+      dividendRows: [dividendRow("2026-01-20", "DIVIDEND", 50)],
+    } as never);
+
+    expect(cycles[0].dividends).toEqual([]);
+    expect(cycles[0].dividendIncome).toBe(0);
+  });
+});
+
+describe("wheelService.getTickerSummaryWithCycles — dividends", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const inProgressCycle = (dividendIncome: number) => ({
+    cycleNumber: 1,
+    startDate: "2026-02-20",
+    endDate: null,
+    status: "in_progress" as const,
+    totalPremium: 200,
+    postAssignmentPremium: 100,
+    shareQuantity: 100,
+    entryStrike: 100,
+    exitPrice: null,
+    roc: 0,
+    annualizedRoc: 0,
+    durationDays: 30,
+    trades: [
+      {
+        id: "t1",
+        type: "STOCK" as const,
+        displayName: "100 QZAC",
+        status: "assigned" as const,
+        netPnL: null,
+        openLeg: { date: "2026-02-20", action: "Bought 100 shares", price: 100, quantity: 100, total: -10000 },
+        closeLeg: null,
+      },
+    ],
+    spreadGroups: [],
+    dividends: [],
+    dividendIncome,
+    entryType: "assigned" as const,
+    entryDescription: "Assigned 100 @ $100.00",
+    exitType: "in_progress" as const,
+    exitDescription: null,
+    realizedPnL: 200 + dividendIncome,
+    unrealizedPnL: 0,
+    capitalDeployed: 10000,
+    pnlPercent: null,
+  });
+
+  const ibkrData = {
+    positions: [
+      {
+        account: "U1",
+        contract: { secType: "STK", symbol: "QZAC" },
+        pos: 100,
+        avgCost: 100,
+        marketPrice: 105,
+        marketValue: 10500,
+        unrealizedPnl: 500,
+      },
+    ],
+    todayTrades: [],
+    marketPrices: new Map([["QZAC", 105]]),
+    optionPrices: new Map(),
+    optionThetas: new Map(),
+  };
+
+  it("subtracts dividends per share from the adjusted cost basis", async () => {
+    const withoutDividends = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(0)] as never,
+      ibkrData as never
+    );
+    const withDividends = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(50)] as never,
+      ibkrData as never
+    );
+
+    // 50 USD across 100 shares = $0.50 per share off the basis.
+    expect(withoutDividends.adjustedCostBasis - withDividends.adjustedCostBasis).toBeCloseTo(0.5, 6);
+    expect(withDividends.breakEven).toBeCloseTo(withDividends.adjustedCostBasis, 10);
+  });
+
+  it("reports the ticker's total dividends", async () => {
+    const summary = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(50)] as never,
+      ibkrData as never
+    );
+
+    expect(summary.totalDividends).toBeCloseTo(50, 6);
+  });
+
+  it("reports zero dividends when no cycle earned any", async () => {
+    const summary = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(0)] as never,
+      ibkrData as never
+    );
+
+    expect(summary.totalDividends).toBe(0);
   });
 });
