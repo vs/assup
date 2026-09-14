@@ -17,6 +17,7 @@ export * from "./taxes.js";
 export * from "./wheel.js";
 export * from "./research.js";
 export * from "./tickerProfile.js";
+export * from "./tickerActivity.js";
 export * from "./ironCondor.js";
 export * from "./dashboard.js";
 export * from "./flex-web.js";
