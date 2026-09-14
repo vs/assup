@@ -1261,6 +1261,7 @@ export const wheelService = {
 
     // Calculate totals
     const totalPremiums = cycles.reduce((sum, c) => sum + c.totalPremium, 0);
+    const totalDividends = cycles.reduce((sum, c) => sum + c.dividendIncome, 0);
 
     // Use cached positions or empty array
     const positions = cachedData?.positions ?? [];
@@ -1345,13 +1346,21 @@ export const wheelService = {
         // for assignments, additional purchases, and cost averaging.
         // IBKR's avgCost already nets out the assignment PUT premium, so we only
         // subtract post-assignment (CC) premiums to avoid double-counting.
+        // Dividends are cash IBKR's avgCost never reflects, so they come off too.
         const shares = liveShareQuantity || currentCycle.shareQuantity || 100;
-        adjustedCostBasis = positionAvgCost - (currentCycle.postAssignmentPremium / shares);
+        adjustedCostBasis =
+          positionAvgCost -
+          (currentCycle.postAssignmentPremium / shares) -
+          (currentCycle.dividendIncome / shares);
       } else if (hasAssignment) {
-        // No live position data - fall back to assignment strike adjusted by premiums
-        adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / (currentCycle.shareQuantity || 100));
+        // No live position data - fall back to assignment strike adjusted by
+        // premiums and dividends received while holding the shares.
+        const shares = currentCycle.shareQuantity || 100;
+        adjustedCostBasis =
+          currentCycle.entryStrike -
+          ((currentCycle.totalPremium + currentCycle.dividendIncome) / shares);
       } else {
-        // CSP phase - no shares yet, use put strike as potential cost basis
+        // CSP phase - no shares yet (so no dividends), use put strike as potential cost basis
         adjustedCostBasis = currentCycle.entryStrike - (currentCycle.totalPremium / 100);
       }
     }
@@ -1419,6 +1428,7 @@ export const wheelService = {
       sharePnLPercent,
       adjustedCostBasis,
       totalPremiums,
+      totalDividends,
       currentPrice,
       breakEven,
       percentBelowMarket,

@@ -633,3 +633,105 @@ describe("wheelService.reconstructCycles — dividends", () => {
     expect(cycles[0].dividendIncome).toBe(0);
   });
 });
+
+describe("wheelService.getTickerSummaryWithCycles — dividends", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const inProgressCycle = (dividendIncome: number) => ({
+    cycleNumber: 1,
+    startDate: "2026-02-20",
+    endDate: null,
+    status: "in_progress" as const,
+    totalPremium: 200,
+    postAssignmentPremium: 100,
+    shareQuantity: 100,
+    entryStrike: 100,
+    exitPrice: null,
+    roc: 0,
+    annualizedRoc: 0,
+    durationDays: 30,
+    trades: [
+      {
+        id: "t1",
+        type: "STOCK" as const,
+        displayName: "100 QZAC",
+        status: "assigned" as const,
+        netPnL: null,
+        openLeg: { date: "2026-02-20", action: "Bought 100 shares", price: 100, quantity: 100, total: -10000 },
+        closeLeg: null,
+      },
+    ],
+    spreadGroups: [],
+    dividends: [],
+    dividendIncome,
+    entryType: "assigned" as const,
+    entryDescription: "Assigned 100 @ $100.00",
+    exitType: "in_progress" as const,
+    exitDescription: null,
+    realizedPnL: 200 + dividendIncome,
+    unrealizedPnL: 0,
+    capitalDeployed: 10000,
+    pnlPercent: null,
+  });
+
+  const ibkrData = {
+    positions: [
+      {
+        account: "U1",
+        contract: { secType: "STK", symbol: "QZAC" },
+        pos: 100,
+        avgCost: 100,
+        marketPrice: 105,
+        marketValue: 10500,
+        unrealizedPnl: 500,
+      },
+    ],
+    todayTrades: [],
+    marketPrices: new Map([["QZAC", 105]]),
+    optionPrices: new Map(),
+    optionThetas: new Map(),
+  };
+
+  it("subtracts dividends per share from the adjusted cost basis", async () => {
+    const withoutDividends = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(0)] as never,
+      ibkrData as never
+    );
+    const withDividends = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(50)] as never,
+      ibkrData as never
+    );
+
+    // 50 USD across 100 shares = $0.50 per share off the basis.
+    expect(withoutDividends.adjustedCostBasis - withDividends.adjustedCostBasis).toBeCloseTo(0.5, 6);
+    expect(withDividends.breakEven).toBeCloseTo(withDividends.adjustedCostBasis, 10);
+  });
+
+  it("reports the ticker's total dividends", async () => {
+    const summary = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(50)] as never,
+      ibkrData as never
+    );
+
+    expect(summary.totalDividends).toBeCloseTo(50, 6);
+  });
+
+  it("reports zero dividends when no cycle earned any", async () => {
+    const summary = await wheelService.getTickerSummaryWithCycles(
+      "QZAC",
+      null,
+      [inProgressCycle(0)] as never,
+      ibkrData as never
+    );
+
+    expect(summary.totalDividends).toBe(0);
+  });
+});
