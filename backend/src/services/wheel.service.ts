@@ -95,7 +95,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 9;
+const WHEEL_CACHE_VERSION = 10;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -134,6 +134,8 @@ const upsertWheelSummaryCache = async (data: {
   startDate: Date | null;
   tradeCount: number;
   lastTradeDate: Date | null;
+  dividendCount: number;
+  lastDividendDate: Date | null;
   summary: WheelTickerSummary;
 }) => {
   if (wheelSummaryCacheAvailable === false) return;
@@ -145,12 +147,16 @@ const upsertWheelSummaryCache = async (data: {
         startDate: data.startDate,
         tradeCount: data.tradeCount,
         lastTradeDate: data.lastTradeDate,
+        dividendCount: data.dividendCount,
+        lastDividendDate: data.lastDividendDate,
         summary: serializeSummary(data.summary),
       },
       update: {
         startDate: data.startDate,
         tradeCount: data.tradeCount,
         lastTradeDate: data.lastTradeDate,
+        dividendCount: data.dividendCount,
+        lastDividendDate: data.lastDividendDate,
         summary: serializeSummary(data.summary),
         computedAt: new Date(),
       },
@@ -984,8 +990,11 @@ export const wheelService = {
 
     const tradeStatsEntries = await Promise.all(
       trackers.map(async (tracker) => {
-        const stats = await this.getTradeStats(tracker.symbol, tracker.startDate);
-        return [tracker.symbol, stats] as const;
+        const [stats, dividendStats] = await Promise.all([
+          this.getTradeStats(tracker.symbol, tracker.startDate),
+          getDividendStats(tracker.symbol, tracker.startDate),
+        ]);
+        return [tracker.symbol, { ...stats, ...dividendStats }] as const;
       })
     );
     const tradeStatsBySymbol = new Map(tradeStatsEntries);
@@ -1010,6 +1019,8 @@ export const wheelService = {
         stats &&
         cache.tradeCount === stats.tradeCount &&
         dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate) &&
+        cache.dividendCount === stats.dividendCount &&
+        dateKey(cache.lastDividendDate) === dateKey(stats.lastDividendDate) &&
         !hasTodayTrades;
 
       if (!cacheValid) {
@@ -1093,6 +1104,8 @@ export const wheelService = {
                   startDate: tracker.startDate,
                   tradeCount: stats.tradeCount,
                   lastTradeDate: stats.lastTradeDate,
+                  dividendCount: stats.dividendCount,
+                  lastDividendDate: stats.lastDividendDate,
                   summary: fresh,
                 });
               }
@@ -1123,6 +1136,8 @@ export const wheelService = {
             startDate: tracker.startDate,
             tradeCount: stats.tradeCount,
             lastTradeDate: stats.lastTradeDate,
+            dividendCount: stats.dividendCount,
+            lastDividendDate: stats.lastDividendDate,
             summary,
           });
         }
@@ -1160,8 +1175,11 @@ export const wheelService = {
       loadWheelSummaryCache(symbols),
       Promise.all(
         trackers.map(async (tracker) => {
-          const stats = await this.getTradeStats(tracker.symbol, tracker.startDate);
-          return [tracker.symbol, stats] as const;
+          const [stats, dividendStats] = await Promise.all([
+            this.getTradeStats(tracker.symbol, tracker.startDate),
+            getDividendStats(tracker.symbol, tracker.startDate),
+          ]);
+          return [tracker.symbol, { ...stats, ...dividendStats }] as const;
         })
       ),
     ]);
@@ -1182,7 +1200,9 @@ export const wheelService = {
           dateKey(cache.startDate) === dateKey(tracker.startDate) &&
           stats !== undefined &&
           cache.tradeCount === stats.tradeCount &&
-          dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate);
+          dateKey(cache.lastTradeDate) === dateKey(stats.lastTradeDate) &&
+          cache.dividendCount === stats.dividendCount &&
+          dateKey(cache.lastDividendDate) === dateKey(stats.lastDividendDate);
 
         if (cacheValid) return cachedSummary;
 

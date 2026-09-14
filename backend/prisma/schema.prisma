@@ -299,6 +299,10 @@ model WheelSummaryCache {
   startDate     DateTime? @map("start_date") @db.Date
   tradeCount    Int       @map("trade_count")
   lastTradeDate DateTime? @map("last_trade_date") @db.Date
+
+  // Dividends move the summary without touching trades, so they invalidate too.
+  dividendCount    Int       @default(0) @map("dividend_count")
+  lastDividendDate DateTime? @map("last_dividend_date") @db.Date
   summary       Json
   computedAt    DateTime  @default(now()) @map("computed_at") @db.Timestamptz
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
