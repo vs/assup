@@ -208,6 +208,14 @@ const IV_RANK_UNAVAILABLE_TEXT: Record<IvRankUnavailableReason, string> = {
   degenerate_range: "IV has not moved over the past year",
 };
 
+/**
+ * Below this many bars, the IV Rank window is short enough to be worth labelling.
+ * A normal IBKR "1 Y" request returns 250-251 daily bars rather than a textbook
+ * 252, so testing against 252 would tag every healthy symbol and drown out the
+ * genuinely short histories (the service floor is 126 bars) that the label is for.
+ */
+const IV_RANK_SHORT_WINDOW_DAYS = 240;
+
 /** Half-open bands so every rank falls in exactly one: [0,25) [25,50) [50,75) [75,100]. */
 function ivRankBandClass(rank: number): string {
   if (rank < 25) return "text-blue-600";
@@ -263,7 +271,8 @@ function IvRankBullet({
         </div>
         <div className="text-[10px] text-muted-foreground">
           IV {pct(ivRank.currentIv)} · 52wk {pct(ivRank.iv52wLow)} – {pct(ivRank.iv52wHigh)}
-          {ivRank.windowDays < 252 && ` (${ivRank.windowDays}d)`}
+          {ivRank.windowDays < IV_RANK_SHORT_WINDOW_DAYS &&
+            ` (${ivRank.windowDays}d)`}
         </div>
       </div>
     </InfoBullet>
