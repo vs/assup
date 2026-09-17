@@ -81,7 +81,22 @@ For Bull Case and Bear Case sections:
 - Cite specific data points (e.g., "SA commenters highlight 37% CAGR EPS growth", "Revenue growth at 65.4%", "RSI at 32 indicates oversold")
 - Include both consensus and contrarian viewpoints from SA comments when available
 - Be specific about catalysts and risks mentioned by commenters
-- Each case should have 3-5 bullet points with concrete supporting evidence`;
+- Each case should have 3-5 bullet points with concrete supporting evidence
+
+For the Options Landscape section:
+- ivRank is IV Rank: today's at-the-money implied volatility expressed as a
+  percentile of its own 52-week range, from 0 (a one-year low in volatility) to
+  100 (a one-year high). It is NOT a measure of skew or of how strikes differ.
+- A high IV Rank means option premium is historically rich, which favours
+  selling premium (cash-secured puts, covered calls). A low IV Rank means
+  premium is cheap, which favours buying options and argues against wheeling.
+- Read ivRank alongside currentIv, iv52wLow and iv52wHigh — the same rank means
+  something different on a 15%–20% range than on a 20%–90% range.
+- When ivWindowDays is below 252 the rank covers less than a full year; say so
+  rather than presenting it as a 52-week figure.
+- When ivRank is null the value is unavailable and ivRankUnavailableReason says
+  why. Do not estimate it, do not describe the premium environment as though you
+  knew it, and do not treat a missing value as neutral.`;
 
 function buildUserPrompt(input: SynthesizerInput): string {
   let prompt = `Analyze ${input.symbol} and provide a trading recommendation.\n\n`;
