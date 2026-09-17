@@ -11,6 +11,20 @@ interface CacheEntry {
   timestamp: number;
 }
 
+/**
+ * The outcome of an implied-volatility history request.
+ *
+ * `no_data` is TWS's authoritative verdict that the series does not exist for
+ * this contract (an empty response, or error 162). `failed` means we could not
+ * get an answer at all. Callers must not conflate them: a `no_data` verdict is
+ * worth caching so the symbol is not re-queried forever, whereas caching a
+ * `failed` would suppress a perfectly good symbol until the entry expired.
+ */
+export type IvHistoryResult =
+  | { kind: "data"; bars: PricePoint[] }
+  | { kind: "no_data" }
+  | { kind: "failed"; error: unknown };
+
 interface QueuedRequest {
   symbol: string;
   resolve: (data: PricePoint[]) => void;
@@ -92,18 +106,20 @@ class HistoricalDataService {
    * Returns an empty array when TWS is disconnected or the symbol has no
    * IV series — callers distinguish those cases themselves.
    */
-  async getImpliedVolatilityHistory(symbol: string): Promise<PricePoint[]> {
+  async getImpliedVolatilityHistory(symbol: string): Promise<IvHistoryResult> {
     if (!ibkrService.isConnected()) {
-      return [];
+      return { kind: "failed", error: new Error("Not connected to TWS") };
     }
 
     const cacheKey = `${this.getCacheKey(symbol)}:IV`;
     const cached = this.cache.get(cacheKey);
     if (cached && this.isCacheValid(cached)) {
-      return cached.data;
+      return cached.data.length > 0
+        ? { kind: "data", bars: cached.data }
+        : { kind: "no_data" };
     }
 
-    return new Promise((resolve, reject) => {
+    const bars = await new Promise<PricePoint[]>((resolve, reject) => {
       this.requestQueue.push({
         symbol,
         duration: "1 Y",
@@ -116,7 +132,17 @@ class HistoricalDataService {
         cacheKey,
       });
       this.processQueue();
+    }).catch((error: unknown) => {
+      // Distinguished below: a rejection means the request failed, which is not
+      // the same as TWS answering "this series does not exist".
+      return { __failed: error } as const;
     });
+
+    if (bars && typeof bars === "object" && "__failed" in bars) {
+      return { kind: "failed", error: bars.__failed };
+    }
+
+    return bars.length > 0 ? { kind: "data", bars } : { kind: "no_data" };
   }
 
   async getBatchSparklineData(
@@ -253,6 +279,22 @@ class HistoricalDataService {
             `TWS warning for ${symbol} with ${whatToShow}, trying next option`
           );
           continue;
+        }
+
+        // Code 162 is "HMDS query returned no data": TWS is telling us the series
+        // does not exist for this contract. That is the same benign verdict as the
+        // empty-response branch above — many symbols simply have no options — so it
+        // gets the same severity rather than an error-level stack trace.
+        if (err.code === 162) {
+          console.debug(`No ${whatToShow} history for ${symbol} (TWS 162)`);
+          return [];
+        }
+
+        // A genuine failure. IV callers need to tell "this does not exist" apart
+        // from "we could not ask", so surface it instead of returning an empty
+        // array they would cache as an authoritative "no data".
+        if (whatToShowOverride) {
+          throw error;
         }
 
         // For other errors, log and return empty

@@ -58,7 +58,7 @@ describe("ivRankService.getIvRank", () => {
 
   it("ranks the last bar within the window", async () => {
     // 252 bars ramping 0.10 → 0.50; last bar is the max.
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(252, 0.1, 0.5)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(252, 0.1, 0.5)) });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -71,7 +71,7 @@ describe("ivRankService.getIvRank", () => {
   });
 
   it("ranks 0 when the last bar is the window low", async () => {
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(252, 0.5, 0.1)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(252, 0.5, 0.1)) });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -83,7 +83,7 @@ describe("ivRankService.getIvRank", () => {
       ...series(251, 0.2, 0.4),
       { date: "2026-02-01", iv: 0.3 },
     ]);
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(bars);
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -96,7 +96,7 @@ describe("ivRankService.getIvRank", () => {
       { date: "2025-01-01", iv: 0.99 },
       ...series(300, 0.2, 0.4),
     ]);
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(bars);
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -110,7 +110,7 @@ describe("ivRankService.getIvRank", () => {
       { date: "2026-02-02", iv: 0 },
       { date: "2026-02-03", iv: -1 },
     ]);
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(bars);
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -128,7 +128,7 @@ describe("ivRankService.getIvRank", () => {
   });
 
   it("reports no_iv_data for an empty series", async () => {
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue([]);
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "no_data" });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -137,7 +137,7 @@ describe("ivRankService.getIvRank", () => {
   });
 
   it("reports insufficient_history at 125 bars", async () => {
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(125, 0.2, 0.4)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(125, 0.2, 0.4)) });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -146,7 +146,7 @@ describe("ivRankService.getIvRank", () => {
   });
 
   it("succeeds at exactly 126 bars and records the partial window", async () => {
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(126, 0.2, 0.4)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(126, 0.2, 0.4)) });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -155,7 +155,7 @@ describe("ivRankService.getIvRank", () => {
   });
 
   it("reports degenerate_range for a flat series", async () => {
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(252, 0.3, 0.3)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(252, 0.3, 0.3)) });
 
     const result = await ivRankService.getIvRank("AAPL");
 
@@ -164,9 +164,9 @@ describe("ivRankService.getIvRank", () => {
   });
 
   it("never substitutes a neutral 50 on any failure path", async () => {
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue([]);
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "no_data" });
     const empty = await ivRankService.getIvRank("AAPL");
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(252, 0.3, 0.3)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(252, 0.3, 0.3)) });
     const flat = await ivRankService.getIvRank("MSFT");
 
     expect(empty.info).toBeNull();
@@ -202,7 +202,7 @@ describe("ivRankService cache", () => {
       fetchedAt: new Date(Date.now() - 90_000_000),
       expiresAt: new Date(Date.now() - 1000),
     } as never);
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(252, 0.2, 0.4)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(252, 0.2, 0.4)) });
 
     await ivRankService.getIvRank("AAPL");
 
@@ -211,7 +211,7 @@ describe("ivRankService cache", () => {
 
   it("writes the fetched series to the cache", async () => {
     mockPrisma.ivHistoryCache.findUnique.mockResolvedValue(null);
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue(asBars(series(252, 0.2, 0.4)));
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "data", bars: asBars(series(252, 0.2, 0.4)) });
 
     await ivRankService.getIvRank("AAPL");
 
@@ -222,12 +222,63 @@ describe("ivRankService cache", () => {
 
   it("uppercases the symbol before lookup", async () => {
     mockPrisma.ivHistoryCache.findUnique.mockResolvedValue(null);
-    mockHist.getImpliedVolatilityHistory.mockResolvedValue([]);
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "no_data" });
 
     await ivRankService.getIvRank("aapl");
 
     expect(mockPrisma.ivHistoryCache.findUnique).toHaveBeenCalledWith({
       where: { symbol: "AAPL" },
     });
+  });
+});
+
+describe("ivRankService negative caching", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIbkr.isConnected.mockReturnValue(true);
+    mockPrisma.ivHistoryCache.upsert.mockResolvedValue({} as never);
+    mockPrisma.ivHistoryCache.findUnique.mockResolvedValue(null);
+  });
+
+  it("caches an empty series when IBKR reports the symbol has no IV history", async () => {
+    // QZLA: IBKR error 162, "HMDS query returned no data". A definite verdict,
+    // not a failure — so record it, or every page load re-queries TWS forever.
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({ kind: "no_data" });
+
+    const result = await ivRankService.getIvRank("QZLA");
+
+    expect(result.reason).toBe("no_iv_data");
+    expect(mockPrisma.ivHistoryCache.upsert).toHaveBeenCalledTimes(1);
+    const arg = mockPrisma.ivHistoryCache.upsert.mock.calls[0][0];
+    expect(arg.where).toEqual({ symbol: "QZLA" });
+    expect(arg.create.data).toEqual([]);
+  });
+
+  it("does NOT cache when the fetch itself failed", async () => {
+    // A network blip must never suppress a real symbol's IV for a whole day.
+    mockHist.getImpliedVolatilityHistory.mockResolvedValue({
+      kind: "failed",
+      error: new Error("socket hang up"),
+    });
+
+    const result = await ivRankService.getIvRank("AAPL");
+
+    expect(result.reason).toBe("no_iv_data");
+    expect(mockPrisma.ivHistoryCache.upsert).not.toHaveBeenCalled();
+  });
+
+  it("serves a cached empty series without touching TWS — this breaks the retry loop", async () => {
+    mockPrisma.ivHistoryCache.findUnique.mockResolvedValue({
+      symbol: "QZLA",
+      data: [],
+      fetchedAt: new Date(),
+      expiresAt: new Date(Date.now() + 60_000),
+    } as never);
+
+    const result = await ivRankService.getIvRank("QZLA");
+
+    expect(result.info).toBeNull();
+    expect(result.reason).toBe("no_iv_data");
+    expect(mockHist.getImpliedVolatilityHistory).not.toHaveBeenCalled();
   });
 });

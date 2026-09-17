@@ -81,13 +81,26 @@ class IvRankService {
       return unavailable("tws_disconnected");
     }
 
-    const bars = await historicalDataService.getImpliedVolatilityHistory(upper);
-    const series: IvPoint[] = bars.map((b) => ({
-      date: b.date,
-      iv: normalizeIv(b.close),
-    }));
+    const fetched = await historicalDataService.getImpliedVolatilityHistory(upper);
 
-    if (series.length > 0) {
+    // A failure is not an answer. Leave the cache untouched so the next call
+    // retries, rather than recording "no IV" for a symbol we simply could not ask
+    // about. Reported as no_iv_data because that is what the caller can act on.
+    if (fetched.kind === "failed") {
+      console.warn(`IV history fetch failed for ${upper}:`, fetched.error);
+      return unavailable("no_iv_data");
+    }
+
+    const series: IvPoint[] =
+      fetched.kind === "data"
+        ? fetched.bars.map((b) => ({ date: b.date, iv: normalizeIv(b.close) }))
+        : [];
+
+    // An empty series is cached deliberately. TWS has told us this symbol has no
+    // IV history, and without recording that verdict every profile request and
+    // every batch background refresh would re-query TWS forever, occupying the
+    // shared request throttle on a question already answered.
+    {
       const now = new Date();
       await prisma.ivHistoryCache.upsert({
         where: { symbol: upper },
