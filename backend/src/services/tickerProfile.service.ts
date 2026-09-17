@@ -1,6 +1,7 @@
 import { prisma } from "../db/index.js";
 import { PolygonProvider, type TickerDetails } from "./research/providers/polygon.provider.js";
 import { historicalDataService } from "./historicalData.js";
+import { ivRankService, type IvRankResult } from "./ivRank.service.js";
 import type { TickerProfileResponse } from "@assup/shared";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -31,7 +32,7 @@ class TickerProfileService {
         where: { symbol: upperSymbol },
         orderBy: { createdAt: "desc" },
       });
-      return this.assembleResponse(cached, cachedChart.data as any[], report?.recommendation ?? null, report?.confidence ?? null);
+      return this.assembleResponse(cached, cachedChart.data as any[], report?.recommendation ?? null, report?.confidence ?? null, await this.fetchIvRank(upperSymbol));
     }
 
     // Stale-while-revalidate: return stale if available, refresh in background
@@ -43,7 +44,7 @@ class TickerProfileService {
         where: { symbol: upperSymbol },
         orderBy: { createdAt: "desc" },
       });
-      return this.assembleResponse(cached, cachedChart.data as any[], report?.recommendation ?? null, report?.confidence ?? null);
+      return this.assembleResponse(cached, cachedChart.data as any[], report?.recommendation ?? null, report?.confidence ?? null, await this.fetchIvRank(upperSymbol));
     }
 
     // No cache at all — must fetch synchronously
@@ -76,6 +77,15 @@ class TickerProfileService {
     const chartMap = new Map(cachedCharts.map((c) => [c.symbol, c]));
     const reportMap = new Map(latestReports.map((r) => [r.symbol, r]));
 
+    // Hoist IV Rank lookups out of the loop: cache-only reads, run in parallel,
+    // so a 50-symbol batch never queues 50 sequential TWS requests.
+    const ivResults = new Map<string, IvRankResult>();
+    await Promise.all(
+      upperSymbols.map(async (s) => {
+        ivResults.set(s, await this.fetchIvRankCached(s));
+      })
+    );
+
     const now = new Date();
     for (const upper of upperSymbols) {
       const cached = profileMap.get(upper);
@@ -88,6 +98,7 @@ class TickerProfileService {
           cachedChart.data as any[],
           report?.recommendation ?? null,
           report?.confidence ?? null,
+          ivResults.get(upper) ?? { info: null, reason: "no_iv_data" },
         );
         if (cached.expiresAt <= now || cachedChart.expiresAt <= now) {
           this.refreshProfile(upper).catch((err) =>
@@ -226,7 +237,7 @@ class TickerProfileService {
       });
     }
 
-    return this.assembleResponse(profileData, chartData, report?.recommendation ?? null, report?.confidence ?? null);
+    return this.assembleResponse(profileData, chartData, report?.recommendation ?? null, report?.confidence ?? null, await this.fetchIvRank(symbol));
   }
 
   private assembleResponse(
@@ -234,6 +245,7 @@ class TickerProfileService {
     chartData: { date: string; close: number }[],
     recommendation: string | null,
     confidence: number | null,
+    ivResult: IvRankResult,
   ): TickerProfileResponse {
     return {
       symbol: profile.symbol,
@@ -250,6 +262,8 @@ class TickerProfileService {
       chart: chartData,
       recommendation: recommendation as any,
       confidence,
+      ivRank: ivResult.info,
+      ivRankUnavailableReason: ivResult.reason,
     };
   }
 
@@ -263,6 +277,40 @@ class TickerProfileService {
       chunks.push(arr.slice(i, i + size));
     }
     return chunks;
+  }
+
+  /** Single-symbol path: may hit TWS. Never throws. */
+  private async fetchIvRank(symbol: string): Promise<IvRankResult> {
+    try {
+      return await ivRankService.getIvRank(symbol);
+    } catch (err) {
+      console.warn(`IV rank failed for ${symbol}:`, err);
+      return { info: null, reason: "no_iv_data" };
+    }
+  }
+
+  /**
+   * Batch path: cache-only, plus a background refresh for stale rows.
+   * Deliberately does NOT refresh rows that were simply never cached
+   * (info === null, stale === false) — a 50-symbol watchlist with no
+   * IV history yet would otherwise fan out 50 TWS requests in the
+   * background, defeating the point of the cache-only batch read.
+   */
+  private async fetchIvRankCached(symbol: string): Promise<IvRankResult> {
+    try {
+      const result = await ivRankService.getIvRankCachedOnly(symbol);
+      if (result.stale) {
+        ivRankService
+          .getIvRank(symbol)
+          .catch((err) =>
+            console.error(`Background IV refresh failed for ${symbol}:`, err)
+          );
+      }
+      return { info: result.info, reason: result.reason };
+    } catch (err) {
+      console.warn(`Cached IV rank failed for ${symbol}:`, err);
+      return { info: null, reason: "no_iv_data" };
+    }
   }
 }
 
