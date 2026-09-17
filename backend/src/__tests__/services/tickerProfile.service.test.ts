@@ -168,4 +168,38 @@ describe("tickerProfileService IV Rank", () => {
     expect(Object.keys(res)).toHaveLength(3); // resolved without awaiting TWS
     expect(mockIvRank.getIvRankCachedOnly).toHaveBeenCalledTimes(3);
   });
+
+  it(
+    "does not block on TWS for cold symbols with no cached profile/chart at all",
+    async () => {
+      const { prisma } = await import("../../db/index.js");
+      const symbols = ["AAPL", "MSFT", "NVDA"];
+
+      // Nothing cached at all: every symbol falls into the toFetch/cold path.
+      (prisma.tickerProfile.findMany as any).mockResolvedValue([]);
+      (prisma.priceHistoryCache.findMany as any).mockResolvedValue([]);
+      (prisma.researchReport.findMany as any).mockResolvedValue([]);
+      (prisma.researchReport.findFirst as any).mockResolvedValue(null);
+      (prisma.analysis.findFirst as any).mockResolvedValue(null);
+      (prisma.tickerProfile.upsert as any).mockResolvedValue({});
+      (prisma.priceHistoryCache.upsert as any).mockResolvedValue({});
+
+      // getIvRank must never be awaited from the batch path — if it is, this
+      // never-resolving promise makes the test hang/time out.
+      mockIvRank.getIvRank.mockReturnValue(new Promise(() => {}) as any);
+      mockIvRank.getIvRankCachedOnly.mockResolvedValue({
+        info: null,
+        reason: "no_iv_data",
+        stale: false,
+      });
+
+      const res = await tickerProfileService.getBatchProfiles(symbols);
+
+      expect(Object.keys(res).sort()).toEqual(symbols.slice().sort());
+      // Cache-only path runs once per symbol (the hoisted lookup); the cold
+      // fetch must reuse that result rather than issuing a second, blocking call.
+      expect(mockIvRank.getIvRankCachedOnly).toHaveBeenCalledTimes(3);
+    },
+    3000
+  );
 });

@@ -114,7 +114,9 @@ class TickerProfileService {
     const chunks = this.chunkArray(toFetch, MAX_CONCURRENT_FETCHES);
     for (const chunk of chunks) {
       const fetched = await Promise.allSettled(
-        chunk.map((s) => this.fetchAndCacheProfile(s))
+        chunk.map((s) =>
+          this.fetchAndCacheProfile(s, ivResults.get(s) ?? { info: null, reason: "no_iv_data" })
+        )
       );
       for (let i = 0; i < chunk.length; i++) {
         const result = fetched[i];
@@ -128,7 +130,8 @@ class TickerProfileService {
   }
 
   private async fetchAndCacheProfile(
-    symbol: string
+    symbol: string,
+    ivResult?: IvRankResult
   ): Promise<TickerProfileResponse> {
     // 1. Check for research report (highest quality data)
     const report = await prisma.researchReport.findFirst({
@@ -237,7 +240,13 @@ class TickerProfileService {
       });
     }
 
-    return this.assembleResponse(profileData, chartData, report?.recommendation ?? null, report?.confidence ?? null, await this.fetchIvRank(symbol));
+    return this.assembleResponse(
+      profileData,
+      chartData,
+      report?.recommendation ?? null,
+      report?.confidence ?? null,
+      ivResult ?? (await this.fetchIvRank(symbol)),
+    );
   }
 
   private assembleResponse(
