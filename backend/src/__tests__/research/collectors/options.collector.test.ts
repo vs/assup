@@ -19,11 +19,17 @@ vi.mock("../../../utils/market.js", () => ({
   isMarketOpen: vi.fn(() => false),
 }));
 
+vi.mock("../../../services/ivRank.service.js", () => ({
+  ivRankService: { getIvRank: vi.fn() },
+}));
+
 import { ibkrService } from "../../../services/ibkr.js";
 import { createIBKRProvider } from "../../../services/research/providers/ibkr.provider.js";
+import { ivRankService } from "../../../services/ivRank.service.js";
 
 const mockIbkrService = vi.mocked(ibkrService);
 const mockCreateIBKRProvider = vi.mocked(createIBKRProvider);
+const mockIvRankService = vi.mocked(ivRankService);
 
 describe("optionsCollector", () => {
   const mockProvider = {
@@ -35,6 +41,7 @@ describe("optionsCollector", () => {
     vi.restoreAllMocks();
     mockIbkrService.isConnected.mockReturnValue(true);
     mockCreateIBKRProvider.mockReturnValue(mockProvider as any);
+    mockIvRankService.getIvRank.mockResolvedValue({ info: null, reason: "no_iv_data" });
   });
 
   it("has correct source and schedule", () => {
@@ -94,5 +101,40 @@ describe("optionsCollector", () => {
     mockProvider.getOptionsChain.mockRejectedValue(new Error("TWS error"));
     await expect(optionsCollector.collect("AAPL")).rejects.toThrow("TWS error");
     expect(mockIbkrService.releaseLiveMarketData).toHaveBeenCalled();
+  });
+
+  it("attaches IV Rank to the collected data", async () => {
+    mockProvider.getOptionsChain.mockResolvedValue([
+      { symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 0, impliedVolatility: 0.3, delta: 0.5, gamma: null, theta: null },
+    ]);
+    mockIvRankService.getIvRank.mockResolvedValue({
+      info: {
+        ivRank: 82, currentIv: 0.341, iv52wLow: 0.182,
+        iv52wHigh: 0.395, windowDays: 252, asOf: "2026-08-10",
+      },
+      reason: null,
+    });
+
+    const result = await optionsCollector.collect("AAPL");
+
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect((data.ivRank as { ivRank: number }).ivRank).toBe(82);
+    expect(data.ivRankUnavailableReason).toBeNull();
+  });
+
+  it("passes the unavailability reason through instead of a value", async () => {
+    mockProvider.getOptionsChain.mockResolvedValue([
+      { symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 0, impliedVolatility: 0.3, delta: 0.5, gamma: null, theta: null },
+    ]);
+    mockIvRankService.getIvRank.mockResolvedValue({
+      info: null,
+      reason: "insufficient_history",
+    });
+
+    const result = await optionsCollector.collect("AAPL");
+
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.ivRank).toBeNull();
+    expect(data.ivRankUnavailableReason).toBe("insufficient_history");
   });
 });

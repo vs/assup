@@ -2,6 +2,7 @@ import type { Collector, CollectionResult } from "./types.js";
 import { createIBKRProvider } from "../providers/ibkr.provider.js";
 import { ibkrService } from "../../../services/ibkr.js";
 import { withLiveMarketData } from "../../../utils/options.js";
+import { ivRankService } from "../../ivRank.service.js";
 
 const STALENESS_MINUTES = 24 * 60; // 1440 minutes (24h)
 
@@ -33,11 +34,15 @@ export const optionsCollector: Collector = {
         };
       }
 
+      const ivResult = await ivRankService.getIvRank(symbol);
+
       return {
         source: "options",
         data: {
           symbol,
           chain,
+          ivRank: ivResult.info,
+          ivRankUnavailableReason: ivResult.reason,
           fetchedAt: new Date().toISOString(),
         },
         expiresAt: new Date(Date.now() + STALENESS_MINUTES * 60 * 1000),
