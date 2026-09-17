@@ -143,7 +143,7 @@ describe("tickerProfileService IV Rank", () => {
     expect(profile.ivRankUnavailableReason).toBe("no_iv_data");
   });
 
-  it("never issues a TWS-backed IV fetch from the batch path", async () => {
+  it("does not block on TWS when refreshing uncached symbols in the batch path", async () => {
     const { prisma } = await import("../../db/index.js");
     const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const symbols = ["AAPL", "MSFT", "NVDA"];
@@ -155,15 +155,17 @@ describe("tickerProfileService IV Rank", () => {
     );
     (prisma.researchReport.findMany as any).mockResolvedValue([]);
 
+    // The batch path may FIRE a background refresh, but must never BLOCK on it.
+    mockIvRank.getIvRank.mockReturnValue(new Promise(() => {}) as any);
     mockIvRank.getIvRankCachedOnly.mockResolvedValue({
       info: null,
       reason: "no_iv_data",
       stale: false,
     });
 
-    await tickerProfileService.getBatchProfiles(symbols);
+    const res = await tickerProfileService.getBatchProfiles(symbols);
 
-    expect(mockIvRank.getIvRank).not.toHaveBeenCalled();
+    expect(Object.keys(res)).toHaveLength(3); // resolved without awaiting TWS
     expect(mockIvRank.getIvRankCachedOnly).toHaveBeenCalledTimes(3);
   });
 });

@@ -289,17 +289,11 @@ class TickerProfileService {
     }
   }
 
-  /**
-   * Batch path: cache-only, plus a background refresh for stale rows.
-   * Deliberately does NOT refresh rows that were simply never cached
-   * (info === null, stale === false) — a 50-symbol watchlist with no
-   * IV history yet would otherwise fan out 50 TWS requests in the
-   * background, defeating the point of the cache-only batch read.
-   */
+  /** Batch path: cache-only, plus a background refresh for stale/missing rows. */
   private async fetchIvRankCached(symbol: string): Promise<IvRankResult> {
     try {
       const result = await ivRankService.getIvRankCachedOnly(symbol);
-      if (result.stale) {
+      if (result.stale || result.info === null) {
         ivRankService
           .getIvRank(symbol)
           .catch((err) =>
