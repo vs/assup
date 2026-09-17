@@ -505,6 +505,15 @@ model PriceHistoryCache {
   @@map("price_history_cache")
 }
 
+model IvHistoryCache {
+  symbol    String   @id @db.VarChar(20)
+  data      Json     @db.JsonB
+  fetchedAt DateTime @map("fetched_at") @db.Timestamptz
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+
+  @@map("iv_history_cache")
+}
+
 model CalendarEvent {
   id        String   @id @default(uuid()) @db.Uuid
   eventType String   @map("event_type") @db.VarChar(30)
