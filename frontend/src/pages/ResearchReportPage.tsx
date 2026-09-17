@@ -12,6 +12,8 @@ import type {
   CollectionDataEntry,
   TickerProfileResponse,
   OptionTypeFilter,
+  IvRankInfo,
+  IvRankUnavailableReason,
 } from "@assup/shared";
 import { DEFAULT_SCANNER_CRITERIA } from "@assup/shared";
 import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/components/common";
@@ -44,6 +46,7 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  TooltipProvider,
 } from "@/components/ui/tooltip";
 import { timeAgo } from "@/utils/format";
 
@@ -198,6 +201,75 @@ function MetricItem({
   );
 }
 
+const IV_RANK_UNAVAILABLE_TEXT: Record<IvRankUnavailableReason, string> = {
+  tws_disconnected: "TWS not connected — IV Rank requires IBKR",
+  no_iv_data: "No implied volatility history for this symbol",
+  insufficient_history: "Not enough IV history (needs 126+ trading days)",
+  degenerate_range: "IV has not moved over the past year",
+};
+
+/** Half-open bands so every rank falls in exactly one: [0,25) [25,50) [50,75) [75,100]. */
+function ivRankBandClass(rank: number): string {
+  if (rank < 25) return "text-blue-600";
+  if (rank < 50) return "text-muted-foreground";
+  if (rank < 75) return "text-amber-600";
+  return "text-green-600";
+}
+
+function IvRankBar({ rank }: { rank: number }) {
+  const filled = Math.round((Math.min(Math.max(rank, 0), 100) / 100) * 10);
+  return (
+    <span className="font-mono text-xs tracking-tighter" aria-hidden="true">
+      {"█".repeat(filled)}
+      <span className="text-muted-foreground/30">{"░".repeat(10 - filled)}</span>
+    </span>
+  );
+}
+
+function IvRankBullet({
+  ivRank,
+  reason,
+}: {
+  ivRank: IvRankInfo | null;
+  reason: IvRankUnavailableReason | null;
+}) {
+  if (!ivRank) {
+    return (
+      <InfoBullet label="IV Rank">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-muted-foreground cursor-help">—</span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {reason ? IV_RANK_UNAVAILABLE_TEXT[reason] : "IV Rank unavailable"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </InfoBullet>
+    );
+  }
+
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+  return (
+    <InfoBullet label="IV Rank">
+      <div className="space-y-0.5">
+        <div className="flex items-center gap-2">
+          <span className={`text-lg font-bold ${ivRankBandClass(ivRank.ivRank)}`}>
+            {Math.round(ivRank.ivRank)}%
+          </span>
+          <IvRankBar rank={ivRank.ivRank} />
+        </div>
+        <div className="text-[10px] text-muted-foreground">
+          IV {pct(ivRank.currentIv)} · 52wk {pct(ivRank.iv52wLow)} – {pct(ivRank.iv52wHigh)}
+          {ivRank.windowDays < 252 && ` (${ivRank.windowDays}d)`}
+        </div>
+      </div>
+    </InfoBullet>
+  );
+}
+
 // --- Company Info Panel ---
 
 function CompanyInfoPanel({
@@ -334,6 +406,13 @@ function CompanyInfoPanel({
             </InfoBullet>
           );
         })()}
+
+        {profile && (
+          <IvRankBullet
+            ivRank={profile.ivRank}
+            reason={profile.ivRankUnavailableReason}
+          />
+        )}
 
         {/* Fundamentals (from profile fallback) */}
         {!fundamentalsAnalysis && profile && (profile.marketCap != null || profile.peRatio != null || profile.dividendYield != null) && (
