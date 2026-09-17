@@ -16,11 +16,23 @@ interface QueuedRequest {
   resolve: (data: PricePoint[]) => void;
   reject: (error: Error) => void;
   duration?: string;
+  whatToShow?: WhatToShow;
+  cacheKey?: string;
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const REQUEST_DELAY_MS = 50; // Delay between TWS requests
 const MAX_CONCURRENT_REQUESTS = 3; // Max parallel historical data requests
+
+// Indices (SPX, XSP, RUT, VIX, etc.) need SecType.IND, not STK
+const INDEX_SYMBOLS = new Set(["SPX", "XSP", "RUT", "VIX", "DJX", "NDX"]);
+
+function buildUnderlyingContract(symbol: string): Contract {
+  const sym = symbol.toUpperCase();
+  return INDEX_SYMBOLS.has(sym)
+    ? { symbol: sym, secType: SecType.IND, exchange: "CBOE", currency: "USD" }
+    : new Stock(sym, "SMART", "USD");
+}
 
 class HistoricalDataService {
   private cache: Map<string, CacheEntry> = new Map();
@@ -47,7 +59,7 @@ class HistoricalDataService {
 
     // Queue the request
     return new Promise((resolve, reject) => {
-      this.requestQueue.push({ symbol, resolve, reject });
+      this.requestQueue.push({ symbol, resolve, reject, cacheKey });
       this.processQueue();
     });
   }
@@ -69,6 +81,39 @@ class HistoricalDataService {
         },
         reject,
         duration,
+        cacheKey,
+      });
+      this.processQueue();
+    });
+  }
+
+  /**
+   * Daily ATM implied-volatility bars for the underlying, one year back.
+   * Returns an empty array when TWS is disconnected or the symbol has no
+   * IV series — callers distinguish those cases themselves.
+   */
+  async getImpliedVolatilityHistory(symbol: string): Promise<PricePoint[]> {
+    if (!ibkrService.isConnected()) {
+      return [];
+    }
+
+    const cacheKey = `${this.getCacheKey(symbol)}:IV`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && this.isCacheValid(cached)) {
+      return cached.data;
+    }
+
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({
+        symbol,
+        duration: "1 Y",
+        whatToShow: WhatToShow.OPTION_IMPLIED_VOLATILITY,
+        resolve: (data) => {
+          this.cache.set(cacheKey, { data, timestamp: Date.now() });
+          resolve(data);
+        },
+        reject,
+        cacheKey,
       });
       this.processQueue();
     });
@@ -104,7 +149,7 @@ class HistoricalDataService {
     const processNext = async () => {
       while (this.requestQueue.length > 0 && this.activeRequests < MAX_CONCURRENT_REQUESTS) {
         const request = this.requestQueue.shift()!;
-        const cacheKey = this.getCacheKey(request.symbol);
+        const cacheKey = request.cacheKey ?? this.getCacheKey(request.symbol);
 
         // Re-check cache (another request may have populated it)
         const cached = this.cache.get(cacheKey);
@@ -116,7 +161,7 @@ class HistoricalDataService {
         this.activeRequests++;
 
         // Process this request without awaiting - allow parallelism
-        this.fetchFromTWS(request.symbol, request.duration)
+        this.fetchFromTWS(request.symbol, request.duration, request.whatToShow)
           .then((data) => {
             this.cache.set(cacheKey, { data, timestamp: Date.now() });
             request.resolve(data);
@@ -148,25 +193,29 @@ class HistoricalDataService {
     this.isProcessing = false;
   }
 
-  private async fetchFromTWS(symbol: string, duration = "1 M"): Promise<PricePoint[]> {
+  private async fetchFromTWS(
+    symbol: string,
+    duration = "1 M",
+    whatToShowOverride?: WhatToShow,
+  ): Promise<PricePoint[]> {
     if (!ibkrService.isConnected()) {
       throw new Error("Not connected to TWS");
     }
 
-    const sym = symbol.toUpperCase();
-    // Indices (SPX, XSP, RUT, VIX, etc.) need SecType.IND, not STK
-    const INDEX_SYMBOLS = new Set(["SPX", "XSP", "RUT", "VIX", "DJX", "NDX"]);
-    const contract: Contract = INDEX_SYMBOLS.has(sym)
-      ? { symbol: sym, secType: SecType.IND, exchange: "CBOE", currency: "USD" }
-      : new Stock(sym, "SMART", "USD");
+    const contract = buildUnderlyingContract(symbol);
 
     // Weekly bars for sparklines (1 year), daily for short durations
-    const barSize = duration === "1 M" || duration === "7 D"
+    const barSize = whatToShowOverride
       ? BarSizeSetting.DAYS_ONE
-      : BarSizeSetting.WEEKS_ONE;
+      : duration === "1 M" || duration === "7 D"
+        ? BarSizeSetting.DAYS_ONE
+        : BarSizeSetting.WEEKS_ONE;
 
-    // Try TRADES first, fallback to MIDPOINT if we get a warning
-    const whatToShowOptions = [WhatToShow.TRADES, WhatToShow.MIDPOINT];
+    // Price requests try TRADES then MIDPOINT. An explicit whatToShow (IV) has no
+    // alternative series, so it gets exactly one attempt.
+    const whatToShowOptions = whatToShowOverride
+      ? [whatToShowOverride]
+      : [WhatToShow.TRADES, WhatToShow.MIDPOINT];
 
     for (const whatToShow of whatToShowOptions) {
       try {
