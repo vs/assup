@@ -2,6 +2,15 @@ import { describe, it, expect } from "vitest";
 import { optionsAnalyzer } from "../../../services/research/analyzers/options.analyzer.js";
 import { generateOptionsChain } from "../fixtures/options-chain.js";
 
+const IV_INFO = {
+  ivRank: 82,
+  currentIv: 0.341,
+  iv52wLow: 0.182,
+  iv52wHigh: 0.395,
+  windowDays: 252,
+  asOf: "2026-08-10",
+};
+
 describe("optionsAnalyzer", () => {
   it("returns neutral with 0 confidence for empty chain", async () => {
     const result = await optionsAnalyzer.analyze({ chain: [] });
@@ -66,18 +75,10 @@ describe("optionsAnalyzer", () => {
     expect(details.wheelSuitability).toBeLessThanOrEqual(1);
   });
 
-  it("signals bullish for high IV rank + low PCR", async () => {
-    // Need ivRank > 50 for score +1, and > 75 for additional +1, plus PCR < 0.7 for +1.
-    // Using 1 low-IV chain and 3 high-IV chains to skew average IV upward:
-    // avg = (10*0.1 + 30*0.9)/40 = 0.7, ivRank = (0.7-0.1)/(0.9-0.1)*100 = 75
-    // ivRank > 50 → +1, ivRank > 75 is false (not strict >), PCR = 0.2 → +1, total = 2 → bullish
-    const chain = [
-      ...generateOptionsChain({ iv: 0.1, callVolume: 500, putVolume: 100 }),
-      ...generateOptionsChain({ iv: 0.9, callVolume: 500, putVolume: 100 }),
-      ...generateOptionsChain({ iv: 0.9, callVolume: 500, putVolume: 100 }),
-      ...generateOptionsChain({ iv: 0.9, callVolume: 500, putVolume: 100 }),
-    ];
-    const result = await optionsAnalyzer.analyze({ chain });
+  it("turns bullish on a high IV rank plus a low put/call ratio", async () => {
+    // ivRank > 50 → +1, ivRank > 75 → +1, PCR < 0.7 → +1 ⇒ score 3 ⇒ bullish
+    const chain = generateOptionsChain({ callVolume: 1000, putVolume: 200 });
+    const result = await optionsAnalyzer.analyze({ chain, ivRank: IV_INFO });
     expect(result.signal).toBe("bullish");
   });
 
@@ -96,5 +97,60 @@ describe("optionsAnalyzer", () => {
     const result = await optionsAnalyzer.analyze({ chain });
     expect(result.confidence).toBeLessThanOrEqual(1);
     expect(result.confidence).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("optionsAnalyzer IV Rank", () => {
+  it("uses the supplied IV rank rather than deriving one from the chain", async () => {
+    const chain = generateOptionsChain({ iv: 0.4 });
+    const result = await optionsAnalyzer.analyze({ chain, ivRank: IV_INFO });
+    const details = result.details as Record<string, unknown>;
+
+    expect(details.ivRank).toBe(82);
+    expect(details.currentIv).toBeCloseTo(0.341, 5);
+    expect(details.iv52wLow).toBeCloseTo(0.182, 5);
+    expect(details.iv52wHigh).toBeCloseTo(0.395, 5);
+    expect(details.ivWindowDays).toBe(252);
+    expect(result.summary).toContain("IV rank");
+  });
+
+  it("emits no IV signals when the rank is unavailable", async () => {
+    const chain = generateOptionsChain({ iv: 0.4 });
+    const result = await optionsAnalyzer.analyze({
+      chain,
+      ivRank: null,
+      ivRankUnavailableReason: "tws_disconnected",
+    });
+    const details = result.details as Record<string, unknown>;
+
+    expect(details.ivRank).toBeNull();
+    expect(details.ivRankUnavailableReason).toBe("tws_disconnected");
+    expect(result.summary).not.toContain("IV rank");
+  });
+
+  it("cannot reach the strong-wheel threshold without an IV rank", async () => {
+    // Excellent liquidity: a 0.01 spread on a $5 mid is well inside the best band.
+    const chain = generateOptionsChain({ bidAskSpread: 0.01 });
+    const result = await optionsAnalyzer.analyze({ chain, ivRank: null });
+    const details = result.details as Record<string, unknown>;
+
+    expect(details.wheelSuitability as number).toBeLessThanOrEqual(0.5);
+    expect(result.summary).not.toContain("Strong wheel candidate");
+  });
+
+  it("scales confidence down when the IV rank is missing", async () => {
+    const chain = generateOptionsChain({ callVolume: 1000, putVolume: 200 });
+    const withIv = await optionsAnalyzer.analyze({ chain, ivRank: IV_INFO });
+    const withoutIv = await optionsAnalyzer.analyze({ chain, ivRank: null });
+
+    expect(withoutIv.confidence).toBeLessThan(withIv.confidence);
+  });
+
+  it("returns a null ivRank for an empty chain, never a neutral 50", async () => {
+    const result = await optionsAnalyzer.analyze({ chain: [] });
+    const details = result.details as Record<string, unknown>;
+
+    expect(details.ivRank).toBeNull();
+    expect(details.ivRank).not.toBe(50);
   });
 });
