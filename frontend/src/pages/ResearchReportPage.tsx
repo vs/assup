@@ -530,8 +530,13 @@ function CompanyInfoPanel({
                   label="RSI"
                   value={fmt(techD.rsi14, 0)}
                   color={
-                    (techD.rsi14 as number) > 70 ? "red" :
-                    (techD.rsi14 as number) < 30 ? "green" : undefined
+                    techD.rsi14 == null
+                      ? undefined
+                      : (techD.rsi14 as number) > 70
+                        ? "red"
+                        : (techD.rsi14 as number) < 30
+                          ? "green"
+                          : undefined
                   }
                   tip="Relative Strength Index (14-day). Below 30 = oversold, above 70 = overbought"
                 />
@@ -558,8 +563,13 @@ function CompanyInfoPanel({
                 label="IV Rank"
                 value={fmt(optD.ivRank, 0)}
                 color={
-                  (optD.ivRank as number) > 50 ? "green" :
-                  (optD.ivRank as number) < 20 ? "red" : undefined
+                  optD.ivRank == null
+                    ? undefined
+                    : (optD.ivRank as number) > 50
+                      ? "green"
+                      : (optD.ivRank as number) < 20
+                        ? "red"
+                        : undefined
                 }
                 tip="Implied Volatility Rank — current IV relative to its 52-week range"
               />
