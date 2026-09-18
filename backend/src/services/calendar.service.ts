@@ -4,10 +4,28 @@ import { PolygonProvider } from "./research/providers/polygon.provider.js";
 import { getMacroEvents } from "./macroCalendar.provider.js";
 import { ibkrService } from "./ibkr.js";
 import { fetchFinnhubEarnings, isFinnhubConfigured } from "./finnhub.client.js";
-import type { CalendarEvent, CalendarEventType, CalendarSettings } from "@assup/shared";
+import {
+  DEFAULT_MARKET_WIDE_SYMBOLS,
+  type CalendarEvent,
+  type CalendarEventType,
+  type CalendarSettings,
+} from "@assup/shared";
 
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const polygon = new PolygonProvider();
+
+/** Uppercase, trim, drop blanks, de-duplicate — preserving first-seen order. */
+function normalizeSymbols(symbols: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of symbols) {
+    const symbol = raw.trim().toUpperCase();
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+    result.push(symbol);
+  }
+  return result;
+}
 
 export class CalendarService {
   async getEvents(
@@ -341,15 +359,30 @@ export class CalendarService {
   }
 
   async getSettings(): Promise<CalendarSettings> {
-    const [excludedSetting, spreadSetting, weekStartSetting] = await Promise.all([
+    const [
+      excludedSetting,
+      spreadSetting,
+      weekStartSetting,
+      marketWideSetting,
+      includeMarketWideSetting,
+    ] = await Promise.all([
       prisma.setting.findUnique({ where: { key: "calendar.excludedEventTypes" } }),
       prisma.setting.findUnique({ where: { key: "calendar.excludeSpreadExpirations" } }),
       prisma.setting.findUnique({ where: { key: "calendar.weekStartDay" } }),
+      prisma.setting.findUnique({ where: { key: "calendar.marketWideSymbols" } }),
+      prisma.setting.findUnique({ where: { key: "calendar.includeMarketWideEarnings" } }),
     ]);
     return {
       excludedEventTypes: excludedSetting ? (excludedSetting.value as CalendarEventType[]) : [],
       excludeSpreadExpirations: spreadSetting ? (spreadSetting.value as boolean) : false,
       weekStartDay: weekStartSetting ? (weekStartSetting.value as CalendarSettings["weekStartDay"]) : "monday",
+      // An absent row seeds the MAG7; a saved [] stays empty.
+      marketWideSymbols: marketWideSetting
+        ? (marketWideSetting.value as string[])
+        : [...DEFAULT_MARKET_WIDE_SYMBOLS],
+      includeMarketWideEarnings: includeMarketWideSetting
+        ? (includeMarketWideSetting.value as boolean)
+        : true,
     };
   }
 
@@ -378,6 +411,24 @@ export class CalendarService {
           value: settings.weekStartDay as unknown as Prisma.InputJsonValue,
         },
         update: { value: settings.weekStartDay as unknown as Prisma.InputJsonValue },
+      }),
+      prisma.setting.upsert({
+        where: { key: "calendar.marketWideSymbols" },
+        create: {
+          key: "calendar.marketWideSymbols",
+          value: normalizeSymbols(settings.marketWideSymbols) as unknown as Prisma.InputJsonValue,
+        },
+        update: {
+          value: normalizeSymbols(settings.marketWideSymbols) as unknown as Prisma.InputJsonValue,
+        },
+      }),
+      prisma.setting.upsert({
+        where: { key: "calendar.includeMarketWideEarnings" },
+        create: {
+          key: "calendar.includeMarketWideEarnings",
+          value: settings.includeMarketWideEarnings as unknown as Prisma.InputJsonValue,
+        },
+        update: { value: settings.includeMarketWideEarnings as unknown as Prisma.InputJsonValue },
       }),
     ]);
   }
