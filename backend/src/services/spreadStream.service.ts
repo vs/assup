@@ -18,12 +18,21 @@ import { Contract, SecType, OptionType } from "@stoqey/ib";
 import { ibkrService, StreamTickData } from "./ibkr.js";
 import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
 import { SYMBOL_CONFIG, getSymbolContractType } from "../utils/options.js";
+import { resolveUnderlyingConId } from "./underlyingConId.service.js";
+import { withTimeout } from "../utils/withTimeout.js";
 import type {
   IronCondorChainStrike,
   SpreadStreamInitEvent,
   ChainUpdateEvent,
   RefocusedEvent,
 } from "@assup/shared";
+
+/** Deadlines for IBKR requests that TWS may never answer (see withTimeout). */
+const SECDEF_TIMEOUT_MS = 15_000;
+/** Shorter than the others: the chain renders without conIds, so this deadline
+ *  is the longest the builder stays blank when TWS won't answer. A healthy TWS
+ *  returns a full strike ladder in a few seconds. */
+const OPTION_CONID_TIMEOUT_MS = 8_000;
 
 interface TickBufferEntry {
   strike: number;
@@ -147,15 +156,8 @@ export class SpreadStreamSession {
       currency: "USD",
     };
 
-    // Underlying contract for chain queries — always uses this.symbol
-    const { secType: underlyingSecType, exchange: underlyingExchange } =
-      getSymbolContractType(this.symbol);
-    const underlyingContract: Contract = {
-      symbol: this.symbol,
-      secType: underlyingSecType,
-      exchange: underlyingExchange,
-      currency: "USD",
-    };
+    // Chain queries always use this.symbol, never the price redirect
+    const { secType: underlyingSecType } = getSymbolContractType(this.symbol);
 
     // 1. Fetch underlying price (retry up to 3 times — the market data type
     //    switch above may not take effect before the first snapshot request)
@@ -191,19 +193,13 @@ export class SpreadStreamSession {
       throw new Error("Not connected to TWS");
     }
 
-    const contractDetails = await api.getContractDetails(underlyingContract);
+    const conId = await resolveUnderlyingConId(api, this.symbol);
     if (this.destroyed) return;
 
-    if (!contractDetails.length) {
-      throw new Error(`No contract details for ${this.symbol}`);
-    }
-    const conId = contractDetails[0].contract.conId!;
-
-    const secDefs = await api.getSecDefOptParams(
-      this.symbol,
-      "",
-      underlyingSecType,
-      conId,
+    const secDefs = await withTimeout(
+      api.getSecDefOptParams(this.symbol, "", underlyingSecType, conId),
+      `getSecDefOptParams(${this.symbol})`,
+      SECDEF_TIMEOUT_MS,
     );
     if (this.destroyed) return;
 
@@ -898,15 +894,22 @@ export class SpreadStreamSession {
   ): Promise<Map<string, number>> {
     const conIdMap = new Map<string, number>();
     try {
-      const details = await api.getContractDetails({
-        symbol,
-        secType: SecType.OPT,
-        exchange: "SMART",
-        currency: "USD",
-        lastTradeDateOrContractMonth: expiration,
-        tradingClass,
-        multiplier,
-      });
+      // TWS answers this for equity options but silently drops it for index
+      // options, so the deadline is what keeps a chain from never rendering —
+      // the caller builds strikes without conIds when the map comes back short.
+      const details = await withTimeout(
+        api.getContractDetails({
+          symbol,
+          secType: SecType.OPT,
+          exchange: "SMART",
+          currency: "USD",
+          lastTradeDateOrContractMonth: expiration,
+          tradingClass,
+          multiplier,
+        }),
+        `getContractDetails(${symbol} ${expiration} options)`,
+        OPTION_CONID_TIMEOUT_MS,
+      );
       for (const d of details) {
         const c = d.contract;
         if (c.conId && c.strike != null && c.right) {
