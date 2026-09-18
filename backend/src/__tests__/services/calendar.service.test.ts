@@ -182,3 +182,98 @@ describe("CalendarService.syncMarketWideEarnings", () => {
     expect(fetchFinnhubEarnings).not.toHaveBeenCalled();
   });
 });
+
+/** Build a Prisma calendar_event row. */
+function eventRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "evt-1",
+    eventType: "EARNINGS",
+    symbol: "AAPL",
+    date: new Date("2026-10-30T00:00:00Z"),
+    title: "AAPL Q4 2026 Earnings",
+    details: null,
+    source: "finnhub",
+    sourceId: "earnings:AAPL:2026-10-30",
+    ...overrides,
+  };
+}
+
+describe("CalendarService.getEvents market-wide filtering", () => {
+  beforeEach(() => {
+    vi.mocked(ibkrService.getPositions).mockResolvedValue([stockPosition("NVDA")] as any);
+  });
+
+  it("includes earnings for a market-wide symbol the user does not hold", async () => {
+    stubSettings({ "calendar.marketWideSymbols": ["AAPL"] });
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([eventRow()] as any);
+
+    const events = await calendarService.getEvents("2026-10-01", "2026-10-31");
+    expect(events).toHaveLength(1);
+    expect(events[0].symbol).toBe("AAPL");
+  });
+
+  it("tags an unheld market-wide symbol as marketWide", async () => {
+    stubSettings({ "calendar.marketWideSymbols": ["AAPL"] });
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([eventRow()] as any);
+
+    const events = await calendarService.getEvents("2026-10-01", "2026-10-31");
+    expect(events[0].marketWide).toBe(true);
+  });
+
+  it("does not tag a held symbol as marketWide even when it is on the list", async () => {
+    stubSettings({ "calendar.marketWideSymbols": ["AAPL", "NVDA"] });
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([
+      eventRow({ symbol: "NVDA", sourceId: "earnings:NVDA:2026-10-30" }),
+    ] as any);
+
+    const events = await calendarService.getEvents("2026-10-01", "2026-10-31");
+    expect(events[0].marketWide).toBe(false);
+  });
+
+  it("hides market-wide earnings when the toggle is off", async () => {
+    stubSettings({
+      "calendar.marketWideSymbols": ["AAPL"],
+      "calendar.includeMarketWideEarnings": false,
+    });
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([eventRow()] as any);
+
+    const events = await calendarService.getEvents("2026-10-01", "2026-10-31");
+    expect(events).toEqual([]);
+  });
+
+  it("hides non-earnings events for a market-wide symbol", async () => {
+    stubSettings({ "calendar.marketWideSymbols": ["AAPL"] });
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([
+      eventRow({
+        eventType: "DIVIDEND_EX_DATE",
+        source: "polygon",
+        sourceId: "div_ex:AAPL:2026-10-30",
+      }),
+    ] as any);
+
+    const events = await calendarService.getEvents("2026-10-01", "2026-10-31");
+    expect(events).toEqual([]);
+  });
+
+  it("still returns events with no symbol", async () => {
+    stubSettings({});
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([
+      eventRow({ eventType: "FOMC", symbol: null, title: "FOMC Meeting", source: "macro" }),
+    ] as any);
+
+    const events = await calendarService.getEvents("2026-10-01", "2026-10-31");
+    expect(events).toHaveLength(1);
+    expect(events[0].marketWide).toBe(false);
+  });
+
+  it("still returns events for held symbols that are not on the list", async () => {
+    stubSettings({ "calendar.marketWideSymbols": [] });
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([
+      eventRow({ symbol: "NVDA", sourceId: "earnings:NVDA:2026-10-30" }),
+    ] as any);
+
+    const events = await calendarService.getEvents("2026-10-01", "2026-10-31");
+    expect(events).toHaveLength(1);
+    expect(events[0].marketWide).toBe(false);
+  });
+});

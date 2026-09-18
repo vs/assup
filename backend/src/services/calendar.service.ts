@@ -33,7 +33,8 @@ export class CalendarService {
     endDate: string,
     filters?: { types?: CalendarEventType[]; symbol?: string }
   ): Promise<CalendarEvent[]> {
-    const excluded = await this.getExcludedTypes();
+    const settings = await this.getSettings();
+    const excluded = settings.excludedEventTypes;
     const where: Record<string, unknown> = {
       date: { gte: new Date(startDate), lte: new Date(endDate) },
       ...(excluded.length > 0 && { eventType: { notIn: excluded } }),
@@ -47,17 +48,29 @@ export class CalendarService {
     });
 
     const portfolioSymbols = await this.getPortfolioSymbolSet();
+    const marketWideSymbols = new Set(settings.marketWideSymbols);
+
     const mapped = events
-      .filter((e) => !e.symbol || portfolioSymbols.has(e.symbol))
       .map((e) => ({
-        id: e.id,
-        eventType: e.eventType as CalendarEventType,
-        symbol: e.symbol,
-        date: e.date.toISOString().split("T")[0],
-        title: e.title,
-        details: e.details as Record<string, unknown> | null,
-        source: e.source,
-        sourceId: e.sourceId,
+        row: e,
+        verdict: this.classifyEvent(
+          e,
+          portfolioSymbols,
+          marketWideSymbols,
+          settings.includeMarketWideEarnings
+        ),
+      }))
+      .filter(({ verdict }) => verdict.visible)
+      .map(({ row, verdict }) => ({
+        id: row.id,
+        eventType: row.eventType as CalendarEventType,
+        symbol: row.symbol,
+        date: row.date.toISOString().split("T")[0],
+        title: row.title,
+        details: row.details as Record<string, unknown> | null,
+        source: row.source,
+        sourceId: row.sourceId,
+        marketWide: verdict.marketWide,
       }));
     return this.filterSpreadExpirations(mapped);
   }
@@ -77,6 +90,7 @@ export class CalendarService {
       take: limit,
     });
 
+    const portfolioSymbols = await this.getPortfolioSymbolSet();
     const mapped = events.map((e) => ({
       id: e.id,
       eventType: e.eventType as CalendarEventType,
@@ -86,6 +100,7 @@ export class CalendarService {
       details: e.details as Record<string, unknown> | null,
       source: e.source,
       sourceId: e.sourceId,
+      marketWide: Boolean(e.symbol) && !portfolioSymbols.has(e.symbol!),
     }));
     return this.filterSpreadExpirations(mapped);
   }
@@ -414,6 +429,27 @@ export class CalendarService {
         update: { title: event.title },
       });
     }
+  }
+
+  /**
+   * Decide visibility and the marketWide tag for one row.
+   *
+   * Symbol-less events (macro, FOMC) always pass. A symbol passes when it is
+   * held, or when it is a market-wide symbol on an EARNINGS row and the
+   * toggle is on — the event-type check keeps stale dividend and split rows
+   * for market-wide tickers hidden.
+   */
+  private classifyEvent(
+    row: { symbol: string | null; eventType: string },
+    portfolio: Set<string>,
+    marketWide: Set<string>,
+    includeMarketWide: boolean
+  ): { visible: boolean; marketWide: boolean } {
+    if (!row.symbol) return { visible: true, marketWide: false };
+    if (portfolio.has(row.symbol)) return { visible: true, marketWide: false };
+    const isMarketWideEarnings =
+      includeMarketWide && row.eventType === "EARNINGS" && marketWide.has(row.symbol);
+    return { visible: isMarketWideEarnings, marketWide: isMarketWideEarnings };
   }
 
   async getSettings(): Promise<CalendarSettings> {
