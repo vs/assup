@@ -12,9 +12,13 @@ export function EventBadge({ event }: EventBadgeProps) {
 
   return (
     <div
-      className="text-[10px] px-1.5 py-px rounded truncate border mt-0.5"
+      className={`text-[10px] px-1.5 py-px rounded truncate border mt-0.5 ${
+        event.marketWide ? "opacity-70" : ""
+      }`}
       style={{
-        backgroundColor: `${color}15`,
+        // Market-wide events are context, not positions: hollow rather than
+        // filled so a heavy earnings week cannot drown out held tickers.
+        backgroundColor: event.marketWide ? "transparent" : `${color}15`,
         color: color,
         borderColor: `${color}30`,
       }}

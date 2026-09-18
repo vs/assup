@@ -21,10 +21,18 @@ export function EventRow({ event }: EventRowProps) {
     <div className="flex items-center gap-2.5 border rounded-md px-3 py-2 transition-colors">
       <div
         className="w-[3px] h-7 rounded-sm flex-shrink-0"
-        style={{ backgroundColor: color }}
+        style={
+          event.marketWide
+            ? { border: `1px solid ${color}`, backgroundColor: "transparent" }
+            : { backgroundColor: color }
+        }
       />
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">
+        <div
+          className={`text-sm font-medium truncate ${
+            event.marketWide ? "text-muted-foreground" : ""
+          }`}
+        >
           {symbol && titleAfterSymbol !== null ? (
             <>
               <TickerHoverCard symbol={symbol}>
