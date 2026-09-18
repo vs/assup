@@ -29,6 +29,12 @@ export interface CalendarEvent {
   details: Record<string, unknown> | null;
   source: string;
   sourceId: string | null;
+  /**
+   * True when this event's symbol is tracked for market impact rather than
+   * held in the portfolio. Derived at read time from the current positions —
+   * never stored, because holdings change.
+   */
+  marketWide?: boolean;
 }
 
 export type WeekStartDay = "monday" | "sunday";
@@ -37,7 +43,24 @@ export interface CalendarSettings {
   excludedEventTypes: CalendarEventType[];
   excludeSpreadExpirations: boolean;
   weekStartDay: WeekStartDay;
+  /** Symbols whose earnings show even when not held. */
+  marketWideSymbols: string[];
+  includeMarketWideEarnings: boolean;
 }
+
+/**
+ * The MAG7 — applied only when the setting row has never been written.
+ * A saved empty array is a deliberate "track nothing" and is left alone.
+ */
+export const DEFAULT_MARKET_WIDE_SYMBOLS = [
+  "AAPL",
+  "MSFT",
+  "GOOGL",
+  "AMZN",
+  "NVDA",
+  "META",
+  "TSLA",
+] as const;
 
 export const EVENT_TYPE_CATEGORY: Record<CalendarEventType, CalendarEventCategory> = {
   OPTION_EXPIRATION: "expiration",

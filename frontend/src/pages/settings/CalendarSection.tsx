@@ -68,9 +68,26 @@ export function CalendarSection() {
   const excluded = settings?.excludedEventTypes ?? [];
   const excludeSpreadExpirations = settings?.excludeSpreadExpirations ?? false;
   const weekStartDay = settings?.weekStartDay ?? "monday";
+  const marketWideSymbols = settings?.marketWideSymbols ?? [];
+  const includeMarketWideEarnings = settings?.includeMarketWideEarnings ?? true;
 
-  const save = (patch: Partial<{ excludedEventTypes: CalendarEventType[]; excludeSpreadExpirations: boolean; weekStartDay: WeekStartDay }>) => {
-    mutation.mutate({ excludedEventTypes: excluded, excludeSpreadExpirations, weekStartDay, ...patch });
+  const save = (
+    patch: Partial<{
+      excludedEventTypes: CalendarEventType[];
+      excludeSpreadExpirations: boolean;
+      weekStartDay: WeekStartDay;
+      marketWideSymbols: string[];
+      includeMarketWideEarnings: boolean;
+    }>
+  ) => {
+    mutation.mutate({
+      excludedEventTypes: excluded,
+      excludeSpreadExpirations,
+      weekStartDay,
+      marketWideSymbols,
+      includeMarketWideEarnings,
+      ...patch,
+    });
   };
 
   const toggleType = (type: CalendarEventType) => {
@@ -85,6 +102,22 @@ export function CalendarSection() {
   };
 
   const [purging, setPurging] = useState(false);
+
+  const [symbolInput, setSymbolInput] = useState("");
+
+  const addSymbol = () => {
+    const symbol = symbolInput.trim().toUpperCase();
+    if (!symbol || marketWideSymbols.includes(symbol)) {
+      setSymbolInput("");
+      return;
+    }
+    save({ marketWideSymbols: [...marketWideSymbols, symbol] });
+    setSymbolInput("");
+  };
+
+  const removeSymbol = (symbol: string) => {
+    save({ marketWideSymbols: marketWideSymbols.filter((s) => s !== symbol) });
+  };
   const purgeMutation = useMutation({
     mutationFn: () => calendarApi.purge(),
     onMutate: () => setPurging(true),
@@ -218,6 +251,82 @@ export function CalendarSection() {
             </div>
           </div>
         ))}
+
+        <div className="border-t pt-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Market-Wide Earnings
+          </div>
+          <div className="space-y-1">
+            <label className="flex items-start gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeMarketWideEarnings}
+                onChange={() =>
+                  save({ includeMarketWideEarnings: !includeMarketWideEarnings })
+                }
+                className="rounded border-input mt-0.5"
+              />
+              <div>
+                <span className="text-sm">Show market-wide earnings</span>
+                <p className="text-xs text-muted-foreground">
+                  Earnings for the tickers below appear even when you hold no position,
+                  shown in a muted style. Turning this off hides them immediately — no
+                  resync needed.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <div className="px-2 mt-3 space-y-2">
+            <Label htmlFor="market-wide-symbol" className="text-xs">Tracked Tickers</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {marketWideSymbols.map((symbol) => (
+                <span
+                  key={symbol}
+                  className="inline-flex items-center gap-1 rounded-md border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium"
+                >
+                  {symbol}
+                  <button
+                    type="button"
+                    onClick={() => removeSymbol(symbol)}
+                    aria-label={`Remove ${symbol}`}
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              {marketWideSymbols.length === 0 && (
+                <span className="text-xs text-muted-foreground">
+                  No tickers tracked — no market-wide earnings will appear.
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                id="market-wide-symbol"
+                placeholder="Add ticker (e.g. AVGO)"
+                value={symbolInput}
+                onChange={(e) => setSymbolInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSymbol();
+                  }
+                }}
+                className="max-w-[200px]"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={addSymbol}
+                disabled={!symbolInput.trim()}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+        </div>
 
         <div className="border-t pt-4">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">

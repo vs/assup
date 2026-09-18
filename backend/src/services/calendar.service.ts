@@ -4,10 +4,28 @@ import { PolygonProvider } from "./research/providers/polygon.provider.js";
 import { getMacroEvents } from "./macroCalendar.provider.js";
 import { ibkrService } from "./ibkr.js";
 import { fetchFinnhubEarnings, isFinnhubConfigured } from "./finnhub.client.js";
-import type { CalendarEvent, CalendarEventType, CalendarSettings } from "@assup/shared";
+import {
+  DEFAULT_MARKET_WIDE_SYMBOLS,
+  type CalendarEvent,
+  type CalendarEventType,
+  type CalendarSettings,
+} from "@assup/shared";
 
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const polygon = new PolygonProvider();
+
+/** Uppercase, trim, drop blanks, de-duplicate — preserving first-seen order. */
+function normalizeSymbols(symbols: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of symbols) {
+    const symbol = raw.trim().toUpperCase();
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+    result.push(symbol);
+  }
+  return result;
+}
 
 export class CalendarService {
   async getEvents(
@@ -15,7 +33,8 @@ export class CalendarService {
     endDate: string,
     filters?: { types?: CalendarEventType[]; symbol?: string }
   ): Promise<CalendarEvent[]> {
-    const excluded = await this.getExcludedTypes();
+    const settings = await this.getSettings();
+    const excluded = settings.excludedEventTypes;
     const where: Record<string, unknown> = {
       date: { gte: new Date(startDate), lte: new Date(endDate) },
       ...(excluded.length > 0 && { eventType: { notIn: excluded } }),
@@ -29,17 +48,29 @@ export class CalendarService {
     });
 
     const portfolioSymbols = await this.getPortfolioSymbolSet();
+    const marketWideSymbols = new Set(settings.marketWideSymbols);
+
     const mapped = events
-      .filter((e) => !e.symbol || portfolioSymbols.has(e.symbol))
       .map((e) => ({
-        id: e.id,
-        eventType: e.eventType as CalendarEventType,
-        symbol: e.symbol,
-        date: e.date.toISOString().split("T")[0],
-        title: e.title,
-        details: e.details as Record<string, unknown> | null,
-        source: e.source,
-        sourceId: e.sourceId,
+        row: e,
+        verdict: this.classifyEvent(
+          e,
+          portfolioSymbols,
+          marketWideSymbols,
+          settings.includeMarketWideEarnings
+        ),
+      }))
+      .filter(({ verdict }) => verdict.visible)
+      .map(({ row, verdict }) => ({
+        id: row.id,
+        eventType: row.eventType as CalendarEventType,
+        symbol: row.symbol,
+        date: row.date.toISOString().split("T")[0],
+        title: row.title,
+        details: row.details as Record<string, unknown> | null,
+        source: row.source,
+        sourceId: row.sourceId,
+        marketWide: verdict.marketWide,
       }));
     return this.filterSpreadExpirations(mapped);
   }
@@ -59,6 +90,7 @@ export class CalendarService {
       take: limit,
     });
 
+    const portfolioSymbols = await this.getPortfolioSymbolSet();
     const mapped = events.map((e) => ({
       id: e.id,
       eventType: e.eventType as CalendarEventType,
@@ -68,6 +100,7 @@ export class CalendarService {
       details: e.details as Record<string, unknown> | null,
       source: e.source,
       sourceId: e.sourceId,
+      marketWide: Boolean(e.symbol) && !portfolioSymbols.has(e.symbol!),
     }));
     return this.filterSpreadExpirations(mapped);
   }
@@ -108,6 +141,12 @@ export class CalendarService {
       console.error("[CalendarSync] Error syncing option expirations:", error);
     }
 
+    try {
+      await this.syncMarketWideEarnings();
+    } catch (error) {
+      console.error("[CalendarSync] Error syncing market-wide earnings:", error);
+    }
+
     for (const symbol of symbols) {
       await this.syncTickerFromPolygon(symbol);
     }
@@ -125,47 +164,11 @@ export class CalendarService {
     }
 
     try {
-      // Fetch earnings from Finnhub — Polygon's financials endpoint returns
-      // historical SEC filings, not upcoming earnings announcement dates.
+      // Earnings come from Finnhub: Polygon's financials endpoint returns
+      // historical SEC filings, not upcoming announcement dates.
       if (await isFinnhubConfigured()) {
         try {
-          const fromDate = new Date();
-          fromDate.setDate(fromDate.getDate() - 30);
-          const toDate = new Date();
-          toDate.setDate(toDate.getDate() + 180);
-          const fmt = (d: Date) => d.toISOString().split("T")[0];
-
-          const earnings = await fetchFinnhubEarnings(symbol, fmt(fromDate), fmt(toDate));
-          for (const e of earnings) {
-            if (!e.date) continue;
-            const hourLabel =
-              e.hour === "bmo" ? "Before Open" :
-              e.hour === "amc" ? "After Close" :
-              e.hour === "dmh" ? "During Market" : null;
-            const quarter = `Q${e.quarter} ${e.year}`;
-            const title = `${symbol} ${quarter} Earnings${hourLabel ? ` (${hourLabel})` : ""}`;
-            const details = {
-              estimateEps: e.epsEstimate,
-              actualEps: e.epsActual,
-              quarter,
-              hour: e.hour || null,
-              revenueEstimate: e.revenueEstimate,
-              revenueActual: e.revenueActual,
-            };
-            await prisma.calendarEvent.upsert({
-              where: { source_sourceId: { source: "finnhub", sourceId: `earnings:${symbol}:${e.date}` } },
-              create: {
-                eventType: "EARNINGS",
-                symbol,
-                date: new Date(e.date),
-                title,
-                details,
-                source: "finnhub",
-                sourceId: `earnings:${symbol}:${e.date}`,
-              },
-              update: { title, details },
-            });
-          }
+          await this.syncEarningsForSymbol(symbol);
         } catch (err) {
           console.error(`[CalendarSync] Finnhub earnings sync failed for ${symbol}:`, err);
         }
@@ -255,6 +258,94 @@ export class CalendarService {
     }
   }
 
+  /**
+   * Fetch and upsert Finnhub earnings for one symbol.
+   *
+   * Shared by the per-holding Polygon sync and the market-wide sync so both
+   * write the same `finnhub`/`earnings:{symbol}:{date}` row — a symbol moving
+   * between held and market-wide updates one event instead of duplicating it.
+   */
+  private async syncEarningsForSymbol(symbol: string): Promise<void> {
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - 30);
+    const toDate = new Date();
+    toDate.setDate(toDate.getDate() + 180);
+    const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+    const earnings = await fetchFinnhubEarnings(symbol, fmt(fromDate), fmt(toDate));
+    for (const e of earnings) {
+      if (!e.date) continue;
+      const hourLabel =
+        e.hour === "bmo" ? "Before Open" :
+        e.hour === "amc" ? "After Close" :
+        e.hour === "dmh" ? "During Market" : null;
+      const quarter = `Q${e.quarter} ${e.year}`;
+      const title = `${symbol} ${quarter} Earnings${hourLabel ? ` (${hourLabel})` : ""}`;
+      const details = {
+        estimateEps: e.epsEstimate,
+        actualEps: e.epsActual,
+        quarter,
+        hour: e.hour || null,
+        revenueEstimate: e.revenueEstimate,
+        revenueActual: e.revenueActual,
+      };
+      await prisma.calendarEvent.upsert({
+        where: { source_sourceId: { source: "finnhub", sourceId: `earnings:${symbol}:${e.date}` } },
+        create: {
+          eventType: "EARNINGS",
+          symbol,
+          date: new Date(e.date),
+          title,
+          details,
+          source: "finnhub",
+          sourceId: `earnings:${symbol}:${e.date}`,
+        },
+        update: { title, details },
+      });
+    }
+  }
+
+  /**
+   * Sync earnings for symbols the user tracks for market impact but does not
+   * hold. Held symbols are skipped — `syncTickerFromPolygon` already covers
+   * them, and syncing here too would duplicate the Finnhub call.
+   */
+  async syncMarketWideEarnings(): Promise<void> {
+    if (!(await isFinnhubConfigured())) return;
+
+    const { marketWideSymbols } = await this.getSettings();
+    if (marketWideSymbols.length === 0) return;
+
+    const portfolio = await this.getPortfolioSymbolSet();
+    const symbols = marketWideSymbols.filter((s) => !portfolio.has(s));
+
+    for (const symbol of symbols) {
+      const status = await prisma.calendarSyncStatus.findUnique({
+        where: { source_symbol: { source: "finnhub", symbol } },
+      });
+      if (status && status.nextSyncAt > new Date()) continue;
+
+      try {
+        await this.syncEarningsForSymbol(symbol);
+      } catch (err) {
+        console.error(`[CalendarSync] Market-wide earnings sync failed for ${symbol}:`, err);
+        continue; // Leave nextSyncAt untouched so the next cycle retries.
+      }
+
+      const now = new Date();
+      await prisma.calendarSyncStatus.upsert({
+        where: { source_symbol: { source: "finnhub", symbol } },
+        create: {
+          source: "finnhub",
+          symbol,
+          lastSyncAt: now,
+          nextSyncAt: new Date(now.getTime() + SYNC_INTERVAL_MS),
+        },
+        update: { lastSyncAt: now, nextSyncAt: new Date(now.getTime() + SYNC_INTERVAL_MS) },
+      });
+    }
+  }
+
   async syncOptionExpirations(): Promise<void> {
     try {
       const positions = await ibkrService.getPositions();
@@ -340,16 +431,52 @@ export class CalendarService {
     }
   }
 
+  /**
+   * Decide visibility and the marketWide tag for one row.
+   *
+   * Symbol-less events (macro, FOMC) always pass. A symbol passes when it is
+   * held, or when it is a market-wide symbol on an EARNINGS row and the
+   * toggle is on — the event-type check keeps stale dividend and split rows
+   * for market-wide tickers hidden.
+   */
+  private classifyEvent(
+    row: { symbol: string | null; eventType: string },
+    portfolio: Set<string>,
+    marketWide: Set<string>,
+    includeMarketWide: boolean
+  ): { visible: boolean; marketWide: boolean } {
+    if (!row.symbol) return { visible: true, marketWide: false };
+    if (portfolio.has(row.symbol)) return { visible: true, marketWide: false };
+    const isMarketWideEarnings =
+      includeMarketWide && row.eventType === "EARNINGS" && marketWide.has(row.symbol);
+    return { visible: isMarketWideEarnings, marketWide: isMarketWideEarnings };
+  }
+
   async getSettings(): Promise<CalendarSettings> {
-    const [excludedSetting, spreadSetting, weekStartSetting] = await Promise.all([
+    const [
+      excludedSetting,
+      spreadSetting,
+      weekStartSetting,
+      marketWideSetting,
+      includeMarketWideSetting,
+    ] = await Promise.all([
       prisma.setting.findUnique({ where: { key: "calendar.excludedEventTypes" } }),
       prisma.setting.findUnique({ where: { key: "calendar.excludeSpreadExpirations" } }),
       prisma.setting.findUnique({ where: { key: "calendar.weekStartDay" } }),
+      prisma.setting.findUnique({ where: { key: "calendar.marketWideSymbols" } }),
+      prisma.setting.findUnique({ where: { key: "calendar.includeMarketWideEarnings" } }),
     ]);
     return {
       excludedEventTypes: excludedSetting ? (excludedSetting.value as CalendarEventType[]) : [],
       excludeSpreadExpirations: spreadSetting ? (spreadSetting.value as boolean) : false,
       weekStartDay: weekStartSetting ? (weekStartSetting.value as CalendarSettings["weekStartDay"]) : "monday",
+      // An absent row seeds the MAG7; a saved [] stays empty.
+      marketWideSymbols: marketWideSetting
+        ? (marketWideSetting.value as string[])
+        : [...DEFAULT_MARKET_WIDE_SYMBOLS],
+      includeMarketWideEarnings: includeMarketWideSetting
+        ? (includeMarketWideSetting.value as boolean)
+        : true,
     };
   }
 
@@ -378,6 +505,24 @@ export class CalendarService {
           value: settings.weekStartDay as unknown as Prisma.InputJsonValue,
         },
         update: { value: settings.weekStartDay as unknown as Prisma.InputJsonValue },
+      }),
+      prisma.setting.upsert({
+        where: { key: "calendar.marketWideSymbols" },
+        create: {
+          key: "calendar.marketWideSymbols",
+          value: normalizeSymbols(settings.marketWideSymbols) as unknown as Prisma.InputJsonValue,
+        },
+        update: {
+          value: normalizeSymbols(settings.marketWideSymbols) as unknown as Prisma.InputJsonValue,
+        },
+      }),
+      prisma.setting.upsert({
+        where: { key: "calendar.includeMarketWideEarnings" },
+        create: {
+          key: "calendar.includeMarketWideEarnings",
+          value: settings.includeMarketWideEarnings as unknown as Prisma.InputJsonValue,
+        },
+        update: { value: settings.includeMarketWideEarnings as unknown as Prisma.InputJsonValue },
       }),
     ]);
   }
