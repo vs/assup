@@ -126,6 +126,12 @@ export class CalendarService {
       console.error("[CalendarSync] Error syncing option expirations:", error);
     }
 
+    try {
+      await this.syncMarketWideEarnings();
+    } catch (error) {
+      console.error("[CalendarSync] Error syncing market-wide earnings:", error);
+    }
+
     for (const symbol of symbols) {
       await this.syncTickerFromPolygon(symbol);
     }
@@ -143,47 +149,11 @@ export class CalendarService {
     }
 
     try {
-      // Fetch earnings from Finnhub — Polygon's financials endpoint returns
-      // historical SEC filings, not upcoming earnings announcement dates.
+      // Earnings come from Finnhub: Polygon's financials endpoint returns
+      // historical SEC filings, not upcoming announcement dates.
       if (await isFinnhubConfigured()) {
         try {
-          const fromDate = new Date();
-          fromDate.setDate(fromDate.getDate() - 30);
-          const toDate = new Date();
-          toDate.setDate(toDate.getDate() + 180);
-          const fmt = (d: Date) => d.toISOString().split("T")[0];
-
-          const earnings = await fetchFinnhubEarnings(symbol, fmt(fromDate), fmt(toDate));
-          for (const e of earnings) {
-            if (!e.date) continue;
-            const hourLabel =
-              e.hour === "bmo" ? "Before Open" :
-              e.hour === "amc" ? "After Close" :
-              e.hour === "dmh" ? "During Market" : null;
-            const quarter = `Q${e.quarter} ${e.year}`;
-            const title = `${symbol} ${quarter} Earnings${hourLabel ? ` (${hourLabel})` : ""}`;
-            const details = {
-              estimateEps: e.epsEstimate,
-              actualEps: e.epsActual,
-              quarter,
-              hour: e.hour || null,
-              revenueEstimate: e.revenueEstimate,
-              revenueActual: e.revenueActual,
-            };
-            await prisma.calendarEvent.upsert({
-              where: { source_sourceId: { source: "finnhub", sourceId: `earnings:${symbol}:${e.date}` } },
-              create: {
-                eventType: "EARNINGS",
-                symbol,
-                date: new Date(e.date),
-                title,
-                details,
-                source: "finnhub",
-                sourceId: `earnings:${symbol}:${e.date}`,
-              },
-              update: { title, details },
-            });
-          }
+          await this.syncEarningsForSymbol(symbol);
         } catch (err) {
           console.error(`[CalendarSync] Finnhub earnings sync failed for ${symbol}:`, err);
         }
@@ -270,6 +240,94 @@ export class CalendarService {
       });
     } catch (error) {
       console.error(`[CalendarSync] Error syncing ${symbol} from Polygon:`, error);
+    }
+  }
+
+  /**
+   * Fetch and upsert Finnhub earnings for one symbol.
+   *
+   * Shared by the per-holding Polygon sync and the market-wide sync so both
+   * write the same `finnhub`/`earnings:{symbol}:{date}` row — a symbol moving
+   * between held and market-wide updates one event instead of duplicating it.
+   */
+  private async syncEarningsForSymbol(symbol: string): Promise<void> {
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - 30);
+    const toDate = new Date();
+    toDate.setDate(toDate.getDate() + 180);
+    const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+    const earnings = await fetchFinnhubEarnings(symbol, fmt(fromDate), fmt(toDate));
+    for (const e of earnings) {
+      if (!e.date) continue;
+      const hourLabel =
+        e.hour === "bmo" ? "Before Open" :
+        e.hour === "amc" ? "After Close" :
+        e.hour === "dmh" ? "During Market" : null;
+      const quarter = `Q${e.quarter} ${e.year}`;
+      const title = `${symbol} ${quarter} Earnings${hourLabel ? ` (${hourLabel})` : ""}`;
+      const details = {
+        estimateEps: e.epsEstimate,
+        actualEps: e.epsActual,
+        quarter,
+        hour: e.hour || null,
+        revenueEstimate: e.revenueEstimate,
+        revenueActual: e.revenueActual,
+      };
+      await prisma.calendarEvent.upsert({
+        where: { source_sourceId: { source: "finnhub", sourceId: `earnings:${symbol}:${e.date}` } },
+        create: {
+          eventType: "EARNINGS",
+          symbol,
+          date: new Date(e.date),
+          title,
+          details,
+          source: "finnhub",
+          sourceId: `earnings:${symbol}:${e.date}`,
+        },
+        update: { title, details },
+      });
+    }
+  }
+
+  /**
+   * Sync earnings for symbols the user tracks for market impact but does not
+   * hold. Held symbols are skipped — `syncTickerFromPolygon` already covers
+   * them, and syncing here too would duplicate the Finnhub call.
+   */
+  async syncMarketWideEarnings(): Promise<void> {
+    if (!(await isFinnhubConfigured())) return;
+
+    const { marketWideSymbols } = await this.getSettings();
+    if (marketWideSymbols.length === 0) return;
+
+    const portfolio = await this.getPortfolioSymbolSet();
+    const symbols = marketWideSymbols.filter((s) => !portfolio.has(s));
+
+    for (const symbol of symbols) {
+      const status = await prisma.calendarSyncStatus.findUnique({
+        where: { source_symbol: { source: "finnhub", symbol } },
+      });
+      if (status && status.nextSyncAt > new Date()) continue;
+
+      try {
+        await this.syncEarningsForSymbol(symbol);
+      } catch (err) {
+        console.error(`[CalendarSync] Market-wide earnings sync failed for ${symbol}:`, err);
+        continue; // Leave nextSyncAt untouched so the next cycle retries.
+      }
+
+      const now = new Date();
+      await prisma.calendarSyncStatus.upsert({
+        where: { source_symbol: { source: "finnhub", symbol } },
+        create: {
+          source: "finnhub",
+          symbol,
+          lastSyncAt: now,
+          nextSyncAt: new Date(now.getTime() + SYNC_INTERVAL_MS),
+        },
+        update: { lastSyncAt: now, nextSyncAt: new Date(now.getTime() + SYNC_INTERVAL_MS) },
+      });
     }
   }
 
