@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api";
 import type { ScannerCriteria, ScannerPreset, AssetClass, OptionTypeFilter } from "@assup/shared";
@@ -111,6 +111,7 @@ export function ScannerPage() {
   const [sellDialogOpen, setSellDialogOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<ExtendedOptionOpportunity | null>(null);
   const [costBasisMap, setCostBasisMap] = useState<Map<string, TickerCostBasis>>(new Map());
+  const criteriaCardRef = useRef<HTMLDivElement>(null);
 
   const {
     jobs,
@@ -270,6 +271,12 @@ export function ScannerPage() {
     }
   }
 
+  /** Load a past scan job's parameters into the form so they can be edited and re-run. */
+  function handleApplyCriteria(jobCriteria: ScannerCriteria) {
+    setCriteria(normalizePresetCriteria(jobCriteria));
+    criteriaCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function handleClearCompleted() {
     const completedJobs = jobs.filter(
       (j) => j.status !== "running"
@@ -329,7 +336,7 @@ export function ScannerPage() {
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
       {/* Scanner Criteria */}
-      <Card>
+      <Card ref={criteriaCardRef}>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Scanner Criteria</CardTitle>
           <div className="flex items-center gap-2">
@@ -631,6 +638,7 @@ export function ScannerPage() {
         onCancel={cancelJob}
         onDelete={deleteJob}
         onRescan={handleRescan}
+        onApplyCriteria={handleApplyCriteria}
         onClearAll={handleClearCompleted}
         onSellClick={handleSellClick}
         costBasisMap={costBasisMap}

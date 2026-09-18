@@ -20,6 +20,7 @@ import {
   X,
   Square,
   RefreshCw,
+  SlidersHorizontal,
 } from "lucide-react";
 
 interface ScanJobRowProps {
@@ -27,11 +28,12 @@ interface ScanJobRowProps {
   onCancel: (jobId: string) => void;
   onDelete: (jobId: string) => void;
   onRescan: (criteria: ScannerCriteria) => void;
+  onApplyCriteria: (criteria: ScannerCriteria) => void;
   onSellClick: (opportunity: ExtendedOptionOpportunity) => void;
   costBasisMap?: Map<string, TickerCostBasis>;
 }
 
-export function ScanJobRow({ job, onCancel, onDelete, onRescan, onSellClick, costBasisMap }: ScanJobRowProps) {
+export function ScanJobRow({ job, onCancel, onDelete, onRescan, onApplyCriteria, onSellClick, costBasisMap }: ScanJobRowProps) {
   const [expanded, setExpanded] = useState(
     job.status === "running" || job.opportunities.length > 0
   );
@@ -150,6 +152,14 @@ export function ScanJobRow({ job, onCancel, onDelete, onRescan, onSellClick, cos
 
         {/* Actions */}
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onApplyCriteria(job.criteria)}
+            title="Load these parameters into the form"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
           {!isRunning && (
             <Button
               variant="ghost"

@@ -14,6 +14,7 @@ interface ScanJobListProps {
   onCancel: (jobId: string) => void;
   onDelete: (jobId: string) => void;
   onRescan: (criteria: ScannerCriteria) => void;
+  onApplyCriteria: (criteria: ScannerCriteria) => void;
   onClearAll: () => void;
   onSellClick: (opportunity: ExtendedOptionOpportunity) => void;
   costBasisMap?: Map<string, TickerCostBasis>;
@@ -24,6 +25,7 @@ export function ScanJobList({
   onCancel,
   onDelete,
   onRescan,
+  onApplyCriteria,
   onClearAll,
   onSellClick,
   costBasisMap,
@@ -56,6 +58,7 @@ export function ScanJobList({
             onCancel={onCancel}
             onDelete={onDelete}
             onRescan={onRescan}
+            onApplyCriteria={onApplyCriteria}
             onSellClick={onSellClick}
             costBasisMap={costBasisMap}
           />
