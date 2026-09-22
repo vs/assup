@@ -9,11 +9,7 @@ import type { Contract } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
 import type { OptionChainEntry } from "./ibkr.js";
 import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
-import {
-  withLiveMarketData,
-  getDaysToExpiry,
-  marketDataKey,
-} from "../utils/options.js";
+import { withLiveMarketData, getDaysToExpiry } from "../utils/options.js";
 import { parseExpirationDate } from "../utils/market.js";
 import type {
   RollCandidatesRequest,
@@ -135,39 +131,45 @@ export async function findRollCandidates(
     const nearestExpiries = new Set(uniqueExpiries.slice(0, MAX_EXPIRATIONS));
     const capped = filtered.filter((e) => nearestExpiries.has(e.expiration));
 
-    // Resolve conIds BEFORE the market data batch so getContractDetails runs
-    // while TWS is still idle (240 snapshot requests would throttle it if done after).
+    // Look up the contracts actually listed per expiry. The chain is the cross
+    // product of all strikes × expirations, so many of its entries don't exist
+    // (ZAG: 206 strikes, ~53 listed per expiry). TWS paces contract-details
+    // requests (~5s each), so query expirations one at a time — in parallel they
+    // queue up and time out.
     const tradingClass = (capped[0].call.tradingClass as string | undefined) ?? symbol;
     const multiplier = Number((capped[0].call.multiplier as number | string | undefined) ?? 100);
-    const conIdMap = new Map<string, number>();
-    await Promise.all(
-      [...nearestExpiries].map(async (expiry) => {
-        const resolved = await ibkrService.resolveOptionConIds(symbol, expiry, tradingClass, multiplier);
-        for (const [key, conId] of resolved) {
-          conIdMap.set(`${expiry}_${key}`, conId);
-        }
-      }),
-    );
+    const wanted = new Set(capped.map((e) => `${e.expiration}_${e.strike}`));
+    const contracts: Contract[] = [];
+    for (const expiry of nearestExpiries) {
+      const listed = await ibkrService.getOptionContracts(symbol, expiry, tradingClass, multiplier, right);
+      for (const c of listed) {
+        if (wanted.has(`${c.lastTradeDateOrContractMonth}_${c.strike}`)) contracts.push(c);
+      }
+    }
+    if (contracts.length === 0) return;
 
-    // Reserve market data lines so roll batch doesn't silently compete with
-    // the spread stream's persistent subscriptions (Observable fallback path).
-    const granted = marketDataLineRegistry.reserve(sessionId, capped.length);
-    console.log(`[RollCandidates] ${symbol}: fetching ${capped.length} contracts across ${nearestExpiries.size} expiries (lines granted: ${granted}/${capped.length})`);
+    // Each streaming quote holds a market data line, so reserve lines alongside
+    // the spread stream's persistent subscriptions and quote only that many at once.
+    const granted = marketDataLineRegistry.reserve(sessionId, contracts.length);
+    console.log(`[RollCandidates] ${symbol}: quoting ${contracts.length} listed contracts across ${nearestExpiries.size} expiries (lines granted: ${granted}/${contracts.length})`);
+    if (granted === 0) {
+      throw new Error(
+        `No IBKR market data lines available to quote ${symbol} roll candidates — all ${marketDataLineRegistry.used()} lines are in use. Close the Spreads page (live options chain) and try again.`,
+      );
+    }
 
-    // Extract the correct leg contract (call or put) from each chain entry
-    const contracts = capped.map((e) => (right === "C" ? e.call : e.put));
-    let marketDataMap: Awaited<ReturnType<typeof ibkrService.getMarketDataBatch>>;
+    let quotes: Map<number, { bid: number; ask: number }>;
     try {
-      marketDataMap = await ibkrService.getMarketDataBatch(contracts, signal);
+      quotes = await ibkrService.getOptionQuotes(contracts, { concurrency: granted, signal });
     } finally {
       marketDataLineRegistry.release(sessionId);
     }
+    console.log(`[RollCandidates] ${symbol}: ${quotes.size}/${contracts.length} contracts quoted`);
 
     const today = new Date();
-    for (const entry of capped) {
-      const contract = right === "C" ? entry.call : entry.put;
-      const data = marketDataMap.get(marketDataKey(contract));
-      if (!data || !data.bid || !data.ask || data.bid <= 0) continue;
+    for (const contract of contracts) {
+      const data = quotes.get(contract.conId!);
+      if (!data || data.bid <= 0 || data.ask <= 0) continue;
 
       const { netCredit, netCreditMid } = computeNetCredits(
         data.bid,
@@ -179,20 +181,21 @@ export async function findRollCandidates(
       // Only include positive net credit mid candidates
       if (netCreditMid <= 0) continue;
 
-      const daysToExpiry = getDaysToExpiry(entry.expiration, today);
-      const candidateConId = conIdMap.get(`${entry.expiration}_${entry.strike}:${right}`) ?? 0;
+      const expiration = contract.lastTradeDateOrContractMonth!;
+      const strike = contract.strike!;
+      const daysToExpiry = getDaysToExpiry(expiration, today);
 
       candidates.push({
-        conId: candidateConId,
-        strike: entry.strike,
-        expiration: entry.expiration,
+        conId: contract.conId!,
+        strike,
+        expiration,
         daysToExpiry,
         bid: data.bid,
         ask: data.ask,
         mid: (data.bid + data.ask) / 2,
         netCredit,
         netCreditMid,
-        annualizedReturn: computeRollAnnualizedReturn(netCreditMid, entry.strike, daysToExpiry),
+        annualizedReturn: computeRollAnnualizedReturn(netCreditMid, strike, daysToExpiry),
       });
     }
   });
