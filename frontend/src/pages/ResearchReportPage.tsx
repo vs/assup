@@ -1278,9 +1278,12 @@ function CommentsSection({
 // --- Skipped Sources ---
 
 function SkippedSourcesSection({ skipped }: { skipped: CollectionStatus[] }) {
-  // Hide authorization/subscription failures — these are permanent, not actionable
+  // Hide plan/authorization failures — those are permanent and there is nothing
+  // to act on. A blocked source that *can* be fixed (missing credentials, a bot
+  // challenge) still belongs here, so match the "not authorized" wording rather
+  // than any status code that happens to appear in the reason.
   const actionable = skipped.filter(
-    (s) => !s.skipReason?.includes("403") && !s.skipReason?.includes("not authorized"),
+    (s) => !s.skipReason?.includes("not authorized"),
   );
   if (actionable.length === 0) return null;
   return (

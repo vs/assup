@@ -46,6 +46,12 @@ interface SAAuthStatus {
   maskedKey?: string;
 }
 
+interface RedditAuthStatus {
+  configured: boolean;
+  source: string;
+  maskedClientId?: string;
+}
+
 const defaultSettings: ResearchSettings = {
   synthesizerMode: "claude-cli",
 };
@@ -67,6 +73,20 @@ export function ResearchSection() {
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Reddit state
+  const [redditStatus, setRedditStatus] = useState<RedditAuthStatus | null>(null);
+  const [redditClientId, setRedditClientId] = useState("");
+  const [redditClientSecret, setRedditClientSecret] = useState("");
+  const [redditSaving, setRedditSaving] = useState(false);
+  const [redditRemoving, setRedditRemoving] = useState(false);
+  const [redditTesting, setRedditTesting] = useState(false);
+  const [redditSaveSuccess, setRedditSaveSuccess] = useState(false);
+  const [redditTestResult, setRedditTestResult] = useState<{
+    ok: boolean;
+    hasData: boolean;
+    error?: string;
+  } | null>(null);
+
   // Seeking Alpha state
   const [saStatus, setSaStatus] = useState<SAAuthStatus | null>(null);
   const [saApiKey, setSaApiKey] = useState("");
@@ -84,17 +104,19 @@ export function ResearchSection() {
       setLoading(true);
       setError(null);
       // Load fast settings first — don't block on slow claude CLI check
-      const [savedSettings, auth, saAuth] = await Promise.all([
+      const [savedSettings, auth, saAuth, redditAuth] = await Promise.all([
         settingsApi
           .get<ResearchSettings>("research")
           .then((r) => r.value)
           .catch(() => defaultSettings),
         researchApi.getAuthStatus().catch(() => null),
         researchApi.getSAAuthStatus().catch(() => null),
+        researchApi.getRedditAuthStatus().catch(() => null),
       ]);
       setSettings(savedSettings);
       setAuthStatus(auth);
       setSaStatus(saAuth);
+      setRedditStatus(redditAuth);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -179,6 +201,63 @@ export function ResearchSection() {
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleSaveRedditCredentials = async () => {
+    if (!redditClientId.trim() || !redditClientSecret.trim()) return;
+    setRedditSaving(true);
+    setRedditSaveSuccess(false);
+    setError(null);
+    try {
+      await researchApi.setRedditCredentials(
+        redditClientId.trim(),
+        redditClientSecret.trim()
+      );
+      setRedditStatus(await researchApi.getRedditAuthStatus());
+      setRedditClientId("");
+      setRedditClientSecret("");
+      setRedditTestResult(null);
+      setRedditSaveSuccess(true);
+      setTimeout(() => setRedditSaveSuccess(false), 3000);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save Reddit credentials"
+      );
+    } finally {
+      setRedditSaving(false);
+    }
+  };
+
+  const handleRemoveRedditCredentials = async () => {
+    setRedditRemoving(true);
+    setError(null);
+    try {
+      await researchApi.deleteRedditCredentials();
+      setRedditStatus(await researchApi.getRedditAuthStatus());
+      setRedditTestResult(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to remove Reddit credentials"
+      );
+    } finally {
+      setRedditRemoving(false);
+    }
+  };
+
+  const handleTestRedditConnection = async () => {
+    setRedditTesting(true);
+    setRedditTestResult(null);
+    try {
+      setRedditTestResult(await researchApi.testRedditConnection());
+    } catch (err) {
+      setRedditTestResult({
+        ok: false,
+        hasData: false,
+        error: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setRedditTesting(false);
     }
   };
 
@@ -436,6 +515,135 @@ export function ResearchSection() {
               Unable to check status. Is the research service running?
             </p>
           )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Reddit (social signal)
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTestRedditConnection}
+              disabled={redditTesting}
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-2 ${redditTesting ? "animate-spin" : ""}`}
+              />
+              Test Connection
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {redditStatus && (
+            <div className="flex items-center gap-3">
+              {redditStatus.configured ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p>
+                      Credentials configured
+                      <span className="text-muted-foreground ml-1">
+                        ({redditStatus.source === "database"
+                          ? "saved in database"
+                          : "from environment"})
+                      </span>
+                    </p>
+                    {redditStatus.maskedClientId && (
+                      <p className="text-sm text-muted-foreground font-mono">
+                        {redditStatus.maskedClientId}
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                  <p>No Reddit credentials configured — social signal is off</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {redditTestResult && (
+            <div className="flex items-center gap-3">
+              {redditTestResult.ok ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <p>Connection successful — Reddit search is accessible</p>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                  <p className="min-w-0 break-words">
+                    {redditTestResult.error || "Connection failed"}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="reddit-client-id">Client ID</Label>
+            <Input
+              id="reddit-client-id"
+              placeholder="Enter your Reddit app client ID"
+              value={redditClientId}
+              onChange={(e) => setRedditClientId(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="reddit-client-secret">Client Secret</Label>
+            <Input
+              id="reddit-client-secret"
+              type="password"
+              placeholder="Enter your Reddit app client secret"
+              value={redditClientSecret}
+              onChange={(e) => setRedditClientSecret(e.target.value)}
+              onKeyDown={(e) =>
+                e.key === "Enter" && handleSaveRedditCredentials()
+              }
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveRedditCredentials}
+              disabled={
+                redditSaving ||
+                !redditClientId.trim() ||
+                !redditClientSecret.trim()
+              }
+            >
+              {redditSaving ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              {redditSaving ? "Saving..." : "Save"}
+            </Button>
+            {redditStatus?.source === "database" && (
+              <Button
+                variant="outline"
+                onClick={handleRemoveRedditCredentials}
+                disabled={redditRemoving}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Remove
+              </Button>
+            )}
+          </div>
+          {redditSaveSuccess && (
+            <p className="text-sm text-green-600">Reddit credentials saved</p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            Reddit closed its unauthenticated API, so the social signal needs an
+            app credential. Create a <span className="font-medium">script</span>{" "}
+            app at reddit.com/prefs/apps — the client ID sits under the app name,
+            the secret next to "secret".
+          </p>
         </CardContent>
       </Card>
       <Card>
