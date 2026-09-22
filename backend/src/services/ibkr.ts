@@ -1906,6 +1906,112 @@ class IBKRService {
   }
 
   /**
+   * List the option contracts (with conIds) actually listed for one expiration.
+   * Unlike the getOptionChain cross product, this only returns strikes that exist
+   * for that expiry. TWS paces contract-details requests (~5s each after the first),
+   * so callers should request expirations sequentially rather than in parallel.
+   * Throws on timeout or TWS error.
+   */
+  async getOptionContracts(
+    symbol: string,
+    expiration: string,
+    tradingClass: string,
+    multiplier: number,
+    right: "C" | "P",
+    timeoutMs = 30_000,
+  ): Promise<Contract[]> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const details = await Promise.race([
+        this.api.getContractDetails({
+          symbol,
+          secType: SecType.OPT,
+          exchange: "SMART",
+          currency: "USD",
+          lastTradeDateOrContractMonth: expiration,
+          tradingClass,
+          multiplier,
+          right: right === "C" ? OptionType.Call : OptionType.Put,
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Option contract lookup timed out after ${timeoutMs}ms for ${symbol} ${expiration} ${right} — TWS may be busy, try again`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+      return details.map((d) => d.contract).filter((c) => c.conId && c.strike != null);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Stream bid/ask quotes for option contracts (keyed by conId).
+   *
+   * Uses streaming subscriptions cancelled as soon as bid and ask arrive: TWS
+   * delivers them in ~2-3s, whereas snapshots only complete after ~11s. Up to
+   * `concurrency` subscriptions are open at once — each holds a market data line,
+   * so pass the number of lines reserved in marketDataLineRegistry. Contracts
+   * without a quote within `timeoutMs` (or with no bid/ask) are omitted.
+   */
+  async getOptionQuotes(
+    contracts: Contract[],
+    opts: { concurrency: number; timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<Map<number, { bid: number; ask: number }>> {
+    if (!this.api || !this.api.isConnected) {
+      throw new Error("Not connected to TWS");
+    }
+    const { concurrency, timeoutMs = 8000, signal } = opts;
+    const results = new Map<number, { bid: number; ask: number }>();
+
+    const quoteOne = (contract: Contract) =>
+      new Promise<void>((resolve) => {
+        let done = false;
+        let sub: Subscription | undefined;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", finish);
+          sub?.unsubscribe();
+          resolve();
+        };
+        const timer = setTimeout(finish, timeoutMs);
+        signal?.addEventListener("abort", finish);
+        sub = this.api!
+          .getMarketData({ ...contract, exchange: "SMART" }, "", false, false)
+          .subscribe({
+            next: (update) => {
+              const bidTick = update.all.get(1) ?? update.all.get(66); // BID / DELAYED_BID
+              const askTick = update.all.get(2) ?? update.all.get(67); // ASK / DELAYED_ASK
+              if (bidTick?.value == null || askTick?.value == null) return;
+              // IBKR sends -1 when there is no bid/ask — nothing more to wait for.
+              if (bidTick.value >= 0 && askTick.value >= 0) {
+                results.set(contract.conId!, { bid: bidTick.value, ask: askTick.value });
+              }
+              finish();
+            },
+            error: finish,
+          });
+        // finish() may have run synchronously inside subscribe, before `sub` was assigned.
+        if (done) sub.unsubscribe();
+      });
+
+    let next = 0;
+    const worker = async () => {
+      while (next < contracts.length && !signal?.aborted) {
+        await quoteOne(contracts[next++]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, contracts.length) }, worker));
+    return results;
+  }
+
+  /**
    * Run a TWS market scanner to discover symbols matching criteria.
    * Uses the IBKR scanner subscription API to find stocks by various metrics
    * (most active, high option volume, top gainers, etc.)
