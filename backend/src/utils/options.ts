@@ -133,8 +133,8 @@ export function filterChainByStrike(
 // --- Contract Key ---
 
 /**
- * Build the lookup key used by getMarketDataBatch results.
- * Must stay in sync with ibkr.ts getMarketDataBatch().
+ * Build the lookup key used by getMarketDataBatch and getOptionQuotes results.
+ * Must stay in sync with ibkr.ts getMarketDataBatch() and getOptionQuotes().
  */
 export function marketDataKey(contract: {
   symbol?: string;

@@ -7,6 +7,7 @@
  */
 
 import { ibkrService, type OptionChainEntry } from "./ibkr.js";
+import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
 import type { OptionOpportunity, ScannerCriteria } from "@assup/shared";
 import {
   withLiveMarketData,
@@ -156,8 +157,25 @@ export async function scanSymbols(ctx: ScanContext): Promise<ScanOutcome> {
           callbacks.onFetching(symbol, assetClassInfo.name, contracts.length);
         }
 
-        // Get market data for options contracts
-        const marketDataMap = await ibkrService.getMarketDataBatch(contracts);
+        // Stream quotes rather than snapshotting: TWS takes ~11s to complete an
+        // option snapshot, while streaming delivers bid/ask in ~1-2s. Each open
+        // subscription holds a market data line, so quote only as many at once
+        // as the registry grants alongside the spread stream's subscriptions.
+        const sessionId = `scan-${symbol}-${Date.now()}`;
+        const granted = marketDataLineRegistry.reserve(sessionId, contracts.length);
+        if (granted === 0) {
+          throw new Error(
+            `No IBKR market data lines available to quote ${contracts.length} ${symbol} contracts — ` +
+              `all ${marketDataLineRegistry.used()} lines are in use. Close the Spreads page (live options chain) and try again.`,
+          );
+        }
+        let marketDataMap: Map<string, { bid: number; ask: number }>;
+        try {
+          marketDataMap = await ibkrService.getOptionQuotes(contracts, { concurrency: granted, signal });
+        } finally {
+          marketDataLineRegistry.release(sessionId);
+        }
+        console.log(`[Scanner] ${symbol}: ${marketDataMap.size}/${contracts.length} contracts quoted (lines: ${granted})`);
 
         // A scan where not a single quote came back is an infrastructure
         // failure, not an empty result: processOption skips contracts without
@@ -166,15 +184,9 @@ export async function scanSymbols(ctx: ScanContext): Promise<ScanOutcome> {
         if (marketDataMap.size === 0 && contracts.length > 0) {
           throw new Error(
             `No market data returned for any of ${contracts.length} contracts — ` +
-              `TWS provided no quotes. The market may be closed, or the request may have ` +
-              `exceeded IBKR's market data lines. Narrowing the expiration or strike range ` +
-              `reduces the contract count and usually resolves this.`,
-          );
-        }
-
-        if (marketDataMap.size < contracts.length / 2) {
-          console.warn(
-            `[Scanner] ${symbol}: only ${marketDataMap.size}/${contracts.length} contracts returned quotes — results are partial`,
+              `TWS sent no bid/ask within 8s for any of them. Check that TWS is connected ` +
+              `and that your account has live options data for ${symbol}; outside regular ` +
+              `trading hours IBKR may have no quotes to send.`,
           );
         }
 

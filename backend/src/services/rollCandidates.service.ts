@@ -9,7 +9,7 @@ import type { Contract } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
 import type { OptionChainEntry } from "./ibkr.js";
 import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
-import { withLiveMarketData, getDaysToExpiry } from "../utils/options.js";
+import { withLiveMarketData, getDaysToExpiry, marketDataKey } from "../utils/options.js";
 import { parseExpirationDate } from "../utils/market.js";
 import type {
   RollCandidatesRequest,
@@ -158,7 +158,7 @@ export async function findRollCandidates(
       );
     }
 
-    let quotes: Map<number, { bid: number; ask: number }>;
+    let quotes: Map<string, { bid: number; ask: number }>;
     try {
       quotes = await ibkrService.getOptionQuotes(contracts, { concurrency: granted, signal });
     } finally {
@@ -168,7 +168,7 @@ export async function findRollCandidates(
 
     const today = new Date();
     for (const contract of contracts) {
-      const data = quotes.get(contract.conId!);
+      const data = quotes.get(marketDataKey(contract));
       if (!data || data.bid <= 0 || data.ask <= 0) continue;
 
       const { netCredit, netCreditMid } = computeNetCredits(

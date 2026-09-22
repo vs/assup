@@ -1950,10 +1950,12 @@ class IBKRService {
   }
 
   /**
-   * Stream bid/ask quotes for option contracts (keyed by conId).
+   * Stream bid/ask quotes for option contracts, keyed like marketDataKey()
+   * (`symbol_expiry_strike_right`) so contracts without a conId can be quoted.
    *
    * Uses streaming subscriptions cancelled as soon as bid and ask arrive: TWS
-   * delivers them in ~2-3s, whereas snapshots only complete after ~11s. Up to
+   * delivers them in ~1-3s, whereas snapshots only complete after ~11s. Contracts
+   * that are not listed fail immediately (TWS error 200) and are omitted. Up to
    * `concurrency` subscriptions are open at once — each holds a market data line,
    * so pass the number of lines reserved in marketDataLineRegistry. Contracts
    * without a quote within `timeoutMs` (or with no bid/ask) are omitted.
@@ -1961,12 +1963,12 @@ class IBKRService {
   async getOptionQuotes(
     contracts: Contract[],
     opts: { concurrency: number; timeoutMs?: number; signal?: AbortSignal },
-  ): Promise<Map<number, { bid: number; ask: number }>> {
+  ): Promise<Map<string, { bid: number; ask: number }>> {
     if (!this.api || !this.api.isConnected) {
       throw new Error("Not connected to TWS");
     }
     const { concurrency, timeoutMs = 8000, signal } = opts;
-    const results = new Map<number, { bid: number; ask: number }>();
+    const results = new Map<string, { bid: number; ask: number }>();
 
     const quoteOne = (contract: Contract) =>
       new Promise<void>((resolve) => {
@@ -1991,7 +1993,9 @@ class IBKRService {
               if (bidTick?.value == null || askTick?.value == null) return;
               // IBKR sends -1 when there is no bid/ask — nothing more to wait for.
               if (bidTick.value >= 0 && askTick.value >= 0) {
-                results.set(contract.conId!, { bid: bidTick.value, ask: askTick.value });
+                // Must stay in sync with utils/options.ts marketDataKey().
+                const key = `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
+                results.set(key, { bid: bidTick.value, ask: askTick.value });
               }
               finish();
             },
