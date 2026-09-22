@@ -100,7 +100,7 @@ describe("findRollCandidates", () => {
 
   it("quotes only listed contracts and returns their real conIds", async () => {
     getOptionQuotes.mockImplementation(async (contracts: Contract[]) =>
-      new Map(contracts.map((c) => [c.conId!, { bid: 2.0, ask: 2.2 }])),
+      new Map(contracts.map((c) => [`SLV_${c.lastTradeDateOrContractMonth}_${c.strike}_C`, { bid: 2.0, ask: 2.2 }])),
     );
 
     const result = await findRollCandidates(request);
