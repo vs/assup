@@ -25,6 +25,12 @@ import {
   deleteSAApiKey,
   fetchSAMetrics,
 } from "../services/research/collectors/sa-rapidapi.js";
+import {
+  getRedditAuthStatus,
+  setRedditCredentials,
+  deleteRedditCredentials,
+  redditFetch,
+} from "../services/research/collectors/reddit-auth.js";
 
 import { macroBroadcastService } from "../services/macroBroadcast.service.js";
 
@@ -348,6 +354,54 @@ router.post(
       ok: metrics != null,
       hasData: metrics != null && Object.keys(metrics).length > 0,
     });
+  })
+);
+
+// ── Reddit Auth ──────────────────────────────────────────────────────
+
+router.get(
+  "/reddit-auth/status",
+  asyncHandler(async (_req, res) => {
+    res.json(await getRedditAuthStatus());
+  })
+);
+
+router.put(
+  "/reddit-auth/credentials",
+  asyncHandler(async (req, res) => {
+    const { clientId, clientSecret } = req.body ?? {};
+    if (!clientId || typeof clientId !== "string") {
+      res.status(400).json({ error: "Client ID is required" });
+      return;
+    }
+    if (!clientSecret || typeof clientSecret !== "string") {
+      res.status(400).json({ error: "Client secret is required" });
+      return;
+    }
+    await setRedditCredentials({ clientId, clientSecret });
+    res.json(await getRedditAuthStatus());
+  })
+);
+
+router.delete(
+  "/reddit-auth/credentials",
+  asyncHandler(async (_req, res) => {
+    await deleteRedditCredentials();
+    res.json(await getRedditAuthStatus());
+  })
+);
+
+router.post(
+  "/reddit-auth/test",
+  asyncHandler(async (_req, res) => {
+    try {
+      const result = (await redditFetch("/r/stocks/search?q=AAPL&restrict_sr=true&limit=1")) as {
+        data?: { children?: unknown[] };
+      };
+      res.json({ ok: true, hasData: (result.data?.children?.length ?? 0) > 0 });
+    } catch (err) {
+      res.json({ ok: false, hasData: false, error: (err as Error).message });
+    }
   })
 );
 

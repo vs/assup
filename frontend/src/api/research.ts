@@ -110,6 +110,32 @@ export const researchApi = {
       { method: "POST" }
     ),
 
+  // Reddit Auth
+  getRedditAuthStatus: () =>
+    request<{
+      configured: boolean;
+      source: string;
+      maskedClientId?: string;
+    }>("/api/research/reddit-auth/status"),
+
+  setRedditCredentials: (clientId: string, clientSecret: string) =>
+    request<{ configured: boolean; source: string; maskedClientId?: string }>(
+      "/api/research/reddit-auth/credentials",
+      { method: "PUT", body: JSON.stringify({ clientId, clientSecret }) }
+    ),
+
+  deleteRedditCredentials: () =>
+    request<{ configured: boolean; source: string }>(
+      "/api/research/reddit-auth/credentials",
+      { method: "DELETE" }
+    ),
+
+  testRedditConnection: () =>
+    request<{ ok: boolean; hasData: boolean; error?: string }>(
+      "/api/research/reddit-auth/test",
+      { method: "POST" }
+    ),
+
   // Market Scanner
   listScannerPresets: () =>
     request<MarketScannerPreset[]>("/api/research/scanner/presets"),

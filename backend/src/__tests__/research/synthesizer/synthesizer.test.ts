@@ -255,6 +255,20 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
     );
   });
 
+  it("surfaces CLI failure text written to stdout", async () => {
+    // `claude --print` writes its failure message to stdout, not stderr,
+    // and exits 1 — see the OAuth failure this reproduces.
+    createMockChild(
+      "Failed to authenticate. API Error: 401 OAuth access token is invalid.",
+      "",
+      1
+    );
+
+    await expect(synthesize(baseInput)).rejects.toThrow(
+      "401 OAuth access token is invalid"
+    );
+  });
+
   it("throws on invalid JSON from claude", async () => {
     createMockChild("This is not JSON at all");
 

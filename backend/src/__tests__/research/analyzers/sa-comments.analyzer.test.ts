@@ -14,6 +14,14 @@ vi.mock("../../../services/research/auth.service.js", () => ({
   getOAuthToken: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn(),
+}));
+
+import { EventEmitter } from "node:events";
+import { Writable } from "node:stream";
+import { spawn } from "node:child_process";
+
 import { saCommentsAnalyzer } from "../../../services/research/analyzers/sa-comments.analyzer.js";
 
 const MOCK_RESPONSE = {
@@ -156,5 +164,66 @@ describe("saCommentsAnalyzer", () => {
       "Community sentiment is positive with focus on AI growth catalysts."
     );
     expect(result.details.keyIdeas).toHaveLength(2);
+  });
+});
+
+describe("saCommentsAnalyzer (claude-cli mode)", () => {
+  const originalKey = process.env.ANTHROPIC_API_KEY;
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    vi.mocked(spawn).mockReset();
+  });
+
+  afterEach(() => {
+    process.env.ANTHROPIC_API_KEY = originalKey;
+  });
+
+  function createMockChild(stdout: string, stderr = "", exitCode = 0) {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new Writable({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
+
+    vi.mocked(spawn).mockReturnValue(child);
+
+    process.nextTick(() => {
+      if (stdout) child.stdout.emit("data", Buffer.from(stdout));
+      if (stderr) child.stderr.emit("data", Buffer.from(stderr));
+      child.emit("close", exitCode, null);
+    });
+
+    return child;
+  }
+
+  const input = {
+    articles: [
+      { title: "AAPL Bull Case", comments: [{ content: "Love this stock", likes: 4 }] },
+    ],
+    totalComments: 1,
+    symbol: "AAPL",
+  };
+
+  it("parses valid JSON from claude stdout", async () => {
+    createMockChild(JSON.stringify(MOCK_RESPONSE));
+
+    const result = await saCommentsAnalyzer.analyze(input);
+
+    expect(result.signal).toBe("bullish");
+    expect(result.confidence).toBe(0.7);
+  });
+
+  it("surfaces CLI failure text written to stdout", async () => {
+    // `claude --print` reports its own failures on stdout, not stderr,
+    // and exits 1.
+    createMockChild(
+      "Failed to authenticate. API Error: 401 OAuth access token is invalid.",
+      "",
+      1
+    );
+
+    await expect(saCommentsAnalyzer.analyze(input)).rejects.toThrow(
+      "401 OAuth access token is invalid"
+    );
   });
 });

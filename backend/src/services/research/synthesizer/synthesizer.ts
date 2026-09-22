@@ -281,6 +281,19 @@ async function synthesizeWithSDK(
   return parseAndValidate(text);
 }
 
+/**
+ * Build the diagnostic for a failed `claude --print` run.
+ *
+ * Claude CLI reports its own failures (expired OAuth token, usage limit,
+ * unknown model) on stdout and exits non-zero, leaving stderr empty — so
+ * reporting stderr alone yields "(no stderr)" and hides the actual cause.
+ */
+function cliFailureDetail(stdout: string, stderr: string): string {
+  const parts = [stderr.trim(), stdout.trim()].filter(Boolean);
+  if (parts.length === 0) return "(no output)";
+  return parts.join(" | ").slice(0, 1000);
+}
+
 async function synthesizeWithClaude(
   input: SynthesizerInput,
   model: string
@@ -336,8 +349,9 @@ async function synthesizeWithClaude(
       } else if (signal) {
         reject(new Error(`Claude CLI killed with signal ${signal}`));
       } else if (code !== 0) {
-        console.error(`[Synthesizer] CLI failed for ${input.symbol} in ${elapsed}s (exit ${code})`);
-        reject(new Error(`Claude CLI failed (exit ${code}): ${err || "(no stderr)"}`));
+        const detail = cliFailureDetail(out, err);
+        console.error(`[Synthesizer] CLI failed for ${input.symbol} in ${elapsed}s (exit ${code}): ${detail}`);
+        reject(new Error(`Claude CLI failed (exit ${code}): ${detail}`));
       } else if (!out.trim()) {
         console.error(`[Synthesizer] CLI returned empty stdout for ${input.symbol} in ${elapsed}s`);
         reject(new Error(`Claude CLI returned empty output. stderr: ${err || "(none)"}`));
