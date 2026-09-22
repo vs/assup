@@ -1,10 +1,12 @@
-import type { Collector, CollectedData } from "./types.js";
+import type { Collector, CollectionResult } from "./types.js";
+import { redditFetch, RedditUnavailableError } from "./reddit-auth.js";
 
 const STALENESS_MINUTES = 360; // 6 hours
 
 const REDDIT_BASE_URL = "https://www.reddit.com";
 const STOCKTWITS_BASE_URL = "https://api.stocktwits.com/api/2";
 const USER_AGENT = "AssupResearch/1.0";
+const REQUEST_TIMEOUT_MS = 15_000;
 
 interface RedditPost {
   data: {
@@ -55,6 +57,17 @@ interface SocialPost {
   url: string | null;
 }
 
+/**
+ * Per-source outcome.
+ *
+ * A source that could not be read is never folded into the data as an empty
+ * result — "nobody is talking about this ticker" and "we were blocked" are
+ * different facts, and only the first one is a signal.
+ */
+export type SourceOutcome =
+  | { status: "ok"; posts: SocialPost[] }
+  | { status: "unavailable"; reason: string };
+
 function tickerInTitle(title: string, symbol: string): boolean {
   // Escape regex special chars (e.g., BRK.B → BRK\.B)
   const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -69,26 +82,17 @@ function tickerInTitle(title: string, symbol: string): boolean {
 async function fetchRedditPosts(symbol: string): Promise<SocialPost[]> {
   const params = new URLSearchParams({
     q: symbol,
-    subreddit: "wallstreetbets+options+stocks+investing",
+    restrict_sr: "true",
     sort: "relevance",
     limit: "25",
   });
 
-  const url = `${REDDIT_BASE_URL}/search.json?${params.toString()}`;
+  // Reddit closed its unauthenticated *.json endpoints; all reads go through
+  // the OAuth host with client-credentials auth.
+  const result = (await redditFetch(
+    `/r/wallstreetbets+options+stocks+investing/search?${params.toString()}`
+  )) as RedditSearchResponse;
 
-  const response = await globalThis.fetch(url, {
-    headers: {
-      "User-Agent": USER_AGENT,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Reddit API returned ${response.status} for ${symbol}: ${response.statusText}`
-    );
-  }
-
-  const result = (await response.json()) as RedditSearchResponse;
   const children = result.data?.children ?? [];
 
   return children
@@ -115,11 +119,18 @@ async function fetchStocktwitsPosts(symbol: string): Promise<SocialPost[]> {
     headers: {
       "User-Agent": USER_AGENT,
     },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
+    // StockTwits fronts its public API with a Cloudflare bot challenge, which
+    // answers a plain server-side request with 403 and an HTML page.
+    const hint =
+      response.status === 403
+        ? " — StockTwits is serving a Cloudflare bot challenge, which a server-side request cannot answer"
+        : "";
     throw new Error(
-      `StockTwits API returned ${response.status} for ${symbol}: ${response.statusText}`
+      `StockTwits API returned ${response.status} for ${symbol}: ${response.statusText}${hint}`
     );
   }
 
@@ -139,72 +150,95 @@ async function fetchStocktwitsPosts(symbol: string): Promise<SocialPost[]> {
   }));
 }
 
+async function collectSource(
+  label: string,
+  fetcher: () => Promise<SocialPost[]>
+): Promise<SourceOutcome> {
+  try {
+    return { status: "ok", posts: await fetcher() };
+  } catch (err) {
+    const reason =
+      err instanceof RedditUnavailableError
+        ? err.message
+        : (err as Error).message || String(err);
+    console.warn(`[social] ${label} unavailable: ${reason}`);
+    return { status: "unavailable", reason };
+  }
+}
+
 export const socialCollector: Collector = {
   source: "social",
   defaultSchedule: "0 */6 * * 1-5", // Every 6 hours on market days
   stalenessMinutes: STALENESS_MINUTES,
 
-  async collect(symbol: string): Promise<CollectedData> {
-    const [redditResult, stocktwitsResult] = await Promise.allSettled([
-      fetchRedditPosts(symbol),
-      fetchStocktwitsPosts(symbol),
+  async collect(symbol: string): Promise<CollectionResult> {
+    const [reddit, stocktwits] = await Promise.all([
+      collectSource("Reddit", () => fetchRedditPosts(symbol)),
+      collectSource("StockTwits", () => fetchStocktwitsPosts(symbol)),
     ]);
 
-    const redditPosts =
-      redditResult.status === "fulfilled" ? redditResult.value : null;
-    const stocktwitsPosts =
-      stocktwitsResult.status === "fulfilled" ? stocktwitsResult.value : null;
+    const expiresAt = new Date(Date.now() + STALENESS_MINUTES * 60 * 1000);
+
+    // Nothing readable at all — record a skip so the missing signal is visible
+    // in the UI instead of vanishing into a caught exception.
+    if (reddit.status === "unavailable" && stocktwits.status === "unavailable") {
+      return {
+        _tag: "skipped",
+        source: "social",
+        reason: `No social source could be read. Reddit: ${reddit.reason} StockTwits: ${stocktwits.reason}`,
+        expiresAt,
+      };
+    }
 
     // Filter Reddit posts for relevance (ticker must be in title)
-    let filteredRedditPosts = redditPosts;
+    let redditPosts = reddit.status === "ok" ? reddit.posts : null;
     if (redditPosts && redditPosts.length > 0) {
       const titleFiltered = redditPosts.filter((post) =>
         tickerInTitle(post.title ?? "", symbol)
       );
       // Fall back to score-filtered posts if title filter removes everything
       if (titleFiltered.length > 0) {
-        filteredRedditPosts = titleFiltered;
+        redditPosts = titleFiltered;
       }
     }
 
-    if (redditPosts === null && stocktwitsPosts === null) {
-      const redditErr =
-        redditResult.status === "rejected" ? redditResult.reason : "unknown";
-      const stocktwitsErr =
-        stocktwitsResult.status === "rejected"
-          ? stocktwitsResult.reason
-          : "unknown";
-      throw new Error(
-        `Failed to fetch social data from both sources for ${symbol}. ` +
-          `Reddit error: ${redditErr}. StockTwits error: ${stocktwitsErr}.`
-      );
-    }
+    const stocktwitsPosts = stocktwits.status === "ok" ? stocktwits.posts : null;
 
     const allPosts: SocialPost[] = [
-      ...(filteredRedditPosts ?? []),
+      ...(redditPosts ?? []),
       ...(stocktwitsPosts ?? []),
     ];
 
     // Engagement score: sum of Reddit upvotes + comments across posts.
     // This varies meaningfully per ticker, unlike post count which is
     // always capped at 25 (Reddit) + 30 (StockTwits) = 55.
-    const redditEngagement = (filteredRedditPosts ?? []).reduce(
-      (sum, p) => sum + (p.score ?? 0) + (p.comments ?? 0),
-      0,
-    );
+    const redditEngagement = redditPosts
+      ? redditPosts.reduce((sum, p) => sum + (p.score ?? 0) + (p.comments ?? 0), 0)
+      : null;
 
     return {
       source: "social",
       data: {
         symbol,
-        redditMentionCount: filteredRedditPosts?.length ?? 0,
-        stocktwitsMentionCount: stocktwitsPosts?.length ?? 0,
+        // null means "could not be read", 0 means "read it, nobody posted".
+        redditMentionCount: redditPosts?.length ?? null,
+        stocktwitsMentionCount: stocktwitsPosts?.length ?? null,
         totalMentionCount: allPosts.length,
         redditEngagement,
         posts: allPosts,
+        sources: {
+          reddit:
+            reddit.status === "ok"
+              ? { status: "ok" }
+              : { status: "unavailable", reason: reddit.reason },
+          stocktwits:
+            stocktwits.status === "ok"
+              ? { status: "ok" }
+              : { status: "unavailable", reason: stocktwits.reason },
+        },
         fetchedAt: new Date().toISOString(),
       },
-      expiresAt: new Date(Date.now() + STALENESS_MINUTES * 60 * 1000),
+      expiresAt,
     };
   },
 };

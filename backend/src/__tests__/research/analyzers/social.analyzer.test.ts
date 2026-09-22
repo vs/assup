@@ -91,4 +91,52 @@ describe("socialAnalyzer", () => {
     const details = result.details as Record<string, unknown>;
     expect((details.topPosts as unknown[]).length).toBeLessThanOrEqual(5);
   });
+
+  it("names an unreadable source instead of scoring it as silence", async () => {
+    const result = await socialAnalyzer.analyze({
+      posts: [],
+      redditMentionCount: 0,
+      stocktwitsMentionCount: null,
+      sources: {
+        reddit: { status: "ok" },
+        stocktwits: { status: "unavailable", reason: "HTTP 403" },
+      },
+    });
+
+    expect(result.summary).toContain("StockTwits could not be read");
+    expect(result.details.unavailableSources).toEqual(["StockTwits"]);
+  });
+
+  it("excludes an unreadable source from the mention count", async () => {
+    const result = await socialAnalyzer.analyze({
+      posts: [makePost("bullish breakout rally")],
+      redditMentionCount: 1,
+      redditEngagement: 15,
+      stocktwitsMentionCount: null,
+      sources: {
+        reddit: { status: "ok" },
+        stocktwits: { status: "unavailable", reason: "HTTP 403" },
+      },
+    });
+
+    // 15 Reddit engagement only — the unread StockTwits source adds nothing.
+    expect(result.details.mentionCount).toBe(15);
+    expect(result.summary).toContain("StockTwits could not be read");
+    expect(result.summary).not.toContain("StockTwits mentions");
+  });
+
+  it("still reports both counts when both sources answered", async () => {
+    const result = await socialAnalyzer.analyze({
+      posts: [makePost("bullish breakout rally")],
+      redditMentionCount: 1,
+      redditEngagement: 15,
+      stocktwitsMentionCount: 4,
+      sources: { reddit: { status: "ok" }, stocktwits: { status: "ok" } },
+    });
+
+    expect(result.details.mentionCount).toBe(19);
+    expect(result.details.unavailableSources).toEqual([]);
+    expect(result.summary).toContain("4 StockTwits mentions");
+    expect(result.summary).not.toContain("could not be read");
+  });
 });

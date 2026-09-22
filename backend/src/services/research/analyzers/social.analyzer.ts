@@ -91,29 +91,61 @@ function getPostText(post: SocialPost): string {
   return parts.join(" ");
 }
 
+function asCount(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+/** Names of the sources this collection could not read, if any. */
+function unavailableSources(rawData: Record<string, unknown>): string[] {
+  const sources = rawData.sources;
+  if (!sources || typeof sources !== "object") return [];
+  const names: string[] = [];
+  for (const [name, state] of Object.entries(sources as Record<string, unknown>)) {
+    if (
+      state &&
+      typeof state === "object" &&
+      (state as Record<string, unknown>).status === "unavailable"
+    ) {
+      names.push(name === "stocktwits" ? "StockTwits" : "Reddit");
+    }
+  }
+  return names;
+}
+
+function describeUnavailable(names: string[]): string {
+  return `${names.join(" and ")} could not be read, so ${
+    names.length > 1 ? "those sources are" : "that source is"
+  } missing from this reading.`;
+}
+
 export const socialAnalyzer: Analyzer = {
   source: "social",
 
   async analyze(rawData: Record<string, unknown>): Promise<AnalysisOutput> {
     const posts = (rawData.posts as SocialPost[]) ?? [];
-    const redditMentionCount = (rawData.redditMentionCount as number) ?? 0;
-    const stocktwitsMentionCount =
-      (rawData.stocktwitsMentionCount as number) ?? 0;
+    // A null count means the source could not be read. Only a real 0 — the
+    // source answered and had nothing — may be scored as absence of chatter.
+    const redditMentionCount = asCount(rawData.redditMentionCount);
+    const stocktwitsMentionCount = asCount(rawData.stocktwitsMentionCount);
     // redditEngagement (upvotes + comments) is a better volume proxy than
     // totalMentionCount which is always capped at ~55 (25 Reddit + 30 ST).
-    const redditEngagement = (rawData.redditEngagement as number) ?? 0;
-    const totalMentionCount = redditEngagement + stocktwitsMentionCount;
+    const redditEngagement = asCount(rawData.redditEngagement);
+    const totalMentionCount = (redditEngagement ?? 0) + (stocktwitsMentionCount ?? 0);
+    const unavailable = unavailableSources(rawData);
 
     if (posts.length === 0) {
       return {
         signal: "neutral",
         confidence: 0.1,
-        summary: "No social media mentions found.",
+        summary: unavailable.length
+          ? `No social media mentions found. ${describeUnavailable(unavailable)}`
+          : "No social media mentions found.",
         details: {
           mentionCount: 0,
           sentimentScore: 0,
           mentionTrend: "unknown",
           topPosts: [],
+          unavailableSources: unavailable,
         },
       };
     }
@@ -176,11 +208,14 @@ export const socialAnalyzer: Analyzer = {
       );
     }
 
-    if (redditMentionCount > 0) {
+    if (redditMentionCount !== null && redditMentionCount > 0) {
       signals.push(`${redditMentionCount} Reddit mentions`);
     }
-    if (stocktwitsMentionCount > 0) {
+    if (stocktwitsMentionCount !== null && stocktwitsMentionCount > 0) {
       signals.push(`${stocktwitsMentionCount} StockTwits mentions`);
+    }
+    if (unavailable.length) {
+      signals.push(describeUnavailable(unavailable).replace(/\.$/, ""));
     }
 
     const summary =
@@ -197,6 +232,7 @@ export const socialAnalyzer: Analyzer = {
         sentimentScore,
         mentionTrend: "unknown",
         topPosts,
+        unavailableSources: unavailable,
       },
     };
   },
