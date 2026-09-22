@@ -52,7 +52,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { useSparklines } from "@/hooks/useSparklines";
 import { useResearchJobs, useResearchJobFinished } from "@/hooks/useResearchJobs";
 import { ScannerDialog } from "@/components/research/ScannerDialog";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Plus,
   Pencil,
@@ -73,6 +73,11 @@ export function WatchlistsPage() {
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [selectedWatchlist, setSelectedWatchlist] =
     useState<WatchlistWithItems | null>(null);
+
+  // The selected watchlist lives in the URL (?wl=<id>) so that browser
+  // back/forward walks through previously viewed watchlists.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeWatchlistId = searchParams.get("wl");
   const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +177,27 @@ export function WatchlistsPage() {
     selectedWatchlistRef.current = selectedWatchlist;
   });
 
+  // Navigate to a watchlist. A push adds a history entry, so the browser back
+  // button returns to the watchlist viewed before this one; use replace for
+  // corrections the user never chose (defaulting, deletions).
+  const goToWatchlist = useCallback(
+    (id: string | null, opts?: { replace?: boolean }) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) {
+            next.set("wl", id);
+          } else {
+            next.delete("wl");
+          }
+          return next;
+        },
+        { replace: opts?.replace ?? false }
+      );
+    },
+    [setSearchParams]
+  );
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -181,28 +207,6 @@ export function WatchlistsPage() {
       ]);
       setWatchlists(wlData);
       setAssetClasses(acData);
-
-      // Select first watchlist by default
-      if (wlData.length > 0 && !selectedWatchlistRef.current) {
-        const full = await api.watchlists.get(wlData[0].id);
-        setSelectedWatchlist(full);
-      } else if (selectedWatchlistRef.current) {
-        // Refresh the currently selected watchlist
-        try {
-          const full = await api.watchlists.get(
-            selectedWatchlistRef.current.id
-          );
-          setSelectedWatchlist(full);
-        } catch {
-          // Watchlist may have been deleted
-          if (wlData.length > 0) {
-            const full = await api.watchlists.get(wlData[0].id);
-            setSelectedWatchlist(full);
-          } else {
-            setSelectedWatchlist(null);
-          }
-        }
-      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -215,6 +219,48 @@ export function WatchlistsPage() {
     loadData();
   }, [loadData]);
 
+  // Keep the URL pointing at an existing watchlist (default to the first one,
+  // drop the param when there are none). Replaces so it adds no history entry.
+  useEffect(() => {
+    if (loading) return;
+    if (activeWatchlistId && watchlists.some((wl) => wl.id === activeWatchlistId)) {
+      return;
+    }
+    if (watchlists.length > 0) {
+      goToWatchlist(watchlists[0].id, { replace: true });
+    } else if (activeWatchlistId) {
+      goToWatchlist(null, { replace: true });
+    }
+  }, [loading, watchlists, activeWatchlistId, goToWatchlist]);
+
+  // Load the watchlist the URL points at -- covers clicks, back/forward and
+  // deep links alike.
+  useEffect(() => {
+    if (!activeWatchlistId) {
+      setSelectedWatchlist(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await api.watchlists.get(activeWatchlistId);
+        if (!cancelled) {
+          setSelectedWatchlist(full);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load watchlist"
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWatchlistId]);
+
   const { prefetch } = useTickerProfileContext();
 
   useEffect(() => {
@@ -222,17 +268,6 @@ export function WatchlistsPage() {
       prefetch(selectedWatchlist.items.map((item) => item.symbol));
     }
   }, [selectedWatchlist, prefetch]);
-
-  async function selectWatchlist(id: string) {
-    try {
-      const full = await api.watchlists.get(id);
-      setSelectedWatchlist(full);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load watchlist"
-      );
-    }
-  }
 
   function openCreateDialog() {
     setDialogMode("create");
@@ -293,8 +328,7 @@ export function WatchlistsPage() {
           name: formData.name.trim(),
         });
         setWatchlists((prev) => [...prev, newWl]);
-        const full = await api.watchlists.get(newWl.id);
-        setSelectedWatchlist(full);
+        goToWatchlist(newWl.id);
       } else if (dialogMode === "addSymbol" && selectedWatchlist) {
         await api.watchlists.addItem(selectedWatchlist.id, {
           symbol: formData.symbol.trim().toUpperCase(),
@@ -319,8 +353,11 @@ export function WatchlistsPage() {
 
     try {
       await api.watchlists.delete(actionWatchlist.id);
-      if (selectedWatchlist?.id === actionWatchlist.id) {
-        setSelectedWatchlist(null);
+      if (activeWatchlistId === actionWatchlist.id) {
+        const remaining = watchlists.filter(
+          (wl) => wl.id !== actionWatchlist.id
+        );
+        goToWatchlist(remaining[0]?.id ?? null, { replace: true });
       }
       setDeleteDialogOpen(false);
       setActionWatchlist(null);
@@ -483,21 +520,14 @@ export function WatchlistsPage() {
     const wlData = await api.watchlists.list();
     setWatchlists(wlData);
 
-    // Select the newly created watchlist, or fall back to current selection
-    const targetId = newWatchlistId ?? selectedWatchlistRef.current?.id;
-    if (targetId) {
-      try {
-        const full = await api.watchlists.get(targetId);
-        setSelectedWatchlist(full);
-      } catch {
-        // Watchlist may not exist; select first available
-        if (wlData.length > 0) {
-          const full = await api.watchlists.get(wlData[0].id);
-          setSelectedWatchlist(full);
-        }
-      }
-    } else if (wlData.length > 0) {
-      const full = await api.watchlists.get(wlData[0].id);
+    // Select the newly created watchlist, or refresh the current selection
+    if (newWatchlistId) {
+      goToWatchlist(newWatchlistId);
+      return;
+    }
+    const currentId = selectedWatchlistRef.current?.id;
+    if (currentId && wlData.some((wl) => wl.id === currentId)) {
+      const full = await api.watchlists.get(currentId);
       setSelectedWatchlist(full);
     }
   }
@@ -567,12 +597,12 @@ export function WatchlistsPage() {
                 {sortedWatchlists.map((wl) => (
                   <button
                     key={wl.id}
-                    onClick={() => selectWatchlist(wl.id)}
+                    onClick={() => goToWatchlist(wl.id)}
                     onDragOver={(e) => handleSidebarDragOver(e, wl.id)}
                     onDragLeave={handleSidebarDragLeave}
                     onDrop={(e) => handleSidebarDrop(e, wl.id)}
                     className={`group w-full px-4 py-3 text-left hover:bg-muted transition-colors ${
-                      selectedWatchlist?.id === wl.id ? "bg-muted" : ""
+                      activeWatchlistId === wl.id ? "bg-muted" : ""
                     } ${
                       dragOverWatchlistId === wl.id
                         ? "ring-2 ring-primary/50 bg-primary/5"
@@ -602,7 +632,7 @@ export function WatchlistsPage() {
                           <div
                             className="font-medium truncate"
                             onClick={(e) => {
-                              if (selectedWatchlist?.id === wl.id) {
+                              if (activeWatchlistId === wl.id) {
                                 e.stopPropagation();
                                 startRename(wl);
                               }
