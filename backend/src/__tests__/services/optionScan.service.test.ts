@@ -10,28 +10,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const getOptionChain = vi.fn();
-const getOptionQuotes = vi.fn();
+const quoteGet = vi.fn();
 
 vi.mock("../../services/ibkr.js", () => ({
   ibkrService: {
     getOptionChain: (...args: unknown[]) => getOptionChain(...args),
-    getOptionQuotes: (...args: unknown[]) => getOptionQuotes(...args),
   },
 }));
+
+vi.mock("../../services/quotes/index.js", async () => {
+  const keys = await vi.importActual<typeof import("../../services/quotes/quoteKey.js")>("../../services/quotes/quoteKey.js");
+  return {
+    quoteHub: { get: (...args: unknown[]) => quoteGet(...args) },
+    quoteKey: keys.quoteKey,
+    quotePrice: keys.quotePrice,
+    summarizeStatuses: keys.summarizeStatuses,
+  };
+});
 
 vi.mock("../../utils/options.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../utils/options.js")>();
   return {
     ...actual,
-    // Bypass the IBKR live-market-data ref counting in tests.
-    withLiveMarketData: async (fn: () => Promise<void>) => fn(),
     getUnderlyingPrice: async () => 100,
   };
 });
 
 const { scanSymbols } = await import("../../services/optionScan.service.js");
-const { marketDataLineRegistry } = await import("../../services/marketDataLineRegistry.js");
+const { quoteKey } = await import("../../services/quotes/quoteKey.js");
 import type { ScannerCriteria } from "@assup/shared";
+import type { Quote, QuoteContract } from "../../services/quotes/quoteTypes.js";
 
 const criteria: ScannerCriteria = {
   optionTypes: "PUT",
@@ -58,13 +66,23 @@ function futureChainEntry(strike: number) {
   return { strike, expiration, call: { ...base, right: "C" }, put: { ...base, right: "P" } };
 }
 
+/** Answer quoteHub.get: `quotesByStrike` values for listed strikes, `fallback` status for the rest. */
+function quoteContracts(
+  quotesByStrike: Record<number, Partial<Quote>>,
+  fallback: Partial<Quote> = { status: "timeout" },
+) {
+  quoteGet.mockImplementation(async (contracts: QuoteContract[]) =>
+    new Map(contracts.map((c) => {
+      const key = quoteKey(c);
+      const q = quotesByStrike[c.strike!] ?? fallback;
+      return [key, { key, updatedAt: 1, status: "ok", ...q } as Quote];
+    })),
+  );
+}
+
 beforeEach(() => {
   getOptionChain.mockReset();
-  getOptionQuotes.mockReset();
-});
-
-afterEach(() => {
-  marketDataLineRegistry.release("test-hog");
+  quoteGet.mockReset();
 });
 
 describe("scanSymbols — TWS failures must not masquerade as zero results", () => {
@@ -94,7 +112,7 @@ describe("scanSymbols — TWS failures must not masquerade as zero results", () 
     // The chain resolves fine, but no quote arrives for any contract
     // (market closed / TWS saturated), so the scan sees no quotes.
     getOptionChain.mockResolvedValue([futureChainEntry(90), futureChainEntry(85)]);
-    getOptionQuotes.mockResolvedValue(new Map());
+    quoteContracts({});
 
     const result = await scanSymbols({
       symbolAssignments,
@@ -106,14 +124,12 @@ describe("scanSymbols — TWS failures must not masquerade as zero results", () 
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].symbol).toBe("QZAC");
     expect(result.failures[0].error).toMatch(/no market data/i);
-    expect(result.failures[0].error).toContain("2");
+    expect(result.failures[0].error).toContain("2 timeout");
   });
 
   it("does not report a failure when quotes arrive but nothing meets the criteria", async () => {
     getOptionChain.mockResolvedValue([futureChainEntry(90)]);
-    getOptionQuotes.mockResolvedValue(
-      new Map([["NBIS_" + futureChainEntry(90).expiration + "_90_P", { bid: 1, ask: 1.1 }]]),
-    );
+    quoteContracts({ 90: { bid: 1, ask: 1.1 } });
 
     const result = await scanSymbols({
       symbolAssignments,
@@ -142,13 +158,10 @@ describe("scanSymbols — TWS failures must not masquerade as zero results", () 
 
 describe("scanSymbols — quoting", () => {
   // ZAG scans failed with 0/350 quotes: option snapshots take ~11s in TWS, but
-  // the batch gave up after 2s (then 5s on retry). Streaming delivers in ~1-2s.
-  it("streams quotes for the filtered contracts and evaluates them", async () => {
-    const entry = futureChainEntry(90);
-    getOptionChain.mockResolvedValue([entry, futureChainEntry(85)]);
-    getOptionQuotes.mockResolvedValue(
-      new Map([[`NBIS_${entry.expiration}_90_P`, { bid: 1, ask: 1.1 }]]),
-    );
+  // the batch gave up after 2s (then 5s on retry). The QuoteHub streams instead.
+  it("quotes the filtered contracts with bid, ask and delta through the QuoteHub", async () => {
+    getOptionChain.mockResolvedValue([futureChainEntry(90), futureChainEntry(85)]);
+    quoteContracts({ 90: { bid: 1, ask: 1.1, delta: -0.3 } }, { status: "no-contract", error: "No security definition" });
 
     const result = await scanSymbols({
       symbolAssignments,
@@ -156,32 +169,51 @@ describe("scanSymbols — quoting", () => {
       callbacks: { onSymbolComplete: () => {} },
     });
 
-    const [contracts, opts] = getOptionQuotes.mock.calls[0];
-    expect((contracts as Array<{ strike: number }>).map((c) => c.strike).sort()).toEqual([85, 90]);
-    expect(opts).toMatchObject({ concurrency: 2 });
+    const [contracts, opts] = quoteGet.mock.calls[0];
+    expect((contracts as QuoteContract[]).map((c) => c.strike).sort()).toEqual([85, 90]);
+    expect(opts).toMatchObject({ fields: ["bid", "ask", "delta"] });
     expect(result.failures).toEqual([]);
     expect(result.opportunities.map((o) => o.strike)).toEqual([90]);
   });
 
-  it("caps quote concurrency at the market data lines granted and releases them", async () => {
-    marketDataLineRegistry.reserve("test-hog", 99);
+  // Since 70e667e the scan only had bid/ask, so every delta filter used the
+  // linear estimate and the Delta column was empty.
+  it("filters and reports with the TWS delta, not the estimate", async () => {
     getOptionChain.mockResolvedValue([futureChainEntry(90), futureChainEntry(85)]);
-    getOptionQuotes.mockResolvedValue(new Map());
+    // The linear estimate would put both strikes inside 0.2-0.5
+    quoteContracts({ 90: { bid: 1, ask: 1.1, delta: -0.35 }, 85: { bid: 0.5, ask: 0.6, delta: -0.12 } });
 
-    await scanSymbols({ symbolAssignments, criteria, callbacks: { onSymbolComplete: () => {} } });
+    const result = await scanSymbols({
+      symbolAssignments,
+      criteria: { ...criteria, minDelta: 0.2, maxDelta: 0.5 },
+      callbacks: { onSymbolComplete: () => {} },
+    });
 
-    expect(getOptionQuotes.mock.calls[0][1]).toMatchObject({ concurrency: 1 });
-    expect(marketDataLineRegistry.used()).toBe(99);
+    expect(result.opportunities.map((o) => [o.strike, o.delta])).toEqual([[90, -0.35]]);
   });
 
-  it("fails the symbol loudly when no market data lines are available", async () => {
-    marketDataLineRegistry.reserve("test-hog", 100);
+  it("uses bid/ask from a quote whose delta timed out, estimating delta", async () => {
     getOptionChain.mockResolvedValue([futureChainEntry(90)]);
+    quoteContracts({ 90: { status: "timeout", bid: 1, ask: 1.1 } });
 
     const result = await scanSymbols({ symbolAssignments, criteria, callbacks: { onSymbolComplete: () => {} } });
 
-    expect(getOptionQuotes).not.toHaveBeenCalled();
+    expect(result.failures).toEqual([]);
+    expect(result.opportunities).toHaveLength(1);
+    expect(result.opportunities[0].delta).toBeUndefined();
+  });
+
+  it("fails the symbol loudly with the QuoteHub reason when no lines are available", async () => {
+    getOptionChain.mockResolvedValue([futureChainEntry(90)]);
+    quoteContracts({}, {
+      status: "no-lines",
+      error: "No market data line available: 100/100 market data lines are in use",
+    });
+
+    const result = await scanSymbols({ symbolAssignments, criteria, callbacks: { onSymbolComplete: () => {} } });
+
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0].error).toMatch(/market data lines/);
+    expect(result.failures[0].error).toMatch(/1 no-lines/);
+    expect(result.failures[0].error).toMatch(/market data lines are in use/);
   });
 });

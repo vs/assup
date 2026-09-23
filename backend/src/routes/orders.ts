@@ -14,6 +14,7 @@ import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOr
 import type { Order, OrderImpact, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult, RollCandidatesResponse } from "@assup/shared";
 import { findRollCandidates } from "../services/rollCandidates.service.js";
 import { placeComboOrder } from "../services/ironCondor.service.js";
+import { quoteHub, quoteKey, type QuoteContract } from "../services/quotes/index.js";
 import { OpenOrder as IBOpenOrder, Contract, SecType, OptionType } from "@stoqey/ib";
 
 const router = Router();
@@ -63,32 +64,29 @@ async function fetchMarketDataForOrders(
   orders: Order[],
   rawOrders: IBOpenOrder[]
 ): Promise<void> {
-  // Build a map of orderId -> contract for lookup
-  const contractMap = new Map<number, Contract>();
+  // Build a map of orderId -> contract for lookup. Only single options and
+  // stocks are quoted; combo (BAG) orders have no single contract to stream.
+  const contractMap = new Map<number, QuoteContract>();
   for (const rawOrder of rawOrders) {
-    if (rawOrder.orderId && rawOrder.contract) {
-      contractMap.set(rawOrder.orderId, rawOrder.contract);
+    const c = rawOrder.contract;
+    if (rawOrder.orderId && c && (c.secType === "OPT" || c.secType === "STK") && c.conId) {
+      contractMap.set(rawOrder.orderId, c as QuoteContract);
     }
   }
+  if (contractMap.size === 0) return;
 
-  // Fetch market data for each order in parallel
-  const promises = orders.map(async (order) => {
+  const quotes = await quoteHub.get([...contractMap.values()], { fields: ["bid", "ask"], timeoutMs: 4000 });
+  for (const order of orders) {
     const contract = contractMap.get(order.orderId);
-    if (!contract) return;
-
-    try {
-      const marketData = await ibkrService.getMarketData(contract);
-      if (marketData) {
-        order.bid = marketData.bid;
-        order.ask = marketData.ask;
-      }
-    } catch (err) {
-      // Log but don't fail - market data is optional
-      console.debug(`Failed to get market data for order ${order.orderId}:`, err);
+    if (!contract) continue;
+    const quote = quotes.get(quoteKey(contract));
+    // Quotes are optional enrichment: a missing one leaves bid/ask unset
+    order.bid = quote?.bid;
+    order.ask = quote?.ask;
+    if (quote && quote.status !== "ok") {
+      console.warn(`[orders] No quote for order ${order.orderId} (${order.displayName}): ${quote.status}${quote.error ? ` — ${quote.error}` : ""}`);
     }
-  });
-
-  await Promise.allSettled(promises);
+  }
 }
 
 /**
@@ -321,28 +319,37 @@ router.post(
       throw new IBKRConnectionError();
     }
 
-    const { symbol, expiration, strike, right } = req.body;
+    const { symbol, expiration, strike, right, conId } = req.body;
 
-    const contract: Contract = {
+    const contract: QuoteContract = {
+      conId,
       symbol,
-      secType: SecType.OPT,
-      exchange: "SMART",
+      secType: "OPT",
       currency: "USD",
       lastTradeDateOrContractMonth: expiration,
       strike,
-      right: right === "C" ? OptionType.Call : OptionType.Put,
+      right,
       multiplier: 100,
       tradingClass: symbol,
     };
 
-    const marketData = await ibkrService.getMarketData(contract);
+    const quote = (await quoteHub.get([contract], { fields: ["bid", "ask"] })).get(quoteKey(contract))!;
 
-    const bid = marketData?.bid ?? null;
-    const ask = marketData?.ask ?? null;
+    const bid = quote.bid ?? null;
+    const ask = quote.ask ?? null;
     const mid = bid != null && ask != null ? (bid + ask) / 2 : null;
-    const last = marketData?.last ?? null;
+    const last = quote.last ?? null;
 
-    const result: OptionQuoteResult = { bid, ask, mid, last };
+    const result: OptionQuoteResult = {
+      bid,
+      ask,
+      mid,
+      last,
+      status: quote.status,
+      error: quote.status === "ok"
+        ? undefined
+        : quote.error ?? `No bid/ask from TWS for ${symbol} ${expiration} ${strike}${right} (${quote.status})`,
+    };
     res.json(result);
   })
 );

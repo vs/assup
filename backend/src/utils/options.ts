@@ -1,11 +1,12 @@
 /**
  * Shared options utilities used by both scanner and research pipeline.
- * Single source of truth for market data type switching, strike filtering,
- * contract key construction, and option metric calculations.
+ * Single source of truth for strike filtering, underlying prices, and option
+ * metric calculations.
  */
 
 import { SecType } from "@stoqey/ib";
-import { ibkrService, type OptionChainEntry } from "../services/ibkr.js";
+import type { OptionChainEntry } from "../services/ibkr.js";
+import { quoteHub, quoteKey, quotePrice } from "../services/quotes/index.js";
 import { parseExpirationDate } from "./market.js";
 
 // --- Symbol Configuration ---
@@ -65,39 +66,23 @@ export function roundToTickSize(price: number, tickSize: number): number {
   return Math.round(price / tickSize) * tickSize;
 }
 
-// --- Market Data Type Switching ---
-
-/**
- * Run an async function with Live (market hours) or Frozen (after hours) market data,
- * reverting to Delayed when done. Used by scanner routes, scan jobs, and research collector.
- */
-export async function withLiveMarketData<T>(fn: () => Promise<T>): Promise<T> {
-  await ibkrService.acquireLiveMarketData();
-  try {
-    return await fn();
-  } finally {
-    ibkrService.releaseLiveMarketData();
-  }
-}
-
 // --- Underlying Price ---
 
 /**
- * Fetch the current price for a stock symbol via IBKR.
- * Returns last price, falling back to close, or null if unavailable.
+ * Fetch the current price for a stock or index symbol via the QuoteHub.
+ * Returns last price, falling back to close, or null (logged with the reason)
+ * if TWS has none. Throws when TWS isn't connected.
  */
 export async function getUnderlyingPrice(symbol: string): Promise<number | null> {
-  try {
-    const data = await ibkrService.getMarketData({
-      symbol,
-      secType: SecType.STK,
-      exchange: "SMART",
-      currency: "USD",
-    });
-    return data?.last ?? data?.close ?? null;
-  } catch {
-    return null;
+  const { secType, exchange } = getSymbolContractType(symbol);
+  const contract = { symbol, secType, exchange, currency: "USD" };
+  const quotes = await quoteHub.get([contract], { fields: ["price"], timeoutMs: 4000 });
+  const quote = quotes.get(quoteKey(contract));
+  const price = quote ? quotePrice(quote) : undefined;
+  if (price === undefined) {
+    console.warn(`[getUnderlyingPrice] No price for ${symbol}: ${quote?.status}${quote?.error ? ` — ${quote.error}` : ""}`);
   }
+  return price ?? null;
 }
 
 /**
@@ -128,21 +113,6 @@ export function filterChainByStrike(
   const minStrike = refPrice * (minPct / 100);
   const maxStrike = refPrice * (maxPct / 100);
   return chain.filter((e) => e.strike >= minStrike && e.strike <= maxStrike);
-}
-
-// --- Contract Key ---
-
-/**
- * Build the lookup key used by getMarketDataBatch and getOptionQuotes results.
- * Must stay in sync with ibkr.ts getMarketDataBatch() and getOptionQuotes().
- */
-export function marketDataKey(contract: {
-  symbol?: string;
-  lastTradeDateOrContractMonth?: string;
-  strike?: number;
-  right?: string;
-}): string {
-  return `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
 }
 
 // --- Option Metrics ---

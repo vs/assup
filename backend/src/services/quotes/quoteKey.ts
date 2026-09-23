@@ -137,3 +137,18 @@ export function statusForError(code: number | undefined): QuoteStatus {
       return "error";
   }
 }
+
+/**
+ * Human-readable status tally for error messages, e.g. "2 timeout, 1 no-contract",
+ * followed by the first TWS error message when there is one.
+ */
+export function summarizeStatuses(quotes: Iterable<Quote>): string {
+  const counts = new Map<QuoteStatus, number>();
+  let firstError: string | undefined;
+  for (const q of quotes) {
+    counts.set(q.status, (counts.get(q.status) ?? 0) + 1);
+    if (!firstError && q.error) firstError = q.error;
+  }
+  const tally = [...counts.entries()].map(([status, n]) => `${n} ${status}`).join(", ");
+  return firstError ? `${tally} — ${firstError}` : tally;
+}

@@ -26,5 +26,5 @@ export const quoteHub = new QuoteHub({
 export { QuoteHub } from "./quoteHub.js";
 export type { QuoteLease, LinePriority } from "./quoteHub.js";
 export type { Quote, QuoteContract, QuoteField, QuoteStatus } from "./quoteTypes.js";
-export { quoteKey, quotePrice } from "./quoteKey.js";
+export { quoteKey, quotePrice, summarizeStatuses } from "./quoteKey.js";
 export { greeksFromQuote } from "./optionGreeks.js";

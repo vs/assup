@@ -5,9 +5,6 @@ import type { SkippedCollection } from "../../../services/research/collectors/ty
 vi.mock("../../../services/ibkr.js", () => ({
   ibkrService: {
     isConnected: vi.fn(),
-    setMarketDataType: vi.fn(),
-    acquireLiveMarketData: vi.fn(),
-    releaseLiveMarketData: vi.fn(),
   },
 }));
 
@@ -88,19 +85,9 @@ describe("optionsCollector", () => {
     expect(mockProvider.getOptionsChain).toHaveBeenCalledWith("AAPL", 4);
   });
 
-  it("acquires and releases live market data", async () => {
-    mockProvider.getOptionsChain.mockResolvedValue([
-      { symbol: "AAPL", expiration: "2026-03-20", strike: 150, right: "C" as const, bid: 5, ask: 5.1, last: 5.05, volume: 100, openInterest: 0, impliedVolatility: 0.3, delta: 0.5, gamma: null, theta: null },
-    ]);
-    await optionsCollector.collect("AAPL");
-    expect(mockIbkrService.acquireLiveMarketData).toHaveBeenCalled();
-    expect(mockIbkrService.releaseLiveMarketData).toHaveBeenCalled();
-  });
-
-  it("releases live market data even when getOptionsChain fails", async () => {
+  it("propagates getOptionsChain failures", async () => {
     mockProvider.getOptionsChain.mockRejectedValue(new Error("TWS error"));
     await expect(optionsCollector.collect("AAPL")).rejects.toThrow("TWS error");
-    expect(mockIbkrService.releaseLiveMarketData).toHaveBeenCalled();
   });
 
   it("attaches IV Rank to the collected data", async () => {
