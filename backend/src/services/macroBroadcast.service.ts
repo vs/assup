@@ -3,26 +3,33 @@
  * Subscribes once to streaming VIX and SPX market data, caches the latest
  * tick values, and broadcasts every 5 seconds via SSE so the frontend
  * fear/greed gauge stays live. Streaming avoids the per-poll snapshot races
- * that left the LAST tick missing for indices.
+ * that left the LAST tick missing for indices. The QuoteHub leases survive
+ * TWS reconnects, so the streams are opened once in start().
  */
 
-import { Contract, SecType } from "@stoqey/ib";
-import { ibkrService, type StreamTickData } from "./ibkr.js";
+import { ibkrService } from "./ibkr.js";
 import { sseService } from "./sse.js";
 import { prisma } from "../db/index.js";
 import { getGexAnalysis } from "./gex.service.js";
-import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
+import { quoteHub, type Quote, type QuoteContract, type QuoteLease } from "./quotes/index.js";
 import type { MacroGexLevels } from "@assup/shared";
 
-const VIX_CONTRACT: Contract = { symbol: "VIX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
-const SPX_CONTRACT: Contract = { symbol: "SPX", secType: SecType.IND, exchange: "CBOE", currency: "USD" };
+const VIX_CONTRACT: QuoteContract = { symbol: "VIX", secType: "IND", exchange: "CBOE", currency: "USD" };
+const SPX_CONTRACT: QuoteContract = { symbol: "SPX", secType: "IND", exchange: "CBOE", currency: "USD" };
 
 const BROADCAST_INTERVAL_MS = 5_000;
-const STREAM_SESSION_ID = "macro-broadcast";
 
 interface TickCache {
   last?: number;
   close?: number;
+}
+
+/** IBKR sends -1 / 0 as sentinels for missing index data; only positive prices count. */
+function pricesFrom(q: Quote): TickCache {
+  return {
+    last: q.last != null && q.last > 0 ? q.last : undefined,
+    close: q.close != null && q.close > 0 ? q.close : undefined,
+  };
 }
 
 class MacroBroadcastService {
@@ -33,24 +40,14 @@ class MacroBroadcastService {
   private gexTimer: ReturnType<typeof setInterval> | null = null;
   private vixCache: TickCache = {};
   private spxCache: TickCache = {};
-  private streamUnsubscribers: Array<() => void> = [];
-  private connectionUnsubscribe: (() => void) | null = null;
+  private leases: QuoteLease[] = [];
 
   start() {
     if (this.timer) return;
     console.log("[MacroBroadcast] Starting live macro broadcasts every 5s");
     this.timer = setInterval(() => this.tick(), BROADCAST_INTERVAL_MS);
 
-    // Manage stream subscriptions based on IBKR connection lifecycle.
-    // The listener fires immediately with current status, so streams come up
-    // right away if IBKR is already connected.
-    this.connectionUnsubscribe = ibkrService.subscribe((status) => {
-      if (status.connected) {
-        this.subscribeStreams();
-      } else {
-        this.unsubscribeStreams();
-      }
-    });
+    this.subscribeStreams();
 
     this.refreshGexLevels();
     this.gexTimer = setInterval(() => this.refreshGexLevels(), 10 * 60 * 1000);
@@ -65,62 +62,29 @@ class MacroBroadcastService {
       clearInterval(this.gexTimer);
       this.gexTimer = null;
     }
-    if (this.connectionUnsubscribe) {
-      this.connectionUnsubscribe();
-      this.connectionUnsubscribe = null;
-    }
     this.unsubscribeStreams();
   }
 
   private subscribeStreams() {
-    if (this.streamUnsubscribers.length > 0) return;
-
-    const granted = marketDataLineRegistry.reserve(STREAM_SESSION_ID, 2);
-    if (granted < 2) {
-      console.warn("[MacroBroadcast] Not enough market data lines to subscribe VIX/SPX");
-      marketDataLineRegistry.release(STREAM_SESSION_ID);
-      return;
+    if (this.leases.length > 0) return;
+    this.leases = [
+      quoteHub.subscribe(VIX_CONTRACT, (q) => (this.vixCache = pricesFrom(q))),
+      quoteHub.subscribe(SPX_CONTRACT, (q) => (this.spxCache = pricesFrom(q))),
+    ];
+    for (const lease of this.leases) {
+      const q = lease.quote();
+      if (q.status === "no-lines" || q.error) {
+        console.warn(`[MacroBroadcast] ${lease.key}: ${q.status}${q.error ? ` — ${q.error}` : ""}`);
+      }
     }
-
-    try {
-      const unsubVix = ibkrService.subscribeMarketData(
-        VIX_CONTRACT,
-        (data) => this.applyTick(this.vixCache, data),
-        (err) => console.error("[MacroBroadcast] VIX stream error:", err.message),
-      );
-      const unsubSpx = ibkrService.subscribeMarketData(
-        SPX_CONTRACT,
-        (data) => this.applyTick(this.spxCache, data),
-        (err) => console.error("[MacroBroadcast] SPX stream error:", err.message),
-      );
-      this.streamUnsubscribers.push(unsubVix, unsubSpx);
-      console.log("[MacroBroadcast] Subscribed to VIX/SPX streams");
-    } catch (err) {
-      console.error("[MacroBroadcast] Failed to subscribe streams:", err);
-      marketDataLineRegistry.release(STREAM_SESSION_ID);
-    }
+    console.log("[MacroBroadcast] Subscribed to VIX/SPX streams");
   }
 
   private unsubscribeStreams() {
-    for (const unsub of this.streamUnsubscribers) {
-      try {
-        unsub();
-      } catch {
-        // ignore
-      }
-    }
-    this.streamUnsubscribers = [];
-    marketDataLineRegistry.release(STREAM_SESSION_ID);
-    // Reset caches — values become stale on disconnect, and yesterday's close
-    // needs to be re-acquired from the fresh stream.
+    for (const lease of this.leases) lease.release();
+    this.leases = [];
     this.vixCache = {};
     this.spxCache = {};
-  }
-
-  private applyTick(cache: TickCache, data: StreamTickData) {
-    // IBKR returns -1 / 0 as sentinels for missing data; only accept positive prices.
-    if (data.last != null && data.last > 0) cache.last = data.last;
-    if (data.close != null && data.close > 0) cache.close = data.close;
   }
 
   private async refreshGexLevels() {

@@ -78,7 +78,9 @@ interface Entry {
 }
 
 function copyQuote(q: Quote): Quote {
-  return { ...q, noMarket: q.noMarket ? [...q.noMarket] : undefined };
+  const copy = { ...q };
+  if (q.noMarket) copy.noMarket = [...q.noMarket];
+  return copy;
 }
 
 export class QuoteHub {
@@ -437,7 +439,8 @@ export class QuoteHub {
         if (entry.waiters.size === 0) this.entries.delete(entry.key);
         continue;
       }
-      entry.quote.status = "pending";
+      // Prices from the old connection are stale; consumers see pending until fresh ticks arrive
+      entry.quote = { key: entry.key, status: "pending", updatedAt: null };
       this.notify(entry);
     }
   }

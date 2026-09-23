@@ -15,8 +15,8 @@
 
 import { Response } from "express";
 import { Contract, SecType, OptionType } from "@stoqey/ib";
-import { ibkrService, StreamTickData } from "./ibkr.js";
-import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
+import { ibkrService } from "./ibkr.js";
+import { quoteHub, quoteKey, quotePrice, summarizeStatuses, type Quote, type QuoteContract } from "./quotes/index.js";
 import { SYMBOL_CONFIG, getSymbolContractType } from "../utils/options.js";
 import { resolveUnderlyingConId } from "./underlyingConId.service.js";
 import { withTimeout } from "../utils/withTimeout.js";
@@ -142,10 +142,6 @@ export class SpreadStreamSession {
     const priceSymbol = config.priceSymbol ?? this.symbol;
     const priceDivisor = config.priceDivisor ?? 1;
 
-    // Acquire live market data early — some indices (e.g. RUT) don't have
-    // delayed data, so the underlying price snapshot would return nothing.
-    await ibkrService.acquireLiveMarketData();
-
     // Price contract — may redirect to a different symbol (XSP → SPX)
     const { secType: priceSecType, exchange: priceExchange } =
       getSymbolContractType(priceSymbol);
@@ -159,33 +155,16 @@ export class SpreadStreamSession {
     // Chain queries always use this.symbol, never the price redirect
     const { secType: underlyingSecType } = getSymbolContractType(this.symbol);
 
-    // 1. Fetch underlying price (retry up to 3 times — the market data type
-    //    switch above may not take effect before the first snapshot request)
-    let underlyingPrice = 0;
-    const MAX_PRICE_RETRIES = 3;
-    for (let attempt = 0; attempt < MAX_PRICE_RETRIES; attempt++) {
-      if (this.destroyed) return;
-      if (attempt > 0) {
-        await new Promise((r) => setTimeout(r, 1500));
-        if (this.destroyed) return;
-      }
-      const underlyingData = await ibkrService.getMarketData(priceContract);
-      if (this.destroyed) return;
-
-      underlyingPrice =
-        underlyingData?.last ?? underlyingData?.bid ?? underlyingData?.ask ?? 0;
-      if (underlyingPrice <= 0 && underlyingData?.close) {
-        underlyingPrice = underlyingData.close;
-      }
-      underlyingPrice = underlyingPrice / priceDivisor;
-      if (underlyingPrice > 0) break;
-      console.warn(
-        `[SpreadStream] Attempt ${attempt + 1}/${MAX_PRICE_RETRIES} — no price for ${this.symbol}`,
-      );
+    // 1. Fetch underlying price
+    const priceQuote = (
+      await quoteHub.get([priceContract as QuoteContract], { fields: ["price"], timeoutMs: 5000 })
+    ).get(quoteKey(priceContract as QuoteContract))!;
+    if (this.destroyed) return;
+    const rawPrice = quotePrice(priceQuote);
+    if (rawPrice === undefined) {
+      throw new Error(`Could not get price for ${this.symbol} from ${priceSymbol}: ${summarizeStatuses([priceQuote])}`);
     }
-    if (underlyingPrice <= 0) {
-      throw new Error(`Could not get price for ${this.symbol}`);
-    }
+    const underlyingPrice = rawPrice / priceDivisor;
 
     // 2. Get security definitions via IBApiNext API
     const api = ibkrService.getApi();
@@ -316,27 +295,27 @@ export class SpreadStreamSession {
       ? strikes.filter(s => this.onlyStrikes!.includes(s))
       : strikes;
 
+    // Size the subscription to the lines the QuoteHub can give interactive
+    // streams right now (contracts other sessions already stream cost nothing).
     const totalContracts = strikesToSubscribe.length * subscribeSides.length + 1;
-    this.linesGranted = marketDataLineRegistry.reserve(
-      this.sessionId,
-      totalContracts,
-    );
+    this.linesGranted = Math.min(totalContracts, quoteHub.availableLines("interactive"));
     const linesGranted = this.linesGranted;
+    console.log(`[SpreadStream:${this.sessionId}] lines granted ${linesGranted}/${totalContracts} (${JSON.stringify(quoteHub.stats())})`);
 
     // Subscribe to underlying price stream — uses the price contract,
     // which may be a substitute (e.g. SPX for XSP). Quotes are scaled
     // back to this.symbol via priceDivisor before exposure to clients.
-    const unsubUnderlying = ibkrService.subscribeMarketData(
-      priceContract,
-      (data: StreamTickData) => {
-        const price =
-          (data.last ?? data.bid ?? data.ask ?? 0) / priceDivisor;
-        if (price > 0) {
-          this.underlyingPriceBuffer = price;
+    const underlyingLease = quoteHub.subscribe(
+      priceContract as QuoteContract,
+      (q: Quote) => {
+        const price = quotePrice(q);
+        if (price !== undefined) {
+          this.underlyingPriceBuffer = price / priceDivisor;
         }
       },
+      { throttleMs: 150 },
     );
-    this.unsubscribers.push(unsubUnderlying);
+    this.unsubscribers.push(() => underlyingLease.release());
 
     // Determine which strikes to subscribe
     const maxStrikes = Math.floor((linesGranted - 1) / subscribeSides.length);
@@ -465,18 +444,17 @@ export class SpreadStreamSession {
           tradingClass,
         };
 
-        const unsub = ibkrService.subscribeMarketData(
-          optContract,
-          (data: StreamTickData) => {
+        const lease = quoteHub.subscribe(
+          optContract as QuoteContract,
+          (data: Quote) => {
             const entry: TickBufferEntry = this.tickBuffer[bufferKey] ?? {
               strike,
               right: rightKey,
             };
 
-            if (data.bid !== undefined && data.bid >= 0) entry.bid = data.bid;
-            if (data.ask !== undefined && data.ask >= 0) entry.ask = data.ask;
-            if (data.last !== undefined && data.last >= 0)
-              entry.last = data.last;
+            if (data.bid !== undefined) entry.bid = data.bid;
+            if (data.ask !== undefined) entry.ask = data.ask;
+            if (data.last !== undefined) entry.last = data.last;
 
             if (data.delta !== undefined) {
               const absDelta = Math.abs(data.delta);
@@ -485,11 +463,8 @@ export class SpreadStreamSession {
               entry.delta = absDelta;
             }
 
-            if (
-              data.impliedVolatility !== undefined &&
-              data.impliedVolatility > 0
-            ) {
-              entry.iv = data.impliedVolatility * 100;
+            if (data.iv !== undefined && data.iv > 0) {
+              entry.iv = data.iv * 100;
             }
             if (entry.bid !== undefined && entry.ask !== undefined) {
               entry.mid =
@@ -500,8 +475,13 @@ export class SpreadStreamSession {
 
             this.tickBuffer[bufferKey] = entry;
           },
+          { throttleMs: 150 },
         );
-        this.strikeUnsubs.set(bufferKey, unsub);
+        if (lease.quote().status === "no-lines") {
+          lease.release();
+          continue;
+        }
+        this.strikeUnsubs.set(bufferKey, () => lease.release());
       }
     }
   }
@@ -596,16 +576,14 @@ export class SpreadStreamSession {
     this.tickBuffer = {};
     this.scoutDeltas.clear();
 
-    // Release and re-reserve market data lines
-    marketDataLineRegistry.release(this.sessionId);
-
+    // Re-size to the lines now available (the scout leases just released count as free)
     const focusStrikes = this.allFilteredStrikes.filter(s =>
       merged.some(r => s >= r.min && s <= r.max),
     );
 
     const sidesCount = this.storedSides.length;
     const needed = focusStrikes.length * sidesCount + 1; // +1 for underlying
-    this.linesGranted = marketDataLineRegistry.reserve(this.sessionId, needed);
+    this.linesGranted = Math.min(needed, quoteHub.availableLines("interactive"));
 
     if (this.linesGranted <= 1) {
       this.sendEvent("refocused", {
@@ -975,7 +953,5 @@ export class SpreadStreamSession {
     if (this.scoutTimeout) clearTimeout(this.scoutTimeout);
     if (this.driftTimer) clearInterval(this.driftTimer);
 
-    marketDataLineRegistry.release(this.sessionId);
-    ibkrService.releaseLiveMarketData();
   }
 }

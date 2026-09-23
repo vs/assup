@@ -301,7 +301,8 @@ describe("QuoteHub line budget", () => {
     t.hub.subscribe(opt(2), vi.fn()).release();
 
     t.disconnect();
-    expect(lease.quote().status).toBe("pending");
+    expect(lease.quote()).toEqual({ key: "conId:1", status: "pending", updatedAt: null });
+    expect(cb.mock.lastCall![0]).toEqual({ key: "conId:1", status: "pending", updatedAt: null });
     expect(t.hub.stats().activeLines).toBe(0);
 
     const next = new FakeApi();
