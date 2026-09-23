@@ -4,10 +4,11 @@
 
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
+import { getOptionGreeks, getUnderlyingPrices } from "../utils/options.js";
+import type { QuoteContract } from "./quotes/index.js";
 import { convertToUsd } from "./currency.js";
 import { formatDisplayName } from "@assup/shared";
 
-const INDEX_SYMBOLS = new Set(["SPX", "XSP", "RUT", "VIX", "DJX", "NDX"]);
 import { groupOptionTrades, groupStockTrades, hasExpiryPassed, type OptionTradeInput, type StockTradeInput, type AssetClassMap } from "./tradeMatching.js";
 import type { ImportedTrade } from "@prisma/client";
 import type {
@@ -862,10 +863,10 @@ class ProfitService {
         }
 
         // Fetch prices for underlyings not held as stock positions — concurrent
-        // and served from the shared 30s quote cache (see getStockQuotes).
+        // and served from the QuoteHub's live cache.
         const missingSymbols = Array.from(underlyingSymbols).filter(s => !underlyingPriceMap.has(s));
         if (missingSymbols.length > 0) {
-          const quotes = await ibkrService.getStockQuotes(missingSymbols, { indexSymbols: INDEX_SYMBOLS });
+          const quotes = await getUnderlyingPrices(missingSymbols);
           for (const [symbol, price] of quotes) {
             underlyingPriceMap.set(symbol, price);
           }
@@ -936,7 +937,7 @@ class ProfitService {
           .map((p) => p.contract);
         if (optContracts.length > 0) {
           try {
-            const greeks = await ibkrService.getOptionGreeks(optContracts as any);
+            const greeks = await getOptionGreeks(optContracts as QuoteContract[]);
             for (const pos of positions) {
               if (!pos.conId) continue;
               const g = greeks.get(pos.conId);
@@ -1011,10 +1012,10 @@ class ProfitService {
         }
 
         // Fetch prices for underlyings not held as stock positions — concurrent
-        // and served from the shared 30s quote cache (see getStockQuotes).
+        // and served from the QuoteHub's live cache.
         const missingSymbols = Array.from(underlyingSymbols).filter(s => !underlyingPriceMap.has(s));
         if (missingSymbols.length > 0) {
-          const quotes = await ibkrService.getStockQuotes(missingSymbols, { indexSymbols: INDEX_SYMBOLS });
+          const quotes = await getUnderlyingPrices(missingSymbols);
           for (const [symbol, price] of quotes) {
             underlyingPriceMap.set(symbol, price);
           }

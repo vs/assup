@@ -11,12 +11,16 @@ vi.mock("../../db/index.js", () => ({
 
 vi.mock("../../services/ibkr.js", () => ({
   ibkrService: {
-    setMarketDataType: vi.fn(),
-    getMarketData: vi.fn(),
     getHistoricalData: vi.fn(),
     isConnected: vi.fn(() => true),
   },
 }));
+
+const quoteGet = vi.fn();
+vi.mock("../../services/quotes/index.js", async () => {
+  const keys = await vi.importActual<typeof import("../../services/quotes/quoteKey.js")>("../../services/quotes/quoteKey.js");
+  return { quoteHub: { get: (...args: unknown[]) => quoteGet(...args) }, quoteKey: keys.quoteKey };
+});
 
 vi.mock("../../services/research/providers/yahoo.js", () => ({
   fetchVix3m: vi.fn(),
@@ -47,12 +51,16 @@ function makeHistoricalBars() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (ibkrService.getMarketData as any).mockImplementation((contract: { symbol: string }) => {
-    if (contract.symbol === "SPX") return Promise.resolve({ last: SPX_PRICE, close: SPX_PRICE });
-    if (contract.symbol === "VIX") return Promise.resolve({ last: VIX, close: VIX });
-    if (contract.symbol === "RUT") return Promise.resolve({ last: 2000, close: 2000 });
-    if (contract.symbol === "RVX") return Promise.resolve({ last: 22, close: 22 });
-    return Promise.resolve(null);
+  const prices: Record<string, number> = { SPX: SPX_PRICE, VIX, RUT: 2000, RVX: 22 };
+  quoteGet.mockImplementation(async (contracts: Array<{ symbol: string; secType: string }>) => {
+    const { quoteKey } = await import("../../services/quotes/quoteKey.js");
+    return new Map(contracts.map((c) => {
+      const key = quoteKey(c);
+      const price = prices[c.symbol];
+      return [key, price != null
+        ? { key, status: "ok", last: price, close: price, updatedAt: 1 }
+        : { key, status: "timeout", updatedAt: null }];
+    }));
   });
   (ibkrService.getHistoricalData as any).mockResolvedValue(makeHistoricalBars());
   (prisma.setting.findUnique as any).mockResolvedValue(null);
@@ -116,8 +124,8 @@ describe("SpreadStrategyService.getMetrics (SPX)", () => {
     (fetchVix3m as any).mockResolvedValue(16.82);
     await spreadStrategyService.getMetrics("SPX");
 
-    const callArgs = (ibkrService.getMarketData as any).mock.calls.map(
-      (c: any[]) => c[0]?.symbol,
+    const callArgs = quoteGet.mock.calls.map(
+      (c: any[]) => c[0]?.[0]?.symbol,
     );
     expect(callArgs).not.toContain("VIX3M");
   });

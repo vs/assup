@@ -6,7 +6,7 @@
 
 import { SecType } from "@stoqey/ib";
 import type { OptionChainEntry } from "../services/ibkr.js";
-import { quoteHub, quoteKey, quotePrice } from "../services/quotes/index.js";
+import { quoteHub, quoteKey, quotePrice, greeksFromQuote, type QuoteContract } from "../services/quotes/index.js";
 import { parseExpirationDate } from "./market.js";
 
 // --- Symbol Configuration ---
@@ -69,20 +69,53 @@ export function roundToTickSize(price: number, tickSize: number): number {
 // --- Underlying Price ---
 
 /**
- * Fetch the current price for a stock or index symbol via the QuoteHub.
- * Returns last price, falling back to close, or null (logged with the reason)
- * if TWS has none. Throws when TWS isn't connected.
+ * Current prices for stock or index symbols via the QuoteHub (indexes such as
+ * SPX/RUT are quoted as IND on CBOE). Price is last, falling back to close.
+ * Symbols without a price are omitted and logged with the reason. Throws when
+ * TWS isn't connected.
  */
-export async function getUnderlyingPrice(symbol: string): Promise<number | null> {
-  const { secType, exchange } = getSymbolContractType(symbol);
-  const contract = { symbol, secType, exchange, currency: "USD" };
-  const quotes = await quoteHub.get([contract], { fields: ["price"], timeoutMs: 4000 });
-  const quote = quotes.get(quoteKey(contract));
-  const price = quote ? quotePrice(quote) : undefined;
-  if (price === undefined) {
-    console.warn(`[getUnderlyingPrice] No price for ${symbol}: ${quote?.status}${quote?.error ? ` — ${quote.error}` : ""}`);
+export async function getUnderlyingPrices(symbols: string[], timeoutMs = 4000): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (symbols.length === 0) return out;
+
+  const contracts = symbols.map((symbol) => ({ symbol, ...getSymbolContractType(symbol), currency: "USD" }));
+  const quotes = await quoteHub.get(contracts, { fields: ["price"], timeoutMs });
+  const missing: string[] = [];
+  for (const contract of contracts) {
+    const quote = quotes.get(quoteKey(contract));
+    const price = quote ? quotePrice(quote) : undefined;
+    if (price !== undefined) out.set(contract.symbol, price);
+    else missing.push(`${contract.symbol} (${quote?.status}${quote?.error ? `: ${quote.error}` : ""})`);
   }
-  return price ?? null;
+  if (missing.length > 0) console.warn(`[prices] No price for ${missing.join(", ")}`);
+  return out;
+}
+
+/** Single-symbol getUnderlyingPrices; null when TWS has no price. */
+export async function getUnderlyingPrice(symbol: string): Promise<number | null> {
+  return (await getUnderlyingPrices([symbol])).get(symbol) ?? null;
+}
+
+/**
+ * Delta and per-share daily theta for option contracts, keyed by conId
+ * (contracts without a conId are skipped). Theta falls back to Black-Scholes
+ * when TWS sends delta without theta. Contracts without a TWS delta are omitted.
+ */
+export async function getOptionGreeks(
+  contracts: QuoteContract[],
+  timeoutMs = 4000,
+): Promise<Map<number, { delta: number; theta: number | null }>> {
+  const out = new Map<number, { delta: number; theta: number | null }>();
+  const withConId = contracts.filter((c) => c.conId);
+  if (withConId.length === 0) return out;
+
+  const quotes = await quoteHub.get(withConId, { fields: ["delta", "theta"], timeoutMs });
+  for (const contract of withConId) {
+    const quote = quotes.get(quoteKey(contract));
+    const greeks = quote ? greeksFromQuote(quote, contract) : null;
+    if (greeks) out.set(contract.conId!, greeks);
+  }
+  return out;
 }
 
 /**
