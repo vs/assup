@@ -105,17 +105,34 @@ export async function findRollCandidates(
   };
 
   const candidates: RollCandidate[] = [];
-  let closeLeg: RollCandidatesResponse["closeLeg"] = { conId, bid: 0, ask: 0, mid: 0 };
+  let closeLeg: RollCandidatesResponse["closeLeg"] | undefined;
 
   const sessionId = `roll-${symbol}-${Date.now()}`;
+  const noLinesError = () =>
+    new Error(
+      `No IBKR market data lines available to quote ${symbol} roll candidates — all ${marketDataLineRegistry.used()} lines are in use. Close the Spreads page (live options chain) and try again.`,
+    );
 
   await withLiveMarketData(async () => {
-    // Fetch close-leg prices
-    const closeData = await ibkrService.getMarketData(closeContract);
-    const closeBid = closeData?.bid ?? 0;
-    const closeAsk = closeData?.ask ?? 0;
-    const closeMid = (closeBid + closeAsk) / 2;
-    closeLeg = { conId, bid: closeBid, ask: closeAsk, mid: closeMid };
+    // Quote the position being closed through a streaming subscription, like the
+    // candidates below: TWS snapshots take up to ~12s and time out, and without the
+    // close price every "net credit" would really be the new leg's full premium.
+    if (marketDataLineRegistry.reserve(sessionId, 1) === 0) throw noLinesError();
+    let closeQuote: { bid: number; ask: number } | undefined;
+    try {
+      const closeQuotes = await ibkrService.getOptionQuotes([closeContract], { concurrency: 1, signal });
+      closeQuote = closeQuotes.get(marketDataKey(closeContract));
+    } finally {
+      marketDataLineRegistry.release(sessionId);
+    }
+    if (!closeQuote || closeQuote.ask <= 0) {
+      throw new Error(
+        `No quote from TWS for ${symbol} ${expiration} ${strike}${right} (the position being rolled), so the roll's net credit can't be computed. Check that the options market is open and your IBKR options market data subscription covers ${symbol}, then re-scan.`,
+      );
+    }
+    const closeBid = closeQuote.bid;
+    const closeAsk = closeQuote.ask;
+    closeLeg = { conId, bid: closeBid, ask: closeAsk, mid: (closeBid + closeAsk) / 2 };
 
     // Fetch and filter option chain
     const chain = await ibkrService.getOptionChain(symbol);
@@ -152,11 +169,7 @@ export async function findRollCandidates(
     // the spread stream's persistent subscriptions and quote only that many at once.
     const granted = marketDataLineRegistry.reserve(sessionId, contracts.length);
     console.log(`[RollCandidates] ${symbol}: quoting ${contracts.length} listed contracts across ${nearestExpiries.size} expiries (lines granted: ${granted}/${contracts.length})`);
-    if (granted === 0) {
-      throw new Error(
-        `No IBKR market data lines available to quote ${symbol} roll candidates — all ${marketDataLineRegistry.used()} lines are in use. Close the Spreads page (live options chain) and try again.`,
-      );
-    }
+    if (granted === 0) throw noLinesError();
 
     let quotes: Map<string, { bid: number; ask: number }>;
     try {
@@ -203,5 +216,6 @@ export async function findRollCandidates(
   // Sort by netCreditMid descending
   candidates.sort((a, b) => b.netCreditMid - a.netCreditMid);
 
+  if (!closeLeg) throw new Error(`Roll scan for ${symbol} ended without quoting the position being rolled`);
   return { closeLeg, candidates };
 }
