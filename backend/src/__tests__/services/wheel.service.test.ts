@@ -15,9 +15,11 @@ vi.mock("../../services/ibkr.js", () => ({
     isConnected: () => false,
     getTodayTrades: vi.fn(async () => []),
     getPositions: vi.fn(async () => []),
-    getMarketData: vi.fn(async () => null),
-    getOptionGreeks: vi.fn(async () => null),
   },
+}));
+
+vi.mock("../../services/quotes/index.js", () => ({
+  quoteHub: { get: vi.fn(async () => new Map()) },
 }));
 
 import { wheelService, normalizeSplitsForUnderlying } from "../../services/wheel.service.js";

@@ -93,6 +93,7 @@ function wheelLegToClosePosition(
   const right = pos.type === "call" ? "C" : "P";
   return {
     symbol,
+    conId: pos.conId,
     displayName: formatDisplayName({
       symbol,
       secType: "OPT",

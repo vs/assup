@@ -23,6 +23,7 @@ export { researchApi } from "./research";
 export { exchangeRatesApi } from "./exchangeRates";
 export { ironCondorApi } from "./ironCondor";
 export { calendarApi } from "./calendar";
+export { quotesApi } from "./quotes";
 
 // Combined api object for backward compatibility
 import { assetClassesApi } from "./assetClasses";
@@ -40,6 +41,7 @@ import { researchApi } from "./research";
 import { exchangeRatesApi } from "./exchangeRates";
 import { ironCondorApi } from "./ironCondor";
 import { calendarApi } from "./calendar";
+import { quotesApi } from "./quotes";
 
 export const api = {
   assetClasses: assetClassesApi,
@@ -57,4 +59,5 @@ export const api = {
   exchangeRates: exchangeRatesApi,
   ironCondor: ironCondorApi,
   calendar: calendarApi,
+  quotes: quotesApi,
 };

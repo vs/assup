@@ -1,11 +1,12 @@
 /**
  * Shared options utilities used by both scanner and research pipeline.
- * Single source of truth for market data type switching, strike filtering,
- * contract key construction, and option metric calculations.
+ * Single source of truth for strike filtering, underlying prices, and option
+ * metric calculations.
  */
 
 import { SecType } from "@stoqey/ib";
-import { ibkrService, type OptionChainEntry } from "../services/ibkr.js";
+import type { OptionChainEntry } from "../services/ibkr.js";
+import { quoteHub, quoteKey, quotePrice, greeksFromQuote, type QuoteContract } from "../services/quotes/index.js";
 import { parseExpirationDate } from "./market.js";
 
 // --- Symbol Configuration ---
@@ -65,39 +66,56 @@ export function roundToTickSize(price: number, tickSize: number): number {
   return Math.round(price / tickSize) * tickSize;
 }
 
-// --- Market Data Type Switching ---
-
-/**
- * Run an async function with Live (market hours) or Frozen (after hours) market data,
- * reverting to Delayed when done. Used by scanner routes, scan jobs, and research collector.
- */
-export async function withLiveMarketData<T>(fn: () => Promise<T>): Promise<T> {
-  await ibkrService.acquireLiveMarketData();
-  try {
-    return await fn();
-  } finally {
-    ibkrService.releaseLiveMarketData();
-  }
-}
-
 // --- Underlying Price ---
 
 /**
- * Fetch the current price for a stock symbol via IBKR.
- * Returns last price, falling back to close, or null if unavailable.
+ * Current prices for stock or index symbols via the QuoteHub (indexes such as
+ * SPX/RUT are quoted as IND on CBOE). Price is last, falling back to close.
+ * Symbols without a price are omitted and logged with the reason. Throws when
+ * TWS isn't connected.
  */
-export async function getUnderlyingPrice(symbol: string): Promise<number | null> {
-  try {
-    const data = await ibkrService.getMarketData({
-      symbol,
-      secType: SecType.STK,
-      exchange: "SMART",
-      currency: "USD",
-    });
-    return data?.last ?? data?.close ?? null;
-  } catch {
-    return null;
+export async function getUnderlyingPrices(symbols: string[], timeoutMs = 4000): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (symbols.length === 0) return out;
+
+  const contracts = symbols.map((symbol) => ({ symbol, ...getSymbolContractType(symbol), currency: "USD" }));
+  const quotes = await quoteHub.get(contracts, { fields: ["price"], timeoutMs });
+  const missing: string[] = [];
+  for (const contract of contracts) {
+    const quote = quotes.get(quoteKey(contract));
+    const price = quote ? quotePrice(quote) : undefined;
+    if (price !== undefined) out.set(contract.symbol, price);
+    else missing.push(`${contract.symbol} (${quote?.status}${quote?.error ? `: ${quote.error}` : ""})`);
   }
+  if (missing.length > 0) console.warn(`[prices] No price for ${missing.join(", ")}`);
+  return out;
+}
+
+/** Single-symbol getUnderlyingPrices; null when TWS has no price. */
+export async function getUnderlyingPrice(symbol: string): Promise<number | null> {
+  return (await getUnderlyingPrices([symbol])).get(symbol) ?? null;
+}
+
+/**
+ * Delta and per-share daily theta for option contracts, keyed by conId
+ * (contracts without a conId are skipped). Theta falls back to Black-Scholes
+ * when TWS sends delta without theta. Contracts without a TWS delta are omitted.
+ */
+export async function getOptionGreeks(
+  contracts: QuoteContract[],
+  timeoutMs = 4000,
+): Promise<Map<number, { delta: number; theta: number | null }>> {
+  const out = new Map<number, { delta: number; theta: number | null }>();
+  const withConId = contracts.filter((c) => c.conId);
+  if (withConId.length === 0) return out;
+
+  const quotes = await quoteHub.get(withConId, { fields: ["delta", "theta"], timeoutMs });
+  for (const contract of withConId) {
+    const quote = quotes.get(quoteKey(contract));
+    const greeks = quote ? greeksFromQuote(quote, contract) : null;
+    if (greeks) out.set(contract.conId!, greeks);
+  }
+  return out;
 }
 
 /**
@@ -128,21 +146,6 @@ export function filterChainByStrike(
   const minStrike = refPrice * (minPct / 100);
   const maxStrike = refPrice * (maxPct / 100);
   return chain.filter((e) => e.strike >= minStrike && e.strike <= maxStrike);
-}
-
-// --- Contract Key ---
-
-/**
- * Build the lookup key used by getMarketDataBatch and getOptionQuotes results.
- * Must stay in sync with ibkr.ts getMarketDataBatch() and getOptionQuotes().
- */
-export function marketDataKey(contract: {
-  symbol?: string;
-  lastTradeDateOrContractMonth?: string;
-  strike?: number;
-  right?: string;
-}): string {
-  return `${contract.symbol}_${contract.lastTradeDateOrContractMonth}_${contract.strike}_${contract.right}`;
 }
 
 // --- Option Metrics ---

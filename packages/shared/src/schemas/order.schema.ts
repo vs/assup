@@ -55,6 +55,8 @@ export const optionQuoteSchema = z.object({
   expiration: z.string().length(8, "Expiration must be YYYYMMDD format"),
   strike: z.number().positive("Strike must be positive"),
   right: z.enum(["C", "P"], { errorMap: () => ({ message: "Right must be 'C' or 'P'" }) }),
+  /** IBKR contract id; when given, the quote shares the contract's existing market data line */
+  conId: z.number().int().positive().optional(),
 });
 
 export type OptionQuoteSchemaInput = z.infer<typeof optionQuoteSchema>;

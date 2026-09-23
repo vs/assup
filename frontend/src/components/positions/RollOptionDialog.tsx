@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ordersApi } from "@/api/orders";
-import { formatCurrency, formatDisplayName } from "@assup/shared";
+import { formatCurrency, formatDisplayName, quoteMid } from "@assup/shared";
 import type { RollCandidate, RollCandidatesResponse } from "@assup/shared";
+import { useLiveQuote } from "@/hooks";
 import {
   Dialog,
   DialogContent,
@@ -68,6 +69,16 @@ export function RollOptionDialog({
   const [limitPrice, setLimitPrice] = useState(0);
   const [placing, setPlacing] = useState(false);
   const [success, setSuccess] = useState<{ orderId: number } | null>(null);
+
+  // Live quotes for the two legs of the roll, so the credit reflects the market
+  // while the dialog is open (the scan table stays as scanned).
+  const closeLive = useLiveQuote(open && position?.conId ? position.conId : undefined);
+  const openLive = useLiveQuote(open && selected?.conId ? selected.conId : undefined);
+  const closeAsk = closeLive?.ask ?? data?.closeLeg.ask ?? null;
+  const closeMid = quoteMid(closeLive) ?? data?.closeLeg.mid ?? null;
+  const openBid = openLive?.bid ?? selected?.bid ?? null;
+  const openMid = quoteMid(openLive) ?? selected?.mid ?? null;
+  const liveNetCreditMid = closeMid != null && openMid != null ? openMid - closeMid : null;
 
   // Tracks the in-flight scan request so it can be cancelled
   const abortRef = useRef<AbortController | null>(null);
@@ -209,8 +220,8 @@ export function RollOptionDialog({
               { label: "Strike", value: position.strike ? formatCurrency(position.strike) : "—" },
               { label: "Expiry", value: position.expiry ? formatExpiry(position.expiry) : "—" },
               { label: "Qty", value: String(position.position) },
-              { label: "Close Ask", value: data ? formatCurrency(data.closeLeg.ask, { maximumFractionDigits: 2 }) : "—" },
-              { label: "Close Mid", value: data ? formatCurrency(data.closeLeg.mid, { maximumFractionDigits: 2 }) : "—" },
+              { label: "Close Ask", value: closeAsk != null ? formatCurrency(closeAsk, { maximumFractionDigits: 2 }) : "—" },
+              { label: "Close Mid", value: closeMid != null ? formatCurrency(closeMid, { maximumFractionDigits: 2 }) : "—" },
             ].map(({ label, value }) => (
               <div key={label}>
                 <div className="text-xs text-muted-foreground">{label}</div>
@@ -356,7 +367,7 @@ export function RollOptionDialog({
                   <div className="text-xs text-destructive uppercase tracking-wide mb-1">Buy to Close</div>
                   <div className="font-medium text-sm">{closeContractName}</div>
                   <div className="font-mono text-destructive mt-1 text-sm">
-                    −{formatCurrency(data.closeLeg.ask, { maximumFractionDigits: 2 })}
+                    −{formatCurrency(closeAsk ?? data.closeLeg.ask, { maximumFractionDigits: 2 })}
                     <span className="text-muted-foreground text-xs ml-1">(ask)</span>
                   </div>
                 </div>
@@ -364,7 +375,7 @@ export function RollOptionDialog({
                   <div className="text-xs text-green-600 uppercase tracking-wide mb-1">Sell to Open</div>
                   <div className="font-medium text-sm">{openContractName}</div>
                   <div className="font-mono text-green-600 mt-1 text-sm">
-                    +{formatCurrency(selected.bid, { maximumFractionDigits: 2 })}
+                    +{formatCurrency(openBid ?? selected.bid, { maximumFractionDigits: 2 })}
                     <span className="text-muted-foreground text-xs ml-1">(bid)</span>
                   </div>
                 </div>
@@ -386,6 +397,14 @@ export function RollOptionDialog({
                     />
                   </div>
                 </div>
+                {liveNetCreditMid != null && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Live net credit (mid)</div>
+                    <div className="font-mono font-medium">
+                      {formatCurrency(liveNetCreditMid, { maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Total Credit</div>
                   <div className="font-bold text-green-600 text-lg">

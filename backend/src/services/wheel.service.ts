@@ -6,6 +6,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
+import { getOptionGreeks, getUnderlyingPrices } from "../utils/options.js";
 import type {
   WheelTracker,
   WheelTrade,
@@ -915,12 +916,10 @@ export const wheelService = {
         .map((p) => p.contract as any);
 
       // Fetch stock quotes and option greeks concurrently — they're independent
-      // and each is the slow part of the fan-out. Stock quotes go out fully
-      // parallel (see getStockQuotes) instead of in serial timeout-bound batches.
+      // and each is the slow part of the fan-out.
       await Promise.all([
         priceSymbols.length > 0
-          ? ibkrService
-              .getStockQuotes(priceSymbols)
+          ? getUnderlyingPrices(priceSymbols)
               .then((quotes) => {
                 for (const [symbol, price] of quotes) {
                   result.marketPrices.set(symbol, price);
@@ -929,8 +928,7 @@ export const wheelService = {
               .catch(() => { /* prices unavailable */ })
           : Promise.resolve(),
         optContracts.length > 0
-          ? ibkrService
-              .getOptionGreeks(optContracts)
+          ? getOptionGreeks(optContracts)
               .then((greeks) => {
                 for (const [conId, { theta }] of greeks) {
                   if (theta != null) result.optionThetas.set(conId, theta);

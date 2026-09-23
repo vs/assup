@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { SecType } from "@stoqey/ib";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
 import { tickerProfileService } from "../services/tickerProfile.service.js";
 import { ibkrService } from "../services/ibkr.js";
+import { quoteHub, quoteKey } from "../services/quotes/index.js";
 import {
   tickerProfileParamSchema,
   tickerProfileBatchRequestSchema,
@@ -29,20 +29,14 @@ router.get(
     };
 
     if (ibkrService.isConnected()) {
-      const data = await ibkrService.getMarketData({
-        symbol,
-        secType: SecType.STK,
-        exchange: "SMART",
-        currency: "USD",
-      });
-      if (data) {
-        result.last = data.last ?? null;
-        result.open = data.open ?? null;
-        result.close = data.close ?? null;
-        result.bid = data.bid ?? null;
-        result.ask = data.ask ?? null;
-        result.volume = data.volume ?? null;
-      }
+      const contract = { symbol, secType: "STK", exchange: "SMART", currency: "USD" };
+      const data = (await quoteHub.get([contract], { fields: ["price"], timeoutMs: 4000 })).get(quoteKey(contract))!;
+      result.last = data.last ?? null;
+      result.open = data.open ?? null;
+      result.close = data.close ?? null;
+      result.bid = data.bid ?? null;
+      result.ask = data.ask ?? null;
+      result.volume = data.volume ?? null;
     }
 
     res.json(result);

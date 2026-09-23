@@ -89,4 +89,8 @@ export interface OptionQuoteResult {
   ask: number | null;
   mid: number | null;
   last: number | null;
+  /** QuoteHub status: "ok", or why bid/ask are missing (timeout, no-market, no-contract, not-subscribed, no-lines, error) */
+  status: string;
+  /** TWS error message or explanation when status isn't "ok" */
+  error?: string;
 }

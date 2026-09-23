@@ -29,14 +29,14 @@ router.get("/stream", (req: Request, res: Response) => {
   const mode = req.query.mode as string | undefined;
   const strikeRangePct = req.query.strikeRangePct ? Number(req.query.strikeRangePct) : undefined;
 
-  // Destroy ALL previous sessions before starting a new one.
-  // Market data lines are a shared limited resource (100 total) — only one
-  // spread stream session is supported at a time. This also handles stale
-  // sessions from closed tabs where req.on("close") hasn't fired yet
-  // (common in Docker due to TCP keepalive delays).
-  for (const [id, prev] of activeSessions) {
-    prev.destroy();
-    activeSessions.delete(id);
+  // Replace this client's previous session (a reconnect or re-parameterized
+  // stream) so its leases are released before the new one sizes itself.
+  // Sessions from other clients keep streaming: the QuoteHub shares lines for
+  // contracts they have in common and enforces the overall line budget.
+  const previous = activeSessions.get(clientId);
+  if (previous) {
+    previous.destroy();
+    activeSessions.delete(clientId);
   }
 
   // SSE headers

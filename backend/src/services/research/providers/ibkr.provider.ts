@@ -17,26 +17,27 @@ import {
   getUnderlyingPrice,
   getReferencePrice,
   filterChainByStrike,
-  marketDataKey,
   stockContract,
 } from "../../../utils/options.js";
+import { quoteHub, quoteKey, quotePrice, summarizeStatuses, type QuoteContract } from "../../quotes/index.js";
 
 class IBKRProvider implements MarketDataProvider {
   name = "ibkr";
 
   async getQuote(symbol: string): Promise<QuoteData> {
-    const data = await ibkrService.getMarketData(stockContract(symbol));
-    if (!data) {
-      throw new Error(`No market data from IBKR for ${symbol}`);
+    const contract = stockContract(symbol) as QuoteContract;
+    const data = (await quoteHub.get([contract], { fields: ["price"], timeoutMs: 4000 })).get(quoteKey(contract))!;
+    if (quotePrice(data) === undefined) {
+      throw new Error(`No market data from IBKR for ${symbol}: ${summarizeStatuses([data])}`);
     }
     return {
       symbol,
       last: data.last ?? null,
       close: data.close ?? null,
-      open: null, // Not available from snapshot
+      open: data.open ?? null,
       high: null,
       low: null,
-      volume: null,
+      volume: data.volume ?? null,
     };
   }
 
@@ -121,14 +122,15 @@ class IBKRProvider implements MarketDataProvider {
     console.log(`[ibkr-provider] Options chain ${symbol}: ${filtered.length} strikes near $${refPrice.toFixed(2)}, ${targetExpiries.size} expirations`);
 
     // Collect all contracts (calls + puts) for batch market data
-    const contracts = filtered.flatMap((e) => [e.call, e.put]);
-    const marketData = await ibkrService.getMarketDataBatch(contracts);
+    const contracts = filtered.flatMap((e) => [e.call, e.put]) as QuoteContract[];
+    const marketData = await quoteHub.get(contracts, { fields: ["bid", "ask", "delta"] });
+    console.log(`[ibkr-provider] Options chain ${symbol} quotes: ${summarizeStatuses(marketData.values())}`);
 
     // Build OptionsChainEntry for each contract
     const entries: OptionsChainEntry[] = [];
     for (const entry of filtered) {
       for (const [right, contract] of [["C", entry.call], ["P", entry.put]] as const) {
-        const md = marketData.get(marketDataKey(contract));
+        const md = marketData.get(quoteKey(contract as QuoteContract));
 
         // Format expiration from YYYYMMDD to YYYY-MM-DD
         const exp = entry.expiration;
@@ -146,7 +148,7 @@ class IBKRProvider implements MarketDataProvider {
           last: md?.last ?? 0,
           volume: md?.volume ?? 0,
           openInterest: 0,
-          impliedVolatility: md?.impliedVolatility ?? null,
+          impliedVolatility: md?.iv ?? null,
           delta: md?.delta ?? null,
           gamma: null,
           theta: null,

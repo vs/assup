@@ -7,14 +7,12 @@
  */
 
 import { ibkrService, type OptionChainEntry } from "./ibkr.js";
-import { marketDataLineRegistry } from "./marketDataLineRegistry.js";
+import { quoteHub, quoteKey, summarizeStatuses, type Quote, type QuoteContract } from "./quotes/index.js";
 import type { OptionOpportunity, ScannerCriteria } from "@assup/shared";
 import {
-  withLiveMarketData,
   getUnderlyingPrice,
   getReferencePrice,
   filterChainByStrike,
-  marketDataKey,
   calcOptionMetrics,
   estimateDelta,
   getDaysToExpiry,
@@ -85,146 +83,135 @@ export async function scanSymbols(ctx: ScanContext): Promise<ScanOutcome> {
   const allOpportunities: OptionOpportunity[] = [];
   const failures: SymbolScanFailure[] = [];
 
-  await withLiveMarketData(async () => {
-    for (const symbol of symbols) {
-      // Check for cancellation
-      if (signal?.aborted) {
-        break;
-      }
-
-      const assetClassInfo = symbolAssignments.get(symbol);
-      if (!assetClassInfo) continue;
-
-      const symbolOpportunities: OptionOpportunity[] = [];
-
-      try {
-        // Get current price of underlying stock
-        const underlyingPrice = (await getUnderlyingPrice(symbol)) ?? undefined;
-
-        // Get options chain
-        console.log(`[Scanner] ${symbol}: fetching option chain…`);
-        const chain = await ibkrService.getOptionChain(symbol);
-        if (chain.length === 0) {
-          console.log(`[Scanner] ${symbol}: empty option chain, skipping`);
-          await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
-          continue;
-        }
-
-        const today = new Date();
-        const uniqueStrikes = [...new Set(chain.map((c) => c.strike))].sort((a, b) => a - b);
-        const referencePrice = getReferencePrice(underlyingPrice ?? null, uniqueStrikes);
-
-        // Determine which option types to scan
-        const optionTypes = criteria.optionTypes || "PUT";
-        const scanPuts = optionTypes === "PUT";
-        const scanCalls = optionTypes === "CALL";
-
-        // Filter by expiration
-        const expirationFilteredChain = chain.filter((entry) => {
-          const dte = getDaysToExpiry(entry.expiration, today);
-          return dte >= criteria.minDaysToExpiry && dte <= criteria.maxDaysToExpiry;
-        });
-
-        if (expirationFilteredChain.length === 0) {
-          console.log(`[Scanner] ${symbol}: ${chain.length} chain entries, 0 after DTE filter (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry}d), skipping`);
-          await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
-          continue;
-        }
-
-        // Filter by strike ranges (separate for PUTs and CALLs)
-        const putFilteredChain = scanPuts
-          ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.putMinStrikePercent, criteria.putMaxStrikePercent)
-          : [];
-        const callFilteredChain = scanCalls
-          ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.callMinStrikePercent, criteria.callMaxStrikePercent)
-          : [];
-
-        if (putFilteredChain.length === 0 && callFilteredChain.length === 0) {
-          console.log(`[Scanner] ${symbol}: ${expirationFilteredChain.length} after DTE filter, 0 after strike filter (ref $${referencePrice.toFixed(2)}), skipping`);
-          await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
-          continue;
-        }
-
-        // Collect contracts to get market data for
-        const contracts: OptionChainEntry["put"][] = [];
-        if (scanPuts) contracts.push(...putFilteredChain.map((e) => e.put));
-        if (scanCalls) contracts.push(...callFilteredChain.map((e) => e.call));
-
-        console.log(`[Scanner] ${symbol}: chain ${chain.length}, after filters ${contracts.length} contracts, fetching market data…`);
-
-        // Notify caller about fetching phase
-        if (callbacks.onFetching) {
-          callbacks.onFetching(symbol, assetClassInfo.name, contracts.length);
-        }
-
-        // Stream quotes rather than snapshotting: TWS takes ~11s to complete an
-        // option snapshot, while streaming delivers bid/ask in ~1-2s. Each open
-        // subscription holds a market data line, so quote only as many at once
-        // as the registry grants alongside the spread stream's subscriptions.
-        const sessionId = `scan-${symbol}-${Date.now()}`;
-        const granted = marketDataLineRegistry.reserve(sessionId, contracts.length);
-        if (granted === 0) {
-          throw new Error(
-            `No IBKR market data lines available to quote ${contracts.length} ${symbol} contracts — ` +
-              `all ${marketDataLineRegistry.used()} lines are in use. Close the Spreads page (live options chain) and try again.`,
-          );
-        }
-        let marketDataMap: Map<string, { bid: number; ask: number }>;
-        try {
-          marketDataMap = await ibkrService.getOptionQuotes(contracts, { concurrency: granted, signal });
-        } finally {
-          marketDataLineRegistry.release(sessionId);
-        }
-        console.log(`[Scanner] ${symbol}: ${marketDataMap.size}/${contracts.length} contracts quoted (lines: ${granted})`);
-
-        // A scan where not a single quote came back is an infrastructure
-        // failure, not an empty result: processOption skips contracts without
-        // bid/ask, so this would otherwise render as "nothing met your
-        // criteria" and look identical to a genuine zero.
-        if (marketDataMap.size === 0 && contracts.length > 0) {
-          throw new Error(
-            `No market data returned for any of ${contracts.length} contracts — ` +
-              `TWS sent no bid/ask within 8s for any of them. Check that TWS is connected ` +
-              `and that your account has live options data for ${symbol}; outside regular ` +
-              `trading hours IBKR may have no quotes to send.`,
-          );
-        }
-
-        // Process PUT options
-        if (scanPuts) {
-          for (const entry of putFilteredChain) {
-            const opp = processOption(
-              entry, "PUT", entry.put,
-              getDaysToExpiry(entry.expiration, today),
-              marketDataMap, criteria, symbol, assetClassInfo, underlyingPrice,
-            );
-            if (opp) symbolOpportunities.push(opp);
-          }
-        }
-
-        // Process CALL options
-        if (scanCalls) {
-          for (const entry of callFilteredChain) {
-            const opp = processOption(
-              entry, "CALL", entry.call,
-              getDaysToExpiry(entry.expiration, today),
-              marketDataMap, criteria, symbol, assetClassInfo, underlyingPrice,
-            );
-            if (opp) symbolOpportunities.push(opp);
-          }
-        }
-
-        console.log(`[Scanner] ${symbol}: done, ${symbolOpportunities.length} opportunities found`);
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        console.error(`[Scanner] ${symbol}: error —`, reason);
-        failures.push({ symbol, error: reason });
-      }
-
-      allOpportunities.push(...symbolOpportunities);
-      await callbacks.onSymbolComplete(symbol, assetClassInfo.name, symbolOpportunities);
+  for (const symbol of symbols) {
+    // Check for cancellation
+    if (signal?.aborted) {
+      break;
     }
-  });
+
+    const assetClassInfo = symbolAssignments.get(symbol);
+    if (!assetClassInfo) continue;
+
+    const symbolOpportunities: OptionOpportunity[] = [];
+
+    try {
+      // Get current price of underlying stock
+      const underlyingPrice = (await getUnderlyingPrice(symbol)) ?? undefined;
+
+      // Get options chain
+      console.log(`[Scanner] ${symbol}: fetching option chain…`);
+      const chain = await ibkrService.getOptionChain(symbol);
+      if (chain.length === 0) {
+        console.log(`[Scanner] ${symbol}: empty option chain, skipping`);
+        await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
+        continue;
+      }
+
+      const today = new Date();
+      const uniqueStrikes = [...new Set(chain.map((c) => c.strike))].sort((a, b) => a - b);
+      const referencePrice = getReferencePrice(underlyingPrice ?? null, uniqueStrikes);
+
+      // Determine which option types to scan
+      const optionTypes = criteria.optionTypes || "PUT";
+      const scanPuts = optionTypes === "PUT";
+      const scanCalls = optionTypes === "CALL";
+
+      // Filter by expiration
+      const expirationFilteredChain = chain.filter((entry) => {
+        const dte = getDaysToExpiry(entry.expiration, today);
+        return dte >= criteria.minDaysToExpiry && dte <= criteria.maxDaysToExpiry;
+      });
+
+      if (expirationFilteredChain.length === 0) {
+        console.log(`[Scanner] ${symbol}: ${chain.length} chain entries, 0 after DTE filter (${criteria.minDaysToExpiry}-${criteria.maxDaysToExpiry}d), skipping`);
+        await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
+        continue;
+      }
+
+      // Filter by strike ranges (separate for PUTs and CALLs)
+      const putFilteredChain = scanPuts
+        ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.putMinStrikePercent, criteria.putMaxStrikePercent)
+        : [];
+      const callFilteredChain = scanCalls
+        ? filterChainByStrike(expirationFilteredChain, referencePrice, criteria.callMinStrikePercent, criteria.callMaxStrikePercent)
+        : [];
+
+      if (putFilteredChain.length === 0 && callFilteredChain.length === 0) {
+        console.log(`[Scanner] ${symbol}: ${expirationFilteredChain.length} after DTE filter, 0 after strike filter (ref $${referencePrice.toFixed(2)}), skipping`);
+        await callbacks.onSymbolComplete(symbol, assetClassInfo.name, []);
+        continue;
+      }
+
+      // Collect contracts to get market data for
+      const contracts: OptionChainEntry["put"][] = [];
+      if (scanPuts) contracts.push(...putFilteredChain.map((e) => e.put));
+      if (scanCalls) contracts.push(...callFilteredChain.map((e) => e.call));
+
+      console.log(`[Scanner] ${symbol}: chain ${chain.length}, after filters ${contracts.length} contracts, fetching market data…`);
+
+      // Notify caller about fetching phase
+      if (callbacks.onFetching) {
+        callbacks.onFetching(symbol, assetClassInfo.name, contracts.length);
+      }
+
+      // The QuoteHub streams each contract (TWS takes ~11s to answer an option
+      // snapshot) within the shared line budget, and waits for the model delta
+      // so the delta filter uses TWS greeks rather than an estimate.
+      const marketDataMap = await quoteHub.get(contracts as QuoteContract[], {
+        fields: ["bid", "ask", "delta"],
+        timeoutMs: 8000,
+        signal,
+      });
+      const quoted = [...marketDataMap.values()].filter((q) => q.bid !== undefined && q.ask !== undefined);
+      console.log(`[Scanner] ${symbol}: ${quoted.length}/${contracts.length} contracts quoted (${summarizeStatuses(marketDataMap.values())})`);
+
+      // A scan where not a single quote came back is an infrastructure
+      // failure, not an empty result: processOption skips contracts without
+      // bid/ask, so this would otherwise render as "nothing met your
+      // criteria" and look identical to a genuine zero.
+      if (quoted.length === 0 && contracts.length > 0) {
+        throw new Error(
+          `No market data returned for any of ${contracts.length} ${symbol} contracts ` +
+            `(${summarizeStatuses(marketDataMap.values())}). Check that TWS is connected ` +
+            `and that your account has live options data for ${symbol}; outside regular ` +
+            `trading hours IBKR may have no quotes to send.`,
+        );
+      }
+
+      // Process PUT options
+      if (scanPuts) {
+        for (const entry of putFilteredChain) {
+          const opp = processOption(
+            entry, "PUT", entry.put,
+            getDaysToExpiry(entry.expiration, today),
+            marketDataMap, criteria, symbol, assetClassInfo, underlyingPrice,
+          );
+          if (opp) symbolOpportunities.push(opp);
+        }
+      }
+
+      // Process CALL options
+      if (scanCalls) {
+        for (const entry of callFilteredChain) {
+          const opp = processOption(
+            entry, "CALL", entry.call,
+            getDaysToExpiry(entry.expiration, today),
+            marketDataMap, criteria, symbol, assetClassInfo, underlyingPrice,
+          );
+          if (opp) symbolOpportunities.push(opp);
+        }
+      }
+
+      console.log(`[Scanner] ${symbol}: done, ${symbolOpportunities.length} opportunities found`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(`[Scanner] ${symbol}: error —`, reason);
+      failures.push({ symbol, error: reason });
+    }
+
+    allOpportunities.push(...symbolOpportunities);
+    await callbacks.onSymbolComplete(symbol, assetClassInfo.name, symbolOpportunities);
+  }
 
   return { opportunities: allOpportunities, failures };
 }
@@ -242,13 +229,13 @@ function processOption(
   optionType: "PUT" | "CALL",
   contract: OptionChainEntry["put"],
   daysToExpiry: number,
-  marketDataMap: Map<string, { bid?: number; ask?: number; delta?: number }>,
+  marketDataMap: Map<string, Quote>,
   criteria: ScannerCriteria,
   symbol: string,
   assetClassInfo: { name: string; color: string },
   underlyingPrice: number | undefined,
 ): OptionOpportunity | null {
-  const data = marketDataMap.get(marketDataKey(contract));
+  const data = marketDataMap.get(quoteKey(contract as QuoteContract));
 
   if (!data || data.bid === undefined || data.ask === undefined || data.bid <= 0 || data.ask <= 0) {
     return null;

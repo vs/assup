@@ -11,8 +11,8 @@
 
 import { Contract, SecType, BarSizeSetting, WhatToShow } from "@stoqey/ib";
 import { ibkrService } from "./ibkr.js";
+import { quoteHub, quoteKey, type QuoteContract } from "./quotes/index.js";
 import { prisma } from "../db/index.js";
-import { isMarketOpen } from "../utils/market.js";
 import { fetchVix3m } from "./research/providers/yahoo.js";
 
 // --- Strategy constants ---
@@ -196,23 +196,23 @@ class SpreadStrategyService {
     today.setHours(0, 0, 0, 0);
     const dayOfWeek = today.getDay(); // 0=Sun, 5=Fri
 
-    // Switch to live/frozen data for accurate reads
-    const dataType = isMarketOpen() ? 1 : 2;
-    try { ibkrService.setMarketDataType(dataType as 1 | 2); } catch { /* ignore */ }
-
     // Fetch market data in parallel
     const useExternalVix3m = config.vix3mSymbol === "VIX3M";
+    const indexQuote = (symbol: string) => {
+      const contract = makeIndexContract(symbol) as QuoteContract;
+      return quoteHub
+        .get([contract], { fields: ["price"], timeoutMs: 4000 })
+        .then((quotes) => quotes.get(quoteKey(contract)) ?? null)
+        .catch(() => null);
+    };
     const [underlyingData, vixData, vix3mResult, historicalBars] = await Promise.all([
-      ibkrService.getMarketData(makeIndexContract(config.priceSymbol)).catch(() => null),
-      ibkrService.getMarketData(makeIndexContract(config.vixSymbol)).catch(() => null),
+      indexQuote(config.priceSymbol),
+      indexQuote(config.vixSymbol),
       useExternalVix3m
         ? this.getVix3m()
         : Promise.resolve({ value: null, source: "none" as const, ageMinutes: null }),
       this.fetchHistoricalCloses(config.priceSymbol),
     ]);
-
-    // Restore delayed data type
-    try { ibkrService.setMarketDataType(3); } catch { /* ignore */ }
 
     // Extract prices. IBKR returns 0 (or -1) as a sentinel for missing data
     // — most commonly when no market data subscription covers the contract

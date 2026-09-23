@@ -4,6 +4,8 @@
 
 import type { Contract } from "@stoqey/ib";
 import { ibkrService, Position as IBPosition } from "./ibkr.js";
+import { getOptionGreeks } from "../utils/options.js";
+import type { QuoteContract } from "./quotes/index.js";
 import { prisma } from "../db/index.js";
 import { assignmentService, AssignmentMap } from "./assignment.service.js";
 import { IBKRConnectionError } from "../errors/index.js";
@@ -258,7 +260,7 @@ class PositionService {
     if (optionContracts.length === 0) return;
 
     // Fetch greeks via Observable API (which returns model greeks unlike snapshots)
-    const greeks = await ibkrService.getOptionGreeks(optionContracts);
+    const greeks = await getOptionGreeks(optionContracts as QuoteContract[]);
 
     // Apply real deltas and theta to positions
     for (const [conId, { delta, theta }] of greeks) {

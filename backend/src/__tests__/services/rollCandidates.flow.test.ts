@@ -6,35 +6,38 @@
  * for a given expiry) through serial 2s snapshots, blowing the client's 90s
  * timeout, while parallel contract-details lookups timed out and silently
  * left every candidate with conId 0.
+ *
+ * Also covers ZUL rolls showing the new leg's full premium as "net credit":
+ * the close leg was quoted via a 5s snapshot that timed out, and the missing
+ * price silently became bid/ask 0.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Contract } from "@stoqey/ib";
 
-const getMarketData = vi.fn();
 const getOptionChain = vi.fn();
 const getOptionContracts = vi.fn();
-const getOptionQuotes = vi.fn();
+const quoteGet = vi.fn();
 
 vi.mock("../../services/ibkr.js", () => ({
   ibkrService: {
-    getMarketData: (...args: unknown[]) => getMarketData(...args),
     getOptionChain: (...args: unknown[]) => getOptionChain(...args),
     getOptionContracts: (...args: unknown[]) => getOptionContracts(...args),
-    getOptionQuotes: (...args: unknown[]) => getOptionQuotes(...args),
   },
 }));
 
-vi.mock("../../utils/options.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../utils/options.js")>();
+vi.mock("../../services/quotes/index.js", async () => {
+  const keys = await vi.importActual<typeof import("../../services/quotes/quoteKey.js")>("../../services/quotes/quoteKey.js");
   return {
-    ...actual,
-    withLiveMarketData: async (fn: () => Promise<void>) => fn(),
+    quoteHub: { get: (...args: unknown[]) => quoteGet(...args) },
+    quoteKey: keys.quoteKey,
+    summarizeStatuses: keys.summarizeStatuses,
   };
 });
 
 const { findRollCandidates } = await import("../../services/rollCandidates.service.js");
-const { marketDataLineRegistry } = await import("../../services/marketDataLineRegistry.js");
+const { quoteKey } = await import("../../services/quotes/quoteKey.js");
+import type { Quote, QuoteContract } from "../../services/quotes/quoteTypes.js";
 
 function chainEntry(strike: number, expiration: string) {
   const base = {
@@ -65,19 +68,30 @@ function listed(strike: number, expiration: string, conId: number): Contract {
   };
 }
 
+const CLOSE_CONID = 111;
+
+/** Answer quoteHub.get: close leg 1.0/1.2 (unless overridden), candidates at `candidate`. */
+function quoteAll(candidate: Partial<Quote> = { status: "ok", bid: 2.0, ask: 2.2 }, close: Partial<Quote> = { status: "ok", bid: 1.0, ask: 1.2 }) {
+  quoteGet.mockImplementation(async (contracts: QuoteContract[]) =>
+    new Map(contracts.map((c) => {
+      const key = quoteKey(c);
+      return [key, { key, updatedAt: 1, ...(c.conId === CLOSE_CONID ? close : candidate) } as Quote];
+    })),
+  );
+}
+
 const request = {
   symbol: "ZAG",
   expiration: "20260918",
   strike: 57,
   right: "C" as const,
-  conId: 111,
+  conId: CLOSE_CONID,
   minDTEBeyond: 30,
 };
 
 describe("findRollCandidates", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    getMarketData.mockResolvedValue({ bid: 1.0, ask: 1.2 });
+    quoteAll();
     // Union chain: 58/59/60 in both expiries, but 59 is only listed in October.
     getOptionChain.mockResolvedValue([
       chainEntry(58, "20261023"),
@@ -94,44 +108,50 @@ describe("findRollCandidates", () => {
     );
   });
 
-  afterEach(() => {
-    marketDataLineRegistry.release("test-hog");
-  });
-
-  it("quotes only listed contracts and returns their real conIds", async () => {
-    getOptionQuotes.mockImplementation(async (contracts: Contract[]) =>
-      new Map(contracts.map((c) => [`SLV_${c.lastTradeDateOrContractMonth}_${c.strike}_C`, { bid: 2.0, ask: 2.2 }])),
-    );
-
+  it("quotes only listed contracts, by conId, and returns their real conIds", async () => {
     const result = await findRollCandidates(request);
 
-    const quoted = (getOptionQuotes.mock.calls[0][0] as Contract[]).map((c) => c.conId);
-    expect(quoted.sort()).toEqual([2, 3, 4, 5, 6]); // strike 56 is below the current call strike
+    const [contracts, opts] = quoteGet.mock.calls[1] as [QuoteContract[], { fields: string[] }];
+    expect(contracts.map((c) => c.conId).sort()).toEqual([2, 3, 4, 5, 6]); // strike 56 is below the current call strike
+    expect(opts.fields).toEqual(["bid", "ask"]);
     expect(getOptionContracts).toHaveBeenCalledWith("ZAG", "20261023", "ZAG", 100, "C");
     expect(result.candidates.map((c) => c.conId).sort()).toEqual([2, 3, 4, 5, 6]);
     expect(result.candidates.every((c) => c.netCreditMid > 0)).toBe(true);
   });
 
-  it("caps quote concurrency at the market data lines granted", async () => {
-    marketDataLineRegistry.reserve("test-hog", 97);
-    getOptionQuotes.mockResolvedValue(new Map());
+  it("quotes the close leg first and nets its price out of each candidate", async () => {
+    const result = await findRollCandidates(request);
 
-    await findRollCandidates(request);
-
-    expect(getOptionQuotes.mock.calls[0][1]).toMatchObject({ concurrency: 3 });
+    const [closeContracts] = quoteGet.mock.calls[0] as [QuoteContract[]];
+    expect(closeContracts).toEqual([expect.objectContaining({ conId: CLOSE_CONID, strike: 57, right: "C" })]);
+    expect(result.closeLeg).toEqual({ conId: CLOSE_CONID, bid: 1.0, ask: 1.2, mid: 1.1 });
+    expect(result.candidates[0].netCreditMid).toBeCloseTo(2.1 - 1.1);
+    expect(result.candidates[0].netCredit).toBeCloseTo(2.0 - 1.2);
   });
 
-  it("fails loudly when no market data lines are available", async () => {
-    marketDataLineRegistry.reserve("test-hog", 100);
+  it("fails loudly when the close leg has no quote instead of treating its price as 0", async () => {
+    quoteAll(undefined, { status: "timeout" });
 
-    await expect(findRollCandidates(request)).rejects.toThrow(/market data lines/);
-    expect(getOptionQuotes).not.toHaveBeenCalled();
+    await expect(findRollCandidates(request)).rejects.toThrow(/No quote from TWS for ZAG 20260918 57C .*timeout/);
+    expect(getOptionChain).not.toHaveBeenCalled();
+  });
+
+  it("names the TWS reason when the close leg has no market", async () => {
+    quoteAll(undefined, { status: "no-market", noMarket: ["bid", "ask"] });
+
+    await expect(findRollCandidates(request)).rejects.toThrow(/no-market/);
+  });
+
+  it("fails loudly when no candidate could be quoted", async () => {
+    quoteAll({ status: "no-lines", error: "100/100 market data lines are in use" });
+
+    await expect(findRollCandidates(request)).rejects.toThrow(/5 no-lines — 100\/100 market data lines are in use/);
   });
 
   it("fails loudly when a contract lookup fails instead of returning conId 0", async () => {
     getOptionContracts.mockRejectedValue(new Error("getOptionContracts timed out for ZAG 20261023"));
 
     await expect(findRollCandidates(request)).rejects.toThrow(/timed out for ZAG 20261023/);
-    expect(getOptionQuotes).not.toHaveBeenCalled();
+    expect(quoteGet).toHaveBeenCalledTimes(1); // close leg only
   });
 });
