@@ -462,6 +462,7 @@ function buildLivePositions(
 
     positions.push({
       type: p.contract.right === "C" ? "call" : "put",
+      conId: p.contract.conId,
       strike: p.contract.strike,
       expiry,
       dte,

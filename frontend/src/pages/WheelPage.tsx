@@ -31,6 +31,8 @@ import { scannerApi } from "@/api/scanner";
 import type { ScannerCriteria } from "@assup/shared";
 import { OptionsBuilderDialog } from "@/components/options-builder/OptionsBuilderDialog";
 import { ClosePositionDialog } from "@/components/profit/ClosePositionDialog";
+import { RollOptionDialog } from "@/components/positions/RollOptionDialog";
+import type { RollablePosition } from "@/components/positions";
 import {
   Dialog,
   DialogContent,
@@ -842,6 +844,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
   const [openOrders, setOpenOrders] = useState<Order[]>([]);
   const [closePosition, setClosePosition] = useState<CurrentOptionPosition | null>(null);
   const [existingOrderForDialog, setExistingOrderForDialog] = useState<Order | null>(null);
+  const [rollPosition, setRollPosition] = useState<RollablePosition | null>(null);
 
   const loadDetail = useCallback(() => {
     api.wheel
@@ -930,6 +933,7 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
               setClosePosition(pos);
               setExistingOrderForDialog(order);
             }}
+            onRoll={setRollPosition}
           />
           {cycleList}
         </div>
@@ -960,6 +964,13 @@ function WheelTickerDetail({ symbol }: { symbol: string }) {
           loadOrders();
           loadDetail();
         }}
+      />
+
+      <RollOptionDialog
+        open={!!rollPosition}
+        onOpenChange={(open) => { if (!open) setRollPosition(null); }}
+        position={rollPosition}
+        onOrderPlaced={() => loadOrders()}
       />
     </div>
   );
@@ -1036,11 +1047,13 @@ function ActivePositions({
   symbol,
   openOrders,
   onClosePosition,
+  onRoll,
 }: {
   positions: WheelLivePosition[];
   symbol: string;
   openOrders: Order[];
   onClosePosition: (pos: CurrentOptionPosition, existingOrder: Order | null) => void;
+  onRoll: (pos: RollablePosition) => void;
 }) {
   const shares = positions.find((p) => p.type === "shares");
   // CC and Call Spreads together, sorted by expiry
@@ -1080,6 +1093,24 @@ function ActivePositions({
     );
     return (
       <td className="px-2 py-2 text-right whitespace-nowrap">
+        {p.conId != null && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => onRoll({
+              symbol: closeTarget.symbol,
+              underlying: closeTarget.underlying,
+              strike: closeTarget.strike,
+              right: closeTarget.right,
+              expiry: closeTarget.expiry.replace(/-/g, ""),
+              conId: p.conId!,
+              position: closeTarget.quantity,
+            })}
+          >
+            Roll
+          </Button>
+        )}
         {matchingOrder ? (
           <span
             className="cursor-pointer group/order relative text-xs tabular-nums"

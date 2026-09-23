@@ -128,6 +128,8 @@ export interface WheelCycle {
 /** Individual live IBKR position for the wheel detail view */
 export interface WheelLivePosition {
   type: "shares" | "put" | "call" | "put-spread" | "call-spread";
+  /** IBKR contract id — set on single option legs only */
+  conId?: number;
   strike?: number;
   expiry?: string;
   dte?: number;
