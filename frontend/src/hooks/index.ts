@@ -8,4 +8,5 @@ export {
   usePositionUpdates,
   useWheelUpdates,
 } from "./useSSE";
+export { useLiveQuote } from "./useLiveQuote";
 export { useTickerProfile, usePrefetchTickerProfiles } from "./useTickerProfile";

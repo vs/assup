@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { api } from "@/api";
-import { formatCurrency, formatDisplayName } from "@assup/shared";
+import { formatCurrency, formatDisplayName, quoteMid } from "@assup/shared";
 import type { CurrentOptionPosition, Order } from "@assup/shared";
+import { useLiveQuote } from "@/hooks";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,13 @@ export function ClosePositionDialog({
   const [success, setSuccess] = useState<{ orderId: number; message: string } | null>(null);
   const [quote, setQuote] = useState<{ bid: number | null; ask: number | null; mid: number | null } | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  /** Live stream while the dialog is open; the REST quote below seeds it (and covers positions without a conId) */
+  const live = useLiveQuote(open && position?.conId ? position.conId : undefined);
+  const liveQuote = live && (live.bid != null || live.ask != null)
+    ? { bid: live.bid ?? null, ask: live.ask ?? null, mid: quoteMid(live) }
+    : null;
+  const shownQuote = liveQuote ?? quote;
 
   const isModifyMode = !!existingOrder;
 
@@ -49,6 +57,7 @@ export function ClosePositionDialog({
       setError(null);
       setSuccess(null);
       setQuote(null);
+      setQuoteError(null);
       setTif("DAY");
 
       // In modify mode, pre-fill from existing order
@@ -67,9 +76,11 @@ export function ClosePositionDialog({
           expiration,
           strike: position.strike,
           right: position.right,
+          conId: position.conId,
         })
         .then((q) => {
           setQuote(q);
+          setQuoteError(q.status === "ok" ? null : q.error ?? `No quote from TWS (${q.status})`);
           // Only set default price if NOT in modify mode (modify keeps existing price)
           if (!existingOrder) {
             const defaultPrice = position.quantity < 0
@@ -78,7 +89,8 @@ export function ClosePositionDialog({
             setLimitPrice(defaultPrice ?? 0);
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          setQuoteError(err instanceof Error ? err.message : "Failed to fetch quote");
           if (!existingOrder) {
             setLimitPrice(position.marketPrice);
           }
@@ -94,8 +106,8 @@ export function ClosePositionDialog({
   };
 
   const handleUseMid = () => {
-    if (quote?.mid != null) {
-      setLimitPrice(quote.mid);
+    if (shownQuote?.mid != null) {
+      setLimitPrice(shownQuote.mid);
     }
   };
 
@@ -223,22 +235,26 @@ export function ClosePositionDialog({
             <div>
               <div className="text-sm text-muted-foreground">Bid</div>
               <div className="font-mono font-medium">
-                {loadingQuote ? "..." : quote?.bid != null ? formatCurrency(quote.bid, { maximumFractionDigits: 2 }) : "-"}
+                {loadingQuote ? "..." : shownQuote?.bid != null ? formatCurrency(shownQuote.bid, { maximumFractionDigits: 2 }) : "-"}
               </div>
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Ask</div>
               <div className="font-mono font-medium">
-                {loadingQuote ? "..." : quote?.ask != null ? formatCurrency(quote.ask, { maximumFractionDigits: 2 }) : "-"}
+                {loadingQuote ? "..." : shownQuote?.ask != null ? formatCurrency(shownQuote.ask, { maximumFractionDigits: 2 }) : "-"}
               </div>
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Mid</div>
               <div className="font-mono font-medium">
-                {loadingQuote ? "..." : quote?.mid != null ? formatCurrency(quote.mid, { maximumFractionDigits: 2 }) : "-"}
+                {loadingQuote ? "..." : shownQuote?.mid != null ? formatCurrency(shownQuote.mid, { maximumFractionDigits: 2 }) : "-"}
               </div>
             </div>
           </div>
+
+          {quoteError && shownQuote?.mid == null && !loadingQuote && (
+            <div className="rounded-md bg-amber-500/10 p-2 text-xs text-amber-600">{quoteError}</div>
+          )}
 
           {/* Quantity input */}
           <div className="space-y-2">
@@ -262,7 +278,7 @@ export function ClosePositionDialog({
                 variant="outline"
                 size="sm"
                 onClick={handleUseMid}
-                disabled={placing || quote?.mid == null}
+                disabled={placing || shownQuote?.mid == null}
               >
                 Use Mid
               </Button>

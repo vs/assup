@@ -18,6 +18,8 @@ interface OptionQuoteInput {
   expiration: string; // YYYYMMDD
   strike: number;
   right: "C" | "P";
+  /** Shares the contract's existing market data line when known */
+  conId?: number;
 }
 
 export const ordersApi = {
