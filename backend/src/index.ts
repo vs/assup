@@ -33,6 +33,7 @@ import calendarRouter from "./routes/calendar.js";
 import flexWebRouter from "./routes/flex-web.js";
 import gexRouter from "./routes/gex.js";
 import quotesRouter from "./routes/quotes.js";
+import { clientQuoteSubscriptions } from "./services/quotes/clientQuoteSubscriptions.js";
 import { scanJobService } from "./services/scanJob.service.js";
 import { calendarService } from "./services/calendar.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
@@ -197,6 +198,7 @@ app.get("/api/updates/stream", (req: Request, res: Response) => {
   req.on("close", () => {
     clearInterval(keepalive);
     unsubscribe();
+    clientQuoteSubscriptions.release(clientId);
     sseService.removeClient(clientId);
   });
 });
