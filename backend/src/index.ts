@@ -32,6 +32,7 @@ import dashboardRouter from "./routes/dashboard.js";
 import calendarRouter from "./routes/calendar.js";
 import flexWebRouter from "./routes/flex-web.js";
 import gexRouter from "./routes/gex.js";
+import quotesRouter from "./routes/quotes.js";
 import { scanJobService } from "./services/scanJob.service.js";
 import { calendarService } from "./services/calendar.service.js";
 import { initCollectors } from "./services/research/collectors/index.js";
@@ -118,6 +119,7 @@ app.use("/api/dashboard", dashboardRouter);
 app.use("/api/calendar", calendarRouter);
 app.use("/api/flex-web", flexWebRouter);
 app.use("/api/gex", gexRouter);
+app.use("/api/quotes", quotesRouter);
 
 app.get("/api/health", asyncHandler(async (req, res) => {
   const assetClassCount = await prisma.assetClass.count();

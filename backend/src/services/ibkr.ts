@@ -326,11 +326,12 @@ class IBKRService {
 
     console.log("Connected to TWS");
 
-    // Set market data type to delayed (3) to avoid subscription errors
-    // Market data types: 1=Live, 2=Frozen, 3=Delayed, 4=Delayed-Frozen
+    // Market data types: 1=Live, 2=Frozen, 3=Delayed, 4=Delayed-Frozen.
+    // Set once: 4 returns live ticks where the account is subscribed (verified
+    // during RTH), falling back to frozen/delayed data instead of failing.
     if (this.api) {
-      this.api.setMarketDataType(3);
-      console.log("Set market data type to: Delayed (3)");
+      this.api.setMarketDataType(4);
+      console.log("Set market data type to: Delayed-Frozen (4)");
     }
 
     // Subscribe to account summary for cash balance
