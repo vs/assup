@@ -348,7 +348,9 @@ router.post(
       status: quote.status,
       error: quote.status === "ok"
         ? undefined
-        : quote.error ?? `No bid/ask from TWS for ${symbol} ${expiration} ${strike}${right} (${quote.status})`,
+        : quote.error ??
+          `No ${[bid == null ? "bid" : null, ask == null ? "ask" : null].filter(Boolean).join(" or ") || "quote"} ` +
+            `from TWS for ${symbol} ${expiration} ${strike}${right} (${quote.status})`,
     };
     res.json(result);
   })
