@@ -11,8 +11,9 @@ import { assignmentService, getSecurityKey } from "../services/assignment.servic
 import { allocationService } from "../services/allocation.service.js";
 import { IBKRConnectionError } from "../errors/index.js";
 import { formatDisplayName, getOptionRight, simulateOrdersRequestSchema, placeOrderSchema, optionQuoteSchema, modifyOrderSchema, rollCandidatesRequestSchema, rollOrderRequestSchema } from "@assup/shared";
-import type { Order, OrderImpact, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult, RollCandidatesResponse } from "@assup/shared";
-import { findRollCandidates } from "../services/rollCandidates.service.js";
+import type { Order, OrderImpact, PlaceOrderResult, ModifyOrderResult, OptionQuoteResult, RollCandidatesResponse, RollScanProgress } from "@assup/shared";
+import { findRollCandidates, type RollProgressReporter } from "../services/rollCandidates.service.js";
+import { sseService } from "../services/sse.js";
 import { placeComboOrder } from "../services/ironCondor.service.js";
 import { quoteHub, quoteKey, type QuoteContract } from "../services/quotes/index.js";
 import { OpenOrder as IBOpenOrder, Contract, SecType, OptionType } from "@stoqey/ib";
@@ -450,7 +451,33 @@ router.post(
       if (!res.writableEnded) cancelController.abort();
     });
 
-    const result: RollCandidatesResponse = await findRollCandidates(req.body, cancelController.signal);
+    // Progress goes to the requesting tab's SSE connection (if it has one), so a
+    // scan that takes ~30s doesn't look stuck. Throttled: the quoting phase
+    // settles one contract at a time.
+    const { progressClientId, scanId } = req.body;
+    let lastSent = 0;
+    const onProgress: RollProgressReporter = (phase, message, counts) => {
+      if (!progressClientId) return;
+      // Only the quoting phase is chatty (one event per contract); the other
+      // phases emit a handful of events that must not be dropped.
+      const now = Date.now();
+      if (phase === "quotes" && counts && counts.done > 0 && counts.done < counts.total && now - lastSent < 200) return;
+      lastSent = now;
+      const progress: RollScanProgress = {
+        scanId: scanId ?? "",
+        phase,
+        message,
+        done: counts?.done,
+        total: counts?.total,
+      };
+      sseService.sendToClient(progressClientId, "roll_progress", progress);
+    };
+
+    const result: RollCandidatesResponse = await findRollCandidates(
+      req.body,
+      cancelController.signal,
+      onProgress,
+    );
     res.json(result);
   })
 );

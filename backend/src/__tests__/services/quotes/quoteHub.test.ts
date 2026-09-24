@@ -204,6 +204,20 @@ describe("QuoteHub.get", () => {
     expect(t.api.calls[0].contract).toEqual({ conId: 416904, exchange: "CBOE" });
   });
 
+  it("reports progress as each contract settles", async () => {
+    const t = setup();
+    const onProgress = vi.fn();
+    const p = t.hub.get([opt(1), opt(2)], { fields: ["bid"], onProgress });
+
+    t.api.emit(1, [[1, 1]]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onProgress).toHaveBeenLastCalledWith(1, 2);
+
+    t.api.emit(2, [[1, 2]]);
+    await p;
+    expect(onProgress).toHaveBeenLastCalledWith(2, 2);
+  });
+
   it("dedupes repeated contracts in one request", async () => {
     const t = setup();
     const p = t.hub.get([opt(1), opt(1)], { fields: ["bid"] });

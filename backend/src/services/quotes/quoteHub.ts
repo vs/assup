@@ -128,13 +128,21 @@ export class QuoteHub {
    * each contract (or TWS says there's no market / errors / the per-contract
    * timeout passes), then releases. Never throws for per-contract failures —
    * read each Quote's status. Look results up with quoteKey(contract).
+   *
+   * `onProgress(done, total)` fires as each contract settles, for callers that
+   * report progress on a long batch.
    */
   async get(
     contracts: QuoteContract[],
-    opts: { fields: QuoteField[]; timeoutMs?: number; signal?: AbortSignal },
+    opts: {
+      fields: QuoteField[];
+      timeoutMs?: number;
+      signal?: AbortSignal;
+      onProgress?: (done: number, total: number) => void;
+    },
   ): Promise<Map<string, Quote>> {
     if (!this.deps.getApi()) throw new Error("Not connected to TWS");
-    const { fields, timeoutMs = 8000, signal } = opts;
+    const { fields, timeoutMs = 8000, signal, onProgress } = opts;
 
     const results = new Map<string, Quote>();
     const unique = new Map<string, QuoteContract>();
@@ -144,6 +152,12 @@ export class QuoteHub {
 
     const queue = [...unique.values()];
     let inFlight = 0;
+    let settledCount = 0;
+    const total = unique.size;
+    const markSettled = () => {
+      settledCount++;
+      onProgress?.(settledCount, total);
+    };
 
     await new Promise<void>((resolveAll) => {
       let settled = false;
@@ -158,6 +172,7 @@ export class QuoteHub {
         for (const contract of queue.splice(0)) {
           const key = quoteKey(contract);
           results.set(key, { key, status: "timeout", updatedAt: null, error: "Request aborted" });
+          markSettled();
         }
         for (const h of [...abortHandlers]) h();
         if (inFlight === 0) finishAll();
@@ -178,6 +193,7 @@ export class QuoteHub {
             queue.shift();
             results.set(entry.key, { ...copyQuote(entry.quote), status: immediate });
             this.dropIfUnused(entry);
+            markSettled();
             continue;
           }
           if (!entry.sub && !this.openLine(entry, "batch", inFlight > 0)) {
@@ -188,6 +204,7 @@ export class QuoteHub {
             queue.shift();
             results.set(entry.key, copyQuote(entry.quote));
             this.dropIfUnused(entry);
+            markSettled();
             continue;
           }
 
@@ -213,6 +230,7 @@ export class QuoteHub {
           results.set(entry.key, q);
           this.releaseLease(entry, lease);
           inFlight--;
+          markSettled();
           if (!settled) pump();
         };
         const check = () => {
