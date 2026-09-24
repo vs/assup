@@ -17,6 +17,24 @@ export interface RollCandidatesRequest {
   minDTEBeyond: number;
   /** Strike band around the current strike, in percent, both directions (default 20) */
   strikeRangePercent: number;
+  /** SSE client id to send RollScanProgress events to while the scan runs */
+  progressClientId?: string;
+  /** Echoed back in progress events so a dialog only reads its own scan */
+  scanId?: string;
+}
+
+/** Phases of a roll scan, reported over SSE while it runs */
+export type RollScanPhase = "close-leg" | "chain" | "contracts" | "quotes" | "done";
+
+export interface RollScanProgress {
+  /** Identifies which dialog's scan this belongs to */
+  scanId: string;
+  phase: RollScanPhase;
+  /** Human-readable status line, e.g. "Quoting 34 contracts" */
+  message: string;
+  /** Completed units within the phase (contracts quoted, expiries looked up) */
+  done?: number;
+  total?: number;
 }
 
 export interface RollCandidate {

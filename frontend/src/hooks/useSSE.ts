@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getApiBase } from "@/lib/apiConfig";
 
-type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job" | "wheel_scanner" | "research_job" | "wheel_strategy" | "macro" | "quote";
+type SSEEventType = "position" | "order" | "allocation" | "connection" | "connected" | "scanner_job" | "wheel_scanner" | "research_job" | "wheel_strategy" | "macro" | "quote" | "roll_progress";
 
 // Singleton SSE connection manager
 // Pauses when tab is hidden to avoid exhausting Chrome's 6-connection-per-origin

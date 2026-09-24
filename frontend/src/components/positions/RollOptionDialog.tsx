@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ordersApi } from "@/api/orders";
 import { formatCurrency, formatDisplayName, quoteMid } from "@assup/shared";
-import type { RollCandidate, RollCandidatesResponse } from "@assup/shared";
+import type { RollCandidate, RollCandidatesResponse, RollScanProgress } from "@assup/shared";
 import { useLiveQuote } from "@/hooks";
+import { sseManager } from "@/hooks/useSSE";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +36,10 @@ function formatExpiry(yyyymmdd: string, dte?: number): string {
   const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return dte !== undefined ? `${label} (${dte}d)` : label;
 }
+
+/** Scan phases in order, for the progress trail under the bar */
+const PHASE_LABELS = ["Close leg", "Chain", "Contracts", "Quotes"] as const;
+const PHASE_ORDER: RollScanProgress["phase"][] = ["close-leg", "chain", "contracts", "quotes", "done"];
 
 /** How the candidate table is organized: one flat list by credit, or grouped */
 type GroupBy = "credit" | "strike" | "expiration";
@@ -104,6 +110,8 @@ export function RollOptionDialog({
   const [strikeRangePercent, setStrikeRangePercent] = useState(20);
   const [minNetCredit, setMinNetCredit] = useState(0.10);
   const [groupBy, setGroupBy] = useState<GroupBy>("credit");
+  const [progress, setProgress] = useState<RollScanProgress | null>(null);
+  const [elapsed, setElapsed] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<RollCandidatesResponse | null>(null);
@@ -124,6 +132,8 @@ export function RollOptionDialog({
   /** A roll that costs money: the replacement premium doesn't cover the buy-back */
   const isDebitRoll = limitPrice < 0;
 
+  const phaseIndex = progress ? PHASE_ORDER.indexOf(progress.phase) : -1;
+
   const groups = useMemo(
     () => (data ? groupCandidates(data.candidates, groupBy) : []),
     [data, groupBy],
@@ -131,6 +141,32 @@ export function RollOptionDialog({
 
   // Tracks the in-flight scan request so it can be cancelled
   const abortRef = useRef<AbortController | null>(null);
+  // Identifies this scan in the progress events the backend pushes over SSE
+  const scanIdRef = useRef<string>("");
+
+  // Progress events for the running scan (ignoring any other dialog's scan)
+  useEffect(() => {
+    if (!loading) return;
+    // Hold the shared SSE connection open for the scan, then listen for its events
+    const releaseSse = sseManager.subscribe();
+    const removeListener = sseManager.addListener("roll_progress", (data) => {
+      const event = data as RollScanProgress;
+      if (event.scanId === scanIdRef.current) setProgress(event);
+    });
+    return () => {
+      removeListener();
+      releaseSse();
+    };
+  }, [loading]);
+
+  // Elapsed seconds, so a stalled phase is visibly stalled
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    setElapsed(0);
+    const timer = setInterval(() => setElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [loading]);
 
   const cancelScan = useCallback(() => {
     if (abortRef.current) {
@@ -149,6 +185,8 @@ export function RollOptionDialog({
     const controller = new AbortController();
     abortRef.current = controller;
 
+    scanIdRef.current = `roll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setProgress(null);
     setLoading(true);
     setError(null);
     setSelected(null);
@@ -165,6 +203,8 @@ export function RollOptionDialog({
           conId: position.conId,
           minDTEBeyond,
           strikeRangePercent,
+          progressClientId: sseManager.clientId ?? undefined,
+          scanId: scanIdRef.current,
         },
         controller.signal,
       );
@@ -198,6 +238,7 @@ export function RollOptionDialog({
       setStrikeRangePercent(20);
       setMinNetCredit(0.10);
       setGroupBy("credit");
+      setProgress(null);
     }
     onOpenChange(nextOpen);
   }, [cancelScan, onOpenChange]);
@@ -375,7 +416,27 @@ export function RollOptionDialog({
 
           {/* Status / Error */}
           {loading && (
-            <div className="text-center py-4 text-muted-foreground text-sm">Scanning option chain…</div>
+            <div className="space-y-2 py-2">
+              <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">
+                  {progress?.message ?? "Starting scan…"}
+                  {progress?.total ? ` — ${progress.done ?? 0}/${progress.total}` : ""}
+                </span>
+                <span className="text-xs text-muted-foreground tabular-nums">{elapsed}s</span>
+              </div>
+              <Progress
+                value={progress?.total ? ((progress.done ?? 0) / progress.total) * 100 : undefined}
+                className={progress?.total ? "" : "animate-pulse"}
+              />
+              <div className="text-xs text-muted-foreground">
+                {PHASE_LABELS.map((label, i) => (
+                  <span key={label} className={i <= phaseIndex ? "text-foreground" : ""}>
+                    {i > 0 && " → "}
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
           {error && (
             <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">{error}</div>

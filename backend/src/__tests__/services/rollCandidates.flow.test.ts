@@ -154,7 +154,33 @@ describe("findRollCandidates", () => {
     expect([...credits].sort((a, b) => b - a)).toEqual(credits);
   });
 
-  it("fails loudly when no candidate could be quoted", async () => {
+  it("reports progress through each phase so a long scan doesn't look stuck", async () => {
+    quoteGet.mockImplementation(async (contracts: QuoteContract[], opts: { onProgress?: (d: number, t: number) => void }) => {
+      opts.onProgress?.(contracts.length, contracts.length);
+      return new Map(contracts.map((c) => {
+        const key = quoteKey(c);
+        return [key, { key, updatedAt: 1, status: "ok", bid: 2.0, ask: 2.2 } as Quote];
+      }));
+    });
+    const events: Array<[string, number | undefined, number | undefined]> = [];
+
+    await findRollCandidates(request, undefined, (phase, _msg, counts) =>
+      events.push([phase, counts?.done, counts?.total]),
+    );
+
+    expect(events.map((e) => e[0])).toEqual([
+      "close-leg",
+      "chain",
+      "contracts", "contracts", // one per expiry looked up
+      "quotes",                 // start
+      "quotes",                 // quoteHub progress
+      "done",
+    ]);
+    expect(events.filter((e) => e[0] === "contracts").map((e) => [e[1], e[2]])).toEqual([[0, 2], [1, 2]]);
+    expect(events.find((e) => e[0] === "done")).toEqual(["done", 5, 5]);
+  });
+
+  it("fails loudly when no candidate could be quoted", async () =>{
     quoteAll({ status: "no-lines", error: "100/100 market data lines are in use" });
 
     await expect(findRollCandidates(request)).rejects.toThrow(/5 no-lines — 100\/100 market data lines are in use/);

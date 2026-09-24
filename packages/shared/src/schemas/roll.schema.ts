@@ -13,6 +13,9 @@ export const rollCandidatesRequestSchema = z.object({
   minDTEBeyond: z.number().int().min(0).max(365).default(30),
   /** Strike band around the current strike, in percent (both directions) */
   strikeRangePercent: z.number().min(1).max(100).default(20),
+  /** SSE client id receiving progress events, and the id echoed back in them */
+  progressClientId: z.string().min(1).max(100).optional(),
+  scanId: z.string().min(1).max(100).optional(),
 });
 
 export const rollOrderRequestSchema = z.object({

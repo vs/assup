@@ -17,7 +17,26 @@ import type {
   RollCandidatesRequest,
   RollCandidatesResponse,
   RollCandidate,
+  RollScanPhase,
 } from "@assup/shared";
+
+/** "20270115" → "Jan 15", for progress messages people read */
+function formatExpiryLabel(yyyymmdd: string): string {
+  if (yyyymmdd.length !== 8) return yyyymmdd;
+  const date = new Date(
+    Number(yyyymmdd.slice(0, 4)),
+    Number(yyyymmdd.slice(4, 6)) - 1,
+    Number(yyyymmdd.slice(6, 8)),
+  );
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** Reports scan progress; the route forwards it to the client's SSE connection. */
+export type RollProgressReporter = (
+  phase: RollScanPhase,
+  message: string,
+  counts?: { done: number; total: number },
+) => void;
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests)
@@ -95,6 +114,7 @@ export function computeRollAnnualizedReturn(
 export async function findRollCandidates(
   input: RollCandidatesRequest,
   signal?: AbortSignal,
+  onProgress: RollProgressReporter = () => {},
 ): Promise<RollCandidatesResponse> {
   const { symbol, expiration, strike, right, conId, minDTEBeyond, strikeRangePercent } = input;
 
@@ -109,6 +129,7 @@ export async function findRollCandidates(
     right,
     multiplier: 100,
   };
+  onProgress("close-leg", `Quoting ${symbol} ${strike}${right} (the position being rolled)`);
   const closeQuote = (await quoteHub.get([closeContract], { fields: ["bid", "ask"], signal }))
     .get(quoteKey(closeContract));
   if (!closeQuote || closeQuote.status !== "ok" || closeQuote.bid === undefined || closeQuote.ask === undefined || closeQuote.ask <= 0) {
@@ -122,6 +143,7 @@ export async function findRollCandidates(
   const closeAsk = closeQuote.ask;
   const closeLeg: RollCandidatesResponse["closeLeg"] = { conId, bid: closeBid, ask: closeAsk, mid: (closeBid + closeAsk) / 2 };
 
+  onProgress("chain", `Fetching the ${symbol} option chain`);
   const chain = await ibkrService.getOptionChain(symbol);
   const filtered = filterCandidateEntries(chain, strike, expiration, right, minDTEBeyond, strikeRangePercent);
   if (filtered.length === 0) return { closeLeg, candidates: [] };
@@ -142,15 +164,28 @@ export async function findRollCandidates(
   const multiplier = Number((capped[0].call.multiplier as number | string | undefined) ?? 100);
   const wanted = new Set(capped.map((e) => `${e.expiration}_${e.strike}`));
   const contracts: Contract[] = [];
+  let expiriesDone = 0;
   for (const expiry of nearestExpiries) {
+    onProgress(
+      "contracts",
+      `Looking up listed contracts for ${formatExpiryLabel(expiry)}`,
+      { done: expiriesDone, total: nearestExpiries.size },
+    );
     const listed = await ibkrService.getOptionContracts(symbol, expiry, tradingClass, multiplier, right);
     for (const c of listed) {
       if (wanted.has(`${c.lastTradeDateOrContractMonth}_${c.strike}`)) contracts.push(c);
     }
+    expiriesDone++;
   }
   if (contracts.length === 0) return { closeLeg, candidates: [] };
 
-  const quotes = await quoteHub.get(contracts as QuoteContract[], { fields: ["bid", "ask"], signal });
+  onProgress("quotes", `Quoting ${contracts.length} candidate contracts`, { done: 0, total: contracts.length });
+  const quotes = await quoteHub.get(contracts as QuoteContract[], {
+    fields: ["bid", "ask"],
+    signal,
+    onProgress: (done, total) =>
+      onProgress("quotes", `Quoting ${total} candidate contracts`, { done, total }),
+  });
   console.log(`[RollCandidates] ${symbol}: quoted ${contracts.length} listed contracts across ${nearestExpiries.size} expiries (${summarizeStatuses(quotes.values())})`);
   if (![...quotes.values()].some((q) => q.bid !== undefined && q.ask !== undefined)) {
     throw new Error(
@@ -186,6 +221,7 @@ export async function findRollCandidates(
 
   // Sort by netCreditMid descending: best credit first, debit rolls last
   candidates.sort((a, b) => b.netCreditMid - a.netCreditMid);
+  onProgress("done", `${candidates.length} candidates`, { done: contracts.length, total: contracts.length });
 
   return { closeLeg, candidates };
 }
