@@ -96,7 +96,7 @@ const tradeSelect = {
 
 // Bump this version whenever the cycle reconstruction algorithm changes
 // to automatically invalidate stale caches.
-const WHEEL_CACHE_VERSION = 11;
+const WHEEL_CACHE_VERSION = 12;
 
 const serializeSummary = (summary: WheelTickerSummary): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify({ ...summary, _cacheVersion: WHEEL_CACHE_VERSION })) as Prisma.InputJsonValue;
@@ -489,7 +489,7 @@ function buildLivePositions(
   return positions;
 }
 
-const applyLiveDataToSummary = (
+export const applyLiveDataToSummary = (
   summary: WheelTickerSummary,
   cachedData?: CachedIBKRData
 ): WheelTickerSummary => {
@@ -509,12 +509,14 @@ const applyLiveDataToSummary = (
     (p) => p.contract.secType === "STK" && p.contract.symbol === symbol && p.pos > 0
   );
 
-  // Show shares if: wheel cycle involves them, OR there's a CSP alongside stock
-  const cachedHadShares = summary.currentPhase === "holding_shares" ||
-    summary.currentPhase === "cc_open" ||
-    (summary.activePhases && summary.activePhases.includes("holding_shares"));
+  // Show shares if: the reconstructed cycle holds them, OR there's an option
+  // alongside stock. The cycle's share count comes from imported trades, so it
+  // stays truthful even when the cached phase was computed while TWS was down —
+  // reading the phase alone made an idle summary permanently sticky for a
+  // shares-only position with no open options.
+  const cycleHasShares = (summary.cycleShareQuantity ?? 0) > 0;
   const wheelSharesHeld = stockPos && stockPos.pos % 100 === 0 &&
-    (cachedHadShares || hasShortPut || hasShortCall);
+    (cycleHasShares || hasShortPut || hasShortCall);
 
   // Build active phases array
   const activePhases: ("csp_open" | "holding_shares" | "cc_open")[] = [];
@@ -1129,7 +1131,10 @@ export const wheelService = {
 
         const summary = await this.getTickerSummary(tracker.symbol, tracker.startDate, ibkrData, prefetched);
         const stats = tradeStatsBySymbol.get(tracker.symbol);
-        if (stats) {
+        // Same reason as the cache-hit branch above: without live data the
+        // summary reports no positions at all. Persisting that would serve a
+        // TWS outage as the truth until the next trade or dividend lands.
+        if (stats && ibkrHasLiveData) {
           await upsertWheelSummaryCache({
             symbol: tracker.symbol,
             startDate: tracker.startDate,
@@ -1442,6 +1447,7 @@ export const wheelService = {
       activePhases,
       hasUncoveredShares,
       shareQuantity: liveShareQuantity,
+      cycleShareQuantity: currentCycle?.shareQuantity ?? 0,
       positionAvgCost,
       sharePnL,
       sharePnLPercent,
