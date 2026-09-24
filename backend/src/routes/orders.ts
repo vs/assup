@@ -458,7 +458,8 @@ router.post(
 /**
  * POST /api/orders/roll
  * Place a roll combo order: BUY-to-close current + SELL-to-open replacement.
- * limitPrice is the net credit to receive (positive); negated for IBKR convention.
+ * limitPrice is the net credit to receive, or a negative number for a debit
+ * roll (you pay); negated either way for IBKR's combo convention.
  */
 router.post(
   "/roll",

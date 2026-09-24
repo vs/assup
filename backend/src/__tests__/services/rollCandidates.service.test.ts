@@ -28,39 +28,45 @@ function makeEntry(strike: number, expiration: string): OptionChainEntry {
 }
 
 describe("filterCandidateEntries", () => {
+  // A roll can go to any strike: rolling a short put out at the same or a higher
+  // strike pays more premium (at more risk), so the scan spans a band around the
+  // current strike in both directions rather than one "safer" direction.
   const chain: OptionChainEntry[] = [
-    makeEntry(185, "20250117"), // same strike, same expiry — excluded
-    makeEntry(190, "20250117"), // higher strike, same expiry — too soon (0 days beyond)
-    makeEntry(190, "20250221"), // higher strike, 35 days after Jan 17 — included
-    makeEntry(192, "20250221"), // higher strike, 35 days after Jan 17 — included
-    makeEntry(180, "20250221"), // lower strike — excluded (call direction)
-    makeEntry(190, "20250214"), // higher strike, 28 days after Jan 17 — below minDTEBeyond=30
+    makeEntry(185, "20250117"), // same strike, same expiry — too soon
+    makeEntry(190, "20250117"), // same expiry — too soon (0 days beyond)
+    makeEntry(185, "20250221"), // same strike, 35 days after Jan 17 — included
+    makeEntry(190, "20250221"), // higher strike — included
+    makeEntry(180, "20250221"), // lower strike — included
+    makeEntry(190, "20250214"), // 28 days after Jan 17 — below minDTEBeyond=30
   ];
 
-  it("returns only entries with higher strike and sufficient DTE beyond for calls", () => {
-    const result = filterCandidateEntries(chain, 185, "20250117", "C", 30);
-    expect(result.map((e) => `${e.strike}-${e.expiration}`)).toEqual([
+  it("includes strikes on both sides of the current one, and the same strike", () => {
+    const result = filterCandidateEntries(chain, 185, "20250117", "C", 30, 20);
+    expect(result.map((e) => `${e.strike}-${e.expiration}`).sort()).toEqual([
+      "180-20250221",
+      "185-20250221",
       "190-20250221",
-      "192-20250221",
     ]);
   });
 
-  it("returns only entries with lower strike and sufficient DTE beyond for puts", () => {
-    const putChain: OptionChainEntry[] = [
-      makeEntry(185, "20250117"), // same strike, same expiry — excluded
-      makeEntry(180, "20250221"), // lower strike, 35 days — included
-      makeEntry(175, "20250221"), // lower strike, 35 days — included
-      makeEntry(190, "20250221"), // higher strike — excluded for put direction
+  it("applies the same band to puts (a same-strike roll-out is the classic roll)", () => {
+    const result = filterCandidateEntries(chain, 185, "20250117", "P", 30, 20);
+    expect(result.map((e) => e.strike).sort((x, y) => x - y)).toEqual([180, 185, 190]);
+  });
+
+  it("limits strikes to the band around the current strike", () => {
+    const wide: OptionChainEntry[] = [
+      makeEntry(140, "20250221"), // 75.7% of 185 — outside ±20%
+      makeEntry(150, "20250221"), // 81.1% — inside
+      makeEntry(220, "20250221"), // 118.9% — inside
+      makeEntry(230, "20250221"), // 124.3% — outside
     ];
-    const result = filterCandidateEntries(putChain, 185, "20250117", "P", 30);
-    expect(result.map((e) => `${e.strike}-${e.expiration}`)).toEqual([
-      "180-20250221",
-      "175-20250221",
-    ]);
+    const result = filterCandidateEntries(wide, 185, "20250117", "P", 30, 20);
+    expect(result.map((e) => e.strike).sort((x, y) => x - y)).toEqual([150, 220]);
   });
 
   it("excludes entries with exactly boundary DTE (28 days < 30 days)", () => {
-    const result = filterCandidateEntries(chain, 185, "20250117", "C", 30);
+    const result = filterCandidateEntries(chain, 185, "20250117", "C", 30, 20);
     expect(result.find((e) => e.expiration === "20250214")).toBeUndefined();
   });
 });
