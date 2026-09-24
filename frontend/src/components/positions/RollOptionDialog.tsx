@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ordersApi } from "@/api/orders";
 import { formatCurrency, formatDisplayName, quoteMid } from "@assup/shared";
 import type { RollCandidate, RollCandidatesResponse } from "@assup/shared";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Table,
   TableBody,
@@ -32,6 +33,45 @@ function formatExpiry(yyyymmdd: string, dte?: number): string {
   );
   const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return dte !== undefined ? `${label} (${dte}d)` : label;
+}
+
+/** How the candidate table is organized: one flat list by credit, or grouped */
+type GroupBy = "credit" | "strike" | "expiration";
+
+interface CandidateGroup {
+  key: string;
+  /** null for the flat "by net credit" list */
+  label: string | null;
+  candidates: RollCandidate[];
+}
+
+/**
+ * Group candidates for display. Groups are listed in natural order (strikes
+ * ascending, expiries chronological) so the ladder reads top to bottom, while
+ * rows inside each group — and the flat list — are sorted by best credit first.
+ */
+function groupCandidates(candidates: RollCandidate[], groupBy: GroupBy): CandidateGroup[] {
+  const byCreditDesc = (a: RollCandidate, b: RollCandidate) => b.netCreditMid - a.netCreditMid;
+  if (groupBy === "credit") {
+    return [{ key: "all", label: null, candidates: [...candidates].sort(byCreditDesc) }];
+  }
+
+  const groups = new Map<string, RollCandidate[]>();
+  for (const c of candidates) {
+    const key = groupBy === "strike" ? String(c.strike) : c.expiration;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  }
+
+  return [...groups.entries()]
+    .sort((a, b) => (groupBy === "strike" ? Number(a[0]) - Number(b[0]) : a[0].localeCompare(b[0])))
+    .map(([key, rows]) => ({
+      key,
+      label: groupBy === "strike"
+        ? formatCurrency(Number(key))
+        : formatExpiry(key, rows[0].daysToExpiry),
+      candidates: [...rows].sort(byCreditDesc),
+    }));
 }
 
 /** Minimal position shape required by the Roll dialog; both Position and CurrentOptionPosition satisfy this. */
@@ -63,6 +103,7 @@ export function RollOptionDialog({
   const [minDTEBeyond, setMinDTEBeyond] = useState(30);
   const [strikeRangePercent, setStrikeRangePercent] = useState(20);
   const [minNetCredit, setMinNetCredit] = useState(0.10);
+  const [groupBy, setGroupBy] = useState<GroupBy>("credit");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<RollCandidatesResponse | null>(null);
@@ -82,6 +123,11 @@ export function RollOptionDialog({
   const liveNetCreditMid = closeMid != null && openMid != null ? openMid - closeMid : null;
   /** A roll that costs money: the replacement premium doesn't cover the buy-back */
   const isDebitRoll = limitPrice < 0;
+
+  const groups = useMemo(
+    () => (data ? groupCandidates(data.candidates, groupBy) : []),
+    [data, groupBy],
+  );
 
   // Tracks the in-flight scan request so it can be cancelled
   const abortRef = useRef<AbortController | null>(null);
@@ -151,6 +197,7 @@ export function RollOptionDialog({
       setMinDTEBeyond(30);
       setStrikeRangePercent(20);
       setMinNetCredit(0.10);
+      setGroupBy("credit");
     }
     onOpenChange(nextOpen);
   }, [cancelScan, onOpenChange]);
@@ -341,7 +388,31 @@ export function RollOptionDialog({
                 No roll candidates could be quoted. Try reducing the "days further out" value or widening the strike range.
               </div>
             ) : (
-              <div className="rounded-md border overflow-hidden">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Group by</Label>
+                    <ToggleGroup
+                      type="single"
+                      value={groupBy}
+                      onValueChange={(v) => v && setGroupBy(v as GroupBy)}
+                    >
+                      <ToggleGroupItem value="credit" className="text-xs px-3 h-7">
+                        Net credit
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="strike" className="text-xs px-3 h-7">
+                        Strike
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="expiration" className="text-xs px-3 h-7">
+                        Expiry
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {data.candidates.length} candidates
+                  </span>
+                </div>
+                <div className="rounded-md border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -353,7 +424,23 @@ export function RollOptionDialog({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.candidates.map((c) => {
+                    {groups.map((group) => (
+                      <Fragment key={group.key}>
+                        {group.label && (
+                          <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableCell colSpan={5} className="py-1.5 text-xs font-medium">
+                              {group.label}
+                              <span className="ml-2 font-normal text-muted-foreground">
+                                {group.candidates.length} {group.candidates.length === 1 ? "roll" : "rolls"} · best{" "}
+                                <span className={group.candidates[0].netCreditMid < 0 ? "text-red-600" : "text-green-600"}>
+                                  {group.candidates[0].netCreditMid < 0 ? "−" : "+"}
+                                  {formatCurrency(Math.abs(group.candidates[0].netCreditMid), { maximumFractionDigits: 2 })}
+                                </span>
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {group.candidates.map((c) => {
                       const aboveThreshold = c.netCreditMid >= minNetCredit;
                       const isDebit = c.netCreditMid < 0;
                       const isSelected = selected?.conId === c.conId;
@@ -393,10 +480,13 @@ export function RollOptionDialog({
                             {c.annualizedReturn.toFixed(1)}%
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
+                          );
+                        })}
+                      </Fragment>
+                    ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             )
           )}
