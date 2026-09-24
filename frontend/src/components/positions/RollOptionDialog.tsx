@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ordersApi } from "@/api/orders";
 import { formatCurrency, formatDisplayName, quoteMid } from "@assup/shared";
 import type { RollCandidate, RollCandidatesResponse } from "@assup/shared";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Table,
   TableBody,
@@ -32,6 +33,45 @@ function formatExpiry(yyyymmdd: string, dte?: number): string {
   );
   const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return dte !== undefined ? `${label} (${dte}d)` : label;
+}
+
+/** How the candidate table is organized: one flat list by credit, or grouped */
+type GroupBy = "credit" | "strike" | "expiration";
+
+interface CandidateGroup {
+  key: string;
+  /** null for the flat "by net credit" list */
+  label: string | null;
+  candidates: RollCandidate[];
+}
+
+/**
+ * Group candidates for display. Groups are listed in natural order (strikes
+ * ascending, expiries chronological) so the ladder reads top to bottom, while
+ * rows inside each group — and the flat list — are sorted by best credit first.
+ */
+function groupCandidates(candidates: RollCandidate[], groupBy: GroupBy): CandidateGroup[] {
+  const byCreditDesc = (a: RollCandidate, b: RollCandidate) => b.netCreditMid - a.netCreditMid;
+  if (groupBy === "credit") {
+    return [{ key: "all", label: null, candidates: [...candidates].sort(byCreditDesc) }];
+  }
+
+  const groups = new Map<string, RollCandidate[]>();
+  for (const c of candidates) {
+    const key = groupBy === "strike" ? String(c.strike) : c.expiration;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  }
+
+  return [...groups.entries()]
+    .sort((a, b) => (groupBy === "strike" ? Number(a[0]) - Number(b[0]) : a[0].localeCompare(b[0])))
+    .map(([key, rows]) => ({
+      key,
+      label: groupBy === "strike"
+        ? formatCurrency(Number(key))
+        : formatExpiry(key, rows[0].daysToExpiry),
+      candidates: [...rows].sort(byCreditDesc),
+    }));
 }
 
 /** Minimal position shape required by the Roll dialog; both Position and CurrentOptionPosition satisfy this. */
@@ -61,7 +101,9 @@ export function RollOptionDialog({
   onOrderPlaced,
 }: RollOptionDialogProps) {
   const [minDTEBeyond, setMinDTEBeyond] = useState(30);
+  const [strikeRangePercent, setStrikeRangePercent] = useState(20);
   const [minNetCredit, setMinNetCredit] = useState(0.10);
+  const [groupBy, setGroupBy] = useState<GroupBy>("credit");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<RollCandidatesResponse | null>(null);
@@ -79,6 +121,13 @@ export function RollOptionDialog({
   const openBid = openLive?.bid ?? selected?.bid ?? null;
   const openMid = quoteMid(openLive) ?? selected?.mid ?? null;
   const liveNetCreditMid = closeMid != null && openMid != null ? openMid - closeMid : null;
+  /** A roll that costs money: the replacement premium doesn't cover the buy-back */
+  const isDebitRoll = limitPrice < 0;
+
+  const groups = useMemo(
+    () => (data ? groupCandidates(data.candidates, groupBy) : []),
+    [data, groupBy],
+  );
 
   // Tracks the in-flight scan request so it can be cancelled
   const abortRef = useRef<AbortController | null>(null);
@@ -115,6 +164,7 @@ export function RollOptionDialog({
           right: position.right,
           conId: position.conId,
           minDTEBeyond,
+          strikeRangePercent,
         },
         controller.signal,
       );
@@ -129,7 +179,7 @@ export function RollOptionDialog({
         abortRef.current = null;
       }
     }
-  }, [position, minDTEBeyond, cancelScan]);
+  }, [position, minDTEBeyond, strikeRangePercent, cancelScan]);
 
   // Cancel any in-flight scan when the component unmounts
   useEffect(() => {
@@ -145,7 +195,9 @@ export function RollOptionDialog({
       setError(null);
       setSuccess(null);
       setMinDTEBeyond(30);
+      setStrikeRangePercent(20);
       setMinNetCredit(0.10);
+      setGroupBy("credit");
     }
     onOpenChange(nextOpen);
   }, [cancelScan, onOpenChange]);
@@ -259,6 +311,33 @@ export function RollOptionDialog({
             </div>
             <div className="space-y-1">
               <div className="flex items-center gap-1">
+                <Label className="text-xs">Strikes within</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-xs text-muted-foreground cursor-help underline decoration-dotted">(?)</span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-56">
+                    How far above and below the current strike to scan. Rolling out at the same or a
+                    more aggressive strike pays more premium, at more risk.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">±</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={strikeRangePercent}
+                  onChange={(e) => setStrikeRangePercent(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className="w-20 text-center"
+                  disabled={loading}
+                />
+                <span className="text-sm text-muted-foreground">% of strike</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
                 <Label className="text-xs">Green-highlight rows above</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -306,10 +385,34 @@ export function RollOptionDialog({
           {!loading && data && (
             data.candidates.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                No profitable roll candidates found. Try reducing the "days further out" value.
+                No roll candidates could be quoted. Try reducing the "days further out" value or widening the strike range.
               </div>
             ) : (
-              <div className="rounded-md border overflow-hidden">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Group by</Label>
+                    <ToggleGroup
+                      type="single"
+                      value={groupBy}
+                      onValueChange={(v) => v && setGroupBy(v as GroupBy)}
+                    >
+                      <ToggleGroupItem value="credit" className="text-xs px-3 h-7">
+                        Net credit
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="strike" className="text-xs px-3 h-7">
+                        Strike
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="expiration" className="text-xs px-3 h-7">
+                        Expiry
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {data.candidates.length} candidates
+                  </span>
+                </div>
+                <div className="rounded-md border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -321,8 +424,25 @@ export function RollOptionDialog({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.candidates.map((c) => {
+                    {groups.map((group) => (
+                      <Fragment key={group.key}>
+                        {group.label && (
+                          <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableCell colSpan={5} className="py-1.5 text-xs font-medium">
+                              {group.label}
+                              <span className="ml-2 font-normal text-muted-foreground">
+                                {group.candidates.length} {group.candidates.length === 1 ? "roll" : "rolls"} · best{" "}
+                                <span className={group.candidates[0].netCreditMid < 0 ? "text-red-600" : "text-green-600"}>
+                                  {group.candidates[0].netCreditMid < 0 ? "−" : "+"}
+                                  {formatCurrency(Math.abs(group.candidates[0].netCreditMid), { maximumFractionDigits: 2 })}
+                                </span>
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {group.candidates.map((c) => {
                       const aboveThreshold = c.netCreditMid >= minNetCredit;
+                      const isDebit = c.netCreditMid < 0;
                       const isSelected = selected?.conId === c.conId;
                       return (
                         <TableRow
@@ -332,28 +452,41 @@ export function RollOptionDialog({
                               ? "bg-primary/10 outline outline-1 outline-primary"
                               : aboveThreshold
                               ? "border-l-2 border-l-green-500 bg-green-500/5 hover:bg-green-500/10"
+                              : isDebit
+                              ? "border-l-2 border-l-red-500/60 hover:bg-muted/50"
                               : "hover:bg-muted/50"
                           }`}
                           onClick={() => handleSelectCandidate(c)}
                         >
-                          <TableCell className="font-semibold">{formatCurrency(c.strike)}</TableCell>
+                          <TableCell className="font-semibold">
+                            {formatCurrency(c.strike)}
+                            {position.strike != null && c.strike !== position.strike && (
+                              <span className="ml-1 text-[10px] text-muted-foreground">
+                                {c.strike > position.strike ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-muted-foreground">{formatExpiry(c.expiration, c.daysToExpiry)}</TableCell>
                           <TableCell className="text-right tabular-nums font-mono">
                             {formatCurrency(c.mid, { maximumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className={`text-right tabular-nums font-mono font-semibold ${
-                            c.netCreditMid >= minNetCredit ? "text-green-600" : "text-green-500"
+                            isDebit ? "text-red-600" : aboveThreshold ? "text-green-600" : "text-green-500"
                           }`}>
-                            +{formatCurrency(c.netCreditMid, { maximumFractionDigits: 2 })}
+                            {isDebit ? "−" : "+"}{formatCurrency(Math.abs(c.netCreditMid), { maximumFractionDigits: 2 })}
+                            {isDebit && <span className="ml-1 text-[10px] uppercase tracking-wide">debit</span>}
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-mono">
                             {c.annualizedReturn.toFixed(1)}%
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
+                          );
+                        })}
+                      </Fragment>
+                    ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             )
           )}
@@ -383,15 +516,16 @@ export function RollOptionDialog({
 
               <div className="flex items-end gap-4 flex-wrap">
                 <div className="space-y-1">
-                  <Label className="text-xs">Limit price (net credit/contract)</Label>
+                  <Label className="text-xs">Limit price per contract (negative = debit)</Label>
                   <div className="flex items-center gap-1">
-                    <span className="text-green-600 font-medium">+$</span>
+                    <span className={`font-medium ${isDebitRoll ? "text-red-600" : "text-green-600"}`}>
+                      {isDebitRoll ? "−$" : "+$"}
+                    </span>
                     <Input
                       type="number"
                       step={0.01}
-                      min={0.01}
                       value={limitPrice}
-                      onChange={(e) => setLimitPrice(Math.max(0.01, parseFloat(e.target.value) || 0.01))}
+                      onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
                       className="w-24 text-center"
                       disabled={placing}
                     />
@@ -406,9 +540,11 @@ export function RollOptionDialog({
                   </div>
                 )}
                 <div>
-                  <div className="text-xs text-muted-foreground mb-1">Total Credit</div>
-                  <div className="font-bold text-green-600 text-lg">
-                    {formatCurrency(limitPrice * qty * 100, { maximumFractionDigits: 2 })}
+                  <div className="text-xs text-muted-foreground mb-1">
+                    {isDebitRoll ? "Total cost to roll" : "Total Credit"}
+                  </div>
+                  <div className={`font-bold text-lg ${isDebitRoll ? "text-red-600" : "text-green-600"}`}>
+                    {formatCurrency(Math.abs(limitPrice) * qty * 100, { maximumFractionDigits: 2 })}
                   </div>
                 </div>
               </div>
@@ -425,10 +561,12 @@ export function RollOptionDialog({
                 </Button>
                 <Button
                   onClick={handlePlaceRoll}
-                  disabled={placing || limitPrice <= 0}
-                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={placing || limitPrice === 0}
+                  className={isDebitRoll
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : "bg-green-600 hover:bg-green-700 text-white"}
                 >
-                  {placing ? "Placing…" : "Place Roll Order"}
+                  {placing ? "Placing…" : isDebitRoll ? "Place Roll Order (debit)" : "Place Roll Order"}
                 </Button>
               </div>
             </div>

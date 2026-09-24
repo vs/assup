@@ -11,6 +11,8 @@ export const rollCandidatesRequestSchema = z.object({
   right: z.enum(["C", "P"]),
   conId: z.number().int().positive(),
   minDTEBeyond: z.number().int().min(0).max(365).default(30),
+  /** Strike band around the current strike, in percent (both directions) */
+  strikeRangePercent: z.number().min(1).max(100).default(20),
 });
 
 export const rollOrderRequestSchema = z.object({
@@ -21,5 +23,6 @@ export const rollOrderRequestSchema = z.object({
   openStrike: z.number().positive(),
   openRight: z.enum(["C", "P"]),
   quantity: z.number().int().positive(),
-  limitPrice: z.number().positive("Limit price (net credit) must be positive"),
+  /** Net credit per contract; negative means a debit roll (you pay to roll) */
+  limitPrice: z.number().refine((v) => v !== 0, "Limit price must not be zero"),
 });

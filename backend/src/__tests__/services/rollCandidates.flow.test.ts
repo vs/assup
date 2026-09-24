@@ -142,6 +142,18 @@ describe("findRollCandidates", () => {
     await expect(findRollCandidates(request)).rejects.toThrow(/no-market/);
   });
 
+  it("returns losing rolls too, sorted by net credit, so a debit roll can be chosen", async () => {
+    // Candidates cost 0.5 to open, the close leg costs 1.1 to buy back: a debit roll.
+    quoteAll({ status: "ok", bid: 0.45, ask: 0.55 });
+
+    const result = await findRollCandidates(request);
+
+    expect(result.candidates).toHaveLength(5);
+    expect(result.candidates[0].netCreditMid).toBeLessThan(0);
+    const credits = result.candidates.map((c) => c.netCreditMid);
+    expect([...credits].sort((a, b) => b - a)).toEqual(credits);
+  });
+
   it("fails loudly when no candidate could be quoted", async () => {
     quoteAll({ status: "no-lines", error: "100/100 market data lines are in use" });
 

@@ -1,7 +1,8 @@
 /**
  * Types for the Roll Option feature.
- * A roll is a BUY-to-close + SELL-to-open combo order moving a short option
- * to a higher strike (calls) or lower strike (puts) and further expiry.
+ * A roll is a BUY-to-close + SELL-to-open combo order moving a short option to
+ * a later expiry, at any strike within a band around the current one. Rolls
+ * that cost money (a debit) are offered too, marked by a negative net credit.
  */
 
 export interface RollCandidatesRequest {
@@ -14,6 +15,8 @@ export interface RollCandidatesRequest {
   conId: number;
   /** Candidates must expire at least this many days after the current expiry (default 30) */
   minDTEBeyond: number;
+  /** Strike band around the current strike, in percent, both directions (default 20) */
+  strikeRangePercent: number;
 }
 
 export interface RollCandidate {
@@ -27,7 +30,7 @@ export interface RollCandidate {
   mid: number;
   /** Conservative net credit: candidate.bid − close.ask */
   netCredit: number;
-  /** Mid-based net credit: candidate.mid − close.mid (used for sorting/filtering) */
+  /** Mid-based net credit: candidate.mid − close.mid (negative = debit roll) */
   netCreditMid: number;
   annualizedReturn: number;
 }
@@ -47,6 +50,7 @@ export interface RollOrderRequest {
   openStrike: number;
   openRight: "C" | "P";
   quantity: number;
-  /** Positive net credit from user's perspective; backend negates for IBKR convention */
+  /** Net credit per contract from the user's perspective; negative = debit roll.
+   *  The backend negates it for IBKR's combo convention. */
   limitPrice: number;
 }

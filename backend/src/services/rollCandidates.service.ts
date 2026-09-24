@@ -1,7 +1,10 @@
 /**
  * Roll Candidates Service
- * Finds roll opportunities for a short option position: higher strike (calls) or
- * lower strike (puts) at a further expiry, filtered to positive net credit only.
+ * Finds roll opportunities for a short option position: any strike within a band
+ * around the current one, at a later expiry. Rolling out at the same or a more
+ * aggressive strike usually pays the most premium, so both directions are
+ * scanned, and rolls that cost money (a debit) are returned too — the caller
+ * decides whether the loss is worth it.
  */
 
 import type { Contract } from "@stoqey/ib";
@@ -22,9 +25,12 @@ import type {
 
 /**
  * Filter option chain entries to valid roll candidates:
- * - For CALL: strike > currentStrike
- * - For PUT: strike < currentStrike
+ * - Strike within ±strikeRangePercent of the current strike (either direction,
+ *   including the current strike itself — rolling out at the same strike is the
+ *   classic roll and usually the best credit)
  * - Expiry at least minDTEBeyond calendar days after currentExpiration
+ *
+ * `right` doesn't restrict strikes; the caller quotes the same right it holds.
  */
 export function filterCandidateEntries(
   chain: OptionChainEntry[],
@@ -32,14 +38,15 @@ export function filterCandidateEntries(
   currentExpiration: string,
   right: "C" | "P",
   minDTEBeyond: number,
+  strikeRangePercent: number,
 ): OptionChainEntry[] {
   const currentExpiryDate = parseExpirationDate(currentExpiration);
   const minMs = minDTEBeyond * 24 * 60 * 60 * 1000;
+  const minStrike = currentStrike * (1 - strikeRangePercent / 100);
+  const maxStrike = currentStrike * (1 + strikeRangePercent / 100);
 
   return chain.filter((entry) => {
-    const strikeOk =
-      right === "C" ? entry.strike > currentStrike : entry.strike < currentStrike;
-    if (!strikeOk) return false;
+    if (entry.strike < minStrike || entry.strike > maxStrike) return false;
 
     const candidateExpiryDate = parseExpirationDate(entry.expiration);
     const diffMs = candidateExpiryDate.getTime() - currentExpiryDate.getTime();
@@ -89,7 +96,7 @@ export async function findRollCandidates(
   input: RollCandidatesRequest,
   signal?: AbortSignal,
 ): Promise<RollCandidatesResponse> {
-  const { symbol, expiration, strike, right, conId, minDTEBeyond } = input;
+  const { symbol, expiration, strike, right, conId, minDTEBeyond, strikeRangePercent } = input;
 
   // Quote the position being closed first: without its price every "net credit"
   // would really be the new leg's full premium, so there's no point scanning.
@@ -116,7 +123,7 @@ export async function findRollCandidates(
   const closeLeg: RollCandidatesResponse["closeLeg"] = { conId, bid: closeBid, ask: closeAsk, mid: (closeBid + closeAsk) / 2 };
 
   const chain = await ibkrService.getOptionChain(symbol);
-  const filtered = filterCandidateEntries(chain, strike, expiration, right, minDTEBeyond);
+  const filtered = filterCandidateEntries(chain, strike, expiration, right, minDTEBeyond, strikeRangePercent);
   if (filtered.length === 0) return { closeLeg, candidates: [] };
 
   // Limit to the nearest MAX_EXPIRATIONS expirations to keep the quote batch
@@ -159,9 +166,6 @@ export async function findRollCandidates(
 
     const { netCredit, netCreditMid } = computeNetCredits(data.bid, data.ask, closeAsk, closeBid);
 
-    // Only include positive net credit mid candidates
-    if (netCreditMid <= 0) continue;
-
     const candidateExpiration = contract.lastTradeDateOrContractMonth!;
     const candidateStrike = contract.strike!;
     const daysToExpiry = getDaysToExpiry(candidateExpiration, today);
@@ -180,7 +184,7 @@ export async function findRollCandidates(
     });
   }
 
-  // Sort by netCreditMid descending
+  // Sort by netCreditMid descending: best credit first, debit rolls last
   candidates.sort((a, b) => b.netCreditMid - a.netCreditMid);
 
   return { closeLeg, candidates };
