@@ -166,6 +166,13 @@ export interface WheelTickerSummary {
   hasUncoveredShares: boolean;
   /** Number of shares held (0 if none) */
   shareQuantity: number;
+  /**
+   * Shares the reconstructed cycle holds, derived from imported trades alone.
+   * Survives in the summary cache even when TWS is unreachable, so a live
+   * refresh can tell wheel shares from unrelated stock without relying on the
+   * previously computed phase.
+   */
+  cycleShareQuantity: number;
   /** IBKR average cost per share (actual purchase price, not premium-adjusted) */
   positionAvgCost: number | null;
   adjustedCostBasis: number; // per share
