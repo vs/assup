@@ -87,7 +87,7 @@ export function HeaderFearGauge() {
   return (
     <HoverCard openDelay={300} closeDelay={100}>
       <HoverCardTrigger asChild>
-        <div className="hidden md:flex items-center gap-3 text-sm cursor-default">
+        <div className="hidden md:flex shrink-0 items-center gap-3 text-sm cursor-default">
           <div
             className={`flex items-center gap-3 transition-all ${dimmed ? "opacity-30 grayscale" : ""}`}
           >

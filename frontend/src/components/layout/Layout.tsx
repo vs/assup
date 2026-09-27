@@ -18,7 +18,7 @@ export function Layout() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40">
         <div className="max-w-[1800px] mx-auto px-4 py-2 md:py-2.5 flex items-center justify-between w-full">
-          <div className="flex items-center gap-4 md:gap-8">
+          <div className="flex items-center gap-4 md:gap-8 min-w-0">
             <a href="/" className="shrink-0">
               <img
                 src="/assup_logo.svg"
