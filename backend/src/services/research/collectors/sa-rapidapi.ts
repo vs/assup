@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { researchHttpSignal } from "../httpDeadline.js";
 
 const RAPIDAPI_HOST = "seeking-alpha.p.rapidapi.com";
 const RAPIDAPI_BASE = `https://${RAPIDAPI_HOST}`;
@@ -70,6 +71,7 @@ async function saFetch(path: string): Promise<unknown | null> {
           "x-RapidAPI-Key": apiKey,
           "x-RapidAPI-Host": RAPIDAPI_HOST,
         },
+        signal: researchHttpSignal(),
       });
       if ((res.status === 429 || res.status === 302) && attempt < MAX_RETRIES) {
         const delay = RETRY_BASE_MS * 2 ** attempt;

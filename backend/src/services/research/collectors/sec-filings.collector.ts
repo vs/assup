@@ -1,4 +1,5 @@
 import type { Collector, CollectedData } from "./types.js";
+import { researchHttpSignal } from "../httpDeadline.js";
 
 const EDGAR_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index";
 const SEC_USER_AGENT = "AssupResearch/1.0 (research@assup.local)";
@@ -49,6 +50,7 @@ export const secFilingsCollector: Collector = {
         "User-Agent": SEC_USER_AGENT,
         Accept: "application/json",
       },
+      signal: researchHttpSignal(),
     });
 
     if (!response.ok) {

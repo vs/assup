@@ -8,6 +8,7 @@ import type {
   StockSplitEvent,
   TickerSearchResult,
 } from "./types.js";
+import { researchHttpSignal } from "../httpDeadline.js";
 
 const BASE_URL = "https://api.polygon.io";
 const MAX_RETRIES = 3;
@@ -91,7 +92,9 @@ export class PolygonProvider implements MarketDataProvider {
       url.searchParams.set(key, value);
     }
 
-    const response = await globalThis.fetch(url.toString());
+    const response = await globalThis.fetch(url.toString(), {
+      signal: researchHttpSignal(),
+    });
 
     if (response.status === 429 && attempt < MAX_RETRIES) {
       const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
