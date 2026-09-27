@@ -20,6 +20,12 @@ import { quoteHub, quoteKey, quotePrice, summarizeStatuses, type Quote, type Quo
 import { SYMBOL_CONFIG, getSymbolContractType } from "../utils/options.js";
 import { resolveUnderlyingConId } from "./underlyingConId.service.js";
 import { withTimeout } from "../utils/withTimeout.js";
+import {
+  planStrikeSubscriptions,
+  type FocusRange,
+  type OptionSide,
+  type SubscriptionGroup,
+} from "./spreadSubscriptionPlan.js";
 import type {
   IronCondorChainStrike,
   SpreadStreamInitEvent,
@@ -33,6 +39,22 @@ const SECDEF_TIMEOUT_MS = 15_000;
  *  is the longest the builder stays blank when TWS won't answer. A healthy TWS
  *  returns a full strike ladder in a few seconds. */
 const OPTION_CONID_TIMEOUT_MS = 8_000;
+
+const SIDE_TO_RIGHT: Record<OptionSide, typeof OptionType.Put | typeof OptionType.Call> = {
+  P: OptionType.Put,
+  C: OptionType.Call,
+};
+
+function toPlanSides(
+  rights: Array<typeof OptionType.Put | typeof OptionType.Call>,
+): OptionSide[] {
+  return rights.map((r) => (r === OptionType.Put ? "P" : "C"));
+}
+
+/** Drop the side tags — the client only needs the strike bounds. */
+function toBounds(ranges: FocusRange[]): Array<{ min: number; max: number }> {
+  return ranges.map((r) => ({ min: r.min, max: r.max }));
+}
 
 interface TickBufferEntry {
   strike: number;
@@ -51,7 +73,7 @@ export class SpreadStreamSession {
   private symbol: string;
   private expiration: string | undefined;
   private onlyStrikes: number[] | undefined;
-  private focusRange: { min: number; max: number } | undefined;
+  private focusRanges: FocusRange[];
   private targetPutDelta: number | undefined;
   private targetCallDelta: number | undefined;
   private targetWingWidth: number;
@@ -81,7 +103,6 @@ export class SpreadStreamSession {
 
   // Stored from initialize() for use in transitionToFocus()
   private allFilteredStrikes: number[] = [];
-  private storedOptionSymbol = "";
   private storedSelectedExpiration = "";
   private storedTradingClass = "";
   private storedMultiplier = 100;
@@ -92,7 +113,7 @@ export class SpreadStreamSession {
     symbol: string,
     expiration?: string,
     onlyStrikes?: number[],
-    focusRange?: { min: number; max: number },
+    focusRanges?: FocusRange[],
     targetPutDelta?: number,
     targetCallDelta?: number,
     targetWingWidth?: number,
@@ -104,7 +125,7 @@ export class SpreadStreamSession {
     this.symbol = symbol;
     this.expiration = expiration;
     this.onlyStrikes = onlyStrikes;
-    this.focusRange = focusRange;
+    this.focusRanges = focusRanges ?? [];
     this.targetPutDelta = targetPutDelta;
     this.targetCallDelta = targetCallDelta;
     this.targetWingWidth = targetWingWidth ?? 100;
@@ -283,7 +304,6 @@ export class SpreadStreamSession {
 
     // Store params for potential focus transition
     this.allFilteredStrikes = strikes;
-    this.storedOptionSymbol = this.symbol;
     this.storedSelectedExpiration = selectedExpiration;
     this.storedTradingClass = tradingClass;
     this.storedMultiplier = multiplier;
@@ -320,56 +340,29 @@ export class SpreadStreamSession {
     // Determine which strikes to subscribe
     const maxStrikes = Math.floor((linesGranted - 1) / subscribeSides.length);
     const sorted = [...strikesToSubscribe].sort((a, b) => a - b);
-    const subscribedStrikes = new Set<number>();
 
     // Should we use smart scout → focus?
-    // Only when: target deltas provided, no explicit strike list or focus range,
-    // and there are more strikes than we can subscribe to
+    // Only when: target deltas provided, no explicit strike list or focus
+    // ranges, and there are more strikes than we can subscribe to
     const shouldScout =
       !this.onlyStrikes &&
-      !this.focusRange &&
+      this.focusRanges.length === 0 &&
       (this.targetPutDelta != null || this.targetCallDelta != null) &&
       sorted.length > maxStrikes;
 
-    if (sorted.length <= maxStrikes) {
-      for (const s of sorted) subscribedStrikes.add(s);
-    } else if (this.focusRange) {
-      // Dense subscription within focus range, sparse outside
-      const focusStrikes = sorted.filter(
-        (s) => s >= this.focusRange!.min && s <= this.focusRange!.max,
-      );
-      const outsideStrikes = sorted.filter(
-        (s) => s < this.focusRange!.min || s > this.focusRange!.max,
-      );
-
-      // Add all focus strikes first
-      for (const s of focusStrikes) subscribedStrikes.add(s);
-
-      // Fill remaining budget with evenly sampled outside strikes
-      const remaining = maxStrikes - subscribedStrikes.size;
-      if (remaining > 0 && outsideStrikes.length > 0) {
-        const step = Math.max(1, (outsideStrikes.length - 1) / (remaining - 1));
-        for (let i = 0; i < remaining && i * step < outsideStrikes.length; i++) {
-          subscribedStrikes.add(outsideStrikes[Math.round(i * step)]);
-        }
-      }
-    } else {
-      // Uniform sparse sampling across full range
-      const step = (sorted.length - 1) / (maxStrikes - 1);
-      for (let i = 0; i < maxStrikes; i++) {
-        const idx = Math.round(i * step);
-        subscribedStrikes.add(sorted[idx]);
-      }
-    }
-
-    // Subscribe to option strikes (adds directly to this.strikeUnsubs)
-    this.subscribeOptionStrikes(
-      strikesToSubscribe.filter(s => subscribedStrikes.has(s)),
-      this.symbol,
+    // Share the granted lines out between the focus ranges (one per wing) and
+    // the rest of the ladder — see spreadSubscriptionPlan for why the budget
+    // can't simply be spent in strike order.
+    this.subscribePlan(
+      planStrikeSubscriptions({
+        strikes: sorted,
+        sides: toPlanSides(subscribeSides),
+        budget: linesGranted - 1,
+        focusRanges: this.focusRanges,
+      }),
       selectedExpiration,
       tradingClass,
       multiplier,
-      subscribeSides,
     );
 
     if (shouldScout) {
@@ -407,6 +400,61 @@ export class SpreadStreamSession {
       }
     });
     this.unsubscribers.push(unsubIbkr);
+  }
+
+  /** Subscribe every group of a plan, each on the sides that group asked for. */
+  private subscribePlan(
+    plan: SubscriptionGroup[],
+    selectedExpiration: string,
+    tradingClass: string,
+    multiplier: number,
+  ): void {
+    for (const group of plan) {
+      this.subscribeOptionStrikes(
+        group.strikes,
+        this.symbol,
+        selectedExpiration,
+        tradingClass,
+        multiplier,
+        group.sides.map((side) => SIDE_TO_RIGHT[side]),
+      );
+    }
+  }
+
+  /** Move the live subscriptions onto `plan`, releasing whatever it drops. */
+  private applyPlan(plan: SubscriptionGroup[]): void {
+    const wanted = new Set<string>();
+    for (const group of plan) {
+      for (const strike of group.strikes) {
+        for (const side of group.sides) wanted.add(`${strike}:${side}`);
+      }
+    }
+    for (const [key, unsub] of this.strikeUnsubs) {
+      if (wanted.has(key)) continue;
+      try { unsub(); } catch { /* ignore */ }
+      this.strikeUnsubs.delete(key);
+      this.scoutDeltas.delete(key);
+    }
+    this.subscribePlan(
+      plan,
+      this.storedSelectedExpiration,
+      this.storedTradingClass,
+      this.storedMultiplier,
+    );
+  }
+
+  /** Contracts the focus ranges would stream if lines were free. */
+  private focusDemand(ranges: FocusRange[], sides: OptionSide[]): number {
+    const claimed = new Set<string>();
+    for (const range of ranges) {
+      for (const side of range.sides ?? sides) {
+        for (const strike of this.allFilteredStrikes) {
+          if (strike < range.min || strike > range.max) continue;
+          claimed.add(`${strike}:${side}`);
+        }
+      }
+    }
+    return claimed.size;
   }
 
   /**
@@ -564,10 +612,10 @@ export class SpreadStreamSession {
       return;
     }
 
-    const merged = this.mergeRanges(focusRanges);
+    const merged = this.mergeRanges(toBounds(focusRanges));
 
     // Unsubscribe ALL scout option strikes
-    for (const [key, unsub] of this.strikeUnsubs) {
+    for (const [, unsub] of this.strikeUnsubs) {
       try { unsub(); } catch { /* ignore */ }
     }
     this.strikeUnsubs.clear();
@@ -577,12 +625,8 @@ export class SpreadStreamSession {
     this.scoutDeltas.clear();
 
     // Re-size to the lines now available (the scout leases just released count as free)
-    const focusStrikes = this.allFilteredStrikes.filter(s =>
-      merged.some(r => s >= r.min && s <= r.max),
-    );
-
-    const sidesCount = this.storedSides.length;
-    const needed = focusStrikes.length * sidesCount + 1; // +1 for underlying
+    const planSides = toPlanSides(this.storedSides);
+    const needed = this.focusDemand(focusRanges, planSides) + 1; // +1 for underlying
     this.linesGranted = Math.min(needed, quoteHub.availableLines("interactive"));
 
     if (this.linesGranted <= 1) {
@@ -592,29 +636,18 @@ export class SpreadStreamSession {
       return;
     }
 
-    const maxFocusStrikes = Math.floor((this.linesGranted - 1) / sidesCount);
-
-    let strikesToSub: number[];
-    if (focusStrikes.length <= maxFocusStrikes) {
-      strikesToSub = focusStrikes;
-    } else {
-      // Budget exceeded — prioritize the core range (delta strike ± wingWidth),
-      // then fill remaining with outer strikes
-      const step = (focusStrikes.length - 1) / (maxFocusStrikes - 1);
-      strikesToSub = [];
-      for (let i = 0; i < maxFocusStrikes; i++) {
-        strikesToSub.push(focusStrikes[Math.round(i * step)]);
-      }
-    }
-
-    // Subscribe to focus strikes (adds to strikeUnsubs)
-    this.subscribeOptionStrikes(
-      strikesToSub,
-      this.storedOptionSymbol,
+    // Each wing gets its own share of the budget — spending it in strike order
+    // would leave the call wing without a single line.
+    this.subscribePlan(
+      planStrikeSubscriptions({
+        strikes: this.allFilteredStrikes,
+        sides: planSides,
+        budget: this.linesGranted - 1,
+        focusRanges,
+      }),
       this.storedSelectedExpiration,
       this.storedTradingClass,
       this.storedMultiplier,
-      this.storedSides,
     );
 
     this.currentFocusRanges = merged;
@@ -632,8 +665,8 @@ export class SpreadStreamSession {
    * Compute focus ranges from current delta data.
    * Uses interpolation for narrow, accurate ranges.
    */
-  private computeFocusRanges(): Array<{ min: number; max: number }> {
-    const focusRanges: Array<{ min: number; max: number }> = [];
+  private computeFocusRanges(): FocusRange[] {
+    const focusRanges: FocusRange[] = [];
     // Padding around the core range for delta drift tolerance
     const padding = 25;
 
@@ -644,6 +677,7 @@ export class SpreadStreamSession {
         focusRanges.push({
           min: region.low - this.targetWingWidth - padding,
           max: region.high + padding,
+          sides: ["P"],
         });
       }
     }
@@ -655,6 +689,7 @@ export class SpreadStreamSession {
         focusRanges.push({
           min: region.low - padding,
           max: region.high + this.targetWingWidth + padding,
+          sides: ["C"],
         });
       }
     }
@@ -706,7 +741,7 @@ export class SpreadStreamSession {
     const newRanges = this.computeFocusRanges();
     if (newRanges.length === 0) return;
 
-    const merged = this.mergeRanges(newRanges);
+    const merged = this.mergeRanges(toBounds(newRanges));
 
     // Check if ranges have changed significantly (any boundary moved > 10 points)
     if (this.currentFocusRanges.length === merged.length) {
@@ -723,57 +758,16 @@ export class SpreadStreamSession {
       if (!changed) return;
     }
 
-    // Ranges shifted — adjust subscriptions incrementally
-    const newFocusStrikes = new Set(
-      this.allFilteredStrikes.filter(s =>
-        merged.some(r => s >= r.min && s <= r.max),
-      ),
+    // Ranges shifted — re-plan within the same budget and move the
+    // subscriptions onto the new plan.
+    this.applyPlan(
+      planStrikeSubscriptions({
+        strikes: this.allFilteredStrikes,
+        sides: toPlanSides(this.storedSides),
+        budget: this.linesGranted - 1,
+        focusRanges: newRanges,
+      }),
     );
-
-    // Determine currently subscribed strikes
-    const currentStrikes = new Set<number>();
-    for (const key of this.strikeUnsubs.keys()) {
-      currentStrikes.add(parseFloat(key.split(":")[0]));
-    }
-
-    // Unsubscribe strikes no longer in range
-    for (const [key, unsub] of this.strikeUnsubs) {
-      const strike = parseFloat(key.split(":")[0]);
-      if (!newFocusStrikes.has(strike)) {
-        try { unsub(); } catch { /* ignore */ }
-        this.strikeUnsubs.delete(key);
-        // Clear stale delta data for this strike
-        this.scoutDeltas.delete(key);
-      }
-    }
-
-    // Subscribe new strikes in range (respecting budget)
-    const sidesCount = this.storedSides.length;
-    const currentSubCount = this.strikeUnsubs.size;
-    const maxSubs = Math.floor((this.linesGranted - 1)); // -1 for underlying
-    const availableSlots = Math.max(0, maxSubs - currentSubCount);
-
-    const strikesToAdd = [...newFocusStrikes]
-      .filter(s => !currentStrikes.has(s) || this.storedSides.some(side => {
-        const rightKey = side === OptionType.Put ? "P" : "C";
-        return !this.strikeUnsubs.has(`${s}:${rightKey}`);
-      }))
-      .sort((a, b) => a - b);
-
-    // Limit to available budget
-    const maxNewStrikes = Math.floor(availableSlots / sidesCount);
-    const limitedStrikes = strikesToAdd.slice(0, maxNewStrikes);
-
-    if (limitedStrikes.length > 0) {
-      this.subscribeOptionStrikes(
-        limitedStrikes,
-        this.storedOptionSymbol,
-        this.storedSelectedExpiration,
-        this.storedTradingClass,
-        this.storedMultiplier,
-        this.storedSides,
-      );
-    }
 
     this.currentFocusRanges = merged;
 

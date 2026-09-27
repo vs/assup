@@ -92,15 +92,15 @@ export function HedgeWizardDialog({
 
   // Stream own chain data — focused on the spread's hedge zone only
   const needsOwnStream = open && !!spread && (!externalChain || externalChain.length === 0);
-  const hedgeFocusRange = useMemo(() => {
+  const hedgeFocusRanges = useMemo(() => {
     if (!spread) return undefined;
     const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
     const lo = strikes[0];
     const hi = strikes[strikes.length - 1];
     // Cover spread legs + 5 wing widths in the hedge direction
     return isPut
-      ? { min: lo - wingWidth * 5, max: hi }
-      : { min: lo, max: hi + wingWidth * 5 };
+      ? [{ min: lo - wingWidth * 5, max: hi }]
+      : [{ min: lo, max: hi + wingWidth * 5 }];
   }, [spread, isPut, wingWidth]);
 
   const streamMode = isPut ? "put-spread" : "call-spread";
@@ -108,7 +108,7 @@ export function HedgeWizardDialog({
     spread?.symbol ?? "SPX",
     spread?.expiry,
     undefined, // selectedStrikes — not needed, focusRange covers it
-    hedgeFocusRange, // dense subscription in the hedge zone
+    hedgeFocusRanges, // dense subscription in the hedge zone
     undefined, // targetPutDelta
     undefined, // targetCallDelta
     undefined, // wingWidth

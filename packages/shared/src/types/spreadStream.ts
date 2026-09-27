@@ -1,5 +1,17 @@
 import type { IronCondorChainStrike, ActiveSpread } from "./ironCondor.js";
 
+/**
+ * A strike region the spread stream should cover densely. An iron condor sends
+ * one per wing so the market data line budget is split between them instead of
+ * being spent on the lower wing alone.
+ */
+export interface SpreadFocusRange {
+  min: number;
+  max: number;
+  /** Sides to stream inside this range; defaults to the ones the mode needs. */
+  sides?: Array<"P" | "C">;
+}
+
 export interface SpreadStreamInitEvent {
   underlyingPrice: number;
   expirations: string[];

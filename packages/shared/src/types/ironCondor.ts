@@ -128,6 +128,7 @@ export interface ActiveSpread {
 }
 
 export type {
+  SpreadFocusRange,
   SpreadStreamInitEvent,
   ChainUpdateEvent,
   PositionsUpdateEvent,

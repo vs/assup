@@ -6,6 +6,7 @@ import type {
   SpreadStreamInitEvent,
   ChainUpdateEvent,
   StreamErrorEvent,
+  SpreadFocusRange,
 } from "@assup/shared";
 
 type StreamStatus = "connecting" | "connected" | "error" | "reconnecting";
@@ -27,7 +28,7 @@ export function useSpreadsStream(
   symbol: string,
   expiration?: string,
   selectedStrikes?: number[],
-  focusRange?: { min: number; max: number },
+  focusRanges?: SpreadFocusRange[],
   targetPutDelta?: number,
   targetCallDelta?: number,
   wingWidth?: number,
@@ -50,9 +51,19 @@ export function useSpreadsStream(
   const reconnectAttemptRef = useRef(0);
   // Stable client ID so the backend can destroy the previous session on reconnect
   const clientIdRef = useRef(`c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
-  // Serialize focusRange for stable dependency comparison — triggers reconnect
-  // when the user selects legs so the backend subscribes densely around them.
-  const focusRangeKey = focusRange ? `${focusRange.min}:${focusRange.max}` : "";
+  // Serialize the focus ranges for stable dependency comparison — triggers a
+  // reconnect when the user selects legs so the backend subscribes densely
+  // around them. This is also the wire format: `focus=<min>:<max>[:<sides>]`,
+  // one per region, so an iron condor's two wings each get their own share of
+  // the market data line budget.
+  const focusSpecs = useMemo(
+    () => (focusRanges ?? []).map(r =>
+      r.sides?.length ? `${r.min}:${r.max}:${r.sides.join("")}` : `${r.min}:${r.max}`,
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(focusRanges ?? [])],
+  );
+  const focusRangeKey = focusSpecs.join("|");
 
   // Throttle: accumulate chain-update events and flush at updateIntervalMs
   const pendingUpdatesRef = useRef<
@@ -82,10 +93,7 @@ export function useSpreadsStream(
     if (selectedStrikes && selectedStrikes.length > 0) {
       params.set("strikes", selectedStrikes.join(","));
     }
-    if (focusRange) {
-      params.set("focusMin", String(focusRange.min));
-      params.set("focusMax", String(focusRange.max));
-    }
+    for (const spec of focusSpecs) params.append("focus", spec);
     if (targetPutDelta != null) params.set("targetPutDelta", String(targetPutDelta));
     if (targetCallDelta != null) params.set("targetCallDelta", String(targetCallDelta));
     if (wingWidth != null) params.set("wingWidth", String(wingWidth));
@@ -188,7 +196,7 @@ export function useSpreadsStream(
     };
   // Note: wingWidth intentionally excluded — it's a hint for the backend's focus.
   // focusRangeKey triggers reconnect when user selects legs so the backend
-  // subscribes densely around the chosen strikes. focusRange is read in the
+  // subscribes densely around the chosen strikes. focusSpecs is read in the
   // closure but keyed by focusRangeKey to avoid reconnects from object identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, expiration, selectedStrikes, focusRangeKey, targetPutDelta, targetCallDelta, mode, enabled, strikeRangePct]);

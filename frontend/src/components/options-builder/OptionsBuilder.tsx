@@ -29,6 +29,7 @@ import type {
   IronCondorLeg,
   IronCondorOrderLeg,
   SpreadSelectedLegs,
+  SpreadFocusRange,
 } from "@assup/shared";
 
 // --- Props ---
@@ -153,20 +154,37 @@ export function OptionsBuilder({
   const hasCallSide = strategyMode === "iron-condor" || strategyMode === "call-spread";
   const isSpreadMode = strategyMode !== "single";
 
-  // Phase 2: once legs are selected, focus dense subscription around them
-  const focusRange = useMemo(() => {
+  // Phase 2: once legs are selected, focus dense subscription around them.
+  // One range per wing, each tagged with the side it needs — a single range
+  // spanning both wings runs past the market data line budget, and the lines
+  // then all go to the put wing, leaving the call side of the chain empty.
+  const focusRanges = useMemo(() => {
     if (!isSpreadMode) return undefined;
-    const strikes: number[] = [];
-    if (selectedLegs.buyPut) strikes.push(selectedLegs.buyPut);
-    if (selectedLegs.sellPut) strikes.push(selectedLegs.sellPut);
-    if (selectedLegs.sellCall) strikes.push(selectedLegs.sellCall);
-    if (selectedLegs.buyCall) strikes.push(selectedLegs.buyCall);
-    if (strikes.length === 0) return undefined;
-    const margin = wingWidth + 50;
-    return {
-      min: Math.min(...strikes) - margin,
-      max: Math.max(...strikes) + margin,
-    };
+    const margin = 50;
+    const ranges: SpreadFocusRange[] = [];
+
+    const putStrikes = [selectedLegs.buyPut, selectedLegs.sellPut]
+      .filter((s): s is number => s != null);
+    if (putStrikes.length > 0) {
+      // Room for a wider wing below, so widening it doesn't need a reconnect
+      ranges.push({
+        min: Math.min(...putStrikes) - wingWidth - margin,
+        max: Math.max(...putStrikes) + margin,
+        sides: ["P"],
+      });
+    }
+
+    const callStrikes = [selectedLegs.sellCall, selectedLegs.buyCall]
+      .filter((s): s is number => s != null);
+    if (callStrikes.length > 0) {
+      ranges.push({
+        min: Math.min(...callStrikes) - margin,
+        max: Math.max(...callStrikes) + wingWidth + margin,
+        sides: ["C"],
+      });
+    }
+
+    return ranges.length > 0 ? ranges : undefined;
   }, [selectedLegs, wingWidth, isSpreadMode]);
 
   // Pre-fetch expirations on mount (cached on backend)
@@ -209,7 +227,7 @@ export function OptionsBuilder({
     symbol,
     expiration,
     undefined, // no strike restriction
-    focusRange,
+    focusRanges,
     isSpreadMode && hasPutSide ? putDelta : undefined,
     isSpreadMode && hasCallSide ? callDelta : undefined,
     wingWidth,
