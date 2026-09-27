@@ -18,18 +18,33 @@ import { useActiveScanJobCount } from "@/hooks/useActiveScanJobCount";
 
 interface NavItemProps {
   to: string;
-  children: React.ReactNode;
+  label: string;
   icon: React.ComponentType<{ className?: string }>;
   onClick?: () => void;
   badge?: React.ReactNode;
+  /**
+   * Visibility classes for the text label. The desktop bar hides labels until
+   * the header is wide enough to hold logo + labelled nav + fear gauge without
+   * the nav overflowing onto the gauge; the mobile drawer always shows them.
+   */
+  labelClassName?: string;
 }
 
-function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
+function NavItem({
+  to,
+  label,
+  icon: Icon,
+  onClick,
+  badge,
+  labelClassName = "",
+}: NavItemProps) {
   return (
     <NavLink
       to={to}
       end={to === "/"}
       onClick={onClick}
+      title={label}
+      aria-label={label}
       className={({ isActive }) =>
         `relative flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
           isActive
@@ -38,12 +53,20 @@ function NavItem({ to, children, icon: Icon, onClick, badge }: NavItemProps) {
         }`
       }
     >
-      <Icon className="h-4 w-4" />
-      {children}
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className={labelClassName}>{label}</span>
       {badge}
     </NavLink>
   );
 }
+
+/**
+ * Labels only fit once the viewport can hold the logo, the full labelled nav
+ * and the fear gauge side by side (~1570px of content + padding + scrollbar).
+ * Below this the desktop bar renders icons only, so the nav can never overflow
+ * its flex parent and paint over the gauge.
+ */
+const DESKTOP_LABEL_CLASS = "hidden min-[1600px]:inline";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -76,16 +99,24 @@ export function Navigation() {
 
   return (
     <>
-      {/* Desktop Navigation */}
+      {/* Desktop Navigation — icon-only until there is room for labels */}
       <nav className="hidden lg:flex items-center gap-1">
         {navItems.map((item) => (
-          <NavItem key={item.to} to={item.to} icon={item.icon} badge={getBadge(item.to)}>
-            {item.label}
-          </NavItem>
+          <NavItem
+            key={item.to}
+            to={item.to}
+            label={item.label}
+            icon={item.icon}
+            badge={getBadge(item.to)}
+            labelClassName={DESKTOP_LABEL_CLASS}
+          />
         ))}
-        <NavItem to="/settings" icon={Settings}>
-          Settings
-        </NavItem>
+        <NavItem
+          to="/settings"
+          label="Settings"
+          icon={Settings}
+          labelClassName={DESKTOP_LABEL_CLASS}
+        />
       </nav>
 
       {/* Mobile Menu Button */}
@@ -125,20 +156,18 @@ export function Navigation() {
                 <NavItem
                   key={item.to}
                   to={item.to}
+                  label={item.label}
                   icon={item.icon}
                   onClick={closeMobileMenu}
                   badge={getBadge(item.to)}
-                >
-                  {item.label}
-                </NavItem>
+                />
               ))}
               <NavItem
                 to="/settings"
+                label="Settings"
                 icon={Settings}
                 onClick={closeMobileMenu}
-              >
-                Settings
-              </NavItem>
+              />
             </div>
           </nav>
         </div>
