@@ -1,14 +1,27 @@
 import { prisma } from "../db/index.js";
-import { PolygonProvider, type TickerDetails } from "./research/providers/polygon.provider.js";
+import {
+  PolygonProvider,
+  type RequestPriority,
+  type TickerDetails,
+} from "./research/providers/polygon.provider.js";
 import { historicalDataService } from "./historicalData.js";
 import { ivRankService, type IvRankResult } from "./ivRank.service.js";
 import type { TickerProfileResponse } from "@assup/shared";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_CONCURRENT_FETCHES = 2;
+/**
+ * Stale rows one request may revalidate in the background. A watchlist page can
+ * ask for 50 at once and each refresh costs two Polygon calls on a 5 req/min
+ * budget, so unbounded fan-out buries every other caller for 20+ minutes.
+ * Rows that miss a slot stay stale until a later request.
+ */
+const MAX_BACKGROUND_REFRESHES = 5;
 
 class TickerProfileService {
   private polygonProvider = new PolygonProvider();
+  private backgroundPolygon = new PolygonProvider({ priority: "background" });
+  private refreshing = new Set<string>();
 
   async getProfile(symbol: string): Promise<TickerProfileResponse> {
     const upperSymbol = symbol.toUpperCase();
@@ -37,9 +50,7 @@ class TickerProfileService {
 
     // Stale-while-revalidate: return stale if available, refresh in background
     if (cached && cachedChart) {
-      this.refreshProfile(upperSymbol).catch((err) =>
-        console.error(`Background refresh failed for ${upperSymbol}:`, err)
-      );
+      this.refreshProfile(upperSymbol);
       const report = await prisma.researchReport.findFirst({
         where: { symbol: upperSymbol },
         orderBy: { createdAt: "desc" },
@@ -101,9 +112,7 @@ class TickerProfileService {
           ivResults.get(upper) ?? { info: null, reason: "no_iv_data" },
         );
         if (cached.expiresAt <= now || cachedChart.expiresAt <= now) {
-          this.refreshProfile(upper).catch((err) =>
-            console.error(`Background refresh failed for ${upper}:`, err)
-          );
+          this.refreshProfile(upper);
         }
       } else {
         toFetch.push(upper);
@@ -131,8 +140,10 @@ class TickerProfileService {
 
   private async fetchAndCacheProfile(
     symbol: string,
-    ivResult?: IvRankResult
+    ivResult?: IvRankResult,
+    lane: RequestPriority = "interactive"
   ): Promise<TickerProfileResponse> {
+    const polygon = lane === "background" ? this.backgroundPolygon : this.polygonProvider;
     // 1. Check for research report (highest quality data)
     const report = await prisma.researchReport.findFirst({
       where: { symbol },
@@ -142,7 +153,7 @@ class TickerProfileService {
     // 2. Fetch from Polygon.io
     let tickerDetails: TickerDetails | null = null;
     try {
-      tickerDetails = await this.polygonProvider.getTickerDetails(symbol);
+      tickerDetails = await polygon.getTickerDetails(symbol);
     } catch (err) {
       console.warn(`Polygon ticker details failed for ${symbol}:`, err);
     }
@@ -174,7 +185,7 @@ class TickerProfileService {
     let previousClose: number | null = null;
     try {
       if (process.env.MARKET_DATA_API_KEY) {
-        currentPrice = await this.polygonProvider.getPreviousClose(symbol);
+        currentPrice = await polygon.getPreviousClose(symbol);
       }
     } catch (err) {
       console.warn(`Polygon previous close failed for ${symbol}:`, err);
@@ -276,8 +287,13 @@ class TickerProfileService {
     };
   }
 
-  private async refreshProfile(symbol: string): Promise<void> {
-    await this.fetchAndCacheProfile(symbol);
+  /** Fire-and-forget revalidation, deduped and capped (MAX_BACKGROUND_REFRESHES). */
+  private refreshProfile(symbol: string): void {
+    if (this.refreshing.has(symbol) || this.refreshing.size >= MAX_BACKGROUND_REFRESHES) return;
+    this.refreshing.add(symbol);
+    void this.fetchAndCacheProfile(symbol, undefined, "background")
+      .catch((err) => console.error(`Background refresh failed for ${symbol}:`, err))
+      .finally(() => this.refreshing.delete(symbol));
   }
 
   private chunkArray<T>(arr: T[], size: number): T[][] {

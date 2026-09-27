@@ -3,9 +3,20 @@ import { prisma } from "./db.js";
 import { getCollector, getAllCollectors } from "./collectors/registry.js";
 import { getAnalyzer } from "./analyzers/registry.js";
 import { isSkipped } from "./collectors/types.js";
+import { withTimeout } from "../../utils/withTimeout.js";
 
 // Prisma's DbNull representation for writing explicit null to JSON columns
 const DbNull = "DbNull" as unknown as Prisma.NullTypes.DbNull;
+
+/**
+ * Deadline for a single collector. Without it a collector that never settles
+ * (an upstream fetch with no timeout, or a request starved behind a rate-limit
+ * queue) leaves the whole pipeline parked on "Collecting data from all
+ * sources..." forever, with the job stuck in `running` and no error to show.
+ */
+function collectorTimeoutMs(): number {
+  return Number(process.env.RESEARCH_COLLECTOR_TIMEOUT_MS ?? 120_000);
+}
 
 class CollectionService {
   /**
@@ -43,7 +54,11 @@ class CollectionService {
     }
 
     // Collect fresh data
-    const result = await collector.collect(symbol);
+    const result = await withTimeout(
+      collector.collect(symbol),
+      `Collector "${source}" for ${symbol}`,
+      collectorTimeoutMs(),
+    );
 
     if (isSkipped(result)) {
       await prisma.dataCollection.create({

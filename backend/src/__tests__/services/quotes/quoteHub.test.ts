@@ -289,12 +289,37 @@ describe("QuoteHub line budget", () => {
     expect(t.api.calls).toHaveLength(5);
   });
 
-  it("get() returns no-lines when the batch budget is exhausted by leases", async () => {
+  it("get() waits for a line rather than failing the batch outright", async () => {
+    const t = setup({ maxLines: 12, headroom: 10 });
+    const holder = t.hub.subscribe(opt(90), vi.fn());
+    t.hub.subscribe(opt(91), vi.fn());
+
+    const p = t.hub.get([opt(1)], { fields: ["bid"] });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(t.api.active(1)).toHaveLength(0); // still waiting, not failed
+
+    holder.release(); // frees a line the batch can evict
+    await vi.advanceTimersByTimeAsync(1_000);
+    t.api.emit(1, [[1, 2.5]]);
+
+    const quotes = await p;
+    expect(quotes.get("conId:1")?.status).toBe("ok");
+  });
+
+  it("get() reports no-lines once the wait for a line runs out", async () => {
     const t = setup({ maxLines: 12, headroom: 10 });
     t.hub.subscribe(opt(90), vi.fn());
     t.hub.subscribe(opt(91), vi.fn());
 
-    const quotes = await t.hub.get([opt(1)], { fields: ["bid"] });
+    let settled = false;
+    const p = t.hub.get([opt(1)], { fields: ["bid"], lineWaitMs: 5_000 });
+    void p.then(() => (settled = true));
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(settled).toBe(false); // still hoping for a line
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const quotes = await p;
     expect(quotes.get("conId:1")?.status).toBe("no-lines");
   });
 
