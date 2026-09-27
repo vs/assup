@@ -50,6 +50,9 @@ export interface QuoteLease {
 
 export type LinePriority = "batch" | "interactive";
 
+/** How often a parked batch re-checks for a free market data line. */
+const LINE_RETRY_INTERVAL_MS = 250;
+
 const ERROR_STATUSES: ReadonlySet<QuoteStatus> = new Set([
   "no-contract",
   "not-subscribed",
@@ -131,18 +134,24 @@ export class QuoteHub {
    *
    * `onProgress(done, total)` fires as each contract settles, for callers that
    * report progress on a long batch.
+   *
+   * When every line is busy the batch waits up to `lineWaitMs` for one to free
+   * up rather than failing outright: a large chain scan holds the batch budget
+   * for tens of seconds, and a positions refresh landing in that window should
+   * queue behind it, not come back empty.
    */
   async get(
     contracts: QuoteContract[],
     opts: {
       fields: QuoteField[];
       timeoutMs?: number;
+      lineWaitMs?: number;
       signal?: AbortSignal;
       onProgress?: (done: number, total: number) => void;
     },
   ): Promise<Map<string, Quote>> {
     if (!this.deps.getApi()) throw new Error("Not connected to TWS");
-    const { fields, timeoutMs = 8000, signal, onProgress } = opts;
+    const { fields, timeoutMs = 8000, lineWaitMs = 30_000, signal, onProgress } = opts;
 
     const results = new Map<string, Quote>();
     const unique = new Map<string, QuoteContract>();
@@ -161,14 +170,21 @@ export class QuoteHub {
 
     await new Promise<void>((resolveAll) => {
       let settled = false;
+      /** Set while the batch is parked waiting for another consumer's line. */
+      let lineRetryTimer: ReturnType<typeof setTimeout> | null = null;
+      let lineWaitDeadline: number | null = null;
       const finishAll = () => {
         if (settled) return;
         settled = true;
+        if (lineRetryTimer) clearTimeout(lineRetryTimer);
+        lineRetryTimer = null;
         signal?.removeEventListener("abort", onAbort);
         resolveAll();
       };
       const abortHandlers = new Set<() => void>();
       const onAbort = () => {
+        if (lineRetryTimer) clearTimeout(lineRetryTimer);
+        lineRetryTimer = null;
         for (const contract of queue.splice(0)) {
           const key = quoteKey(contract);
           results.set(key, { key, status: "timeout", updatedAt: null, error: "Request aborted" });
@@ -196,11 +212,25 @@ export class QuoteHub {
             markSettled();
             continue;
           }
-          if (!entry.sub && !this.openLine(entry, "batch", inFlight > 0)) {
+          if (!entry.sub && !this.openLine(entry, "batch", true)) {
             if (inFlight > 0) {
               this.dropIfUnused(entry);
               return; // wait for an in-flight contract to free a line
             }
+            // Nothing of ours is running, so another consumer holds every line.
+            // Park until one frees up instead of failing the whole batch.
+            if (lineWaitDeadline === null) lineWaitDeadline = Date.now() + lineWaitMs;
+            if (Date.now() < lineWaitDeadline) {
+              this.dropIfUnused(entry);
+              if (!lineRetryTimer) {
+                lineRetryTimer = setTimeout(() => {
+                  lineRetryTimer = null;
+                  if (!settled) pump();
+                }, LINE_RETRY_INTERVAL_MS);
+              }
+              return;
+            }
+            this.markNoLines(entry, "batch");
             queue.shift();
             results.set(entry.key, copyQuote(entry.quote));
             this.dropIfUnused(entry);
@@ -208,6 +238,7 @@ export class QuoteHub {
             continue;
           }
 
+          lineWaitDeadline = null; // a line came free; any later stall gets a fresh window
           queue.shift();
           inFlight++;
           startWaiting(entry);
@@ -353,17 +384,9 @@ export class QuoteHub {
     const api = this.deps.getApi();
     if (!api) return false;
 
-    const limit = priority === "batch" ? this.maxLines - this.headroom : this.maxLines;
-    while (this.stats().activeLines >= limit) {
+    while (this.stats().activeLines >= this.limitFor(priority)) {
       if (!this.evictIdle()) {
-        if (!quiet) {
-          const { activeLines, leasedLines } = this.stats();
-          entry.quote.status = "no-lines";
-          entry.quote.error =
-            `No market data line available for ${entry.key}: ${leasedLines}/${this.maxLines} market data lines ` +
-            `are in use (${activeLines} open, ${priority} limit ${limit}). Close a live options chain and try again.`;
-          console.warn(`[QuoteHub] ${entry.quote.error}`);
-        }
+        if (!quiet) this.markNoLines(entry, priority);
         return false;
       }
     }
@@ -394,6 +417,21 @@ export class QuoteHub {
       },
     });
     return true;
+  }
+
+  private limitFor(priority: LinePriority): number {
+    return priority === "batch" ? this.maxLines - this.headroom : this.maxLines;
+  }
+
+  /** Record on the entry why no line could be opened, and say so in the log. */
+  private markNoLines(entry: Entry, priority: LinePriority): void {
+    const { activeLines, leasedLines } = this.stats();
+    entry.quote.status = "no-lines";
+    entry.quote.error =
+      `No market data line available for ${entry.key}: ${leasedLines}/${this.maxLines} market data lines ` +
+      `are in use (${activeLines} open, ${priority} limit ${this.limitFor(priority)}). ` +
+      `Close a live options chain and try again.`;
+    console.warn(`[QuoteHub] ${entry.quote.error}`);
   }
 
   private evictIdle(): boolean {
