@@ -156,7 +156,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
   // focusRangeKey and trigger SSE reconnects.
   // (placement: layout position 2 — plain consts that hooks below depend on)
   const isPut = spread?.type === "put-spread";
-  const focusRange = useMemo(() => {
+  const focusRanges = useMemo(() => {
     if (!spread) return undefined;
     const strikes = spread.legs.map(l => l.strike).sort((a, b) => a - b);
     const lo = strikes[0];
@@ -181,10 +181,10 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     }
 
     const q = 5;
-    return {
+    return [{
       min: Math.floor(baseMin / q) * q,
       max: Math.ceil(baseMax / q) * q,
-    };
+    }];
     // Key on spread?.id (not the object identity) so polling-refreshed parent
     // state doesn't churn the focus range and reconnect the stream every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -196,7 +196,7 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
     spread?.symbol ?? "",
     targetExpiration ?? undefined,
     undefined,         // selectedStrikes
-    focusRange,
+    focusRanges,
     undefined,         // targetPutDelta
     undefined,         // targetCallDelta
     undefined,         // wingWidth
