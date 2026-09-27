@@ -42,21 +42,75 @@ export interface PolygonFinancials {
   fiscalYear: string | null;
 }
 
+/**
+ * Which lane a request waits in. The free tier allows 5 requests/minute for the
+ * whole process, so a single FIFO lets background work — a watchlist page
+ * firing a profile refresh per stale row — push 20+ minutes of queue in front
+ * of whatever a user or a report pipeline is actually waiting for. Interactive
+ * requests jump that backlog; background requests fill the gaps.
+ */
+export type RequestPriority = "interactive" | "background";
+
+interface QueuedRequest {
+  run(): Promise<void>;
+}
+
 // Shared rate limiter across all PolygonProvider instances
 let lastRequestTime = 0;
-let requestQueue: Promise<void> = Promise.resolve();
+const lanes: Record<RequestPriority, QueuedRequest[]> = { interactive: [], background: [] };
+let draining = false;
+
+function enqueueRequest<T>(priority: RequestPriority, task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    lanes[priority].push({
+      run: async () => {
+        try {
+          resolve(await task());
+        } catch (err) {
+          reject(err);
+        }
+      },
+    });
+    void drainRequests();
+  });
+}
+
+async function drainRequests(): Promise<void> {
+  if (draining) return;
+  draining = true;
+  try {
+    for (
+      let next = lanes.interactive.shift() ?? lanes.background.shift();
+      next !== undefined;
+      next = lanes.interactive.shift() ?? lanes.background.shift()
+    ) {
+      await next.run();
+    }
+  } finally {
+    draining = false;
+  }
+}
+
+/** Queue depth per lane, for observability. */
+export function polygonQueueDepth(): Record<RequestPriority, number> {
+  return { interactive: lanes.interactive.length, background: lanes.background.length };
+}
 
 /** Reset rate limiter state — for tests only */
 export function _resetRateLimiter(): void {
   lastRequestTime = 0;
-  requestQueue = Promise.resolve();
+  lanes.interactive.length = 0;
+  lanes.background.length = 0;
+  draining = false;
 }
 
 export class PolygonProvider implements MarketDataProvider {
   name = "polygon";
   private apiKey: string;
+  private priority: RequestPriority;
 
-  constructor() {
+  constructor(opts: { priority?: RequestPriority } = {}) {
+    this.priority = opts.priority ?? "interactive";
     this.apiKey = process.env.MARKET_DATA_API_KEY || "";
     if (!this.apiKey) {
       console.warn("MARKET_DATA_API_KEY not set — Polygon provider will fail");
@@ -64,17 +118,7 @@ export class PolygonProvider implements MarketDataProvider {
   }
 
   private async rateLimitedFetch<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-    // Chain onto the queue so requests are serialized
-    return new Promise<T>((resolve, reject) => {
-      requestQueue = requestQueue.then(async () => {
-        try {
-          const result = await this.fetchWithRetry<T>(path, params);
-          resolve(result);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
+    return enqueueRequest(this.priority, () => this.fetchWithRetry<T>(path, params));
   }
 
   private async fetchWithRetry<T>(path: string, params: Record<string, string>, attempt = 0): Promise<T> {

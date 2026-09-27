@@ -12,7 +12,9 @@ import {
 } from "@assup/shared";
 
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const polygon = new PolygonProvider();
+// Scheduled 6-hourly sync: nobody is waiting on it, so it queues behind
+// anything a user or a report pipeline asked for.
+const polygon = new PolygonProvider({ priority: "background" });
 
 /** Uppercase, trim, drop blanks, de-duplicate — preserving first-seen order. */
 function normalizeSymbols(symbols: string[]): string[] {
