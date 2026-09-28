@@ -66,7 +66,7 @@ export function GexChart({ strikes, spot, levels }: GexChartProps) {
                 width={55}
               />
               <Tooltip content={<GexTooltip />} />
-              <ReferenceLine x={spot} stroke="hsl(var(--foreground))" strokeDasharray="3 3" strokeWidth={1.5} label={{ value: `Spot ${spot}`, position: "top", fontSize: 10 }} />
+              <ReferenceLine x={spot} stroke="var(--foreground)" strokeDasharray="3 3" strokeWidth={1.5} label={{ value: `Spot ${spot}`, position: "top", fontSize: 10 }} />
               {levels.gexFlip != null && (
                 <ReferenceLine x={levels.gexFlip} stroke="#eab308" strokeDasharray="5 5" strokeWidth={1} label={{ value: "GEX Flip", position: "top", fontSize: 9, fill: "#eab308" }} />
               )}

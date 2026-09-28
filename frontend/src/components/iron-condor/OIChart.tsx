@@ -64,7 +64,7 @@ export function OIChart({ strikes, spot }: OIChartProps) {
               />
               <Tooltip content={<OITooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <ReferenceLine x={spot} stroke="hsl(var(--foreground))" strokeDasharray="3 3" strokeWidth={1.5} />
+              <ReferenceLine x={spot} stroke="var(--foreground)" strokeDasharray="3 3" strokeWidth={1.5} />
               <Bar dataKey="putOI" name="Put OI" fill="#ef4444" fillOpacity={0.7} isAnimationActive={false} radius={[2, 2, 0, 0]} />
               <Bar dataKey="callOI" name="Call OI" fill="#3b82f6" fillOpacity={0.7} isAnimationActive={false} radius={[2, 2, 0, 0]} />
             </BarChart>

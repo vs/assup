@@ -167,7 +167,7 @@ export function NlvChart() {
             <Line
               type="linear"
               dataKey="netLiquidation"
-              stroke="hsl(var(--primary))"
+              stroke="var(--primary)"
               strokeWidth={2}
               dot={false}
             />
