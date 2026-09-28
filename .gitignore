@@ -6,7 +6,7 @@ frontend/package-lock.json
 desktop/package-lock.json
 
 # Screenshots
-screenshots/
+/screenshots/
 
 # Build outputs
 dist/

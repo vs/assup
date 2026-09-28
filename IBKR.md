@@ -7,7 +7,7 @@ Before using Assup, configure TWS:
 1. **Enable API Access**
    - Edit → Global Configuration → API → Settings
    - Enable "ActiveX and Socket Clients"
-   - Port: `7496`
+   - Port: `7496` for live trading, `7497` for paper trading (set `IB_PORT` to match)
    - Disable "Read-Only API" if trading is required
 
 2. **Add Trusted IPs**
@@ -142,10 +142,18 @@ In your FLEX query, enable the **Equity Summary in Base** section. Required fiel
 2. Download the file
 
 **Import into Assup:**
-1. Go to **Profit** page
-2. Click **Import**
+1. Go to **Settings → Imports**
+2. Click **Import File**
 3. Select your downloaded file
 4. Review parsed data and confirm
+
+**Automatic import (FLEX Web Service):**
+1. In Account Management, open **Flex Queries → Flex Web Service Configuration** and generate a token
+2. In Assup, go to **Settings → Imports → Auto-Import (FLEX Web Service)**
+3. Enter the token and your query's **Query ID**, then choose a schedule
+4. Set `SCHEDULER_ENABLED=true` in the backend environment so scheduled imports run
+
+Deduplication means re-importing overlapping periods is safe.
 
 The same imported data is used by both Profit and Taxes pages.
 
@@ -184,7 +192,7 @@ The same imported data is used by both Profit and Taxes pages.
 ### Troubleshooting
 
 **"Missing buy" errors in Taxes page:**
-1. **Ticker changed:** The stock may have changed symbols (e.g., ZOK → QZEU). Ensure both the old and new ticker trades are imported. The system uses conId to match trades across ticker changes.
+1. **Ticker changed:** The stock may have changed symbols (e.g., FB → META). Ensure both the old and new ticker trades are imported. The system uses conId to match trades across ticker changes.
 2. **Stock split not imported:** If you bought 10 shares but sold 100, import corporate actions to record the split.
 3. **Buy predates your FLEX reports:** Download FLEX reports going back to when you first bought the position.
 

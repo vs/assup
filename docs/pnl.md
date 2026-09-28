@@ -339,7 +339,7 @@ Handled in lot tracing:
 
 - Informational entry in lot trace
 - No quantity adjustment needed
-- Uses `conId` for matching when symbol changes (e.g., ZOK → QZEU)
+- Uses `conId` for matching when symbol changes (e.g., FB → META)
 
 ### Dividend Taxation
 
