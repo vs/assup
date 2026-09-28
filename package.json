@@ -2,6 +2,7 @@
   "name": "assup",
   "private": true,
   "version": "1.0.0",
+  "license": "Apache-2.0",
   "description": "Asset allocation portfolio manager - Monorepo",
   "workspaces": [
     "packages/*",

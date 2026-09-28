@@ -1,6 +1,7 @@
 {
   "name": "assup-backend",
   "version": "1.0.0",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Asset allocation portfolio manager - Backend",
   "main": "dist/index.js",
