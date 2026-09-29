@@ -1,0 +1,5 @@
+#!/bin/sh
+# Leak guard (commit-msg): keeps secrets, personal and portfolio data out of this public repo.
+# See scripts/guard/scan.mjs. Installed via: git config core.hooksPath .githooks (npm install does it).
+command -v node >/dev/null 2>&1 || { echo "leak-guard: node not found — refusing to commit-msg without the scan" >&2; exit 1; }
+exec node "$(git rev-parse --show-toplevel)/scripts/guard/scan.mjs" --commit-msg "$1"

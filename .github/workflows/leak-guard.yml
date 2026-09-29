@@ -1,0 +1,37 @@
+name: Leak guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests for the guard
+        run: node --test scripts/guard/*.test.mjs
+
+      - name: Scan new commits
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            BASE=$(git rev-list --max-parents=0 "$HEAD" | tail -1)
+          fi
+          node scripts/guard/scan.mjs --range "$BASE..$HEAD"
+
+      - name: Scan the whole tree
+        run: node scripts/guard/scan.mjs --tree

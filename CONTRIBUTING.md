@@ -51,6 +51,28 @@ npm run build --workspace=frontend
 4. Use [Conventional Commits](https://www.conventionalcommits.org) style messages, e.g. `fix(spreads): …`, `feat(wheel): …`.
 5. For UI changes, include a screenshot. Use fictional data only: [`scripts/screenshots`](scripts/screenshots) renders the app with a demo portfolio.
 
+## Leak guard
+
+This app runs against real brokerage accounts, so the repository is guarded against accidentally committing secrets or personal financial data. `npm install` enables the git hooks in [`.githooks/`](.githooks) (`core.hooksPath`), and the same checks run in CI on every pull request.
+
+| Hook | Checks |
+|---|---|
+| pre-commit | staged changes |
+| commit-msg | the commit message |
+| pre-push | every outgoing commit; refuses force-pushes to `main` |
+
+The scanner ([`scripts/guard/scan.mjs`](scripts/guard/scan.mjs)) blocks:
+
+- API keys, tokens and private keys
+- values copied from your local `.env` files
+- database URLs with real passwords
+- IBKR account numbers, personal e-mail addresses and home-directory paths
+- `.env` files, broker/FLEX exports, data files outside test fixtures, and images outside the documentation folders
+
+**Private denylist.** Run `npm run guard:refresh` once, and again after importing new trades. It reads your local database and writes the symbols you trade, the names of those companies, and your account ids to `~/.config/assup-guard/denylist.txt`. That file lives outside the repository, and the hooks block any of its entries. Use fictional tickers in tests and docs.
+
+**False positive?** Add a `guard:allow` comment on that line, or commit with `ASSUP_GUARD_ALLOW="<exact match>"`. `npm run guard:scan` checks the whole tree, and `npm run guard:test` runs the guard's own tests.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).

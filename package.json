@@ -16,7 +16,11 @@
     "build:shared": "npm run build --workspace=@assup/shared",
     "dev:backend": "npm run dev --workspace=assup-backend",
     "dev:frontend": "npm run dev --workspace=frontend",
-    "postinstall": "npm run build:shared"
+    "postinstall": "npm run build:shared",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "guard:scan": "node scripts/guard/scan.mjs --tree",
+    "guard:refresh": "node scripts/guard/refresh-denylist.mjs",
+    "guard:test": "node --test scripts/guard/*.test.mjs"
   },
   "optionalDependencies": {
     "@tailwindcss/oxide": "^4.1.17",

@@ -61,3 +61,18 @@ tmp/
 
 # Seeking Alpha browser session
 backend/.sa-session/
+
+# Leak guard: secrets and broker exports never belong in this public repo
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+*.kdbx
+exports/
+U[0-9][0-9][0-9][0-9][0-9][0-9][0-9]*.csv
+U[0-9][0-9][0-9][0-9][0-9][0-9][0-9]*.xml
+*[Ff]lex*[Rr]eport*.xml
+*[Ff]lex*[Rr]eport*.csv
+*[Aa]ctivity[Ss]tatement*
