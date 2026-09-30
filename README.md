@@ -154,6 +154,7 @@ All settings are environment variables (see [`.env.example`](.env.example)). Onl
 | `IB_CLIENT_ID` | TWS API client id | `1` |
 | `IB_MARKET_DATA_LINES` | Market-data line budget shared by streams | `100` |
 | `PORT` | Backend HTTP port | `3000` |
+| `BIND_ADDRESS` | Interface the backend listens on. The API has no auth and can place orders, so keep it on loopback unless you add your own protection | `127.0.0.1` |
 | `FRONTEND_URL` | Allowed CORS origin | `http://localhost:8080` |
 | `MARKET_DATA_API_KEY` | [Polygon.io](https://polygon.io) key for profiles and research | — |
 | `POLYGON_RATE_LIMIT_RPM` | Polygon request budget per minute | `5` (free tier) |

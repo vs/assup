@@ -43,7 +43,10 @@ import { jobService } from "./services/research/job.service.js";
 
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+// Loopback by default: the API is unauthenticated and can place orders.
+// Docker sets 0.0.0.0 and restricts exposure via the port mapping instead.
+const BIND_ADDRESS = process.env.BIND_ADDRESS || "127.0.0.1";
 
 // Configure CORS with allowed origins for security
 // In production, set FRONTEND_URL environment variable to the actual frontend URL
@@ -229,8 +232,8 @@ app.use(errorHandler);
 initCollectors();
 initAnalyzers();
 
-const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const server = app.listen(PORT, BIND_ADDRESS, () => {
+  console.log(`Server running on ${BIND_ADDRESS}:${PORT}`);
   scanJobService.init();
   jobService.failStaleJobs().catch(console.error);
   macroBroadcastService.start();
