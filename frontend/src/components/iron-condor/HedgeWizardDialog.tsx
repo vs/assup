@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -120,8 +120,11 @@ export function HedgeWizardDialog({
   const underlyingPrice = needsOwnStream ? streamResult.underlyingPrice : (externalUnderlyingPrice ?? 0);
 
   // Reset state when dialog opens with a new spread
-  useEffect(() => {
-    if (open && spread) {
+  const resetKey = open && spread ? spread.id : null;
+  const [prevResetKey, setPrevResetKey] = useState<string | null>(null);
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
+    if (spread && resetKey !== null) {
       const strat = initialStrategy ?? "butterfly";
       setStrategy(strat);
       setStep(initialStrategy ? 2 : 1);
@@ -137,7 +140,7 @@ export function HedgeWizardDialog({
         setSelectedStrike(defaultStrike);
       }
     }
-  }, [open, spread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   // --- Derive quotes from chain data ---
   const quotes = useMemo(() => buildQuotesFromChain(chain), [chain]);
@@ -172,16 +175,14 @@ export function HedgeWizardDialog({
   }, [chain, isPut, longLegStrike, strategy, spread]);
 
   // Snap selectedStrike to nearest available if not in list
-  useEffect(() => {
-    if (availableStrikes.length === 0) return;
-    if (availableStrikes.includes(selectedStrike)) return;
+  if (availableStrikes.length > 0 && !availableStrikes.includes(selectedStrike)) {
     const nearest = availableStrikes.reduce((prev, curr) =>
       Math.abs(curr - selectedStrike) < Math.abs(prev - selectedStrike)
         ? curr
         : prev,
     );
     setSelectedStrike(nearest);
-  }, [availableStrikes, selectedStrike]);
+  }
 
   // --- Hedge mid price computation ---
   const hedgeMidPrice = useMemo(() => {
@@ -215,11 +216,9 @@ export function HedgeWizardDialog({
   }, [spread, strategy, quotes, right]);
 
   // Auto-set limitPrice to hedgeMidPrice when first available (step 2, limitPrice still 0)
-  useEffect(() => {
-    if (step === 2 && limitPrice === 0 && hedgeMidPrice > 0) {
-      setLimitPrice(hedgeMidPrice);
-    }
-  }, [step, limitPrice, hedgeMidPrice]);
+  if (step === 2 && limitPrice === 0 && hedgeMidPrice > 0) {
+    setLimitPrice(hedgeMidPrice);
+  }
 
   // --- Payoff analysis ---
   // Standard credit-spread payoff at expiry, using the ENTRY CREDIT as the

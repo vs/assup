@@ -8,6 +8,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
+import type { TooltipContentProps } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GexStrikeData } from "@assup/shared";
 
@@ -22,7 +23,7 @@ function formatOI(value: number): string {
   return String(value);
 }
 
-function OITooltip({ active, payload }: any) {
+function OITooltip({ active, payload }: Partial<TooltipContentProps<number, string>>) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload as GexStrikeData;
   return (

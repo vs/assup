@@ -151,10 +151,16 @@ export function TickerActivityLog({ symbol }: { symbol: string }) {
   const [data, setData] = useState<TickerActivity | null>(null);
   const [showAll, setShowAll] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Clear the previous symbol's activity while the new one loads
+  const [prevSymbol, setPrevSymbol] = useState(symbol);
+  if (symbol !== prevSymbol) {
+    setPrevSymbol(symbol);
     setData(null);
     setShowAll(false);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
     api.profit
       .tickerActivity(symbol)
       .then((result) => {
