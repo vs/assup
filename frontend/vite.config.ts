@@ -12,7 +12,9 @@ export default defineConfig({
     },
   },
   server: {
-    host: '0.0.0.0',
+    // Loopback only: /api is proxied to the unauthenticated backend. Inside
+    // Docker it must listen on all interfaces; the port mapping keeps it local.
+    host: process.env.DOCKER ? '0.0.0.0' : '127.0.0.1',
     port: 5173,
     watch: {
       usePolling: true, // Required for Docker volume mounts
