@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-assup_dev}
       POSTGRES_DB: assup
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - assup-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -26,8 +26,9 @@ services:
     image: assup-backend
     container_name: assup-backend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
+      - BIND_ADDRESS=0.0.0.0
       - IB_HOST=host.docker.internal
       - IB_PORT=7496
       - DATABASE_URL=postgresql://assup:${DB_PASSWORD:-assup_dev}@postgres:5432/assup
@@ -60,7 +61,7 @@ services:
     image: assup-frontend
     container_name: assup-frontend
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       backend:
         condition: service_healthy

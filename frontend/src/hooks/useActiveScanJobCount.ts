@@ -17,13 +17,13 @@ interface ScanJobEvent {
 export function useActiveScanJobCount(): number {
   const [count, setCount] = useState(0);
 
-  const loadCount = useCallback(async () => {
-    try {
-      const jobs = await api.scanner.jobs.list();
-      setCount(jobs.filter((j) => j.status === "running").length);
-    } catch {
-      // Silently ignore - badge is non-critical
-    }
+  const loadCount = useCallback(() => {
+    api.scanner.jobs
+      .list()
+      .then((jobs) => setCount(jobs.filter((j) => j.status === "running").length))
+      .catch(() => {
+        // Silently ignore - badge is non-critical
+      });
   }, []);
 
   useEffect(() => {

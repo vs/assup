@@ -72,7 +72,7 @@ const ChainRow = memo(function ChainRow({
   const label = getLegLabel(entry.strike, selectedLegs);
   const style = getLegStyle(entry.strike, selectedLegs);
 
-  const prevValues = useRef({
+  const [prevValues, setPrevValues] = useState({
     putBid: entry.put?.bid,
     putAsk: entry.put?.ask,
     callBid: entry.call?.bid,
@@ -81,26 +81,27 @@ const ChainRow = memo(function ChainRow({
 
   const [flashCells, setFlashCells] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    const flashes: Record<string, boolean> = {};
-    if (prevValues.current.putBid !== entry.put?.bid) flashes.putBid = true;
-    if (prevValues.current.putAsk !== entry.put?.ask) flashes.putAsk = true;
-    if (prevValues.current.callBid !== entry.call?.bid) flashes.callBid = true;
-    if (prevValues.current.callAsk !== entry.call?.ask) flashes.callAsk = true;
-
-    prevValues.current = {
+  // Flash cells whose quote changed since the last render
+  const flashes: Record<string, boolean> = {};
+  if (prevValues.putBid !== entry.put?.bid) flashes.putBid = true;
+  if (prevValues.putAsk !== entry.put?.ask) flashes.putAsk = true;
+  if (prevValues.callBid !== entry.call?.bid) flashes.callBid = true;
+  if (prevValues.callAsk !== entry.call?.ask) flashes.callAsk = true;
+  if (Object.keys(flashes).length > 0) {
+    setPrevValues({
       putBid: entry.put?.bid,
       putAsk: entry.put?.ask,
       callBid: entry.call?.bid,
       callAsk: entry.call?.ask,
-    };
+    });
+    setFlashCells(flashes);
+  }
 
-    if (Object.keys(flashes).length > 0) {
-      setFlashCells(flashes);
-      const timer = setTimeout(() => setFlashCells({}), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [entry.put?.bid, entry.put?.ask, entry.call?.bid, entry.call?.ask]);
+  useEffect(() => {
+    if (Object.keys(flashCells).length === 0) return;
+    const timer = setTimeout(() => setFlashCells({}), 300);
+    return () => clearTimeout(timer);
+  }, [flashCells]);
 
   const putActive = mode === "put-spread" || mode === "iron-condor";
   const callActive = mode === "call-spread" || mode === "iron-condor";

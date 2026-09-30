@@ -8,6 +8,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
+import type { TooltipContentProps } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GexStrikeData, GexKeyLevels } from "@assup/shared";
 
@@ -25,7 +26,7 @@ function formatGEX(value: number): string {
   return value.toFixed(0);
 }
 
-function GexTooltip({ active, payload }: any) {
+function GexTooltip({ active, payload }: Partial<TooltipContentProps<number, string>>) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload as GexStrikeData;
   return (

@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import type { TooltipContentProps } from "recharts";
 import type { ChartDataPoint, DashboardSummary } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,7 @@ interface PnlChartProps {
   periodIncludesCurrentMonth?: boolean;
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: Partial<TooltipContentProps<number, string>>) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload as ChartDataPoint;
   return (

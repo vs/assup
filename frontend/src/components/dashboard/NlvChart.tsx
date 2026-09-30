@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   ReferenceDot,
 } from "recharts";
+import type { TooltipContentProps } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import type { FundFlowPoint } from "@assup/shared";
 import { formatCurrency } from "@assup/shared";
@@ -31,7 +32,7 @@ interface ChartDataPoint {
   fundFlows: FundFlowPoint[];
 }
 
-function NlvTooltip({ active, payload }: any) {
+function NlvTooltip({ active, payload }: Partial<TooltipContentProps<number, string>>) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload as ChartDataPoint;
   return (

@@ -4,7 +4,7 @@
  * Designed for lightweight lookups in hover cards, etc.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api";
 import type { Position, WheelTickerSummary } from "@assup/shared";
 
@@ -46,8 +46,6 @@ function ensureFresh() {
 
 export function usePositionLookup(symbol: string | null): PositionLookup {
   const [, setTick] = useState(0);
-  const symRef = useRef(symbol);
-  symRef.current = symbol;
 
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 

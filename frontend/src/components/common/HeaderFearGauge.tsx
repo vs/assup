@@ -42,27 +42,31 @@ function computeAccountSnapshot(
   };
 }
 
+async function fetchAccountSnapshot(): Promise<AccountSnapshot> {
+  const [summaryData, spreadSettings] = await Promise.all([
+    api.positions.summary({ includeOptions: true, optionsWeightMode: "notional" }),
+    settingsApi.get<{ symbols: string[] }>("spreads").catch(() => ({ key: "spreads", value: { symbols: DEFAULT_SPREAD_SYMBOLS } })),
+  ]);
+  const spreadSymbols = new Set(
+    spreadSettings.value?.symbols?.length > 0
+      ? spreadSettings.value.symbols
+      : DEFAULT_SPREAD_SYMBOLS,
+  );
+  return computeAccountSnapshot(summaryData, spreadSymbols);
+}
+
 export function HeaderFearGauge() {
   const { macro } = useMacro();
   const { status, sseError } = useConnectionStatus();
   const isConnected = status.connected;
   const [accountSnapshot, setAccountSnapshot] = useState<AccountSnapshot | null>(null);
 
-  const loadAccount = useCallback(async () => {
-    try {
-      const [summaryData, spreadSettings] = await Promise.all([
-        api.positions.summary({ includeOptions: true, optionsWeightMode: "notional" }),
-        settingsApi.get<{ symbols: string[] }>("spreads").catch(() => ({ key: "spreads", value: { symbols: DEFAULT_SPREAD_SYMBOLS } })),
-      ]);
-      const spreadSymbols = new Set(
-        spreadSettings.value?.symbols?.length > 0
-          ? spreadSettings.value.symbols
-          : DEFAULT_SPREAD_SYMBOLS,
-      );
-      setAccountSnapshot(computeAccountSnapshot(summaryData, spreadSymbols));
-    } catch {
-      // silent — panel just won't show account data
-    }
+  const loadAccount = useCallback(() => {
+    fetchAccountSnapshot()
+      .then(setAccountSnapshot)
+      .catch(() => {
+        // silent — panel just won't show account data
+      });
   }, []);
 
   useEffect(() => {

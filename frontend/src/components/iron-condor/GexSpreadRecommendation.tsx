@@ -146,7 +146,7 @@ function getMid(chain: IronCondorChainStrike[], strike: number, type: "PUT" | "C
   return option?.mid ?? 0;
 }
 
-export function recommendGexStrikes(params: {
+function recommendGexStrikes(params: {
   chain: IronCondorChainStrike[];
   gexLevels: GexKeyLevels;
   spot: number;
