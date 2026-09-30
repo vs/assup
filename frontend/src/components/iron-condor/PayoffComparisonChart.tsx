@@ -129,14 +129,6 @@ export function PayoffComparisonChart({
 
   const handleMouseLeave = useCallback(() => setCursor(null), []);
 
-  if (beforeCurve.length === 0 || afterCurve.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-        Loading payoff data...
-      </div>
-    );
-  }
-
   const spotX = priceToX(underlyingPrice);
 
   // Filter strike labels that overlap with each other or the underlying price label.
@@ -155,6 +147,14 @@ export function PayoffComparisonChart({
     }
     return result;
   }, [strikes, priceToX, spotX]);
+
+  if (beforeCurve.length === 0 || afterCurve.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+        Loading payoff data...
+      </div>
+    );
+  }
 
   const cursorBeforeY = cursor ? pnlToY(cursor.beforePnl) : 0;
   const cursorAfterY = cursor ? pnlToY(cursor.afterPnl) : 0;
