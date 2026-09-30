@@ -60,6 +60,10 @@ jobs:
         working-directory: frontend
         run: npx tsc -b
 
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
       - name: Backend tests
         working-directory: backend
         run: npm run test:run
