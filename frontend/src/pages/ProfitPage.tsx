@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { api } from "@/api";
 import type {
@@ -96,8 +97,23 @@ const MONTH_NAMES = [
   "December",
 ];
 
+const PROFIT_TABS = ["positions", "current", "next", "history"] as const;
+type ProfitTab = (typeof PROFIT_TABS)[number];
+const DEFAULT_TAB: ProfitTab = "positions";
+
+function isProfitTab(value: string | null): value is ProfitTab {
+  return PROFIT_TABS.includes(value as ProfitTab);
+}
+
 export function ProfitPage() {
   const currentYear = new Date().getFullYear();
+  // The active tab (?tab=) and year (?year=) live in the URL so that browser
+  // back/forward walks through previously viewed tabs and years.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab: ProfitTab = isProfitTab(tabParam) ? tabParam : DEFAULT_TAB;
+  const yearParam = Number(searchParams.get("year"));
+  const selectedYear = Number.isInteger(yearParam) && yearParam > 0 ? yearParam : currentYear;
   const [monthlyData, setMonthlyData] = useState<MonthlyProfitResponse | null>(null);
   const [currentMonth, setCurrentMonth] = useState<MonthProfitView | null>(null);
   const [nextMonth, setNextMonth] = useState<MonthProfitView | null>(null);
@@ -105,7 +121,6 @@ export function ProfitPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
   const [allPositions, setAllPositions] = useState<AllPositionsView | null>(null);
   const [closePosition, setClosePosition] = useState<import("@assup/shared").CurrentOptionPosition | null>(null);
@@ -156,9 +171,36 @@ export function ProfitPage() {
     loadData(selectedYear);
   }, [loadData, selectedYear]);
 
-  const handleYearChange = useCallback((year: number) => {
-    setSelectedYear(year);
-  }, []);
+  // Push a history entry for each change; default values are dropped from the
+  // URL so the plain /profit link stays canonical. Radix Tabs reports a click
+  // twice (mousedown, then focus) before re-rendering, so compare against the
+  // live URL rather than render state to avoid pushing a duplicate entry.
+  const updateParam = useCallback(
+    (key: "tab" | "year", value: string, defaultValue: string) => {
+      const current = new URLSearchParams(window.location.search);
+      if ((current.get(key) ?? defaultValue) === value) return;
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === defaultValue) {
+          next.delete(key);
+        } else {
+          next.set(key, value);
+        }
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
+
+  const handleYearChange = useCallback(
+    (year: number) => updateParam("year", year.toString(), currentYear.toString()),
+    [updateParam, currentYear]
+  );
+
+  const handleTabChange = useCallback(
+    (tab: string) => updateParam("tab", tab, DEFAULT_TAB),
+    [updateParam]
+  );
 
   const toggleMonth = (key: string) => {
     setExpandedMonths((prev) => {
@@ -249,7 +291,7 @@ export function ProfitPage() {
         </div>
       )}
 
-      <Tabs defaultValue="positions" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList>
           <TabsTrigger value="positions">Open Positions</TabsTrigger>
           <TabsTrigger value="current">Current Month</TabsTrigger>
