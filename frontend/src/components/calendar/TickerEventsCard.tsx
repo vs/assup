@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { calendarApi } from "@/api/calendar";
 import { getEventColor, getEventCategory } from "./calendarUtils";
+import { SessionMarker } from "./SessionMarker";
+import { EVENT_SESSION_LABEL, getEventSession } from "@assup/shared";
 import type { CalendarEvent, CalendarEventCategory } from "@assup/shared";
 
 const CATEGORY_LABELS: Record<CalendarEventCategory, string> = {
@@ -50,7 +52,10 @@ function TickerEventRow({ event }: { event: CalendarEvent }) {
   const color = getEventColor(event.eventType);
   const category = getEventCategory(event.eventType);
   const date = new Date(event.date + "T12:00:00");
-  const subtitle = buildSubtitle(event);
+  const session = getEventSession(event);
+  const subtitle = [session && EVENT_SESSION_LABEL[session], buildSubtitle(event)]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="flex items-center gap-3 py-2 border-b last:border-0">
@@ -65,7 +70,12 @@ function TickerEventRow({ event }: { event: CalendarEvent }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs font-medium truncate">{event.title}</div>
-        {subtitle && <div className="text-[11px] text-muted-foreground">{subtitle}</div>}
+        {subtitle && (
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <SessionMarker event={event} />
+            <span className="truncate min-w-0">{subtitle}</span>
+          </div>
+        )}
       </div>
       <div
         className="text-[10px] font-medium px-2 py-0.5 rounded-full border"

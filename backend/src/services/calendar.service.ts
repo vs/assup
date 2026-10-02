@@ -277,12 +277,10 @@ export class CalendarService {
     const earnings = await fetchFinnhubEarnings(symbol, fmt(fromDate), fmt(toDate));
     for (const e of earnings) {
       if (!e.date) continue;
-      const hourLabel =
-        e.hour === "bmo" ? "Before Open" :
-        e.hour === "amc" ? "After Close" :
-        e.hour === "dmh" ? "During Market" : null;
       const quarter = `Q${e.quarter} ${e.year}`;
-      const title = `${symbol} ${quarter} Earnings${hourLabel ? ` (${hourLabel})` : ""}`;
+      // Before/after-market timing lives in details.hour and is rendered by
+      // the UI, where a title suffix would be truncated away.
+      const title = `${symbol} ${quarter} Earnings`;
       const details = {
         estimateEps: e.epsEstimate,
         actualEps: e.epsActual,

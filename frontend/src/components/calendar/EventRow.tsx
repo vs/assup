@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
+import { EVENT_SESSION_LABEL, getEventSession } from "@assup/shared";
 import type { CalendarEvent } from "@assup/shared";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { getEventColor } from "./calendarUtils";
+import { SessionMarker } from "./SessionMarker";
 
 interface EventRowProps {
   event: CalendarEvent;
@@ -9,7 +11,10 @@ interface EventRowProps {
 
 export function EventRow({ event }: EventRowProps) {
   const color = getEventColor(event.eventType);
-  const subtitle = buildSubtitle(event);
+  const session = getEventSession(event);
+  const subtitle = [session && EVENT_SESSION_LABEL[session], buildSubtitle(event)]
+    .filter(Boolean)
+    .join(" · ");
 
   // Extract the symbol prefix from the title so we can make just that part interactive
   const symbol = event.symbol;
@@ -51,7 +56,10 @@ export function EventRow({ event }: EventRowProps) {
           )}
         </div>
         {subtitle && (
-          <div className="text-xs text-muted-foreground">{subtitle}</div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <SessionMarker event={event} />
+            <span className="truncate min-w-0">{subtitle}</span>
+          </div>
         )}
       </div>
     </div>
