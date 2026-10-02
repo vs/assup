@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { CalendarEvent } from "@assup/shared";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { getEventColor } from "./calendarUtils";
+import { SessionMarker } from "./SessionMarker";
 
 interface EventBadgeProps {
   event: CalendarEvent;
@@ -12,7 +13,7 @@ export function EventBadge({ event }: EventBadgeProps) {
 
   return (
     <div
-      className={`text-[10px] px-1.5 py-px rounded truncate border mt-0.5 ${
+      className={`flex items-center gap-1 text-[10px] px-1.5 py-px rounded border mt-0.5 ${
         event.marketWide ? "opacity-70" : ""
       }`}
       style={{
@@ -23,14 +24,16 @@ export function EventBadge({ event }: EventBadgeProps) {
         borderColor: `${color}30`,
       }}
     >
+      {/* Ahead of the title so truncation can never hide it. */}
+      <SessionMarker event={event} className="w-2.5 h-2.5" />
       {event.symbol ? (
         <TickerHoverCard symbol={event.symbol}>
-          <Link to={`/tickers/${event.symbol}`} className="hover:underline">
+          <Link to={`/tickers/${event.symbol}`} className="truncate min-w-0 hover:underline">
             {event.title}
           </Link>
         </TickerHoverCard>
       ) : (
-        event.title
+        <span className="truncate min-w-0">{event.title}</span>
       )}
     </div>
   );

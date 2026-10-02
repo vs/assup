@@ -157,7 +157,10 @@ describe("CalendarService.syncMarketWideEarnings", () => {
       sourceId: "earnings:AAPL:2026-10-30",
     });
     expect(call.create.eventType).toBe("EARNINGS");
-    expect(call.create.title).toBe("AAPL Q4 2026 Earnings (After Close)");
+    // The session is rendered from details.hour, so the title stays clean.
+    expect(call.create.title).toBe("AAPL Q4 2026 Earnings");
+    expect(call.update.title).toBe("AAPL Q4 2026 Earnings");
+    expect(call.create.details.hour).toBe("amc");
   });
 
   it("does nothing when Finnhub is not configured", async () => {

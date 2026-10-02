@@ -37,6 +37,48 @@ export interface CalendarEvent {
   marketWide?: boolean;
 }
 
+/** Where an event falls relative to the regular US trading session. */
+export type CalendarEventSession = "before_open" | "during_market" | "after_close";
+
+export const EVENT_SESSION_LABEL: Record<CalendarEventSession, string> = {
+  before_open: "Before open",
+  during_market: "During market",
+  after_close: "After close",
+};
+
+/** Finnhub's earnings `hour` codes. */
+const EARNINGS_HOUR_SESSION: Record<string, CalendarEventSession> = {
+  bmo: "before_open",
+  dmh: "during_market",
+  amc: "after_close",
+};
+
+/**
+ * Macro releases keep a fixed time of day: CPI, the jobs report and GDP come
+ * out at 8:30 ET, the FOMC decision at 2:00 pm ET. Fed speeches have no fixed
+ * slot, so they stay unmarked.
+ */
+const MACRO_SESSION: Partial<Record<CalendarEventType, CalendarEventSession>> = {
+  CPI: "before_open",
+  JOBS_REPORT: "before_open",
+  GDP: "before_open",
+  FOMC: "during_market",
+};
+
+/**
+ * The session an event is scheduled in, or null when it has none or the
+ * source has not confirmed it — an unconfirmed earnings hour is never guessed.
+ */
+export function getEventSession(
+  event: Pick<CalendarEvent, "eventType" | "details">
+): CalendarEventSession | null {
+  if (event.eventType === "EARNINGS") {
+    const hour = event.details?.hour;
+    return typeof hour === "string" ? (EARNINGS_HOUR_SESSION[hour] ?? null) : null;
+  }
+  return MACRO_SESSION[event.eventType] ?? null;
+}
+
 export type WeekStartDay = "monday" | "sunday";
 
 export interface CalendarSettings {
