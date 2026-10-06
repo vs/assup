@@ -275,9 +275,13 @@ export class CalendarService {
     const fmt = (d: Date) => d.toISOString().split("T")[0];
 
     const earnings = await fetchFinnhubEarnings(symbol, fmt(fromDate), fmt(toDate));
+    const currentSourceIds = new Set<string>();
+    const currentQuarters = new Set<string>();
     for (const e of earnings) {
       if (!e.date) continue;
       const quarter = `Q${e.quarter} ${e.year}`;
+      currentSourceIds.add(`earnings:${symbol}:${e.date}`);
+      currentQuarters.add(quarter);
       // Before/after-market timing lives in details.hour and is rendered by
       // the UI, where a title suffix would be truncated away.
       const title = `${symbol} ${quarter} Earnings`;
@@ -303,6 +307,43 @@ export class CalendarService {
         update: { title, details },
       });
     }
+    await this.removeSupersededEarnings(symbol, currentSourceIds, currentQuarters);
+  }
+
+  /**
+   * Delete rows left behind when Finnhub moves an announcement date.
+   *
+   * Rows are keyed by symbol and date, so a moved date upserts a second row
+   * for the same quarter. Only quarters present in this response are touched:
+   * an empty response, or a quarter outside the fetch window, deletes nothing.
+   */
+  private async removeSupersededEarnings(
+    symbol: string,
+    currentSourceIds: Set<string>,
+    currentQuarters: Set<string>
+  ): Promise<void> {
+    if (currentQuarters.size === 0) return;
+
+    const stored = await prisma.calendarEvent.findMany({
+      where: { source: "finnhub", eventType: "EARNINGS", symbol },
+      select: { id: true, sourceId: true, details: true },
+    });
+    const superseded = stored.filter((row) => {
+      const quarter = (row.details as Record<string, unknown> | null)?.quarter;
+      return (
+        typeof quarter === "string" &&
+        currentQuarters.has(quarter) &&
+        !(row.sourceId !== null && currentSourceIds.has(row.sourceId))
+      );
+    });
+    if (superseded.length === 0) return;
+
+    await prisma.calendarEvent.deleteMany({
+      where: { id: { in: superseded.map((row) => row.id) } },
+    });
+    console.log(
+      `[CalendarSync] Removed ${superseded.length} superseded earnings date(s) for ${symbol}`
+    );
   }
 
   /**

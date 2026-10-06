@@ -117,6 +117,7 @@ describe("CalendarService.syncMarketWideEarnings", () => {
     vi.mocked(isFinnhubConfigured).mockResolvedValue(true);
     vi.mocked(prisma.setting.upsert).mockResolvedValue({} as any);
     vi.mocked(prisma.calendarEvent.upsert).mockResolvedValue({} as any);
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([]);
     vi.mocked(prisma.calendarSyncStatus.upsert).mockResolvedValue({} as any);
     vi.mocked(prisma.calendarSyncStatus.findUnique).mockResolvedValue(null);
     vi.mocked(fetchFinnhubEarnings).mockResolvedValue([]);
@@ -183,6 +184,77 @@ describe("CalendarService.syncMarketWideEarnings", () => {
     await calendarService.syncMarketWideEarnings();
 
     expect(fetchFinnhubEarnings).not.toHaveBeenCalled();
+  });
+});
+
+/** Build a Finnhub earnings entry for AAPL. */
+function finnhubEarnings(date: string, quarter: number, year: number) {
+  return {
+    date,
+    epsActual: null,
+    epsEstimate: 2.35,
+    hour: "amc" as const,
+    quarter,
+    revenueActual: null,
+    revenueEstimate: 1e11,
+    symbol: "AAPL",
+    year,
+  };
+}
+
+describe("CalendarService earnings date changes", () => {
+  /** Rows already stored for AAPL: Q4 under two dates, plus the previous quarter. */
+  const storedRows = [
+    { id: "q4-old", sourceId: "earnings:AAPL:2026-10-28", details: { quarter: "Q4 2026" } },
+    { id: "q4-new", sourceId: "earnings:AAPL:2026-10-29", details: { quarter: "Q4 2026" } },
+    { id: "q3", sourceId: "earnings:AAPL:2026-07-30", details: { quarter: "Q3 2026" } },
+  ];
+
+  beforeEach(() => {
+    vi.mocked(isFinnhubConfigured).mockResolvedValue(true);
+    vi.mocked(prisma.calendarEvent.upsert).mockResolvedValue({} as any);
+    vi.mocked(prisma.calendarEvent.deleteMany).mockResolvedValue({ count: 0 } as any);
+    vi.mocked(prisma.calendarSyncStatus.upsert).mockResolvedValue({} as any);
+    vi.mocked(prisma.calendarSyncStatus.findUnique).mockResolvedValue(null);
+    vi.mocked(ibkrService.getPositions).mockResolvedValue([] as any);
+    stubSettings({ "calendar.marketWideSymbols": ["AAPL"] });
+  });
+
+  it("removes the row left under a quarter's previous announcement date", async () => {
+    vi.mocked(fetchFinnhubEarnings).mockResolvedValue([finnhubEarnings("2026-10-29", 4, 2026)]);
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue(storedRows as any);
+
+    await calendarService.syncMarketWideEarnings();
+
+    // Only this symbol's Finnhub earnings are candidates for removal.
+    expect(vi.mocked(prisma.calendarEvent.findMany).mock.calls[0][0]?.where).toEqual({
+      source: "finnhub",
+      eventType: "EARNINGS",
+      symbol: "AAPL",
+    });
+    // The current date and the quarter Finnhub did not return both survive.
+    expect(prisma.calendarEvent.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.calendarEvent.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["q4-old"] } },
+    });
+  });
+
+  it("deletes nothing when the announcement date is unchanged", async () => {
+    vi.mocked(fetchFinnhubEarnings).mockResolvedValue([finnhubEarnings("2026-10-29", 4, 2026)]);
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue([storedRows[1], storedRows[2]] as any);
+
+    await calendarService.syncMarketWideEarnings();
+
+    expect(prisma.calendarEvent.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("deletes nothing when Finnhub returns no earnings", async () => {
+    vi.mocked(fetchFinnhubEarnings).mockResolvedValue([]);
+    vi.mocked(prisma.calendarEvent.findMany).mockResolvedValue(storedRows as any);
+
+    await calendarService.syncMarketWideEarnings();
+
+    expect(prisma.calendarEvent.deleteMany).not.toHaveBeenCalled();
   });
 });
 
