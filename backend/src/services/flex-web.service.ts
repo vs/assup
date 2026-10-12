@@ -3,7 +3,7 @@ import { prisma } from "../db/index.js";
 import { importService } from "./import.service.js";
 import type { FlexFetchResult, FlexScheduleConfig } from "@assup/shared";
 
-const FLEX_BASE = "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService";
+const FLEX_BASE = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 
 const DEFAULT_SCHEDULE: FlexScheduleConfig = {
   days: [2, 3, 4, 5, 6], // Tue-Sat
@@ -131,10 +131,33 @@ export class FlexWebService {
     }
   }
 
+  /**
+   * Node's fetch reports every network-level failure as a bare "fetch failed"
+   * and keeps the real reason (ENOTFOUND, ECONNREFUSED, ...) on err.cause.
+   * Surface it, naming only the host — the URL carries the FLEX token.
+   */
+  private async fetchText(url: string): Promise<string> {
+    try {
+      const response = await fetch(url);
+      return await response.text();
+    } catch (err) {
+      const host = new URL(url).host;
+      const cause = err instanceof Error && err.cause != null ? err.cause : err;
+      const code = (cause as { code?: unknown }).code;
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      const detail =
+        typeof code === "string" && !reason.includes(code) ? `${code}: ${reason}` : reason;
+      const hint =
+        code === "ENOTFOUND" || code === "EAI_AGAIN"
+          ? `DNS lookup for ${host} failed. Check that this machine's DNS server can resolve it (e.g. "nslookup ${host}") or switch to a public resolver such as 1.1.1.1.`
+          : `Check the network connection and that ${host} is reachable from the backend.`;
+      throw new Error(`Could not reach IBKR FLEX Web Service at ${host} (${detail}). ${hint}`);
+    }
+  }
+
   private async requestReport(token: string, queryId: string): Promise<string> {
-    const url = `${FLEX_BASE}.SendRequest?t=${token}&q=${queryId}&v=3`;
-    const response = await fetch(url);
-    const text = await response.text();
+    const url = `${FLEX_BASE}/SendRequest?t=${token}&q=${queryId}&v=3`;
+    const text = await this.fetchText(url);
     const parsed = this.parser.parse(text);
 
     const root = parsed.FlexStatementResponse || parsed;
@@ -154,9 +177,8 @@ export class FlexWebService {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, delay));
 
-      const url = `${FLEX_BASE}.GetStatement?t=${token}&q=${referenceCode}&v=3`;
-      const response = await fetch(url);
-      const text = await response.text();
+      const url = `${FLEX_BASE}/GetStatement?t=${token}&q=${referenceCode}&v=3`;
+      const text = await this.fetchText(url);
 
       // If the response is a proper FLEX report (XML or CSV), return it.
       if (
