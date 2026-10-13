@@ -122,6 +122,10 @@ export interface ScannerResult {
   subcategory?: string;
 }
 
+// A rejected PnL request is retried with a fresh request id: 5s, doubling to 60s
+const PNL_RETRY_INITIAL_MS = 5_000;
+const PNL_RETRY_MAX_MS = 60_000;
+
 class IBKRService {
   private api: IBApiNext | null = null;
   private connectionStatus: ConnectionStatus = {
@@ -140,6 +144,8 @@ class IBKRService {
   private accountSummary: Map<string, AccountSummaryTagValues> = new Map();
   private accountSubscription: Subscription | null = null;
   private pnlSubscription: Subscription | null = null;
+  private pnlRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private pnlRetryDelayMs = PNL_RETRY_INITIAL_MS;
   private dailyPnlData: { dailyPnL: number; unrealizedPnL: number; realizedPnL: number } = {
     dailyPnL: 0, unrealizedPnL: 0, realizedPnL: 0,
   };
@@ -313,6 +319,7 @@ class IBKRService {
   private subscribeToPnL() {
     if (!this.api) return;
 
+    this.clearPnLRetry();
     if (this.pnlSubscription) {
       this.pnlSubscription.unsubscribe();
     }
@@ -332,6 +339,7 @@ class IBKRService {
 
     this.pnlSubscription = this.api.getPnL(account).subscribe({
       next: (pnl) => {
+        this.pnlRetryDelayMs = PNL_RETRY_INITIAL_MS;
         this.dailyPnlData = {
           dailyPnL: pnl.dailyPnL ?? 0,
           unrealizedPnL: pnl.unrealizedPnL ?? 0,
@@ -339,9 +347,24 @@ class IBKRService {
         };
       },
       error: (err) => {
-        console.error("PnL subscription error:", err);
+        // An errored subscription never emits again, so without a retry the
+        // daily PnL would stay frozen until the next TWS reconnect.
+        const delayMs = this.pnlRetryDelayMs;
+        console.error(`PnL subscription error, retrying in ${delayMs / 1000}s:`, err);
+        this.pnlRetryDelayMs = Math.min(delayMs * 2, PNL_RETRY_MAX_MS);
+        this.pnlRetryTimer = setTimeout(() => {
+          this.pnlRetryTimer = null;
+          if (this.api?.isConnected) this.subscribeToPnL();
+        }, delayMs);
       },
     });
+  }
+
+  private clearPnLRetry() {
+    if (this.pnlRetryTimer) {
+      clearTimeout(this.pnlRetryTimer);
+      this.pnlRetryTimer = null;
+    }
   }
 
   getDailyPnL(): { dailyPnL: number; unrealizedPnL: number; realizedPnL: number } {
@@ -360,6 +383,8 @@ class IBKRService {
     // Clear account data
     this.accountSummary.clear();
     this.dailyPnlData = { dailyPnL: 0, unrealizedPnL: 0, realizedPnL: 0 };
+    this.clearPnLRetry();
+    this.pnlRetryDelayMs = PNL_RETRY_INITIAL_MS;
     if (this.pnlSubscription) {
       this.pnlSubscription.unsubscribe();
       this.pnlSubscription = null;
@@ -461,6 +486,7 @@ class IBKRService {
       this.accountSubscription.unsubscribe();
       this.accountSubscription = null;
     }
+    this.clearPnLRetry();
     if (this.connectionSubscription) {
       this.connectionSubscription.unsubscribe();
       this.connectionSubscription = null;
