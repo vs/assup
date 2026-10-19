@@ -8,25 +8,6 @@ const MAX_TOTAL_COMMENTS = 200; // cap total comments to keep Claude prompt reas
 const LOOKBACK_DAYS = 90;
 const CONCURRENCY = 3; // limit parallel API calls to avoid 429s
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  fn: (item: T) => Promise<R>,
-  concurrency: number,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let idx = 0;
-
-  async function worker() {
-    while (idx < items.length) {
-      const i = idx++;
-      results[i] = await fn(items[i]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
-  return results;
-}
-
 export const saCommentsCollector: Collector = {
   source: "sa_comments",
   defaultSchedule: "0 18 * * 1-5",
@@ -44,31 +25,63 @@ export const saCommentsCollector: Collector = {
       console.warn(`[sa_comments] Failed to fetch articles for ${symbol}:`, (err as Error).message);
     }
 
-    const articles = await mapWithConcurrency(
-      articlesRaw,
-      async (article) => {
-        let comments: Array<{ id: string; content: string; createdAt: string; likes: number }> = [];
-        try {
-          const raw = await fetchSAComments(article.id);
-          comments = raw.slice(0, MAX_COMMENTS_PER_ARTICLE).map((d) => ({
-            id: d.id,
-            content: stripHtml(d.attributes.content ?? ""),
-            createdAt: d.attributes.createdOn,
-            likes: d.attributes.likesCount,
-          }));
-        } catch {
-          // skip comments for this article
-        }
+    type Article = {
+      id: string;
+      title: string;
+      publishedAt: string;
+      comments: Array<{ id: string; content: string; createdAt: string; likes: number }>;
+    };
+    const fetchArticle = async (article: (typeof articlesRaw)[number]): Promise<Article> => {
+      let comments: Article["comments"] = [];
+      try {
+        const raw = await fetchSAComments(article.id);
+        comments = raw.slice(0, MAX_COMMENTS_PER_ARTICLE).map((d) => ({
+          id: d.id,
+          content: stripHtml(d.attributes.content ?? ""),
+          createdAt: d.attributes.createdOn,
+          likes: d.attributes.likesCount,
+        }));
+      } catch {
+        // skip comments for this article
+      }
+      return {
+        id: article.id,
+        title: article.attributes.title,
+        publishedAt: article.attributes.publishOn,
+        comments,
+      };
+    };
 
-        return {
-          id: article.id,
-          title: article.attributes.title,
-          publishedAt: article.attributes.publishOn,
-          comments,
-        };
-      },
-      CONCURRENCY,
-    );
+    // Fetch comments in article order with a small worker pool, and stop once
+    // the articles so far hold MAX_TOTAL_COMMENTS: the cap below keeps
+    // comments in article order, so later articles would contribute nothing.
+    // In-flight articles count at their listed commentCount; if the real
+    // counts fall short, the outer loop resumes where it stopped. Articles
+    // never fetched are still listed, with no comments, exactly as before.
+    const fetched: Article[] = [];
+    const capped = (n: number) => Math.min(n, MAX_COMMENTS_PER_ARTICLE);
+    let completedComments = 0;
+    let inFlightEstimate = 0;
+    let next = 0;
+    const worker = async () => {
+      while (next < articlesRaw.length && completedComments + inFlightEstimate < MAX_TOTAL_COMMENTS) {
+        const i = next++;
+        const estimate = capped(articlesRaw[i].attributes.commentCount ?? 0);
+        inFlightEstimate += estimate;
+        fetched[i] = await fetchArticle(articlesRaw[i]);
+        inFlightEstimate -= estimate;
+        completedComments += capped(fetched[i].comments.length);
+      }
+    };
+    while (next < articlesRaw.length && completedComments < MAX_TOTAL_COMMENTS) {
+      await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    }
+    const articles: Article[] = articlesRaw.map((article, i) => fetched[i] ?? {
+      id: article.id,
+      title: article.attributes.title,
+      publishedAt: article.attributes.publishOn,
+      comments: [],
+    });
 
     // Cap total comments to keep Claude prompt size reasonable.
     // Prioritize articles with more likes (higher engagement = better signal).
