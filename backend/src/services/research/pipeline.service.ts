@@ -3,6 +3,7 @@ import { collectionService } from "./collection.service.js";
 import { jobService } from "./job.service.js";
 import { synthesize, type SynthesizerMode } from "./synthesizer/synthesizer.js";
 import { macroService } from "./macro.service.js";
+import { ReportProgress } from "./reportProgress.js";
 
 class PipelineService {
   /**
@@ -31,33 +32,34 @@ class PipelineService {
     options: { force?: boolean; model?: "claude-sonnet-4-6" | "claude-opus-4-6"; mode?: SynthesizerMode }
   ): Promise<void> {
     const pipelineStart = Date.now();
+    const progress = new ReportProgress(
+      [...collectionService.tickerSources(), "macro"],
+      (text, detail) => jobService.updateProgress(jobId, text, detail)
+    );
     try {
       await jobService.start(jobId);
+      await progress.begin();
 
-      // Step 1: Collect and analyze
-      await jobService.updateProgress(jobId, "Collecting data from all sources...");
+      // Step 1: Collect and analyze every source, refreshing macro context alongside
       console.log(`[Pipeline] ${symbol}: collecting data from all sources...`);
       const collectStart = Date.now();
-      const analysisIds = await collectionService.collectAndAnalyzeAll(
-        symbol,
-        { force: options.force }
-      );
+      const [analysisIds] = await Promise.all([
+        collectionService.collectAndAnalyzeAll(symbol, {
+          force: options.force,
+          onProgress: (event) => progress.source(event),
+        }),
+        this.refreshMacro(symbol, progress),
+      ]);
       console.log(`[Pipeline] ${symbol}: collection complete in ${((Date.now() - collectStart) / 1000).toFixed(1)}s — ${analysisIds.length} analyses produced`);
-
-      // Step 1.5: Ensure fresh macro context
-      await jobService.updateProgress(jobId, "Updating macro context...");
-      await macroService.collectAndAnalyze().catch((err) => {
-        console.warn(`[Pipeline] ${symbol}: macro collection failed (non-fatal): ${(err as Error).message}`);
-      });
 
       if (analysisIds.length === 0) {
         console.error(`[Pipeline] ${symbol}: no analysis results — aborting synthesis`);
+        await progress.flush();
         await jobService.fail(jobId, "No analysis results produced — all collectors may have failed");
         return;
       }
 
       // Step 2: Fetch analysis results for synthesizer
-      await jobService.updateProgress(jobId, "Synthesizing report with AI...");
       const analyses = await prisma.analysis.findMany({
         where: { id: { in: analysisIds } },
       });
@@ -90,13 +92,15 @@ class PipelineService {
           : undefined,
       };
 
+      await progress.synthesizing();
       const result = await synthesize(synthInput, {
         model: options.model,
         mode: options.mode,
+        onPartialText: (text) => progress.partialText(text),
       });
 
       // Step 5: Store report
-      await jobService.updateProgress(jobId, "Storing report...");
+      await progress.storing();
       const report = await prisma.researchReport.create({
         data: {
           symbol,
@@ -120,11 +124,37 @@ class PipelineService {
     } catch (err) {
       const totalElapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
       console.error(`[Pipeline] ${symbol}: failed after ${totalElapsed}s:`, (err as Error).message);
+      // Let queued progress land first so it cannot overwrite the failed state
+      progress.dispose();
+      await progress.flush();
       try {
         await jobService.fail(jobId, (err as Error).message);
       } catch (failErr) {
         console.error(`[Pipeline] Failed to record job failure for ${jobId}:`, failErr);
       }
+    } finally {
+      progress.dispose();
+    }
+  }
+
+  /** Refresh macro context (non-fatal: the report notes when it is missing). */
+  private async refreshMacro(symbol: string, progress: ReportProgress): Promise<void> {
+    const started = Date.now();
+    progress.source({ source: "macro", status: "collecting" });
+    try {
+      const snapshot = await macroService.collectAndAnalyze();
+      progress.source({
+        source: "macro",
+        status: "done",
+        cached: snapshot.analyzedAt.getTime() < started,
+        signal: snapshot.regime,
+        confidence: snapshot.confidence,
+        detail: null,
+      });
+    } catch (err) {
+      const message = (err as Error).message;
+      console.warn(`[Pipeline] ${symbol}: macro collection failed (non-fatal): ${message}`);
+      progress.source({ source: "macro", status: "failed", detail: message });
     }
   }
 }

@@ -4,6 +4,15 @@ import { getCollector, getAllCollectors } from "./collectors/registry.js";
 import { getAnalyzer } from "./analyzers/registry.js";
 import { isSkipped } from "./collectors/types.js";
 import { withTimeout } from "../../utils/withTimeout.js";
+import type { ResearchSourceProgress } from "@assup/shared";
+
+/** One step of a source's progress through collectAndAnalyzeAll. */
+export type SourceProgressEvent = Omit<ResearchSourceProgress, "startedAt" | "finishedAt">;
+
+type CollectOutcome =
+  | { kind: "cached" }
+  | { kind: "collected" }
+  | { kind: "skipped"; reason: string };
 
 // Prisma's DbNull representation for writing explicit null to JSON columns
 const DbNull = "DbNull" as unknown as Prisma.NullTypes.DbNull;
@@ -25,6 +34,11 @@ class CollectionService {
    * Returns true if new data was collected or a skip was recorded.
    */
   async collectSource(symbol: string, source: string, force = false): Promise<boolean> {
+    const outcome = await this.collectSourceOutcome(symbol, source, force);
+    return outcome.kind !== "cached";
+  }
+
+  private async collectSourceOutcome(symbol: string, source: string, force: boolean): Promise<CollectOutcome> {
     const collector = getCollector(source);
     if (!collector) {
       throw new Error(`Unknown collector: ${source}`);
@@ -48,7 +62,7 @@ class CollectionService {
           // fall through to re-collect
         }
         else {
-          return false;
+          return { kind: "cached" };
         }
       }
     }
@@ -71,7 +85,7 @@ class CollectionService {
           expiresAt: result.expiresAt,
         },
       });
-      return true;
+      return { kind: "skipped", reason: result.reason };
     }
 
     await prisma.dataCollection.create({
@@ -83,7 +97,7 @@ class CollectionService {
       },
     });
 
-    return true;
+    return { kind: "collected" };
   }
 
   /**
@@ -91,6 +105,13 @@ class CollectionService {
    * Stores the analysis result.
    */
   async analyzeSource(symbol: string, source: string): Promise<string | null> {
+    return (await this.runAnalyzer(symbol, source))?.id ?? null;
+  }
+
+  private async runAnalyzer(
+    symbol: string,
+    source: string
+  ): Promise<{ id: string; signal: string; confidence: number } | null> {
     const analyzer = getAnalyzer(source);
     if (!analyzer) return null;
 
@@ -114,7 +135,7 @@ class CollectionService {
       },
     });
 
-    return analysis.id;
+    return { id: analysis.id, signal: result.signal, confidence: result.confidence };
   }
 
   /**
@@ -139,40 +160,29 @@ class CollectionService {
     return Object.values(primary as Record<string, unknown>).every((v) => v == null);
   }
 
+  /** Sources collected per ticker (macro is collected separately by the macro service). */
+  tickerSources(): string[] {
+    return getAllCollectors().map((c) => c.source).filter((s) => s !== "macro");
+  }
+
   /**
-   * Collect all sources for a ticker, then analyze each.
+   * Collect every source for a ticker at once and analyze each one as soon as
+   * its own data arrives, so the run takes as long as the slowest source
+   * rather than the sum of fixed batches. Shared upstream limits are enforced
+   * where they live (Polygon request queue, IBKR market data line budget).
    * Returns the IDs of new analysis rows.
    */
   async collectAndAnalyzeAll(
     symbol: string,
-    options: { force?: boolean; sources?: string[] } = {}
+    options: { force?: boolean; sources?: string[]; onProgress?: (event: SourceProgressEvent) => void } = {}
   ): Promise<string[]> {
-    const collectors = getAllCollectors();
-    const sources = options.sources || collectors.map((c) => c.source).filter((s) => s !== "macro");
-    const analysisIds: string[] = [];
+    const sources = options.sources || this.tickerSources();
+    const emit = options.onProgress ?? (() => {});
 
-    // Collect in parallel (with concurrency limit)
-    const CONCURRENCY = 3;
-    for (let i = 0; i < sources.length; i += CONCURRENCY) {
-      const batch = sources.slice(i, i + CONCURRENCY);
-      await Promise.allSettled(
-        batch.map((source) =>
-          this.collectSource(symbol, source, options.force).catch((err) => {
-            console.error(`Collection failed for ${symbol}/${source}:`, (err as Error).message);
-          })
-        )
-      );
-    }
-
-    // Analyze each source sequentially
-    for (const source of sources) {
-      try {
-        const analysisId = await this.analyzeSource(symbol, source);
-        if (analysisId) analysisIds.push(analysisId);
-      } catch (err) {
-        console.error(`Analysis failed for ${symbol}/${source}:`, (err as Error).message);
-      }
-    }
+    const results = await Promise.all(
+      sources.map((source) => this.collectAndAnalyzeSource(symbol, source, !!options.force, emit))
+    );
+    const analysisIds = results.filter((id): id is string => id !== null);
 
     // Update lastAnalyzedAt after a collection+analysis pass completes,
     // even if no new analyses were produced (e.g. all sources skipped).
@@ -183,6 +193,68 @@ class CollectionService {
     });
 
     return analysisIds;
+  }
+
+  /**
+   * Collect then analyze one source, reporting each step. Never throws: a
+   * failure is logged and reported on that source alone. As before, when
+   * collection fails or is skipped the analyzer still runs on the last good
+   * data, and the progress detail says that earlier data was used.
+   */
+  private async collectAndAnalyzeSource(
+    symbol: string,
+    source: string,
+    force: boolean,
+    emit: (event: SourceProgressEvent) => void
+  ): Promise<string | null> {
+    emit({ source, status: "collecting" });
+
+    let outcome: CollectOutcome | null = null;
+    let collectError: string | null = null;
+    try {
+      outcome = await this.collectSourceOutcome(symbol, source, force);
+    } catch (err) {
+      collectError = (err as Error).message;
+      console.error(`Collection failed for ${symbol}/${source}:`, collectError);
+    }
+    const cached = outcome ? { cached: outcome.kind === "cached" } : {};
+
+    emit({ source, status: "analyzing", ...cached });
+    let analysis: Awaited<ReturnType<CollectionService["runAnalyzer"]>>;
+    try {
+      analysis = await this.runAnalyzer(symbol, source);
+    } catch (err) {
+      const message = (err as Error).message;
+      console.error(`Analysis failed for ${symbol}/${source}:`, message);
+      emit({ source, status: "failed", detail: `Analysis failed: ${message}` });
+      return null;
+    }
+
+    if (!analysis) {
+      if (collectError) {
+        emit({ source, status: "failed", detail: collectError });
+      } else {
+        const reason = outcome?.kind === "skipped" ? outcome.reason : "No usable data collected";
+        emit({ source, status: "skipped", ...cached, detail: reason });
+      }
+      return null;
+    }
+
+    let detail: string | null = null;
+    if (collectError) {
+      detail = `Collection failed (${collectError}) — analyzed earlier data`;
+    } else if (outcome?.kind === "skipped") {
+      detail = `Skipped (${outcome.reason}) — analyzed earlier data`;
+    }
+    emit({
+      source,
+      status: "done",
+      ...cached,
+      signal: analysis.signal,
+      confidence: analysis.confidence,
+      detail,
+    });
+    return analysis.id;
   }
 }
 

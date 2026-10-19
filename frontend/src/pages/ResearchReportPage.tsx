@@ -20,6 +20,7 @@ import { RecommendationBadge, PageLoadingSkeleton, ExternalLinks } from "@/compo
 import { TickerPositionInfo } from "@/components/ticker/TickerPositionInfo";
 import { TickerActivityLog } from "@/components/ticker/TickerActivityLog";
 import { TickerEventsCard } from "@/components/calendar/TickerEventsCard";
+import { ResearchProgressPanel } from "@/components/research/ResearchProgressPanel";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1358,6 +1359,15 @@ export function ResearchReportPage() {
   const generating = activeJob ? activeJob.status === "queued" || activeJob.status === "running" : false;
   const generateProgress = activeJob?.progress ?? null;
 
+  // Refresh the page's panels each time another source finishes analyzing,
+  // so new technical/options/fundamentals data shows up while the job runs
+  const analyzedCount = generating
+    ? activeJob?.detail?.sources.filter((s) => s.status === "done" && s.source !== "macro").length ?? 0
+    : 0;
+  useEffect(() => {
+    if (analyzedCount > 0) fetchData(true);
+  }, [analyzedCount, fetchData]);
+
   useResearchJobFinished((finishedSymbol, status, error) => {
     if (finishedSymbol !== symbol) return;
     if (status === "completed") {
@@ -1576,6 +1586,8 @@ export function ResearchReportPage() {
         </div>
       )}
 
+      {generating && <ResearchProgressPanel detail={activeJob?.detail ?? null} />}
+
       {/* Position & Wheel info */}
       <TickerPositionInfo symbol={symbol} />
 
@@ -1687,7 +1699,7 @@ export function ResearchReportPage() {
       <SkippedSourcesSection skipped={skipped} />
 
       {/* No report placeholder */}
-      {!report && !loading && (
+      {!report && !loading && !generating && (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             <p className="font-medium">No report available for {symbol}</p>

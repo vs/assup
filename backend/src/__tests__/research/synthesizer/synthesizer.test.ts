@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vites
 import { EventEmitter } from "node:events";
 import { Writable } from "node:stream";
 
-const { mockCreate } = vi.hoisted(() => ({
-  mockCreate: vi.fn(),
+const { mockStream } = vi.hoisted(() => ({
+  mockStream: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class MockAnthropic {
-    messages = { create: mockCreate };
+    messages = { stream: mockStream };
   },
 }));
 
@@ -54,10 +54,28 @@ const baseInput = {
   ],
 };
 
+/** Fake MessageStream: replays `text` in two chunks to "text" listeners, then resolves. */
 function setResponse(text: string) {
-  mockCreate.mockResolvedValue({
-    content: [{ type: "text", text }],
-    usage: { input_tokens: 100, output_tokens: 200 },
+  mockStream.mockImplementation(() => {
+    const listeners: Array<(delta: string, snapshot: string) => void> = [];
+    const stream = {
+      on(event: string, cb: (delta: string, snapshot: string) => void) {
+        if (event === "text") listeners.push(cb);
+        return stream;
+      },
+      async finalMessage() {
+        const mid = Math.floor(text.length / 2);
+        for (const cb of listeners) {
+          cb(text.slice(0, mid), text.slice(0, mid));
+          cb(text.slice(mid), text);
+        }
+        return {
+          content: [{ type: "text", text }],
+          usage: { input_tokens: 100, output_tokens: 200 },
+        };
+      },
+    };
+    return stream;
   });
 }
 
@@ -164,7 +182,7 @@ describe("synthesizer", () => {
 
     await synthesize(baseInput, "claude-opus-4-6");
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockStream).toHaveBeenCalledWith(
       expect.objectContaining({ model: "claude-opus-4-6" })
     );
   });
@@ -183,7 +201,7 @@ describe("synthesizer", () => {
 
     await synthesize(inputWithMacro);
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockStream).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({
@@ -193,7 +211,31 @@ describe("synthesizer", () => {
       })
     );
   });
+
+  it("reports the accumulated text while the response streams", async () => {
+    const text = JSON.stringify(validOutput);
+    setResponse(text);
+    const seen: string[] = [];
+
+    await synthesize(baseInput, { onPartialText: (t) => seen.push(t) });
+
+    expect(seen).toEqual([text.slice(0, Math.floor(text.length / 2)), text]);
+  });
 });
+
+/** Encode `text` the way `claude --print --output-format stream-json --include-partial-messages` emits it. */
+function streamJson(text: string, chunks = 3): string {
+  const size = Math.ceil(text.length / chunks);
+  const lines: unknown[] = [{ type: "system", subtype: "init" }];
+  for (let i = 0; i < text.length; i += size) {
+    lines.push({
+      type: "stream_event",
+      event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: text.slice(i, i + size) } },
+    });
+  }
+  lines.push({ type: "result", subtype: "success", is_error: false, result: text });
+  return lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
+}
 
 describe("synthesizeWithClaude (claude-cli mode)", () => {
   beforeAll(() => {
@@ -232,7 +274,7 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
   }
 
   it("parses valid JSON from claude stdout", async () => {
-    createMockChild(JSON.stringify(validOutput));
+    createMockChild(streamJson(JSON.stringify(validOutput)));
 
     const result = await synthesize(baseInput);
 
@@ -240,7 +282,7 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
   });
 
   it("strips markdown fences from claude output", async () => {
-    createMockChild("```json\n" + JSON.stringify(validOutput) + "\n```");
+    createMockChild(streamJson("```json\n" + JSON.stringify(validOutput) + "\n```"));
 
     const result = await synthesize(baseInput);
 
@@ -270,7 +312,7 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
   });
 
   it("throws on invalid JSON from claude", async () => {
-    createMockChild("This is not JSON at all");
+    createMockChild(streamJson("This is not JSON at all"));
 
     await expect(synthesize(baseInput)).rejects.toThrow(
       "No JSON object found in output"
@@ -303,7 +345,7 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
   });
 
   it("passes system prompt and model to claude args", async () => {
-    createMockChild(JSON.stringify(validOutput));
+    createMockChild(streamJson(JSON.stringify(validOutput)));
 
     await synthesize(baseInput, { model: "claude-opus-4-6" });
 
@@ -322,7 +364,7 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
   it("unsets CLAUDECODE env var in child process", async () => {
     process.env.CLAUDECODE = "true";
     try {
-      createMockChild(JSON.stringify(validOutput));
+      createMockChild(streamJson(JSON.stringify(validOutput)));
 
       await synthesize(baseInput);
 
@@ -351,7 +393,7 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
     vi.mocked(spawn).mockReturnValue(child);
 
     process.nextTick(() => {
-      child.stdout.emit("data", Buffer.from(JSON.stringify(validOutput)));
+      child.stdout.emit("data", Buffer.from(streamJson(JSON.stringify(validOutput))));
       child.emit("close", 0, null);
     });
 
@@ -360,5 +402,53 @@ describe("synthesizeWithClaude (claude-cli mode)", () => {
     const written = writtenChunks.join("");
     expect(written).toContain("Analyze AAPL");
     expect(written).toContain("RSI at 32 indicates oversold");
+  });
+
+  it("streams partial text even when stdout chunks split JSON lines", async () => {
+    const text = JSON.stringify(validOutput);
+    const encoded = streamJson(text, 4);
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new Writable({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
+    vi.mocked(spawn).mockReturnValue(child);
+
+    process.nextTick(() => {
+      // Deliver stdout in 7-byte pieces so every line arrives fragmented
+      for (let i = 0; i < encoded.length; i += 7) {
+        child.stdout.emit("data", Buffer.from(encoded.slice(i, i + 7)));
+      }
+      child.emit("close", 0, null);
+    });
+
+    const seen: string[] = [];
+    const result = await synthesize(baseInput, { onPartialText: (t) => seen.push(t) });
+
+    expect(result).toEqual(validOutput);
+    expect(seen).toHaveLength(4);
+    expect(seen[seen.length - 1]).toBe(text);
+    expect(text.startsWith(seen[0])).toBe(true);
+  });
+
+  it("surfaces an error result reported inside the stream", async () => {
+    const lines = [
+      { type: "system", subtype: "init" },
+      { type: "result", subtype: "error_during_execution", is_error: true, result: "Usage limit reached" },
+    ];
+    createMockChild(lines.map((l) => JSON.stringify(l)).join("\n") + "\n", "", 1);
+
+    await expect(synthesize(baseInput)).rejects.toThrow("Usage limit reached");
+  });
+
+  it("starts the CLI streaming, without MCP servers or tools", async () => {
+    createMockChild(streamJson(JSON.stringify(validOutput)));
+
+    await synthesize(baseInput);
+
+    const args = vi.mocked(spawn).mock.calls[0][1] as string[];
+    expect(args).toEqual(expect.arrayContaining([
+      "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--strict-mcp-config",
+    ]));
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
   });
 });

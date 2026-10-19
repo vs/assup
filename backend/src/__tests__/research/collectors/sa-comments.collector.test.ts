@@ -120,6 +120,83 @@ describe("saCommentsCollector", () => {
     expect(data.articles[0].comments).toHaveLength(100);
   });
 
+  it("stops fetching comments once earlier articles fill the total cap", async () => {
+    mockFetchComments.mockReset();
+    mockFetchArticles.mockResolvedValue(
+      Array.from({ length: 12 }, (_, i) => ({
+        id: String(100 + i),
+        attributes: { title: `Article ${i}`, publishOn: "2026-03-01T10:00:00Z", commentCount: 100 },
+      })),
+    );
+    mockFetchComments.mockImplementation(async (articleId: string) =>
+      Array.from({ length: 100 }, (_, i) => ({
+        id: `${articleId}-c${i}`,
+        attributes: { content: `Comment ${i}`, createdOn: "2026-03-01T12:00:00Z", likesCount: i },
+      })),
+    );
+
+    const result = await saCommentsCollector.collect("AAPL");
+    const data = (result as CollectedData).data as any;
+
+    // Two articles listing 100 comments each already cover the 200 kept
+    expect(mockFetchComments).toHaveBeenCalledTimes(2);
+    expect(data.articleCount).toBe(12);
+    expect(data.totalComments).toBe(200);
+    expect(data.articles.map((a: any) => a.comments.length)).toEqual([100, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("keeps the same comments it would keep when fetching every article", async () => {
+    mockFetchComments.mockReset();
+    // Listed counts understate nothing here (1 each), so the real counts decide when to stop
+    const counts = [30, 0, 50, 40, 60, 90, 10, ...Array(10).fill(50)];
+    mockFetchArticles.mockResolvedValue(
+      counts.map((_, i) => ({
+        id: String(i),
+        attributes: { title: `Article ${i}`, publishOn: "2026-03-01T10:00:00Z", commentCount: 1 },
+      })),
+    );
+    mockFetchComments.mockImplementation(async (articleId: string) =>
+      Array.from({ length: counts[Number(articleId)] }, (_, i) => ({
+        id: `${articleId}-c${i}`,
+        attributes: { content: `Comment ${i}`, createdOn: "2026-03-01T12:00:00Z", likesCount: i },
+      })),
+    );
+
+    const result = await saCommentsCollector.collect("AAPL");
+    const data = (result as CollectedData).data as any;
+
+    // The first six articles reach 200; at most the three in-flight fetches go beyond
+    expect(mockFetchComments.mock.calls.length).toBeGreaterThanOrEqual(6);
+    expect(mockFetchComments.mock.calls.length).toBeLessThanOrEqual(9);
+    expect(data.articleCount).toBe(counts.length);
+    expect(data.articles.map((a: any) => a.comments.length)).toEqual([30, 0, 50, 40, 60, 20, ...Array(11).fill(0)]);
+    expect(data.articles[5].comments[0].likes).toBe(89); // most-liked kept first
+  });
+
+  it("keeps fetching when articles hold fewer comments than they list", async () => {
+    mockFetchComments.mockReset();
+    mockFetchArticles.mockResolvedValue(
+      Array.from({ length: 6 }, (_, i) => ({
+        id: String(i),
+        attributes: { title: `Article ${i}`, publishOn: "2026-03-01T10:00:00Z", commentCount: 100 },
+      })),
+    );
+    // Each listing claims 100 comments but only 40 come back
+    mockFetchComments.mockImplementation(async (articleId: string) =>
+      Array.from({ length: 40 }, (_, i) => ({
+        id: `${articleId}-c${i}`,
+        attributes: { content: `Comment ${i}`, createdOn: "2026-03-01T12:00:00Z", likesCount: i },
+      })),
+    );
+
+    const result = await saCommentsCollector.collect("AAPL");
+    const data = (result as CollectedData).data as any;
+
+    expect(mockFetchComments).toHaveBeenCalledTimes(5);
+    expect(data.totalComments).toBe(200);
+    expect(data.articles.map((a: any) => a.comments.length)).toEqual([40, 40, 40, 40, 40, 0]);
+  });
+
   it("strips HTML tags from comment content", async () => {
     mockFetchArticles.mockResolvedValue([
       { id: "100", attributes: { title: "Article", publishOn: "2026-03-01T10:00:00Z", commentCount: 1 } },

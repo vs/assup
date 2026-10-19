@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { sseManager } from "./useSSE";
 import { researchApi } from "@/api/research";
+import type { ResearchJobDetail } from "@assup/shared";
 
 const COMPLETED_RETENTION_MS = 3000;
 
@@ -9,6 +10,8 @@ export interface ResearchJobState {
   symbol: string;
   status: "queued" | "running" | "completed" | "failed";
   progress: string | null;
+  /** Per-source progress and streaming report preview, while the job runs. */
+  detail: ResearchJobDetail | null;
   error: string | null;
 }
 
@@ -47,6 +50,7 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
               symbol: job.symbol,
               status: job.status as ResearchJobState["status"],
               progress: job.progress,
+              detail: job.detail ?? null,
               error: job.error,
             });
           }
@@ -85,6 +89,7 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
         symbol: string;
         status: string;
         progress: string | null;
+        detail?: ResearchJobDetail | null;
         error: string | null;
       };
 
@@ -109,6 +114,7 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
             symbol: event.symbol,
             status: event.status as ResearchJobState["status"],
             progress: event.progress,
+            detail: null,
             error: event.error,
           });
 
@@ -141,6 +147,7 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
           symbol: event.symbol,
           status: event.status as ResearchJobState["status"],
           progress: event.progress,
+          detail: event.detail ?? null,
           error: event.error,
         });
         return next;
@@ -187,6 +194,7 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
         symbol,
         status: "queued",
         progress: null,
+        detail: null,
         error: null,
       });
       return next;
