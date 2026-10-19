@@ -66,6 +66,9 @@ async function callClaudeViaCLI(
     "--output-format", "text",
     "--system-prompt", systemPrompt,
     "--model", model,
+    // Text in, text out: skip MCP servers and tool definitions for a faster start
+    "--strict-mcp-config",
+    "--tools", "",
     "--dangerously-skip-permissions",
     "--no-session-persistence",
   ];

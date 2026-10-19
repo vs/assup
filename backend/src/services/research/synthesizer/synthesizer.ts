@@ -36,6 +36,8 @@ export type SynthesizerMode = "claude-cli" | "api";
 export interface SynthesizeOptions {
   model?: "claude-sonnet-4-6" | "claude-opus-4-6";
   mode?: SynthesizerMode;
+  /** Called with the full response text received so far, each time more of it streams in. */
+  onPartialText?: (textSoFar: string) => void;
 }
 
 const SYSTEM_PROMPT = `You are a rigorous financial research analyst. You synthesize data from multiple sources into actionable research reports.
@@ -253,14 +255,15 @@ async function getClient(): Promise<Anthropic> {
 
 async function synthesizeWithSDK(
   input: SynthesizerInput,
-  model: "claude-sonnet-4-6" | "claude-opus-4-6" = "claude-sonnet-4-6"
+  model: "claude-sonnet-4-6" | "claude-opus-4-6" = "claude-sonnet-4-6",
+  onPartialText?: (textSoFar: string) => void
 ): Promise<SynthesizerOutput> {
   const anthropic = await getClient();
   const sources = input.analyses.map((a) => a.source).join(", ");
   console.log(`[Synthesizer] SDK call for ${input.symbol} (model=${model}, sources=${sources})`);
   const start = Date.now();
 
-  const message = await anthropic.messages.create({
+  const stream = anthropic.messages.stream({
     model,
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
@@ -271,6 +274,10 @@ async function synthesizeWithSDK(
       },
     ],
   });
+  if (onPartialText) {
+    stream.on("text", (_delta, snapshot) => onPartialText(snapshot));
+  }
+  const message = await stream.finalMessage();
 
   const text =
     message.content[0].type === "text" ? message.content[0].text : "";
@@ -294,9 +301,67 @@ function cliFailureDetail(stdout: string, stderr: string): string {
   return parts.join(" | ").slice(0, 1000);
 }
 
+/**
+ * Incremental reader for `claude --print --output-format stream-json
+ * --include-partial-messages`. Each stdout line is one JSON event; text
+ * deltas accumulate into the response and the final `result` event carries
+ * the whole text (or the error when `is_error` is set). Lines that are not
+ * JSON — the CLI prints some startup failures as plain text — are kept for
+ * the failure diagnostic.
+ */
+class CliStreamReader {
+  text = "";
+  result: { text: string; isError: boolean } | null = null;
+  plainOutput = "";
+  private buffer = "";
+
+  constructor(private readonly onText?: (textSoFar: string) => void) {}
+
+  push(chunk: string): void {
+    this.buffer += chunk;
+    let newline: number;
+    while ((newline = this.buffer.indexOf("\n")) !== -1) {
+      this.handleLine(this.buffer.slice(0, newline));
+      this.buffer = this.buffer.slice(newline + 1);
+    }
+  }
+
+  end(): void {
+    if (this.buffer) this.handleLine(this.buffer);
+    this.buffer = "";
+  }
+
+  /** What the CLI said about its failure, for error messages. */
+  failureOutput(): string {
+    if (this.result?.isError) return this.result.text;
+    return this.plainOutput;
+  }
+
+  private handleLine(line: string): void {
+    if (!line.trim()) return;
+    let event: Record<string, any>;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      this.plainOutput += line + "\n";
+      return;
+    }
+    if (event.type === "stream_event") {
+      const e = event.event;
+      if (e?.type === "content_block_delta" && e.delta?.type === "text_delta") {
+        this.text += e.delta.text;
+        this.onText?.(this.text);
+      }
+    } else if (event.type === "result") {
+      this.result = { text: String(event.result ?? ""), isError: event.is_error === true };
+    }
+  }
+}
+
 async function synthesizeWithClaude(
   input: SynthesizerInput,
-  model: string
+  model: string,
+  onPartialText?: (textSoFar: string) => void
 ): Promise<SynthesizerOutput> {
   const prompt = buildUserPrompt(input);
   const sources = input.analyses.map((a) => a.source).join(", ");
@@ -305,9 +370,15 @@ async function synthesizeWithClaude(
 
   const args = [
     "--print",
-    "--output-format", "text",
+    "--output-format", "stream-json",
+    "--verbose", // required by stream-json in --print mode
+    "--include-partial-messages",
     "--system-prompt", SYSTEM_PROMPT,
     "--model", model,
+    // The synthesizer only needs text back: skipping MCP servers and tool
+    // definitions saves ~3s of startup and ~13k prompt tokens per call
+    "--strict-mcp-config",
+    "--tools", "",
     "--dangerously-skip-permissions",
     "--no-session-persistence",
   ];
@@ -324,23 +395,25 @@ async function synthesizeWithClaude(
     delete env.ANTHROPIC_API_KEY;
   }
 
-  const stdout = await new Promise<string>((resolve, reject) => {
+  const text = await new Promise<string>((resolve, reject) => {
     const child = spawn("claude", args, {
       env,
       timeout: 5 * 60 * 1000, // 5 minutes
       stdio: ["pipe", "pipe", "pipe"],
     });
 
-    let out = "";
+    const reader = new CliStreamReader(onPartialText);
     let err = "";
 
-    child.stdout.on("data", (data: Buffer) => { out += data.toString(); });
+    child.stdout.on("data", (data: Buffer) => { reader.push(data.toString()); });
     child.stderr.on("data", (data: Buffer) => { err += data.toString(); });
 
     child.on("error", (e) => reject(new Error(`Claude CLI failed to start: ${e.message}`)));
 
     child.on("close", (code, signal) => {
+      reader.end();
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      const out = reader.result && !reader.result.isError ? reader.result.text : reader.text;
       if (err) {
         console.warn(`[Synthesizer] CLI stderr for ${input.symbol}: ${err.slice(0, 500)}`);
       }
@@ -348,13 +421,13 @@ async function synthesizeWithClaude(
         reject(new Error("Claude CLI timed out after 5 minutes"));
       } else if (signal) {
         reject(new Error(`Claude CLI killed with signal ${signal}`));
-      } else if (code !== 0) {
-        const detail = cliFailureDetail(out, err);
+      } else if (code !== 0 || reader.result?.isError) {
+        const detail = cliFailureDetail(reader.failureOutput(), err);
         console.error(`[Synthesizer] CLI failed for ${input.symbol} in ${elapsed}s (exit ${code}): ${detail}`);
         reject(new Error(`Claude CLI failed (exit ${code}): ${detail}`));
       } else if (!out.trim()) {
-        console.error(`[Synthesizer] CLI returned empty stdout for ${input.symbol} in ${elapsed}s`);
-        reject(new Error(`Claude CLI returned empty output. stderr: ${err || "(none)"}`));
+        console.error(`[Synthesizer] CLI returned empty output for ${input.symbol} in ${elapsed}s`);
+        reject(new Error(`Claude CLI returned empty output. stdout: ${reader.plainOutput.slice(0, 500) || "(none)"} stderr: ${err || "(none)"}`));
       } else {
         console.log(`[Synthesizer] CLI response for ${input.symbol} in ${elapsed}s (${out.length} chars)`);
         resolve(out);
@@ -368,7 +441,7 @@ async function synthesizeWithClaude(
     child.stdin.end();
   });
 
-  return parseAndValidate(stdout);
+  return parseAndValidate(text);
 }
 
 export async function synthesize(
@@ -391,7 +464,7 @@ export async function synthesize(
   }
 
   if (mode === "claude-cli") {
-    return synthesizeWithClaude(input, model);
+    return synthesizeWithClaude(input, model, options.onPartialText);
   }
-  return synthesizeWithSDK(input, model);
+  return synthesizeWithSDK(input, model, options.onPartialText);
 }

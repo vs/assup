@@ -7,6 +7,7 @@ vi.mock("../../../services/research/db.js", () => ({
 
 import { prisma } from "../../../services/research/db.js";
 import { jobService } from "../../../services/research/job.service.js";
+import { sseService } from "../../../services/sse.js";
 
 describe("jobService", () => {
   beforeEach(() => {
@@ -82,5 +83,59 @@ describe("jobService", () => {
     expect(prisma.researchJob.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "failed", error: "Something went wrong" }) })
     );
+  });
+});
+
+describe("jobService live detail", () => {
+  // The live map is module state, so each test uses its own job id
+  let seq = 0;
+  let running: any;
+  const base = { type: "generate_report", symbol: "QZAC", status: "running", progress: "Collecting 0/2",
+    result: null, error: null, createdAt: new Date(), startedAt: new Date(), completedAt: null,
+  };
+  const detail = {
+    stage: "collecting" as const,
+    startedAt: "2026-10-16T14:00:00.000Z",
+    sources: [{ source: "technical", status: "collecting" as const }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    running = { ...base, id: `job-live-${++seq}` };
+    vi.spyOn(sseService, "broadcast").mockImplementation(() => {});
+  });
+
+  it("broadcasts the structured detail with the progress text", async () => {
+    vi.mocked(prisma.researchJob.update).mockResolvedValue(running);
+
+    await jobService.updateProgress(running.id, "Collecting 0/2", detail);
+
+    expect(sseService.broadcast).toHaveBeenCalledWith("research_job", expect.objectContaining({
+      jobId: running.id, symbol: "QZAC", progress: "Collecting 0/2", detail,
+    }));
+  });
+
+  it("writes the database only when the progress text changes", async () => {
+    vi.mocked(prisma.researchJob.update).mockResolvedValue(running);
+
+    await jobService.updateProgress(running.id, "Collecting 0/2", detail);
+    await jobService.updateProgress(running.id, "Collecting 0/2", { ...detail, stage: "collecting" });
+
+    expect(prisma.researchJob.update).toHaveBeenCalledTimes(1);
+    expect(sseService.broadcast).toHaveBeenCalledTimes(2);
+  });
+
+  it("attaches the detail to jobs returned by get and list until the job finishes", async () => {
+    vi.mocked(prisma.researchJob.update).mockResolvedValue(running);
+    vi.mocked(prisma.researchJob.findUnique).mockResolvedValue(running);
+    vi.mocked(prisma.researchJob.findMany).mockResolvedValue([running]);
+    await jobService.updateProgress(running.id, "Collecting 0/2", detail);
+
+    expect(await jobService.get(running.id)).toEqual({ ...running, detail });
+    expect(await jobService.list()).toEqual([{ ...running, detail }]);
+
+    vi.mocked(prisma.researchJob.update).mockResolvedValue({ ...running, status: "completed" });
+    await jobService.complete(running.id, {});
+    expect(await jobService.get(running.id)).toEqual(running);
   });
 });

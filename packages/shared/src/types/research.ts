@@ -65,12 +65,58 @@ export interface ResearchReport {
 
 export type JobStatus = "queued" | "running" | "completed" | "failed";
 
+export type ResearchSourceStatus =
+  | "pending"
+  | "collecting"
+  | "analyzing"
+  | "done"
+  | "skipped"
+  | "failed";
+
+/** Live state of one data source while a report is being generated. */
+export interface ResearchSourceProgress {
+  source: string;
+  status: ResearchSourceStatus;
+  /** True when fresh collected data was reused instead of fetched again. */
+  cached?: boolean;
+  signal?: string | null;
+  confidence?: number | null;
+  /** Skip reason or error message. */
+  detail?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
+/** Fields of the report parsed from the synthesizer output while it is still streaming. */
+export interface ResearchReportPreview {
+  recommendation?: string;
+  confidence?: number;
+  summary?: string;
+  fullReport?: string;
+}
+
+export type ResearchJobStage = "collecting" | "synthesizing" | "storing";
+
+/**
+ * Structured progress of a running generate_report job. Held in memory by the
+ * backend for the lifetime of the job (jobs run in-process), so it is absent
+ * on finished jobs.
+ */
+export interface ResearchJobDetail {
+  stage: ResearchJobStage;
+  startedAt: string;
+  sources: ResearchSourceProgress[];
+  synthesisStartedAt?: string | null;
+  preview?: ResearchReportPreview | null;
+}
+
 export interface ResearchJob {
   id: string;
   type: string;
   symbol: string | null;
   status: JobStatus;
   progress: string | null;
+  detail?: ResearchJobDetail | null;
   result: Record<string, unknown> | null;
   error: string | null;
   createdAt: string;
