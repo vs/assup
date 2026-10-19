@@ -26,6 +26,7 @@ import type { ImportedTrade } from "@prisma/client";
 import { Subscription, lastValueFrom } from "rxjs";
 import { BadRequestError, OrderRejectedError } from "../errors/index.js";
 import { orderErrorRegistry } from "./orderErrorRegistry.js";
+import { withTimeout } from "../utils/withTimeout.js";
 import { confirmOrder } from "./orderConfirmation.js";
 
 interface ConnectionStatus {
@@ -125,6 +126,9 @@ export interface ScannerResult {
 // A rejected PnL request is retried with a fresh request id: 5s, doubling to 60s
 const PNL_RETRY_INITIAL_MS = 5_000;
 const PNL_RETRY_MAX_MS = 60_000;
+
+/** Contract details normally arrive in well under a second. */
+const CONTRACT_INFO_TIMEOUT_MS = 15_000;
 
 class IBKRService {
   private api: IBApiNext | null = null;
@@ -1346,7 +1350,13 @@ class IBKRService {
     };
 
     try {
-      return await this.api.getContractDetails(contract);
+      // TWS sometimes never answers contract details (no data, no end marker,
+      // no error); without a deadline the caller waits forever
+      return await withTimeout(
+        this.api.getContractDetails(contract),
+        `getContractDetails for ${symbol}`,
+        CONTRACT_INFO_TIMEOUT_MS,
+      );
     } catch (err) {
       const error = err as { code?: number; message?: string };
       if (error.code === 200 || error.message?.includes("No security definition")) {
