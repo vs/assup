@@ -7,6 +7,8 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import {
   getGexAnalysis,
   getStaleCacheEntry,
+  getGexProfile,
+  getStaleProfileCacheEntry,
 } from "../services/gex.service.js";
 
 const router = Router();
@@ -33,6 +35,34 @@ router.get(
     } catch (err) {
       // Try returning stale cache on fetch failure
       const stale = getStaleCacheEntry(symbol, expiration, aggregate);
+      if (stale) {
+        res.json(stale);
+        return;
+      }
+      throw err;
+    }
+  }),
+);
+
+/**
+ * GET /api/gex/:symbol/profile
+ *
+ * Dealer gamma across all expirations: per-strike GEX at spot and the net GEX
+ * curve over hypothetical spots (all expiries vs ex-0DTE).
+ *
+ * Query params:
+ *   refresh - "true" to bypass cache
+ */
+router.get(
+  "/:symbol/profile",
+  asyncHandler(async (req, res) => {
+    const symbol = req.params.symbol.toUpperCase();
+    const forceRefresh = req.query.refresh === "true";
+
+    try {
+      res.json(await getGexProfile(symbol, forceRefresh));
+    } catch (err) {
+      const stale = getStaleProfileCacheEntry(symbol);
       if (stale) {
         res.json(stale);
         return;

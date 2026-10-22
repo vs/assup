@@ -111,6 +111,35 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Dealer gamma chart palette (GexProfileChart) */
+.gex-chart {
+  --gx-panel: #ffffff;
+  --gx-plot: #f6f7f9;
+  --gx-grid: rgb(15 23 42 / 7%);
+  --gx-axis: rgb(15 23 42 / 18%);
+  --gx-text: #111318;
+  --gx-muted: #6b7280;
+  --gx-pos: #2f9d7f;
+  --gx-neg: #c24a5f;
+  --gx-zero-dte: #aaa3d4;
+  --gx-all: #d99a1e;
+  --gx-ex: #1b9cc6;
+}
+
+.dark .gex-chart {
+  --gx-panel: #0c0d11;
+  --gx-plot: #12141a;
+  --gx-grid: rgb(255 255 255 / 6%);
+  --gx-axis: rgb(255 255 255 / 14%);
+  --gx-text: #f1f2f4;
+  --gx-muted: #8d929c;
+  --gx-pos: #3a9a7f;
+  --gx-neg: #9c3a4d;
+  --gx-zero-dte: rgb(228 226 240 / 78%);
+  --gx-all: #f2b84b;
+  --gx-ex: #5bc8e8;
+}
+
 @keyframes breathing {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(0.95); }
