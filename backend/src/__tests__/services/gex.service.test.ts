@@ -4,6 +4,13 @@ import {
   calcStrikeGEX,
   findKeyLevels,
   calcSummary,
+  marketCloseMs,
+  yearsToExpiry,
+  etDateString,
+  findZeroCrossing,
+  buildGexProfile,
+  resolveIV,
+  type GexContract,
 } from "../../services/gex.service.js";
 import type { GexStrikeData } from "@assup/shared";
 
@@ -141,5 +148,100 @@ describe("calcSummary", () => {
 
     const summary2 = calcSummary(strikes, 5400);
     expect(summary2.netGEXRegime).toBe("negative");
+  });
+});
+
+describe("expiry timing", () => {
+  it("market close is 16:00 EDT in summer and 16:00 EST in winter", () => {
+    expect(new Date(marketCloseMs("2026-07-15")).toISOString()).toBe("2026-07-15T20:00:00.000Z");
+    expect(new Date(marketCloseMs("2026-12-15")).toISOString()).toBe("2026-12-15T21:00:00.000Z");
+  });
+
+  it("0DTE in the morning has ~6.5 hours left, not the floor", () => {
+    const now = Date.parse("2026-10-22T13:30:00Z"); // 9:30 ET
+    const T = yearsToExpiry("2026-10-22", now);
+    expect(T * 365 * 24).toBeCloseTo(6.5, 5);
+  });
+
+  it("returns 0 after the close and floors at one hour before it", () => {
+    expect(yearsToExpiry("2026-10-22", Date.parse("2026-10-22T20:00:01Z"))).toBe(0);
+    expect(yearsToExpiry("2026-10-22", Date.parse("2026-10-22T19:59:00Z"))).toBeCloseTo(1 / (365 * 24), 10);
+  });
+
+  it("uses the New York calendar date", () => {
+    expect(etDateString(Date.parse("2026-10-23T02:00:00Z"))).toBe("2026-10-22");
+  });
+});
+
+describe("findZeroCrossing", () => {
+  it("interpolates the crossing nearest to spot", () => {
+    const xs = [90, 100, 110, 120, 130];
+    const ys = [-2, -1, 1, -1, -3];
+    expect(findZeroCrossing(xs, ys, 104)).toBe(105);
+    expect(findZeroCrossing(xs, ys, 118)).toBe(115);
+  });
+
+  it("returns null when the series never changes sign", () => {
+    expect(findZeroCrossing([1, 2, 3], [1, 2, 3], 2)).toBeNull();
+  });
+});
+
+describe("buildGexProfile", () => {
+  const T7 = 7 / 365;
+  const T0 = 3 / (365 * 24);
+  const contracts: GexContract[] = [
+    { strike: 95, openInterest: 1000, iv: 0.2, T: T7, isCall: false, zeroDte: false },
+    { strike: 105, openInterest: 1000, iv: 0.2, T: T7, isCall: true, zeroDte: false },
+    { strike: 100, openInterest: 500, iv: 0.2, T: T0, isCall: false, zeroDte: true },
+  ];
+
+  it("splits net GEX at spot into 0DTE and ex-0DTE", () => {
+    const p = buildGexProfile(contracts, 100, 0.1, 40);
+    expect(p.netAtSpot.zeroDte).toBeLessThan(0);
+    expect(p.netAtSpot.all).toBeCloseTo(p.netAtSpot.exZeroDte + p.netAtSpot.zeroDte, 6);
+    expect(p.largestZeroDteStrike).toBe(100);
+    const s100 = p.strikes.find((s) => s.strike === 100)!;
+    expect(s100.netGEX).toBe(s100.zeroDteGEX);
+  });
+
+  it("finds a flip between the put and call strikes, shifted up by 0DTE puts", () => {
+    const p = buildGexProfile(contracts, 100, 0.1, 200);
+    expect(p.flip.exZeroDte).not.toBeNull();
+    expect(p.flip.all).not.toBeNull();
+    expect(p.flip.exZeroDte!).toBeGreaterThan(95);
+    expect(p.flip.exZeroDte!).toBeLessThan(105);
+    expect(p.flip.all!).toBeGreaterThan(p.flip.exZeroDte!);
+    expect(p.profile).toHaveLength(201);
+    expect(p.profile[0].price).toBeCloseTo(90);
+    expect(p.profile[200].price).toBeCloseTo(110);
+  });
+
+  it("ignores expired, zero-OI and zero-IV contracts", () => {
+    const p = buildGexProfile(
+      [
+        { strike: 100, openInterest: 1000, iv: 0.2, T: 0, isCall: true, zeroDte: true },
+        { strike: 100, openInterest: 0, iv: 0.2, T: T7, isCall: true, zeroDte: false },
+        { strike: 100, openInterest: 1000, iv: 0, T: T7, isCall: true, zeroDte: false },
+      ],
+      100, 0.1, 10,
+    );
+    expect(p.strikes).toHaveLength(0);
+    expect(p.netAtSpot.all).toBe(0);
+    expect(p.largestZeroDteStrike).toBeNull();
+  });
+});
+
+describe("resolveIV", () => {
+  it("keeps a usable IV", () => {
+    expect(resolveIV(0.18, 0.2)).toBe(0.18);
+  });
+
+  it("replaces Yahoo's 0.00001 placeholder with the opposite side via put-call parity", () => {
+    expect(resolveIV(0.00001, 0.21)).toBe(0.21);
+  });
+
+  it("returns 0 when neither side is usable", () => {
+    expect(resolveIV(0.00001, 0)).toBe(0);
+    expect(resolveIV(NaN, 0.00001)).toBe(0);
   });
 });

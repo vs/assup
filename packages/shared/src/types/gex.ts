@@ -37,3 +37,36 @@ export interface GexAnalysisResponse {
   levels: GexKeyLevels;
   summary: GexSummary;
 }
+
+/** Net GEX at current spot for one strike, with the 0DTE portion broken out. */
+export interface GexProfileStrike {
+  strike: number;
+  netGEX: number;
+  zeroDteGEX: number;
+}
+
+/** Total net GEX if the underlying moved to `price` (IV held fixed). */
+export interface GexProfilePoint {
+  price: number;
+  netGEX: number;
+  netGEXExZeroDte: number;
+}
+
+export interface GexProfileResponse {
+  symbol: string;
+  spot: number;
+  /** Timestamp of the (delayed) spot quote. */
+  spotTime: string;
+  fetchedAt: string;
+  expirationCount: number;
+  zeroDteExpiration: string | null;
+  rangePct: number;
+  /** Contracts with open interest but no usable IV on either side (excluded). */
+  contractsWithoutIV: number;
+  stale?: boolean;
+  strikes: GexProfileStrike[];
+  profile: GexProfilePoint[];
+  netAtSpot: { all: number; exZeroDte: number; zeroDte: number };
+  flip: { all: number | null; exZeroDte: number | null };
+  largestZeroDteStrike: number | null;
+}

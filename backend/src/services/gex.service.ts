@@ -12,6 +12,9 @@ import type {
   GexStrikeData,
   GexKeyLevels,
   GexSummary,
+  GexProfileResponse,
+  GexProfileStrike,
+  GexProfilePoint,
 } from "@assup/shared";
 
 // --- Yahoo Finance symbol mapping ---
@@ -65,6 +68,69 @@ export function bsGamma(
   const d1 = (Math.log(spot / strike) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
 
   return normPdf(d1) / (spot * sigma * sqrtT);
+}
+
+// --- Expiry Timing ---
+
+const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
+/** Floor for live contracts so gamma stays finite in the last minutes before the close. */
+const MIN_T_YEARS = 1 / (365 * 24);
+
+const etHourFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "numeric",
+  hourCycle: "h23",
+});
+const etDateFormat = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" });
+
+/** Calendar date (YYYY-MM-DD) in New York for a UTC timestamp. */
+export function etDateString(ms: number): string {
+  return etDateFormat.format(ms);
+}
+
+/** UTC timestamp of the 4:00 PM ET close on an ISO date (YYYY-MM-DD), DST-aware. */
+export function marketCloseMs(isoDate: string): number {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const edtClose = Date.UTC(y, m - 1, d, 20); // 16:00 EDT
+  return Number(etHourFormat.format(edtClose)) === 16 ? edtClose : edtClose + 60 * 60 * 1000;
+}
+
+/**
+ * Time to expiry in years, measured to the 4 PM ET close of the expiration date.
+ * Returns 0 once the contract has expired.
+ */
+export function yearsToExpiry(isoDate: string, nowMs: number): number {
+  const ms = marketCloseMs(isoDate) - nowMs;
+  if (ms <= 0) return 0;
+  return Math.max(ms / MS_PER_YEAR, MIN_T_YEARS);
+}
+
+/** Yahoo stamps expirations at 00:00 UTC of the expiration date. */
+function yahooExpiryToIso(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toISOString().split("T")[0];
+}
+
+// --- Implied Volatility ---
+
+/**
+ * Yahoo reports IV = 0.00001 when its solver fails (typically ITM contracts).
+ * No index option trades anywhere near this, so anything at or below is a placeholder.
+ */
+const YAHOO_IV_PLACEHOLDER_MAX = 0.001;
+
+export function isUsableIV(iv: number): boolean {
+  return Number.isFinite(iv) && iv > YAHOO_IV_PLACEHOLDER_MAX;
+}
+
+/**
+ * IV for one side of a strike. When Yahoo has no usable IV for it, use the
+ * opposite side at the same strike/expiry: put-call parity gives European
+ * calls and puts the same IV. Returns 0 (no gamma) when neither is usable.
+ */
+export function resolveIV(own: number, opposite: number): number {
+  if (isUsableIV(own)) return own;
+  if (isUsableIV(opposite)) return opposite;
+  return 0;
 }
 
 // --- Per-Strike GEX ---
@@ -248,10 +314,119 @@ export function calcSummary(strikes: GexStrikeData[], spot: number): GexSummary 
   };
 }
 
+// --- GEX Profile (all expiries vs ex-0DTE) ---
+
+export interface GexContract {
+  strike: number;
+  openInterest: number;
+  iv: number;       // decimal
+  T: number;        // years
+  isCall: boolean;
+  zeroDte: boolean;
+}
+
+/** Dealer GEX of one contract if the underlying traded at `price` ($ per 1% move). */
+export function contractGEX(c: GexContract, price: number): number {
+  const gex = c.openInterest * bsGamma(price, c.strike, c.iv, c.T) * 100 * price * price * 0.01;
+  return c.isCall ? gex : -gex;
+}
+
+/**
+ * Zero-crossing of `values` (sampled at ascending `xs`) nearest to `spot`,
+ * linearly interpolated. Null when the series never changes sign.
+ */
+export function findZeroCrossing(xs: number[], values: number[], spot: number): number | null {
+  let best: number | null = null;
+  for (let i = 1; i < xs.length; i++) {
+    const a = values[i - 1];
+    const b = values[i];
+    if ((a < 0 && b >= 0) || (a > 0 && b <= 0)) {
+      const x = xs[i - 1] + (-a / (b - a)) * (xs[i] - xs[i - 1]);
+      if (best === null || Math.abs(x - spot) < Math.abs(best - spot)) best = x;
+    }
+  }
+  return best === null ? null : Math.round(best * 100) / 100;
+}
+
+export interface GexProfile {
+  strikes: GexProfileStrike[];
+  profile: GexProfilePoint[];
+  netAtSpot: { all: number; exZeroDte: number; zeroDte: number };
+  flip: { all: number | null; exZeroDte: number | null };
+  largestZeroDteStrike: number | null;
+}
+
+/**
+ * Build per-strike GEX at spot (bars) and total GEX across hypothetical spots
+ * within ±rangePct (lines), for all expiries and with 0DTE removed.
+ */
+export function buildGexProfile(
+  contracts: GexContract[],
+  spot: number,
+  rangePct: number,
+  gridSteps: number,
+): GexProfile {
+  const live = contracts.filter((c) => c.openInterest > 0 && c.iv > 0 && c.T > 0);
+  const lo = spot * (1 - rangePct);
+  const hi = spot * (1 + rangePct);
+
+  const byStrike = new Map<number, GexProfileStrike>();
+  let all = 0;
+  let zeroDte = 0;
+  for (const c of live) {
+    const gex = contractGEX(c, spot);
+    all += gex;
+    if (c.zeroDte) zeroDte += gex;
+    if (c.strike < lo || c.strike > hi) continue;
+    const entry = byStrike.get(c.strike) ?? { strike: c.strike, netGEX: 0, zeroDteGEX: 0 };
+    entry.netGEX += gex;
+    if (c.zeroDte) entry.zeroDteGEX += gex;
+    byStrike.set(c.strike, entry);
+  }
+  const strikes = [...byStrike.values()].sort((a, b) => a.strike - b.strike);
+
+  const profile: GexProfilePoint[] = [];
+  for (let i = 0; i <= gridSteps; i++) {
+    const price = lo + ((hi - lo) * i) / gridSteps;
+    let net = 0;
+    let net0 = 0;
+    for (const c of live) {
+      const gex = contractGEX(c, price);
+      net += gex;
+      if (c.zeroDte) net0 += gex;
+    }
+    profile.push({ price, netGEX: net, netGEXExZeroDte: net - net0 });
+  }
+
+  const xs = profile.map((p) => p.price);
+  const flip = {
+    all: findZeroCrossing(xs, profile.map((p) => p.netGEX), spot),
+    exZeroDte: findZeroCrossing(xs, profile.map((p) => p.netGEXExZeroDte), spot),
+  };
+
+  let largestZeroDteStrike: number | null = null;
+  let largestAbs = 0;
+  for (const s of strikes) {
+    if (Math.abs(s.zeroDteGEX) > largestAbs) {
+      largestAbs = Math.abs(s.zeroDteGEX);
+      largestZeroDteStrike = s.strike;
+    }
+  }
+
+  return {
+    strikes,
+    profile,
+    netAtSpot: { all, exZeroDte: all - zeroDte, zeroDte },
+    flip,
+    largestZeroDteStrike,
+  };
+}
+
 // --- Yahoo Finance Fetch (via yahoo-finance2) ---
 
 interface OptionsChainResult {
   spot: number;
+  spotTime: Date | null;
   expirationDates: number[];
   options: Array<{
     expirationDate: number;
@@ -279,6 +454,7 @@ async function fetchOptionsChain(
   );
 
   const spot = (result as any).quote?.regularMarketPrice ?? 0;
+  const spotTime: Date | null = (result as any).quote?.regularMarketTime ?? null;
   const expirationDates = ((result as any).expirationDates ?? []).map(
     (d: Date) => Math.floor(d.getTime() / 1000),
   );
@@ -299,7 +475,7 @@ async function fetchOptionsChain(
     })),
   }));
 
-  return { spot, expirationDates, options };
+  return { spot, spotTime, expirationDates, options };
 }
 
 // --- In-Memory Cache ---
@@ -314,7 +490,7 @@ const cache = new Map<string, CacheEntry>();
 /**
  * Cache TTL: until 4 PM ET or 4 hours, whichever is shorter.
  */
-function isCacheValid(entry: CacheEntry): boolean {
+function isCacheValid(entry: { fetchedAt: number }): boolean {
   const now = Date.now();
   const age = now - entry.fetchedAt;
   const MAX_AGE_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -371,10 +547,7 @@ export async function getGexAnalysis(
   const spot = initial.spot;
   const expirationDates = initial.expirationDates;
 
-  const expirationStrings = expirationDates.map((ts) => {
-    const d = new Date(ts * 1000);
-    return d.toISOString().split("T")[0];
-  });
+  const expirationStrings = expirationDates.map(yahooExpiryToIso);
 
   let expirationsToFetch: number[] = [];
   let analyzedExpiration: string | null = null;
@@ -432,9 +605,7 @@ export async function getGexAnalysis(
   const gexAccumulator = new Map<number, GexStrikeData>();
 
   for (const opts of allOptions) {
-    const expDate = new Date(opts.expirationDate * 1000);
-    const dte = Math.max(0, (expDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    const T = Math.max(dte / 365, 1 / (365 * 24));
+    const T = yearsToExpiry(yahooExpiryToIso(opts.expirationDate), Date.now());
 
     // Build a per-strike map for this expiration
     const strikeData = new Map<number, { callOI: number; putOI: number; callVol: number; putVol: number; callIV: number; putIV: number }>();
@@ -462,8 +633,8 @@ export async function getGexAnalysis(
         strike,
         callOI: data.callOI,
         putOI: data.putOI,
-        callIV: data.callIV,
-        putIV: data.putIV,
+        callIV: resolveIV(data.callIV, data.putIV),
+        putIV: resolveIV(data.putIV, data.callIV),
         callVolume: data.callVol,
         putVolume: data.putVol,
         T,
@@ -520,5 +691,99 @@ export function getStaleCacheEntry(
 ): GexAnalysisResponse | null {
   const cacheKey = getCacheKey(symbol, expiration, aggregate);
   const cached = cache.get(cacheKey);
+  return cached ? { ...cached.data, stale: true } : null;
+}
+
+// --- GEX Profile (all expiries) ---
+
+const PROFILE_RANGE_PCT = 0.05;
+const PROFILE_GRID_STEPS = 160;
+const PROFILE_FETCH_CONCURRENCY = 4;
+
+const profileCache = new Map<string, { data: GexProfileResponse; fetchedAt: number }>();
+
+/**
+ * Dealer gamma across every listed expiration: per-strike GEX at spot plus the
+ * net GEX curve over hypothetical spots, for all expiries and ex-0DTE.
+ */
+export async function getGexProfile(symbol: string, forceRefresh = false): Promise<GexProfileResponse> {
+  if (!forceRefresh) {
+    const cached = profileCache.get(symbol);
+    if (cached && isCacheValid(cached)) return cached.data;
+  }
+
+  const yahooSymbol = toYahooSymbol(symbol);
+  const initial = await fetchOptionsChain(yahooSymbol);
+  if (initial.spot <= 0) throw new Error(`No options data for ${symbol} (${yahooSymbol})`);
+  if (!initial.spotTime) throw new Error(`Yahoo quote for ${symbol} (${yahooSymbol}) has no regularMarketTime`);
+
+  const spot = initial.spot;
+  const nowMs = Date.now();
+  const today = etDateString(nowMs);
+  const expirations = initial.expirationDates.filter(
+    (ts) => yearsToExpiry(yahooExpiryToIso(ts), nowMs) > 0,
+  );
+  if (expirations.length === 0) throw new Error(`No unexpired option expirations for ${symbol} (${yahooSymbol})`);
+
+  const chains: OptionsChainResult["options"] = new Array(expirations.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < expirations.length) {
+      const i = next++;
+      const ts = expirations[i];
+      const existing = initial.options.find((o) => o.expirationDate === ts);
+      if (existing) {
+        chains[i] = existing;
+        continue;
+      }
+      const resp = await fetchOptionsChain(yahooSymbol, new Date(ts * 1000));
+      const opts = resp.options[0];
+      if (!opts) {
+        throw new Error(`Yahoo returned no options for ${symbol} expiration ${yahooExpiryToIso(ts)}; retry with refresh=true`);
+      }
+      chains[i] = opts;
+    }
+  };
+  await Promise.all(Array.from({ length: PROFILE_FETCH_CONCURRENCY }, worker));
+
+  const contracts: GexContract[] = [];
+  let zeroDteExpiration: string | null = null;
+  let contractsWithoutIV = 0;
+  for (const opts of chains) {
+    const iso = yahooExpiryToIso(opts.expirationDate);
+    const T = yearsToExpiry(iso, nowMs);
+    const zeroDte = iso === today;
+    if (zeroDte) zeroDteExpiration = iso;
+    const callIV = new Map(opts.calls.map((c) => [c.strike, c.impliedVolatility]));
+    const putIV = new Map(opts.puts.map((p) => [p.strike, p.impliedVolatility]));
+    const add = (strike: number, openInterest: number, ownIV: number, oppositeIV: number, isCall: boolean) => {
+      const iv = resolveIV(ownIV, oppositeIV);
+      if (iv === 0 && openInterest > 0) contractsWithoutIV++;
+      contracts.push({ strike, openInterest, iv, T, isCall, zeroDte });
+    };
+    for (const c of opts.calls) add(c.strike, c.openInterest, c.impliedVolatility, putIV.get(c.strike) ?? 0, true);
+    for (const p of opts.puts) add(p.strike, p.openInterest, p.impliedVolatility, callIV.get(p.strike) ?? 0, false);
+  }
+
+  const profile = buildGexProfile(contracts, spot, PROFILE_RANGE_PCT, PROFILE_GRID_STEPS);
+  const response: GexProfileResponse = {
+    symbol,
+    spot,
+    spotTime: new Date(initial.spotTime).toISOString(),
+    fetchedAt: new Date(nowMs).toISOString(),
+    expirationCount: chains.length,
+    zeroDteExpiration,
+    rangePct: PROFILE_RANGE_PCT,
+    contractsWithoutIV,
+    ...profile,
+  };
+
+  profileCache.set(symbol, { data: response, fetchedAt: nowMs });
+  return response;
+}
+
+/** Stale cached profile, if any (fallback on fetch errors). */
+export function getStaleProfileCacheEntry(symbol: string): GexProfileResponse | null {
+  const cached = profileCache.get(symbol);
   return cached ? { ...cached.data, stale: true } : null;
 }
