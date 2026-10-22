@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,28 +6,47 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useGexAnalysis } from "@/hooks/useGexAnalysis";
+import { useGexProfile } from "@/hooks/useGexProfile";
 import { GexMetrics } from "./GexMetrics";
-import { GexChart } from "./GexChart";
+import { GexProfileChart } from "./GexProfileChart";
 import { OIChart } from "./OIChart";
 import { GexSpreadRecommendation } from "./GexSpreadRecommendation";
-import type { GexStrikeData, GexKeyLevels } from "@assup/shared";
+/** Dealer gamma across all expirations, independent of the Single/Aggregate toggle. */
+function GexProfilePanel({ symbol }: { symbol: string | null }) {
+  const { data, isLoading, error, refresh, refreshing } = useGexProfile(symbol);
 
-/** Filter strikes to ±15% of spot so charts show meaningful detail. */
-function ChartStrikes({ strikes, spot, levels }: { strikes: GexStrikeData[]; spot: number; levels: GexKeyLevels }) {
-  const filtered = useMemo(() => {
-    const min = spot * 0.85;
-    const max = spot * 1.15;
-    return strikes.filter(s => s.strike >= min && s.strike <= max);
-  }, [strikes, spot]);
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center rounded-lg border py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <span className="ml-2 text-sm text-muted-foreground">Fetching all expirations...</span>
+      </div>
+    );
+  }
+  if (error && !data) {
+    return (
+      <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg text-sm">
+        Failed to fetch dealer gamma profile: {error instanceof Error ? error.message : "Unknown error"}
+      </div>
+    );
+  }
+  if (!data) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <GexChart strikes={filtered} spot={spot} levels={levels} />
-      <OIChart strikes={filtered} spot={spot} />
+    <div className="relative">
+      <button
+        onClick={() => void refresh()}
+        disabled={refreshing}
+        title="Refetch all expirations"
+        className="absolute right-3 top-3 z-10 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+      >
+        {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+      </button>
+      <GexProfileChart data={data} />
     </div>
   );
 }
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import type { IronCondorChainStrike, SpreadMode, SpreadSelectedLegs } from "@assup/shared";
 
 interface GexModalProps {
@@ -100,6 +119,8 @@ export function GexModal({
           </div>
         </DialogHeader>
 
+        <GexProfilePanel symbol={open ? symbol : null} />
+
         {isLoading && (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -135,7 +156,12 @@ export function GexModal({
             </div>
 
             <GexMetrics levels={data.levels} summary={data.summary} spot={data.spot} />
-            <ChartStrikes strikes={data.strikes} spot={data.spot} levels={data.levels} />
+            <OIChart
+              strikes={data.strikes}
+              spot={data.spot}
+              levels={data.levels}
+              scope={data.isAggregate ? "all expirations within 7 DTE" : `expiry ${data.analyzedExpiration}`}
+            />
 
             <GexSpreadRecommendation
               gexData={data}

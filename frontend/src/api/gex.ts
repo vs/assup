@@ -1,5 +1,5 @@
 import { request, buildQuery } from "./client";
-import type { GexAnalysisResponse } from "@assup/shared";
+import type { GexAnalysisResponse, GexProfileResponse } from "@assup/shared";
 
 export const gexApi = {
   getAnalysis: (
@@ -12,5 +12,10 @@ export const gexApi = {
         aggregate: options?.aggregate,
         refresh: options?.refresh,
       })}`,
+    ),
+
+  getProfile: (symbol: string, options?: { refresh?: boolean }) =>
+    request<GexProfileResponse>(
+      `/api/gex/${encodeURIComponent(symbol)}/profile${buildQuery({ refresh: options?.refresh })}`,
     ),
 };
