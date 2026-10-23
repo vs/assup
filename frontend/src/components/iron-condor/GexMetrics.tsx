@@ -1,10 +1,17 @@
 import { Card, CardContent } from "@/components/ui/card";
 import type { GexKeyLevels, GexSummary } from "@assup/shared";
 
+/** All-expiries flip from the dealer gamma profile, which loads separately. */
+export type GexFlipState =
+  | { state: "loading" }
+  | { state: "error" }
+  | { state: "ready"; level: number | null };
+
 interface GexMetricsProps {
   levels: GexKeyLevels;
   summary: GexSummary;
   spot: number;
+  flip: GexFlipState;
 }
 
 function formatOI(oi: number): string {
@@ -38,7 +45,28 @@ function MetricCard({ label, value, detail, explanation, valueClassName }: Metri
   );
 }
 
-export function GexMetrics({ levels, summary, spot }: GexMetricsProps) {
+function flipCard(flip: GexFlipState, spot: number): Omit<MetricCardProps, "label" | "valueClassName"> {
+  if (flip.state === "loading") {
+    return { value: "\u2026", detail: "Loading all expirations", explanation: "Computed from every listed expiration, shown in the dealer gamma chart above." };
+  }
+  if (flip.state === "error") {
+    return { value: "\u2014", detail: "Dealer gamma profile unavailable", explanation: "The all-expirations fetch failed. See the error above the chart." };
+  }
+  if (flip.level == null) {
+    return {
+      value: "\u2014",
+      detail: "No crossover within \u00B15%",
+      explanation: "Total net gamma keeps the same sign for every price within 5% of spot, so there is no flip nearby.",
+    };
+  }
+  return {
+    value: formatPrice(flip.level),
+    detail: `${spot > flip.level ? "Price above" : "Price below"} flip \u00B7 all expiries`,
+    explanation: "The price where total net gamma across all expirations would cross zero if price moved there (the Flip Line in the chart above). Above the flip, dealer hedging dampens moves (mean-reverting). Below, hedging amplifies moves (trending). Safer to sell premium when price is above the flip.",
+  };
+}
+
+export function GexMetrics({ levels, summary, spot, flip }: GexMetricsProps) {
   const putWallDist = spot > 0 ? ((spot - levels.putWall.strike) / spot * 100).toFixed(1) : "\u2014";
   const callWallDist = spot > 0 ? ((levels.callWall.strike - spot) / spot * 100).toFixed(1) : "\u2014";
 
@@ -60,17 +88,7 @@ export function GexMetrics({ levels, summary, spot }: GexMetricsProps) {
         explanation="Strike with the highest call open interest. Dealers who sold these calls must sell the underlying as price rises toward this level, creating a ceiling. Sell call spreads below this level for protection."
         valueClassName="text-blue-500"
       />
-      <MetricCard
-        label="GEX Flip"
-        value={summary.gexFlipLevel != null ? formatPrice(summary.gexFlipLevel) : "\u2014"}
-        detail={summary.gexFlipLevel != null
-          ? `${spot > summary.gexFlipLevel ? "Price above" : "Price below"} flip`
-          : "No crossover found"}
-        explanation={summary.gexFlipLevel != null
-          ? "The price level where net gamma exposure crosses zero. Above the flip, dealer hedging dampens moves (mean-reverting). Below, hedging amplifies moves (trending). Safer to sell premium when price is above the flip."
-          : "No gamma crossover found near the current price. All nearby strikes have the same gamma sign."}
-        valueClassName="text-yellow-500"
-      />
+      <MetricCard label="GEX Flip" {...flipCard(flip, spot)} valueClassName="text-yellow-500" />
       <MetricCard
         label="Dealer Regime"
         value={isPositive ? "Positive \u03B3" : "Negative \u03B3"}

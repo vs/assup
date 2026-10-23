@@ -11,9 +11,12 @@ import { GexMetrics } from "./GexMetrics";
 import { GexProfileChart } from "./GexProfileChart";
 import { OIChart } from "./OIChart";
 import { GexSpreadRecommendation } from "./GexSpreadRecommendation";
+import { Loader2, RefreshCw } from "lucide-react";
+import type { IronCondorChainStrike, SpreadMode, SpreadSelectedLegs } from "@assup/shared";
+
 /** Dealer gamma across all expirations, independent of the Single/Aggregate toggle. */
-function GexProfilePanel({ symbol }: { symbol: string | null }) {
-  const { data, isLoading, error, refresh, refreshing } = useGexProfile(symbol);
+function GexProfilePanel({ profile }: { profile: ReturnType<typeof useGexProfile> }) {
+  const { data, isLoading, error, refresh, refreshing } = profile;
 
   if (isLoading) {
     return (
@@ -46,8 +49,6 @@ function GexProfilePanel({ symbol }: { symbol: string | null }) {
     </div>
   );
 }
-import { Loader2, RefreshCw } from "lucide-react";
-import type { IronCondorChainStrike, SpreadMode, SpreadSelectedLegs } from "@assup/shared";
 
 interface GexModalProps {
   open: boolean;
@@ -82,6 +83,7 @@ export function GexModal({
     ? `${expiration.slice(0, 4)}-${expiration.slice(4, 6)}-${expiration.slice(6, 8)}`
     : expiration;
 
+  const profile = useGexProfile(open ? symbol : null);
   const { data, isLoading, error } = useGexAnalysis(
     open ? symbol : null,
     { expiration: aggregate ? undefined : isoExpiration, aggregate },
@@ -119,7 +121,7 @@ export function GexModal({
           </div>
         </DialogHeader>
 
-        <GexProfilePanel symbol={open ? symbol : null} />
+        <GexProfilePanel profile={profile} />
 
         {isLoading && (
           <div className="flex items-center justify-center py-16">
@@ -155,7 +157,14 @@ export function GexModal({
               <span>Fetched: {new Date(data.fetchedAt).toLocaleTimeString()}</span>
             </div>
 
-            <GexMetrics levels={data.levels} summary={data.summary} spot={data.spot} />
+            <GexMetrics
+              levels={data.levels}
+              summary={data.summary}
+              spot={data.spot}
+              flip={profile.data
+                ? { state: "ready", level: profile.data.flip.all }
+                : { state: profile.isError ? "error" : "loading" }}
+            />
             <OIChart
               strikes={data.strikes}
               spot={data.spot}
