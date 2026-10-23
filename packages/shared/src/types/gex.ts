@@ -64,6 +64,8 @@ export interface GexProfileResponse {
   /** Contracts with open interest but no usable IV on either side (excluded). */
   contractsWithoutIV: number;
   stale?: boolean;
+  /** Why the live fetch failed when serving a stale profile. */
+  staleReason?: string;
   strikes: GexProfileStrike[];
   profile: GexProfilePoint[];
   netAtSpot: { all: number; exZeroDte: number; zeroDte: number };

@@ -424,14 +424,23 @@ export function buildGexProfile(
 
 // --- Yahoo Finance Fetch (via yahoo-finance2) ---
 
+export interface ChainContract {
+  strike: number;
+  openInterest: number;
+  volume: number;
+  impliedVolatility: number;
+  bid: number;
+  ask: number;
+}
+
 interface OptionsChainResult {
   spot: number;
   spotTime: Date | null;
   expirationDates: number[];
   options: Array<{
     expirationDate: number;
-    calls: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }>;
-    puts: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }>;
+    calls: ChainContract[];
+    puts: ChainContract[];
   }>;
 }
 
@@ -466,12 +475,16 @@ async function fetchOptionsChain(
       openInterest: c.openInterest ?? 0,
       volume: c.volume ?? 0,
       impliedVolatility: c.impliedVolatility ?? 0,
+      bid: c.bid ?? 0,
+      ask: c.ask ?? 0,
     })),
     puts: (opt.puts ?? []).map((p: any) => ({
       strike: p.strike ?? 0,
       openInterest: p.openInterest ?? 0,
       volume: p.volume ?? 0,
       impliedVolatility: p.impliedVolatility ?? 0,
+      bid: p.bid ?? 0,
+      ask: p.ask ?? 0,
     })),
   }));
 
@@ -582,7 +595,7 @@ export async function getGexAnalysis(
     }
   }
 
-  const allOptions: Array<{ expirationDate: number; calls: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }>; puts: Array<{ strike: number; openInterest: number; volume: number; impliedVolatility: number }> }> = [];
+  const allOptions: OptionsChainResult["options"] = [];
 
   for (let i = 0; i < expirationsToFetch.length; i++) {
     const expUnix = expirationsToFetch[i];
@@ -696,6 +709,20 @@ export function getStaleCacheEntry(
 
 // --- GEX Profile (all expiries) ---
 
+/** Near-the-money window used to decide whether Yahoo is quoting the chain. */
+const LIVE_QUOTE_WINDOW_PCT = 0.02;
+
+/**
+ * Whether an expiration has live quotes: at least one contract within ±2% of
+ * spot with a non-zero bid or ask. After the close Yahoo zeroes bid/ask and its
+ * IVs fall back to placeholders (0.00001, 1/256, 1/64, ...), which are unusable.
+ */
+export function hasLiveQuotes(calls: ChainContract[], puts: ChainContract[], spot: number): boolean {
+  const lo = spot * (1 - LIVE_QUOTE_WINDOW_PCT);
+  const hi = spot * (1 + LIVE_QUOTE_WINDOW_PCT);
+  return [...calls, ...puts].some((c) => c.strike >= lo && c.strike <= hi && (c.bid > 0 || c.ask > 0));
+}
+
 const PROFILE_RANGE_PCT = 0.05;
 const PROFILE_GRID_STEPS = 160;
 const PROFILE_FETCH_CONCURRENCY = 4;
@@ -746,6 +773,15 @@ export async function getGexProfile(symbol: string, forceRefresh = false): Promi
   };
   await Promise.all(Array.from({ length: PROFILE_FETCH_CONCURRENCY }, worker));
 
+  const nearest = chains[0];
+  if (!hasLiveQuotes(nearest.calls, nearest.puts, spot)) {
+    throw new Error(
+      `Yahoo has no live option quotes for ${symbol}: bid and ask are 0 on every contract within ` +
+      `±${LIVE_QUOTE_WINDOW_PCT * 100}% of spot for ${yahooExpiryToIso(nearest.expirationDate)}, so its implied ` +
+      `volatilities are placeholders. This happens after the close until quotes resume before the next open.`,
+    );
+  }
+
   const contracts: GexContract[] = [];
   let zeroDteExpiration: string | null = null;
   let contractsWithoutIV = 0;
@@ -782,8 +818,8 @@ export async function getGexProfile(symbol: string, forceRefresh = false): Promi
   return response;
 }
 
-/** Stale cached profile, if any (fallback on fetch errors). */
-export function getStaleProfileCacheEntry(symbol: string): GexProfileResponse | null {
+/** Stale cached profile, if any (fallback on fetch errors), tagged with why it is stale. */
+export function getStaleProfileCacheEntry(symbol: string, reason: string): GexProfileResponse | null {
   const cached = profileCache.get(symbol);
-  return cached ? { ...cached.data, stale: true } : null;
+  return cached ? { ...cached.data, stale: true, staleReason: reason } : null;
 }
