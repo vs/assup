@@ -10,7 +10,9 @@ import {
   findZeroCrossing,
   buildGexProfile,
   resolveIV,
+  hasLiveQuotes,
   type GexContract,
+  type ChainContract,
 } from "../../services/gex.service.js";
 import type { GexStrikeData } from "@assup/shared";
 
@@ -243,5 +245,24 @@ describe("resolveIV", () => {
   it("returns 0 when neither side is usable", () => {
     expect(resolveIV(0.00001, 0)).toBe(0);
     expect(resolveIV(NaN, 0.00001)).toBe(0);
+  });
+});
+
+describe("hasLiveQuotes", () => {
+  const contract = (strike: number, bid: number, ask: number): ChainContract => ({
+    strike, openInterest: 100, volume: 0, impliedVolatility: 0.0156, bid, ask,
+  });
+
+  it("is true when a near-the-money contract is quoted", () => {
+    expect(hasLiveQuotes([contract(100, 1.2, 1.3)], [contract(101, 0, 0)], 100)).toBe(true);
+    expect(hasLiveQuotes([], [contract(99, 0, 0.05)], 100)).toBe(true);
+  });
+
+  it("is false after the close when bid and ask are 0 near the money", () => {
+    expect(hasLiveQuotes([contract(100, 0, 0), contract(101, 0, 0)], [contract(99, 0, 0)], 100)).toBe(false);
+  });
+
+  it("ignores quotes far from spot", () => {
+    expect(hasLiveQuotes([contract(110, 0.05, 0.1)], [contract(90, 0.05, 0.1)], 100)).toBe(false);
   });
 });

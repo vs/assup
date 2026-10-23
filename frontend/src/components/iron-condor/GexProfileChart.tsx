@@ -124,8 +124,12 @@ export function GexProfileChart({ data }: GexProfileChartProps) {
       </div>
       <div className="text-xs text-[var(--gx-muted)]">
         as of {fmtAsOf(data.spotTime)} (delayed) &nbsp;|&nbsp; {data.expirationCount} expirations &nbsp;|&nbsp; $ notional per 1% move, est.
-        {data.stale && <span className="ml-2 text-yellow-500">cached — live fetch failed</span>}
       </div>
+      {data.stale && (
+        <div className="mt-1.5 rounded bg-yellow-500/10 px-2 py-1 text-xs text-yellow-700 dark:text-yellow-400">
+          Showing the last good profile (as of {fmtAsOf(data.spotTime)}). {data.staleReason}
+        </div>
+      )}
       <div className="mt-2 mb-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
         <span>net at {fmtPrice(data.spot)}:</span>
         <span>all expiries <span className="font-semibold text-[var(--gx-all)]">{fmtBillions(netAtSpot.all)}</span></span>

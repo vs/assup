@@ -62,7 +62,7 @@ router.get(
     try {
       res.json(await getGexProfile(symbol, forceRefresh));
     } catch (err) {
-      const stale = getStaleProfileCacheEntry(symbol);
+      const stale = getStaleProfileCacheEntry(symbol, err instanceof Error ? err.message : String(err));
       if (stale) {
         res.json(stale);
         return;
