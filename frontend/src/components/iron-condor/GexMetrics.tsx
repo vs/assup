@@ -1,17 +1,16 @@
 import { Card, CardContent } from "@/components/ui/card";
-import type { GexKeyLevels, GexSummary } from "@assup/shared";
+import type { GexKeyLevels } from "@assup/shared";
 
-/** All-expiries flip from the dealer gamma profile, which loads separately. */
-export type GexFlipState =
+/** All-expiries flip and net GEX at spot from the dealer gamma profile, which loads separately. */
+export type GexProfileState =
   | { state: "loading" }
   | { state: "error" }
-  | { state: "ready"; level: number | null };
+  | { state: "ready"; flip: number | null; netGEX: number };
 
 interface GexMetricsProps {
   levels: GexKeyLevels;
-  summary: GexSummary;
   spot: number;
-  flip: GexFlipState;
+  profile: GexProfileState;
 }
 
 function formatOI(oi: number): string {
@@ -45,14 +44,18 @@ function MetricCard({ label, value, detail, explanation, valueClassName }: Metri
   );
 }
 
-function flipCard(flip: GexFlipState, spot: number): Omit<MetricCardProps, "label" | "valueClassName"> {
-  if (flip.state === "loading") {
-    return { value: "\u2026", detail: "Loading all expirations", explanation: "Computed from every listed expiration, shown in the dealer gamma chart above." };
-  }
-  if (flip.state === "error") {
-    return { value: "\u2014", detail: "Dealer gamma profile unavailable", explanation: "The all-expirations fetch failed. See the error above the chart." };
-  }
-  if (flip.level == null) {
+const PROFILE_LOADING = { value: "\u2026", detail: "Loading all expirations", explanation: "Computed from every listed expiration, shown in the dealer gamma chart above." };
+const PROFILE_ERROR = { value: "\u2014", detail: "Dealer gamma profile unavailable", explanation: "The all-expirations fetch failed. See the error above the chart." };
+
+function formatBillions(v: number): string {
+  return `${v < 0 ? "\u2212" : "+"}$${(Math.abs(v) / 1e9).toFixed(1)}B`;
+}
+
+function flipCard(profile: GexProfileState, spot: number): Omit<MetricCardProps, "label" | "valueClassName"> {
+  if (profile.state === "loading") return PROFILE_LOADING;
+  if (profile.state === "error") return PROFILE_ERROR;
+  const level = profile.flip;
+  if (level == null) {
     return {
       value: "\u2014",
       detail: "No crossover within \u00B15%",
@@ -60,17 +63,31 @@ function flipCard(flip: GexFlipState, spot: number): Omit<MetricCardProps, "labe
     };
   }
   return {
-    value: formatPrice(flip.level),
-    detail: `${spot > flip.level ? "Price above" : "Price below"} flip \u00B7 all expiries`,
+    value: formatPrice(level),
+    detail: `${spot > level ? "Price above" : "Price below"} flip \u00B7 all expiries`,
     explanation: "The price where total net gamma across all expirations would cross zero if price moved there (the Flip Line in the chart above). Above the flip, dealer hedging dampens moves (mean-reverting). Below, hedging amplifies moves (trending). Safer to sell premium when price is above the flip.",
   };
 }
 
-export function GexMetrics({ levels, summary, spot, flip }: GexMetricsProps) {
+function regimeCard(profile: GexProfileState): MetricCardProps {
+  const label = "Dealer Regime";
+  if (profile.state === "loading") return { label, ...PROFILE_LOADING };
+  if (profile.state === "error") return { label, ...PROFILE_ERROR };
+  const isPositive = profile.netGEX >= 0;
+  return {
+    label,
+    value: isPositive ? "Positive \u03B3" : "Negative \u03B3",
+    detail: `${isPositive ? "Moves dampened \u00B7 Safer to sell" : "Moves amplified \u00B7 Higher risk"} \u00B7 net ${formatBillions(profile.netGEX)}`,
+    explanation: isPositive
+      ? "Dealers are long gamma at the current price (total net GEX across all expirations is positive). They buy dips and sell rallies to hedge, compressing volatility. Good environment for selling premium \u2014 price tends to stay range-bound."
+      : "Dealers are short gamma at the current price (total net GEX across all expirations is negative). They must sell into drops and buy into rallies, amplifying moves. Riskier for selling premium \u2014 breakouts are more likely.",
+    valueClassName: isPositive ? "text-green-500" : "text-red-500",
+  };
+}
+
+export function GexMetrics({ levels, spot, profile }: GexMetricsProps) {
   const putWallDist = spot > 0 ? ((spot - levels.putWall.strike) / spot * 100).toFixed(1) : "\u2014";
   const callWallDist = spot > 0 ? ((levels.callWall.strike - spot) / spot * 100).toFixed(1) : "\u2014";
-
-  const isPositive = summary.netGEXRegime === "positive";
 
   return (
     <div className="grid grid-cols-4 gap-3">
@@ -88,18 +105,8 @@ export function GexMetrics({ levels, summary, spot, flip }: GexMetricsProps) {
         explanation="Strike with the highest call open interest. Dealers who sold these calls must sell the underlying as price rises toward this level, creating a ceiling. Sell call spreads below this level for protection."
         valueClassName="text-blue-500"
       />
-      <MetricCard label="GEX Flip" {...flipCard(flip, spot)} valueClassName="text-yellow-500" />
-      <MetricCard
-        label="Dealer Regime"
-        value={isPositive ? "Positive \u03B3" : "Negative \u03B3"}
-        detail={isPositive
-          ? "Moves dampened \u00B7 Safer to sell"
-          : "Moves amplified \u00B7 Higher risk"}
-        explanation={isPositive
-          ? "Dealers are long gamma near the current price. They buy dips and sell rallies to hedge, compressing volatility. Good environment for selling premium \u2014 price tends to stay range-bound."
-          : "Dealers are short gamma near the current price. They must sell into drops and buy into rallies, amplifying moves. Riskier for selling premium \u2014 breakouts are more likely."}
-        valueClassName={isPositive ? "text-green-500" : "text-red-500"}
-      />
+      <MetricCard label="GEX Flip" {...flipCard(profile, spot)} valueClassName="text-yellow-500" />
+      <MetricCard {...regimeCard(profile)} />
     </div>
   );
 }

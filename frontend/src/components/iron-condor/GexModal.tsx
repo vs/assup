@@ -159,10 +159,9 @@ export function GexModal({
 
             <GexMetrics
               levels={data.levels}
-              summary={data.summary}
               spot={data.spot}
-              flip={profile.data
-                ? { state: "ready", level: profile.data.flip.all }
+              profile={profile.data
+                ? { state: "ready", flip: profile.data.flip.all, netGEX: profile.data.netAtSpot.all }
                 : { state: profile.isError ? "error" : "loading" }}
             />
             <OIChart
