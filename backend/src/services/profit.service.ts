@@ -4,6 +4,7 @@
 
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
+import { getUnimportedTodayTrades } from "./liveExecutions.js";
 import { getOptionGreeks, getUnderlyingPrices } from "../utils/options.js";
 import type { QuoteContract } from "./quotes/index.js";
 import { convertToUsd } from "./currency.js";
@@ -1203,14 +1204,14 @@ class ProfitService {
    * Fetch today's option executions from TWS
    */
   async getTodayExecutions(): Promise<ImportedTrade[]> {
-    return ibkrService.getTodayTrades("OPT");
+    return getUnimportedTodayTrades("OPT");
   }
 
   /**
    * Fetch today's stock executions from TWS and calculate realizedPnl from cost basis
    */
   async getTodayStockExecutions(): Promise<ImportedTrade[]> {
-    const stockTrades = await ibkrService.getTodayTrades("STK");
+    const stockTrades = await getUnimportedTodayTrades("STK");
     if (stockTrades.length === 0) {
       return [];
     }

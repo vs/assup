@@ -6,6 +6,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/index.js";
 import { ibkrService } from "./ibkr.js";
+import { getUnimportedTodayTrades } from "./liveExecutions.js";
 import { getOptionGreeks, getUnderlyingPrices } from "../utils/options.js";
 import type {
   WheelTracker,
@@ -866,7 +867,7 @@ export const wheelService = {
       // Fetch positions and today's trades in parallel
       const [positions, todayTrades] = await Promise.all([
         ibkrService.getPositions().catch(() => []),
-        ibkrService.getTodayTrades().catch(() => []),
+        getUnimportedTodayTrades().catch(() => []),
       ]);
 
       result.positions = positions;
@@ -1562,7 +1563,7 @@ export const wheelService = {
     if (cachedTodayTrades) {
       todayExecutions = this.filterTodayTradesForSymbol(cachedTodayTrades, symbol);
     } else {
-      const allTrades = await ibkrService.getTodayTrades().catch(() => []);
+      const allTrades = await getUnimportedTodayTrades().catch(() => []);
       todayExecutions = this.filterTodayTradesForSymbol(allTrades as unknown as RawTrade[], symbol);
     }
 
