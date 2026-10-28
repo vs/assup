@@ -138,8 +138,8 @@ export function ScannerDialog({ open, onOpenChange, onTickersAdded }: ScannerDia
         ]);
         setScanCodes(codes);
         setPresets(presetList);
-        if (codes.length > 0 && !scanCode) {
-          setScanCode(codes[0].code);
+        if (codes.length > 0) {
+          setScanCode((current) => current || codes[0].code);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load scanner data");

@@ -8,6 +8,7 @@ import { macroBroadcastService } from "./services/macroBroadcast.service.js";
 import { prisma } from "./db/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { asyncHandler } from "./middleware/asyncHandler.js";
+import { applyOrderRateLimits } from "./middleware/orderRateLimit.js";
 import assetClassesRouter from "./routes/assetClasses.js";
 import allocationProfilesRouter from "./routes/allocationProfiles.js";
 import positionsRouter from "./routes/positions.js";
@@ -78,18 +79,10 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Stricter rate limiting for order placement to prevent accidental mass orders
-const orderLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // limit each IP to 10 order placements per minute
-  message: { error: "Too many order requests, please try again later" },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use(generalLimiter as any);
 app.use(express.json());
+applyOrderRateLimits(app);
 
 // API Routes
 app.use("/api/asset-classes", assetClassesRouter);
@@ -97,9 +90,6 @@ app.use("/api/allocation-profiles", allocationProfilesRouter);
 app.use("/api/positions", positionsRouter);
 app.use("/api/security-assignments", securityAssignmentsRouter);
 app.use("/api/watchlists", watchlistsRouter);
-// Apply stricter rate limiting for order placement endpoint
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-app.use("/api/orders/place", orderLimiter as any);
 app.use("/api/orders", ordersRouter);
 app.use("/api/scanner/jobs", scannerJobsRouter);
 app.use("/api/scanner", scannerRouter);
@@ -112,11 +102,7 @@ app.use("/api/wheel", wheelRouter);
 
 app.use("/api/research", researchRouter);
 app.use("/api/ticker-profile", tickerProfileRouter);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-app.use("/api/iron-condor/order", orderLimiter as any);
 app.use("/api/iron-condor", ironCondorRouter);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-app.use("/api/spreads/close", orderLimiter as any);
 app.use("/api/spreads", spreadStreamRouter);
 app.use("/api/spreads", spreadsRouter);
 app.use("/api/dashboard", dashboardRouter);

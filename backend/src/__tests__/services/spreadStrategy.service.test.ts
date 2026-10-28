@@ -31,6 +31,7 @@ vi.mock("../../utils/market.js", () => ({
 }));
 
 import { spreadStrategyService } from "../../services/spreadStrategy.service.js";
+import { recordStrategyLossSchema } from "@assup/shared";
 import { ibkrService } from "../../services/ibkr.js";
 import { fetchVix3m } from "../../services/research/providers/yahoo.js";
 import { prisma } from "../../db/index.js";
@@ -136,5 +137,32 @@ describe("SpreadStrategyService.getMetrics (RUT)", () => {
     await spreadStrategyService.getMetrics("RUT");
 
     expect(fetchVix3m).not.toHaveBeenCalled();
+  });
+});
+
+describe("SpreadStrategyService.recordLoss", () => {
+  it("stores the provided loss date as-is", async () => {
+    await spreadStrategyService.recordLoss("SPX", "2026-03-04");
+
+    expect(prisma.setting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { value: { losses: { SPX: "2026-03-04" } } },
+      }),
+    );
+  });
+});
+
+describe("recordStrategyLossSchema", () => {
+  it("accepts a valid date and uppercases the symbol", () => {
+    expect(recordStrategyLossSchema.parse({ symbol: "spx", date: "2026-03-04" }))
+      .toEqual({ symbol: "SPX", date: "2026-03-04" });
+  });
+
+  it("rejects a missing date instead of defaulting to today", () => {
+    expect(recordStrategyLossSchema.safeParse({ symbol: "SPX" }).success).toBe(false);
+  });
+
+  it.each(["2026-3-4", "03/04/2026", "2026-02-30", "2026-13-45"])("rejects %s", (date) => {
+    expect(recordStrategyLossSchema.safeParse({ symbol: "SPX", date }).success).toBe(false);
   });
 });

@@ -346,11 +346,10 @@ class SpreadStrategyService {
   /**
    * Record a loss for cooloff tracking.
    */
-  async recordLoss(symbol: string, lossDate?: string): Promise<void> {
-    const date = lossDate ?? new Date().toISOString().split("T")[0];
+  async recordLoss(symbol: string, lossDate: string): Promise<void> {
     const state = await this.loadState();
     if (!state.losses) state.losses = {};
-    state.losses[symbol] = date;
+    state.losses[symbol] = lossDate;
     await this.saveState(state);
   }
 
