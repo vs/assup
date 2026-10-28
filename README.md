@@ -126,7 +126,7 @@ npm install                        # installs all workspaces and builds packages
 docker compose up -d postgres      # or point DATABASE_URL at your own Postgres 16
 
 cd backend
-export DATABASE_URL="postgresql://assup:assup_dev@localhost:5432/assup"
+cp .env.example .env               # DATABASE_URL is preset for the compose Postgres
 npm run db:migrate && npm run db:seed
 npm run dev                        # http://localhost:3000
 
