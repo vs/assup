@@ -43,3 +43,25 @@ export const singleOrderSchema = z.object({
 });
 
 export type SingleOrderInput = z.infer<typeof singleOrderSchema>;
+
+export const recordStrategyLossSchema = z.object({
+  symbol: z.string().min(1).max(20).toUpperCase(),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
+    .refine(
+      (v) => {
+        const d = new Date(`${v}T00:00:00Z`);
+        return !isNaN(d.getTime()) && d.toISOString().startsWith(v);
+      },
+      (v) => ({ message: `Invalid calendar date: ${v}` }),
+    ),
+});
+
+export type RecordStrategyLossInput = z.infer<typeof recordStrategyLossSchema>;
+
+export const clearStrategyCooloffSchema = z.object({
+  symbol: z.string().min(1).max(20).toUpperCase(),
+});
+
+export type ClearStrategyCooloffInput = z.infer<typeof clearStrategyCooloffSchema>;

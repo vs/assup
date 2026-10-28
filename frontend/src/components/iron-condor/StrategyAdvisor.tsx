@@ -22,6 +22,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { api } from "@/api";
+import { formatDate } from "@/components/calendar/calendarUtils";
 import type { SpreadStrategyMetrics, StrategyFilter } from "@assup/shared";
 
 function formatStaleAge(minutes: number | null): string {
@@ -115,7 +116,7 @@ export function StrategyAdvisor({ symbol, baseQuantity, onApply }: StrategyAdvis
 
   const handleRecordLoss = useCallback(async () => {
     try {
-      await api.ironCondor.recordStrategyLoss(symbol);
+      await api.ironCondor.recordStrategyLoss(symbol, formatDate(new Date()));
       fetchMetrics();
     } catch { /* ignore */ }
   }, [symbol, fetchMetrics]);

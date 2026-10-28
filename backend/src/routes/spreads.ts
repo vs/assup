@@ -5,7 +5,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validate } from "../middleware/validate.js";
-import { closeSpreadOrderSchema } from "@assup/shared";
+import { closeSpreadOrderSchema, recordStrategyLossSchema, clearStrategyCooloffSchema } from "@assup/shared";
 import * as ironCondorService from "../services/ironCondor.service.js";
 import { positionService } from "../services/position.service.js";
 import { groupIntoSpreads } from "../services/spreadDetection.service.js";
@@ -68,16 +68,13 @@ router.get(
 
 /**
  * POST /api/spreads/strategy/record-loss
- * Record a loss to activate cooloff period
+ * Record a loss (body: { symbol, date: YYYY-MM-DD }) to activate cooloff period
  */
 router.post(
   "/strategy/record-loss",
+  validate({ body: recordStrategyLossSchema }),
   asyncHandler(async (req, res) => {
-    const { symbol, date } = req.body as { symbol: string; date?: string };
-    if (!symbol) {
-      res.status(400).json({ error: "symbol is required" });
-      return;
-    }
+    const { symbol, date } = req.body;
     await spreadStrategyService.recordLoss(symbol, date);
     res.status(204).send();
   }),
@@ -89,12 +86,9 @@ router.post(
  */
 router.post(
   "/strategy/clear-cooloff",
+  validate({ body: clearStrategyCooloffSchema }),
   asyncHandler(async (req, res) => {
-    const { symbol } = req.body as { symbol: string };
-    if (!symbol) {
-      res.status(400).json({ error: "symbol is required" });
-      return;
-    }
+    const { symbol } = req.body;
     await spreadStrategyService.clearCooloff(symbol);
     res.status(204).send();
   }),

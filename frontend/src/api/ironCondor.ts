@@ -41,7 +41,7 @@ export const ironCondorApi = {
   getSpreadStrategyMetrics: (symbol: string) =>
     request<SpreadStrategyMetrics>(`/api/spreads/strategy?symbol=${encodeURIComponent(symbol)}`),
 
-  recordStrategyLoss: (symbol: string, date?: string) =>
+  recordStrategyLoss: (symbol: string, date: string) =>
     request<void>("/api/spreads/strategy/record-loss", {
       method: "POST",
       body: JSON.stringify({ symbol, date }),
