@@ -124,6 +124,9 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
       closeLimitSeeded.current = false;
       openLimitSeeded.current = false;
     }
+    // Keyed on the spread's identity, not the object: positions refreshes recreate
+    // `spread`, and depending on it would reset the form mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, spread?.id, spread?.quantity]);
 
   // Fetch expirations when dialog opens
@@ -145,6 +148,9 @@ export function RollOutDialog({ open, onOpenChange, spread, onSuccess }: RollOut
         if (!cancelled) setExpirationsLoading(false);
       });
     return () => { cancelled = true; };
+    // Keyed on the spread's identity so positions refreshes don't refetch expirations
+    // and clobber the user's chosen target expiration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, spread?.id, spread?.symbol]);
 
   // Compute focus range for the chain stream — covers the spread's strikes plus

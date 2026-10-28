@@ -169,8 +169,10 @@ export function ResearchJobsProvider({ children }: { children: ReactNode }) {
 
   // Cleanup retention timers on unmount
   useEffect(() => {
+    // The ref always holds the same Map, so capturing it here sees every timer added later.
+    const timers = retentionTimers.current;
     return () => {
-      for (const timer of retentionTimers.current.values()) {
+      for (const timer of timers.values()) {
         clearTimeout(timer);
       }
     };

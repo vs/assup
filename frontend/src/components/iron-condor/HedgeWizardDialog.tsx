@@ -16,6 +16,8 @@ import { computeHedgedPayoff } from "@/utils/spreadAnalysis";
 import type { SpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 import { useSpreadsStream } from "@/hooks/useSpreadsStream";
 
+const EMPTY_CHAIN: IronCondorChainStrike[] = [];
+
 interface HedgeWizardDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -116,7 +118,7 @@ export function HedgeWizardDialog({
     2000,      // updateIntervalMs
     needsOwnStream, // enabled
   );
-  const chain = needsOwnStream ? streamResult.chain : (externalChain ?? []);
+  const chain = needsOwnStream ? streamResult.chain : (externalChain ?? EMPTY_CHAIN);
   const underlyingPrice = needsOwnStream ? streamResult.underlyingPrice : (externalUnderlyingPrice ?? 0);
 
   // Reset state when dialog opens with a new spread
@@ -249,7 +251,7 @@ export function HedgeWizardDialog({
     } catch {
       return null;
     }
-  }, [spread, originalCreditPerShare, underlyingPrice]);
+  }, [spread, originalCreditPerShare]);
 
   // After analysis (hedged payoff)
   const afterResult = useMemo(() => {
@@ -345,7 +347,6 @@ export function HedgeWizardDialog({
     isPut,
     originalCreditPerShare,
     limitPrice,
-    underlyingPrice,
   ]);
 
   // --- Before payoff metrics ---

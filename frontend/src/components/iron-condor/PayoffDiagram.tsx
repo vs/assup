@@ -18,6 +18,10 @@ interface PayoffDiagramProps {
   strikes: Array<{ strike: number; label: string; color: string }>;
 }
 
+const W = 800;
+const H = 340;
+const pad = { top: 35, bottom: 50, left: 60, right: 20 };
+
 export function PayoffDiagram({
   payoffCurve,
   underlyingPrice,
@@ -31,10 +35,6 @@ export function PayoffDiagram({
 }: PayoffDiagramProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursor, setCursor] = useState<{ svgX: number; price: number; pnl: number } | null>(null);
-
-  const W = 800;
-  const H = 340;
-  const pad = { top: 35, bottom: 50, left: 60, right: 20 };
 
   const { points, zeroY, priceToX, pnlToY, minPrice, maxPrice } = useMemo(() => {
     if (payoffCurve.length === 0) return { points: "", zeroY: 170, priceToX: () => 0, pnlToY: () => 0, minPrice: 0, maxPrice: 0 };

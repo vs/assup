@@ -80,7 +80,7 @@ export function TaxesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedYear]);
+  }, [selectedYear, currentYear]);
 
   useEffect(() => {
     loadData();

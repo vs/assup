@@ -567,7 +567,7 @@ function MonthProfitCard({
   const optSort = useTableSort(allOptItems, getOptionTradeValue);
 
   // Sort: realized stock trades
-  const getStockTradeValue = useCallback((trade: (typeof data.realized.stockTrades)[0], col: string): string | number => {
+  const getStockTradeValue = useCallback((trade: StockTradeGroup, col: string): string | number => {
     switch (col) {
       case "date": return trade.sellTrade?.tradeDate || "";
       case "symbol": return trade.symbol;
@@ -1187,7 +1187,7 @@ function MonthDetailContent({ detail }: { detail: Awaited<ReturnType<typeof api.
   }, []);
   const optSort = useTableSort(allOptItems, getOptionTradeValue);
 
-  const getStockTradeValue = useCallback((trade: (typeof detail.realized.stockTrades)[0], col: string): string | number => {
+  const getStockTradeValue = useCallback((trade: StockTradeGroup, col: string): string | number => {
     switch (col) {
       case "date": return trade.sellTrade?.tradeDate || "";
       case "symbol": return trade.symbol;
