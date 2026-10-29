@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ErrorAlert, PageLoadingSkeleton } from "@/components/common";
+import { WarningAlert } from "@/components/common/WarningAlert";
 import { TickerHoverCard } from "@/components/common/TickerHoverCard";
 import { useTickerProfileContext } from "@/components/common/TickerProfileProvider";
 import { PositionTable, GroupedPositionsTable } from "@/components/positions";
@@ -50,6 +51,7 @@ export function PositionsPage() {
   const [summary, setSummary] = useState<PositionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [settingsWarnings, setSettingsWarnings] = useState<string[]>([]);
   const [assigning, setAssigning] = useState<string | null>(null);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [spreadSymbols, setSpreadSymbols] = useState<Set<string>>(new Set(DEFAULT_SPREAD_SYMBOLS));
@@ -87,13 +89,18 @@ export function PositionsPage() {
       setAssetClasses(acData);
       setSummary(summaryData);
 
+      const warnings: string[] = [];
+
       // Load spread-eligible symbols
       try {
         const spreadSettings = await settingsApi.get<{ symbols: string[] }>("spreads");
         if (spreadSettings.value?.symbols?.length > 0) {
           setSpreadSymbols(new Set(spreadSettings.value.symbols));
         }
-      } catch { /* use defaults */ }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        warnings.push(`Couldn't load spreads settings (${msg}). Spread grouping may not match your configured symbols.`);
+      }
 
       // Load active allocation profile
       try {
@@ -107,7 +114,11 @@ export function PositionsPage() {
       try {
         const savedSettings = await api.settings.getDashboard();
         setDashboardSettings(savedSettings);
-      } catch { /* use defaults */ }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        warnings.push(`Couldn't load dashboard settings (${msg}). The allocation view may not match your saved display settings.`);
+      }
+      setSettingsWarnings(warnings);
 
       setError(null);
     } catch (err) {
@@ -286,6 +297,7 @@ export function PositionsPage() {
       </div>
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+      <WarningAlert messages={settingsWarnings} />
 
       {/* Positions content based on view mode */}
       {viewMode === "asset-class" && hasAllocationProfile ? (

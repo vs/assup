@@ -126,8 +126,8 @@ export function ImportsSection() {
     try {
       await api.profit.imports.delete(id);
       loadImports();
-    } catch {
-      // ignore
+    } catch (err) {
+      setImportsError(err instanceof Error ? err.message : "Failed to delete import");
     }
   };
 

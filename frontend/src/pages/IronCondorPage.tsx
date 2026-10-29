@@ -25,6 +25,8 @@ import type { StrategyApplyParams } from "@/components/iron-condor/StrategyAdvis
 import { useSpreadRiskStatus } from "@/hooks/useSpreadRiskStatus";
 import { useHedgeRecommendations } from "@/hooks/useHedgeRecommendations";
 import { Label } from "@/components/ui/label";
+import { ErrorAlert } from "@/components/common";
+import { WarningAlert } from "@/components/common/WarningAlert";
 import type { ActiveSpread, HedgeStrategy } from "@assup/shared";
 
 const DEFAULT_SYMBOLS = ["SPX", "XSP", "RUT"];
@@ -37,9 +39,11 @@ export function IronCondorPage() {
   // Risk thresholds from settings
   const [hedgeWarningPct, setHedgeWarningPct] = useState(100);
   const [hedgeDangerPct, setHedgeDangerPct] = useState(200);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   // Active spreads
   const [spreads, setSpreads] = useState<ActiveSpread[]>([]);
+  const [spreadsError, setSpreadsError] = useState<string | null>(null);
 
   // Strategy recommendation from advisor
   const [strategyRec, setStrategyRec] = useState<StrategyRecommendation | null>(null);
@@ -71,14 +75,22 @@ export function IronCondorPage() {
         if (r.value?.hedgeWarningPct != null) setHedgeWarningPct(r.value.hedgeWarningPct);
         if (r.value?.hedgeDangerPct != null) setHedgeDangerPct(r.value.hedgeDangerPct);
       })
-      .catch(() => {});
+      .catch((err) => {
+        setSettingsError(err instanceof Error ? err.message : "Failed to load spreads settings");
+      });
   }, []);
 
   // Poll active spreads every 10s
   const fetchSpreads = useCallback(() => {
     api.ironCondor.getActiveSpreads()
-      .then(r => setSpreads(r.spreads))
-      .catch(() => {});
+      .then(r => {
+        setSpreads(r.spreads);
+        setSpreadsError(null);
+      })
+      .catch((err) => {
+        // Keep the last good list on screen, but say it may be stale.
+        setSpreadsError(err instanceof Error ? err.message : "Failed to load active spreads");
+      });
   }, []);
 
   useEffect(() => {
@@ -133,6 +145,18 @@ export function IronCondorPage() {
 
   return (
     <div className="space-y-4">
+      {settingsError && (
+        <WarningAlert messages={[
+          `Couldn't load spreads settings (${settingsError}). Using default symbols and hedge thresholds (${hedgeWarningPct}% / ${hedgeDangerPct}%).`,
+        ]} />
+      )}
+      {spreadsError && (
+        <ErrorAlert
+          title="Couldn't refresh active spreads"
+          message={`${spreadsError}. The list below may be out of date; retrying every 10s.`}
+        />
+      )}
+
       {/* Active spreads — always on top */}
       <ActiveSpreadsList
         spreads={spreads}
