@@ -118,14 +118,18 @@ export function StrategyAdvisor({ symbol, baseQuantity, onApply }: StrategyAdvis
     try {
       await api.ironCondor.recordStrategyLoss(symbol, formatDate(new Date()));
       fetchMetrics();
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record loss");
+    }
   }, [symbol, fetchMetrics]);
 
   const handleClearCooloff = useCallback(async () => {
     try {
       await api.ironCondor.clearStrategyCooloff(symbol);
       fetchMetrics();
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear cooloff");
+    }
   }, [symbol, fetchMetrics]);
 
   // Determine overall status

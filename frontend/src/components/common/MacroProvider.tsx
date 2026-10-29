@@ -24,7 +24,7 @@ export function MacroProvider({ children }: { children: React.ReactNode }) {
     researchApi
       .refreshMacro()
       .then(setMacro)
-      .catch(() => {})
+      .catch((err) => console.error("Macro refresh failed:", err))
       .finally(() => setRefreshing(false));
   }, []);
 
@@ -33,7 +33,8 @@ export function MacroProvider({ children }: { children: React.ReactNode }) {
     researchApi
       .getMacro()
       .then(setMacro)
-      .catch(() => {});
+      // Live SSE updates can still fill the gauge in later.
+      .catch((err) => console.error("Failed to load macro data:", err));
   }, []);
 
   // Live updates via SSE — merges live VIX/SPX into the current macro state

@@ -262,6 +262,7 @@ function OpenSpreadRow({
   const [expanded, setExpanded] = useState(false);
   const [closingSpread, setClosingSpread] = useState<ActiveSpread | null>(null);
   const [closeLoading, setCloseLoading] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const badge = spreadTypeBadgeProps(spread.type);
   const displayName = formatLiveSpreadName(spread.type, spread.underlying, spread.legs);
   const sparkline = getSparklineState(spread.underlying);
@@ -272,6 +273,7 @@ function OpenSpreadRow({
   const handleCloseSpread = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setCloseLoading(true);
+    setCloseError(null);
     try {
       const { spreads: activeSpreads } = await api.ironCondor.getActiveSpreads();
       const spreadStrikes = strikes.map(fmtStrike).join("/");
@@ -284,9 +286,11 @@ function OpenSpreadRow({
       });
       if (match) {
         setClosingSpread(match);
+      } else {
+        setCloseError(`No matching active spread found in IBKR for ${spreadStrikes}`);
       }
-    } catch {
-      // silent
+    } catch (err) {
+      setCloseError(err instanceof Error ? err.message : "Failed to load active spreads");
     } finally {
       setCloseLoading(false);
     }
@@ -384,6 +388,7 @@ function OpenSpreadRow({
           >
             Close
           </Button>
+          {closeError && <p className="text-xs text-destructive font-sans">{closeError}</p>}
         </TableCell>
       </TableRow>
       <CloseSpreadDialog

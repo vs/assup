@@ -35,6 +35,7 @@ export function SpreadsSection() {
   const [newSymbol, setNewSymbol] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [hedgeWarningPct, setHedgeWarningPct] = useState(DEFAULT_HEDGE_WARNING_PCT);
   const [hedgeDangerPct, setHedgeDangerPct] = useState(DEFAULT_HEDGE_DANGER_PCT);
 
@@ -62,6 +63,7 @@ export function SpreadsSection() {
   }, []);
 
   const loadSettings = useCallback(async () => {
+    setLoadError(null);
     try {
       const result = await settingsApi.get<SpreadsSettings>("spreads");
       if (result.value?.symbols?.length > 0) {
@@ -76,8 +78,10 @@ export function SpreadsSection() {
       if (result.value?.hedgeDangerPct != null) {
         setHedgeDangerPct(result.value.hedgeDangerPct);
       }
-    } catch {
-      // Use defaults
+    } catch (err) {
+      // Don't fall back to defaults: every edit auto-saves the whole object and
+      // would overwrite the user's stored symbols and hedge thresholds.
+      setLoadError(err instanceof Error ? err.message : "Failed to load spreads settings");
     } finally {
       setLoaded(true);
     }
@@ -121,6 +125,16 @@ export function SpreadsSection() {
   };
 
   if (!loaded) return null;
+
+  if (loadError) {
+    return (
+      <div className="space-y-6 py-2">
+        <h2 className="text-lg font-semibold">Spreads</h2>
+        <ErrorAlert title="Couldn't load spreads settings" message={loadError} />
+        <Button variant="outline" onClick={loadSettings}>Retry</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 py-2">

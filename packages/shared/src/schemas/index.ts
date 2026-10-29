@@ -19,3 +19,4 @@ export * from "./tickerActivity.schema.js";
 export * from "./ironCondor.schema.js";
 export * from "./flex-web.schema.js";
 export * from "./roll.schema.js";
+export * from "./updates.schema.js";

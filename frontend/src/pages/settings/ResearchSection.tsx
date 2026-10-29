@@ -65,6 +65,7 @@ export function ResearchSection() {
     error?: string;
     version?: string;
   } | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
@@ -127,7 +128,9 @@ export function ResearchSection() {
   useEffect(() => {
     loadData();
     // Load claude status in background (spawns CLI, can be slow)
-    researchApi.getClaudeStatus().then(setConnectionStatus).catch(() => {});
+    researchApi.getClaudeStatus().then(setConnectionStatus).catch((err) => {
+      setStatusError(err instanceof Error ? err.message : "Failed to check Claude status");
+    });
   }, [loadData]);
 
   const handleModeChange = async (useCli: boolean) => {
@@ -510,10 +513,12 @@ export function ResearchSection() {
                 </>
               )}
             </div>
-          ) : (
+          ) : statusError ? (
             <p className="text-muted-foreground">
-              Unable to check status. Is the research service running?
+              Unable to check status: {statusError}
             </p>
+          ) : (
+            <p className="text-muted-foreground">Checking…</p>
           )}
         </CardContent>
       </Card>

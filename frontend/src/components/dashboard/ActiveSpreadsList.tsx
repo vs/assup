@@ -97,13 +97,16 @@ export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
 
   const [warningPct, setWarningPct] = useState(100);
   const [dangerPct, setDangerPct] = useState(200);
+  const [thresholdsError, setThresholdsError] = useState<string | null>(null);
   useEffect(() => {
     settingsApi.get<{ hedgeWarningPct?: number; hedgeDangerPct?: number }>("spreads")
       .then(result => {
         if (result.value?.hedgeWarningPct != null) setWarningPct(result.value.hedgeWarningPct);
         if (result.value?.hedgeDangerPct != null) setDangerPct(result.value.hedgeDangerPct);
       })
-      .catch(() => {});
+      .catch((err) => {
+        setThresholdsError(err instanceof Error ? err.message : "Failed to load spreads settings");
+      });
   }, []);
 
   const riskMap = useSpreadRiskStatus(spreads ?? [], warningPct, dangerPct);
@@ -134,6 +137,12 @@ export function ActiveSpreadsList({ spreads }: ActiveSpreadsListProps) {
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-2">
+        {thresholdsError && (
+          <div className="flex items-start gap-1.5 text-xs text-yellow-600 dark:text-yellow-400">
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+            <span>Couldn't load hedge thresholds ({thresholdsError}). Risk colors use the defaults ({warningPct}% / {dangerPct}%).</span>
+          </div>
+        )}
         {!spreads || spreads.length === 0 ? (
           <div className="text-xs text-muted-foreground py-4 text-center">No active spreads</div>
         ) : (

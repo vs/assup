@@ -209,7 +209,8 @@ export function OptionsBuilder({
           if (nearest) setExpiration(prev => prev ?? nearest);
         }
       })
-      .catch(() => {});
+      // Non-fatal: the chain stream also delivers expirations.
+      .catch((err) => console.warn("Expirations prefetch failed:", err));
   }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Streaming data
