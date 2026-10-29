@@ -7,7 +7,7 @@ import { sseService } from "./services/sse.js";
 import { macroBroadcastService } from "./services/macroBroadcast.service.js";
 import { prisma } from "./db/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { asyncHandler } from "./middleware/asyncHandler.js";
+import { validate } from "./middleware/validate.js";
 import { applyOrderRateLimits } from "./middleware/orderRateLimit.js";
 import assetClassesRouter from "./routes/assetClasses.js";
 import allocationProfilesRouter from "./routes/allocationProfiles.js";
@@ -34,6 +34,8 @@ import calendarRouter from "./routes/calendar.js";
 import flexWebRouter from "./routes/flex-web.js";
 import gexRouter from "./routes/gex.js";
 import quotesRouter from "./routes/quotes.js";
+import healthRouter from "./routes/health.js";
+import { refreshUpdatesSchema } from "@assup/shared";
 import { clientQuoteSubscriptions } from "./services/quotes/clientQuoteSubscriptions.js";
 import { scanJobService } from "./services/scanJob.service.js";
 import { calendarService } from "./services/calendar.service.js";
@@ -111,14 +113,7 @@ app.use("/api/flex-web", flexWebRouter);
 app.use("/api/gex", gexRouter);
 app.use("/api/quotes", quotesRouter);
 
-app.get("/api/health", asyncHandler(async (req, res) => {
-  const assetClassCount = await prisma.assetClass.count();
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    database: { connected: true, assetClasses: assetClassCount },
-  });
-}));
+app.use("/api/health", healthRouter);
 
 // SSE endpoint for TWS connection status
 app.get("/api/connection/status", (req: Request, res: Response) => {
@@ -193,22 +188,18 @@ app.get("/api/updates/stream", (req: Request, res: Response) => {
 });
 
 // Endpoint to trigger a position refresh broadcast (called after data changes)
-app.post("/api/updates/refresh", async (req: Request, res: Response) => {
-  try {
-    const { type } = req.body;
-    if (type === "positions" || type === "all") {
-      sseService.broadcast("position", { refreshed: true });
-    }
-    if (type === "orders" || type === "all") {
-      sseService.broadcast("order", { refreshed: true });
-    }
-    if (type === "allocation" || type === "all") {
-      sseService.broadcast("allocation", { refreshed: true });
-    }
-    res.json({ success: true, clients: sseService.getClientCount() });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to broadcast refresh" });
+app.post("/api/updates/refresh", validate({ body: refreshUpdatesSchema }), (req: Request, res: Response) => {
+  const { type } = req.body;
+  if (type === "positions" || type === "all") {
+    sseService.broadcast("position", { refreshed: true });
   }
+  if (type === "orders" || type === "all") {
+    sseService.broadcast("order", { refreshed: true });
+  }
+  if (type === "allocation" || type === "all") {
+    sseService.broadcast("allocation", { refreshed: true });
+  }
+  res.json({ success: true, clients: sseService.getClientCount() });
 });
 
 // Global error handler - must be last middleware
