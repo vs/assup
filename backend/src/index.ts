@@ -46,7 +46,7 @@ import { jobService } from "./services/research/job.service.js";
 
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3737;
 // Loopback by default: the API is unauthenticated and can place orders.
 // Docker sets 0.0.0.0 and restricts exposure via the port mapping instead.
 const BIND_ADDRESS = process.env.BIND_ADDRESS || "127.0.0.1";

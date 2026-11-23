@@ -111,7 +111,7 @@ docker compose exec backend npx prisma migrate deploy
 docker compose exec backend npm run db:seed
 ```
 
-Open **http://localhost:8080** (API on http://localhost:3000).
+Open **http://localhost:8080** (API on http://localhost:3737).
 
 For hot reload during development:
 
@@ -128,7 +128,7 @@ docker compose up -d postgres      # or point DATABASE_URL at your own Postgres 
 cd backend
 cp .env.example .env               # DATABASE_URL is preset for the compose Postgres
 npm run db:migrate && npm run db:seed
-npm run dev                        # http://localhost:3000
+npm run dev                        # http://localhost:3737
 
 cd ../frontend
 npm run dev                        # http://localhost:5173
@@ -153,7 +153,7 @@ All settings are environment variables (see [`.env.example`](.env.example)). Onl
 | `IB_HOST` / `IB_PORT` | TWS / IB Gateway address | `127.0.0.1` / `7496` |
 | `IB_CLIENT_ID` | TWS API client id | `1` |
 | `IB_MARKET_DATA_LINES` | Market-data line budget shared by streams | `100` |
-| `PORT` | Backend HTTP port | `3000` |
+| `PORT` | Backend HTTP port | `3737` |
 | `BIND_ADDRESS` | Interface the backend listens on. The API has no auth and can place orders, so keep it on loopback unless you add your own protection | `127.0.0.1` |
 | `FRONTEND_URL` | Allowed CORS origin | `http://localhost:8080` |
 | `MARKET_DATA_API_KEY` | [Polygon.io](https://polygon.io) key for profiles and research | — |

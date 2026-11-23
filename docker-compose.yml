@@ -26,7 +26,7 @@ services:
     image: assup-backend
     container_name: assup-backend
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3737:3737"
     environment:
       - BIND_ADDRESS=0.0.0.0
       - IB_HOST=host.docker.internal
@@ -48,7 +48,7 @@ services:
     healthcheck:
       # 127.0.0.1, not localhost: Alpine resolves localhost to ::1 first, and
       # the server binds IPv4-only 0.0.0.0 (BIND_ADDRESS above).
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3737/api/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -2,7 +2,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-ARG VITE_API_URL=http://localhost:3000
+# Empty = same origin: nginx proxies /api to the backend container. Set it
+# only to reach a backend nginx does not proxy.
+ARG VITE_API_URL=
 
 # Copy root package files and lockfile for deterministic installs
 COPY package.json package-lock.json ./

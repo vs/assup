@@ -12,6 +12,6 @@ Include a description, the affected version or commit, and steps to reproduce. Y
 
 Assup is designed to run **locally, for a single user**, next to your own TWS instance:
 
-- The backend API has **no authentication**. Do not expose ports `3000`, `8080` or `5432` to the internet or to untrusted networks.
+- The backend API has **no authentication**. Do not expose ports `3737`, `8080` or `5432` to the internet or to untrusted networks.
 - Keep API keys in `.env`, which is git-ignored, and never commit them.
 - Only list hosts you control under *Trusted IPs* in TWS. Enable *Read-Only API* if you don't need to trade from Assup.

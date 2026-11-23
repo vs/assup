@@ -74,7 +74,7 @@ COPY --from=builder /app/backend/dist/prisma ./backend/dist/prisma
 # Ensure the non-root user can access the app directory
 RUN chown -R assup:assup /app
 
-EXPOSE 3000
+EXPOSE 3737
 
 USER assup
 ENV HOME=/home/assup

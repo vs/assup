@@ -1,11 +1,13 @@
 use std::time::Duration;
 
-const PORTS: [u16; 2] = [3001, 3000];
+const PORTS: [u16; 2] = [3001, 3737];
 const TIMEOUT: Duration = Duration::from_secs(2);
 
 pub async fn discover_backend() -> Option<String> {
     for port in PORTS {
-        let url = format!("http://localhost:{}", port);
+        // 127.0.0.1, not localhost: localhost may resolve to ::1, where an
+        // unrelated server can listen on the same port.
+        let url = format!("http://127.0.0.1:{}", port);
         let health_url = format!("{}/api/health", url);
 
         match reqwest::Client::new()

@@ -96,7 +96,7 @@ docker-compose exec backend npx prisma migrate deploy
 docker-compose exec backend npm run db:seed
 ```
 - Frontend: http://localhost:8080
-- Backend: http://localhost:3000
+- Backend: http://localhost:3737
 
 ### Development Mode
 

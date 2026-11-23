@@ -21,7 +21,9 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: process.env.DOCKER ? 'http://backend:3000' : 'http://localhost:3000',
+        // 127.0.0.1, not localhost: Node may resolve localhost to ::1, where
+        // another dev server can be bound to the same port.
+        target: process.env.DOCKER ? 'http://backend:3737' : 'http://127.0.0.1:3737',
         changeOrigin: true,
       },
     },

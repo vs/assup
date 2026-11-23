@@ -52,7 +52,7 @@ pub fn run() {
                     None => {
                         // Show dialog when backend not found
                         app_handle.dialog()
-                            .message("Could not find Assup backend on ports 3001 or 3000.\n\nPlease start the backend server and restart the app.")
+                            .message("Could not find Assup backend on ports 3001 or 3737.\n\nPlease start the backend server and restart the app.")
                             .kind(MessageDialogKind::Error)
                             .title("Backend Not Found")
                             .buttons(MessageDialogButtons::Ok)

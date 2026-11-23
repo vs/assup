@@ -65,7 +65,7 @@ await client.end();
 
 // Live positions from the running backend, if it is up.
 try {
-  const res = await fetch("http://localhost:3000/api/positions", { signal: AbortSignal.timeout(20000) });
+  const res = await fetch("http://localhost:3737/api/positions", { signal: AbortSignal.timeout(20000) });
   if (res.ok) {
     for (const p of await res.json()) {
       symbols.add(p.underlying || String(p.symbol).split(" ")[0]);
@@ -74,7 +74,7 @@ try {
     sources++;
   }
 } catch {
-  console.warn("  backend not reachable on :3000 — live positions not included");
+  console.warn("  backend not reachable on :3737 — live positions not included");
 }
 
 const inTree = (t, extra = []) => {

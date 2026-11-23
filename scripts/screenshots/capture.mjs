@@ -38,7 +38,7 @@ await ctx.addInitScript(() => {
   };
 });
 // Hard block on the real backend: nothing real can ever reach the page.
-await ctx.route(/localhost:(3000|3001)/, (r) => r.abort());
+await ctx.route(/localhost:(3737|3001)/, (r) => r.abort());
 
 const missing = new Set();
 await ctx.route('http://demo.invalid/**', async (r) => {

@@ -16,7 +16,7 @@ const queryClient = new QueryClient({
 
 async function init() {
   const backendUrl = await initApiBase();
-  console.log('[Init] Using backend:', backendUrl);
+  console.log('[Init] Using backend:', backendUrl || window.location.origin);
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
